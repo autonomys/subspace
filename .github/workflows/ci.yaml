@@ -21,6 +21,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
 
