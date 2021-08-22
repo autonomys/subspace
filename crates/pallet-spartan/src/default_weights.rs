@@ -17,17 +17,15 @@
 //! Default weights for the PoC Pallet
 //! This file was not auto-generated.
 
-use frame_support::weights::{
-	Weight, constants::{RocksDbWeight as DbWeight},
-};
+use frame_support::weights::{constants::RocksDbWeight as DbWeight, Weight};
 
 impl crate::WeightInfo for () {
-	fn plan_config_change() -> Weight {
-		DbWeight::get().writes(1)
-	}
+    fn plan_config_change() -> Weight {
+        DbWeight::get().writes(1)
+    }
 
-	fn report_equivocation() -> Weight {
-		// TODO: Proper value
-		1
-	}
+    fn report_equivocation() -> Weight {
+        // TODO: Proper value
+        1
+    }
 }

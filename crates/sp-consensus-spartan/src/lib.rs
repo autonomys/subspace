@@ -26,4 +26,3 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 
 /// Randomness value.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
-

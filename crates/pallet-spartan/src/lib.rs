@@ -291,8 +291,8 @@ pub mod pallet {
     pub(super) type Initialized<T> = StorageValue<_, MaybeRandomness>;
 
     /// This field should always be populated during block processing.
-	///
-	/// It is set in `on_initialize`, before it will contain the value from the last block.
+    ///
+    /// It is set in `on_initialize`, before it will contain the value from the last block.
     #[pallet::storage]
     #[pallet::getter(fn author_por_randomness)]
     pub(super) type AuthorPorRandomness<T> = StorageValue<_, MaybeRandomness, ValueQuery>;
