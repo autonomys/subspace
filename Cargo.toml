@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "bin/node-template-spartan/node",
+    "bin/node-template-spartan/runtime",
+    "client/consensus/poc",
+    "client/consensus/poc/rpc",
+    "frame/offences-poc",
+    "frame/spartan",
+    "primitives/consensus/poc",
+    "primitives/consensus/spartan",
+]

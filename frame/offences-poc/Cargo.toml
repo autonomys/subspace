@@ -13,19 +13,19 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-pallet-balances = { version = "4.0.0-dev", default-features = false, path = "../balances" }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
-sp-std = { version = "4.0.0-dev", default-features = false, path = "../../primitives/std" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 serde = { version = "1.0.127", optional = true }
-sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../primitives/runtime" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../primitives/consensus/poc" }
-frame-support = { version = "4.0.0-dev", default-features = false, path = "../support" }
-frame-system = { version = "4.0.0-dev", default-features = false, path = "../system" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 log = { version = "0.4.14", default-features = false }
 
 [dev-dependencies]
-sp-io = { version = "4.0.0-dev", path = "../../primitives/io" }
-sp-core = { version = "4.0.0-dev", path = "../../primitives/core" }
+sp-io = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 schnorrkel = { version = "0.9.1" }
 
 [features]

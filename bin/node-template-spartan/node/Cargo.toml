@@ -20,44 +20,44 @@ structopt = "0.3.22"
 serde = { version = "1.0.127", features = ["derive"] }
 serde_json = "1.0.66"
 
-sc-cli = { version = "0.10.0-dev", path = "../../../client/cli", features = ["wasmtime"] }
-sp-core = { version = "4.0.0-dev", path = "../../../primitives/core" }
-sc-executor = { version = "0.10.0-dev", path = "../../../client/executor", features = ["wasmtime"] }
-sc-service = { version = "0.10.0-dev", path = "../../../client/service", features = ["wasmtime"] }
-sc-telemetry = { version = "4.0.0-dev", path = "../../../client/telemetry" }
-sp-inherents = { version = "4.0.0-dev", path = "../../../primitives/inherents" }
-sc-transaction-pool = { version = "4.0.0-dev", path = "../../../client/transaction-pool" }
-sc-transaction-pool-api = { version = "4.0.0-dev", path = "../../../client/transaction-pool/api" }
+sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", features = ["wasmtime"] }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", features = ["wasmtime"] }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", features = ["wasmtime"] }
+sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-consensus-poc = { version = "0.1.0", path = "../../../client/consensus/poc" }
 sc-consensus-poc-rpc = { version = "0.1.0", path = "../../../client/consensus/poc/rpc" }
-sc-consensus-uncles = { version = "0.10.0-dev", path = "../../../client/consensus/uncles" }
+sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus-poc = { version = "0.1.0", path = "../../../primitives/consensus/poc" }
-sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
-sc-consensus = { version = "0.10.0-dev", path = "../../../client/consensus/common" }
-sc-client-api = { version = "4.0.0-dev", path = "../../../client/api" }
-sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
-sp-timestamp = { version = "4.0.0-dev", path = "../../../primitives/timestamp" }
-sp-authorship = { version = "4.0.0-dev", path = "../../../primitives/authorship" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-runtime = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-authorship = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 
 # These dependencies are used for the node template's RPCs
 jsonrpc-core = "15.1.0"
-sc-rpc = { version = "4.0.0-dev", path = "../../../client/rpc" }
-sp-api = { version = "4.0.0-dev", path = "../../../primitives/api" }
-sc-rpc-api = { version = "0.10.0-dev", path = "../../../client/rpc-api" }
-sp-blockchain = { version = "4.0.0-dev", path = "../../../primitives/blockchain" }
-sp-block-builder = { version = "4.0.0-dev", path = "../../../primitives/block-builder" }
-sc-basic-authorship = { version = "0.10.0-dev", path = "../../../client/basic-authorship" }
-substrate-frame-rpc-system = { version = "4.0.0-dev", path = "../../../utils/frame/rpc/system" }
-pallet-transaction-payment-rpc = { version = "4.0.0-dev", path = "../../../frame/transaction-payment/rpc/" }
+sc-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 
 # These dependencies are used for runtime benchmarking
-frame-benchmarking = { version = "4.0.0-dev", path = "../../../frame/benchmarking" }
-frame-benchmarking-cli = { version = "4.0.0-dev", path = "../../../utils/frame/benchmarking-cli" }
+frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 
 node-template-spartan-runtime = { version = "0.1.0", path = "../runtime" }
 
 [build-dependencies]
-substrate-build-script-utils = { version = "3.0.0", path = "../../../utils/build-script-utils" }
+substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 
 [features]
 default = []
