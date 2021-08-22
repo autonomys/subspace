@@ -18,8 +18,8 @@ frame-support = { version = "4.0.0-dev", default-features = false, git = "https:
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 serde = { version = "1.0.127", optional = true }
-sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../primitives/consensus/poc" }
-sp-consensus-spartan = { version = "0.1.0", default-features = false, path = "../../primitives/consensus/spartan" }
+sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
+sp-consensus-spartan = { version = "0.1.0", default-features = false, path = "../sp-consensus-spartan" }
 sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-staking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
@@ -29,7 +29,7 @@ num-traits = { version = "0.2.14", default-features = false }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-pallet-offences-poc = { version = "0.1.0", path = "../offences-poc" }
+pallet-offences-poc = { version = "0.1.0", path = "../pallet-offences-poc" }
 pallet-staking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-staking-reward-curve = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }

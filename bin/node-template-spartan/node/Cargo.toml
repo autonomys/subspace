@@ -28,10 +28,10 @@ sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/subst
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sc-consensus-poc = { version = "0.1.0", path = "../../../client/consensus/poc" }
-sc-consensus-poc-rpc = { version = "0.1.0", path = "../../../client/consensus/poc/rpc" }
+sc-consensus-poc = { version = "0.1.0", path = "../../../crates/sc-consensus-poc" }
+sc-consensus-poc-rpc = { version = "0.1.0", path = "../../../crates/sc-consensus-poc-rpc" }
 sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sp-consensus-poc = { version = "0.1.0", path = "../../../primitives/consensus/poc" }
+sp-consensus-poc = { version = "0.1.0", path = "../../../crates/sp-consensus-poc" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }

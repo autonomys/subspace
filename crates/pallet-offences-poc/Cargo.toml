@@ -18,7 +18,7 @@ codec = { package = "parity-scale-codec", version = "2.0.0", default-features = 
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 serde = { version = "1.0.127", optional = true }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../primitives/consensus/poc" }
+sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 log = { version = "0.4.14", default-features = false }

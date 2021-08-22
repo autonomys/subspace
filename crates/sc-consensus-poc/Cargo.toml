@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
-sp-consensus-poc = { version = "0.1.0", path = "../../../primitives/consensus/poc" }
+sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 num-bigint = "0.2.3"
@@ -34,7 +34,7 @@ sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/s
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sp-consensus-spartan = { version = "0.1.0", path = "../../../primitives/consensus/spartan" }
+sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan" }
 sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }

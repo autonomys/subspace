@@ -13,13 +13,13 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-sc-consensus-poc = { version = "0.1.0", path = ".." }
+sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
 sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 jsonrpc-core = "15.1.0"
 jsonrpc-core-client = "15.1.0"
 jsonrpc-derive = "15.1.0"
 jsonrpc-pubsub = "15.1.0"
-sp-consensus-poc = { version = "0.1.0", path = "../../../../primitives/consensus/poc" }
+sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 serde = { version = "1.0.127", features = ["derive"] }
 futures = { version = "0.3.16", features = ["compat"] }
 futures-timer = "3.0.2"

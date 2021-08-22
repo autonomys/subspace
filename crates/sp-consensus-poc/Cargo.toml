@@ -19,7 +19,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sp-consensus-spartan = { version = "0.1.0", path = "../spartan", default-features = false }
+sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan", default-features = false }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
