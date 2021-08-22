@@ -535,7 +535,7 @@ where
                 }
             }
         }),
-        spartan: Spartan::new(),
+        spartan: Spartan::default(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
         block_proposal_slot_portion,
@@ -1888,7 +1888,7 @@ where
         can_author_with,
         telemetry,
         client,
-        spartan: Spartan::new(),
+        spartan: Spartan::default(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
     };

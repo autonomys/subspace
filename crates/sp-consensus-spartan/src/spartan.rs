@@ -35,15 +35,17 @@ pub struct Spartan {
     instance: spartan_codec::Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>,
 }
 
-impl Spartan {
-    pub fn new() -> Self {
+impl Default for Spartan {
+    fn default() -> Self {
         Self {
             instance: spartan_codec::Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(
                 genesis_piece_from_seed(GENESIS_PIECE_SEED),
             ),
         }
     }
+}
 
+impl Spartan {
     pub fn is_encoding_valid(&self, encoding: Piece, public_key: &[u8], nonce: u64) -> bool {
         self.instance
             .is_valid(encoding, hash_public_key(public_key), nonce, ENCODE_ROUNDS)

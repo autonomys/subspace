@@ -386,7 +386,7 @@ impl TestNetFactory for PoCTestNet {
                 epoch_changes: data.link.epoch_changes.clone(),
                 can_author_with: AlwaysCanAuthor,
                 telemetry: None,
-                spartan: Spartan::new(),
+                spartan: Spartan::default(),
                 signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
