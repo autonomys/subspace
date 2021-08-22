@@ -13,20 +13,20 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 
-pallet-spartan = { version = "0.1.0", default-features = false, path = "../../../crates/pallet-spartan" }
+pallet-spartan = { version = "0.1.0", default-features = false, path = "../../crates/pallet-spartan" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-session = { version = "4.0.0-dev", default-features = false, features = ["historical"], git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-randomness-collective-flip = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-pallet-offences-poc = { version = "0.1.0", default-features = false, path = "../../../crates/pallet-offences-poc" }
+pallet-offences-poc = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-poc" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", default-features = false, version = "4.0.0-dev"}
-sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../../crates/sp-consensus-poc" }
+sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-poc" }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", default-features = false, version = "4.0.0-dev"}
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
