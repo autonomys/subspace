@@ -1,0 +1,44 @@
+[package]
+name = "pallet-offences-poc"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/substrate"
+description = "FRAME offences-poc pallet"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+serde = { version = "1.0.127", optional = true }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+log = { version = "0.4.14", default-features = false }
+
+[dev-dependencies]
+sp-io = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+schnorrkel = { version = "0.9.1" }
+
+[features]
+default = ["std"]
+std = [
+	"pallet-balances/std",
+	"codec/std",
+	"sp-std/std",
+	"serde",
+	"sp-runtime/std",
+	"sp-consensus-poc/std",
+	"frame-support/std",
+	"frame-system/std",
+	"log/std",
+]
+try-runtime = ["frame-support/try-runtime"]

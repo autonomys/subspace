@@ -1,0 +1,6 @@
+## We have patched `substrate-test-runtime-client` and made it depend on `pallet-spartan` and `sp-consensus-poc`, so we
+## need to override crates it depends on to make sure code continues to compile
+paths = [
+    "crates/pallet-spartan",
+    "crates/sp-consensus-poc",
+]

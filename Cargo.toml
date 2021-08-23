@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "node-template-spartan/node",
+    "node-template-spartan/runtime",
+    "crates/*",
+]
