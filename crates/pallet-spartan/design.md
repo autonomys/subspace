@@ -164,7 +164,7 @@ The node cannot farm by itself, it can only validate received blocks and generat
 
 ##### `spartan-farmer`
 
-Based on a previous work from `subspace/substrate-core-rust`, but implemented as a standalone `Farmer` which connects to `node-template-spartan` over an RPC, conceptually similar to the distinction between `GETH` and `EthMiner`.
+Based on a previous work from `subspace/subspace-core-rust`, but implemented as a standalone `Farmer` which connects to `node-template-spartan` over an RPC, conceptually similar to the distinction between `GETH` and `EthMiner`.
 Able to create a `Plot` using local disk space and continuously `Farm` when connected to a full node.
 
 ##### `spartan-codec`

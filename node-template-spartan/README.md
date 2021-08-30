@@ -161,8 +161,8 @@ If the farmer finds a valid solution it will reply, and the node will produce a 
 
 ```bash
 # Install Node
-git clone https://github.com/subspace/substrate.git
-cd substrate
+git clone https://github.com/subspace/subspace.git
+cd subspace
 
 # Build and run Node (first terminal)
 cargo +nightly run --bin node-template-spartan -- --dev --tmp

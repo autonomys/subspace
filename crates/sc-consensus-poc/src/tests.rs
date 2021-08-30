@@ -31,7 +31,10 @@ use sc_client_api::{backend::TransactionFor, BlockchainEvents};
 use sc_consensus::{BoxBlockImport, BoxJustificationImport};
 use sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging;
 use sc_network::config::ProtocolConfig;
-use sc_network_test::{Block as TestBlock, *};
+use sc_network_test::{
+    BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
+    TestClientBuilderExt, TestNetFactory,
+};
 use schnorrkel::{Keypair, PublicKey};
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
 use sp_consensus_poc::{inherents::InherentDataProvider, Slot};
@@ -46,6 +49,7 @@ use sp_runtime::{
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::io::Write;
 use std::{cell::RefCell, task::Poll, time::Duration};
+use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;
 
@@ -326,7 +330,7 @@ impl TestNetFactory for PoCTestNet {
         client: PeersClient,
     ) -> (
         BlockImportAdapter<Self::BlockImport>,
-        Option<BoxJustificationImport<Block>>,
+        Option<BoxJustificationImport<TestBlock>>,
         Option<PeerData>,
     ) {
         let client = client.as_full().expect("only full clients are tested");

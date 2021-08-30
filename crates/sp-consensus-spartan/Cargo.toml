@@ -5,7 +5,7 @@ authors = ["Subspace Labs <admin@subspace.network>"]
 description = "Primitives for Spartan based consensus"
 edition = "2018"
 license = "Apache-2.0"
-repository = "https://github.com/subspace/substrate"
+repository = "https://github.com/subspace/subspace"
 homepage = "https://subspace.network"
 readme = "README.md"
 
