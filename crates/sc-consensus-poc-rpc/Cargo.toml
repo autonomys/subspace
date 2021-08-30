@@ -6,7 +6,7 @@ description = "RPC extensions for the PoC consensus algorithm"
 edition = "2018"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/substrate"
+repository = "https://github.com/subspace/subspace"
 readme = "README.md"
 
 [package.metadata.docs.rs]
@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
-sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 jsonrpc-core = "15.1.0"
 jsonrpc-core-client = "15.1.0"
 jsonrpc-derive = "15.1.0"
@@ -23,7 +23,7 @@ sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 serde = { version = "1.0.127", features = ["derive"] }
 futures = { version = "0.3.16", features = ["compat"] }
 futures-timer = "3.0.2"
-sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 log = "0.4.14"
 parking_lot = "0.11.1"
 
