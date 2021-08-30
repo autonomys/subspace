@@ -3686,7 +3686,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-poc 0.1.0",
+ "sp-consensus-poc",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -3711,7 +3711,7 @@ dependencies = [
  "pallet-offences-poc",
  "pallet-randomness-collective-flip",
  "pallet-session",
- "pallet-spartan 0.1.0",
+ "pallet-spartan",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3719,7 +3719,7 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-poc 0.1.0",
+ "sp-consensus-poc",
  "sp-core",
  "sp-inherents",
  "sp-offchain",
@@ -3945,7 +3945,7 @@ dependencies = [
  "parity-scale-codec",
  "schnorrkel",
  "serde",
- "sp-consensus-poc 0.1.0",
+ "sp-consensus-poc",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -4003,34 +4003,14 @@ dependencies = [
  "ring",
  "schnorrkel",
  "serde",
- "sp-consensus-poc 0.1.0",
- "sp-consensus-spartan 0.1.0",
+ "sp-consensus-poc",
+ "sp-consensus-spartan",
  "sp-core",
  "sp-io",
  "sp-runtime",
  "sp-staking",
  "sp-std",
  "spartan-codec",
-]
-
-[[package]]
-name = "pallet-spartan"
-version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "num-traits",
- "pallet-timestamp",
- "parity-scale-codec",
- "serde",
- "sp-consensus-poc 0.1.0 (git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a)",
- "sp-consensus-spartan 0.1.0 (git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a)",
- "sp-io",
- "sp-runtime",
- "sp-staking",
- "sp-std",
 ]
 
 [[package]]
@@ -5561,9 +5541,9 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-poc 0.1.0",
+ "sp-consensus-poc",
  "sp-consensus-slots",
- "sp-consensus-spartan 0.1.0",
+ "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-io",
@@ -5592,7 +5572,7 @@ dependencies = [
  "sc-consensus-poc",
  "sc-rpc-api",
  "serde",
- "sp-consensus-poc 0.1.0",
+ "sp-consensus-poc",
  "sp-core",
 ]
 
@@ -5889,7 +5869,6 @@ dependencies = [
 [[package]]
 name = "sc-network-test"
 version = "0.8.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
 dependencies = [
  "async-std",
  "async-trait",
@@ -6791,27 +6770,7 @@ dependencies = [
  "sp-application-crypto",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-consensus-spartan 0.1.0",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
- "sp-timestamp",
-]
-
-[[package]]
-name = "sp-consensus-poc"
-version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "serde",
- "sp-api",
- "sp-application-crypto",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-consensus-spartan 0.1.0 (git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a)",
+ "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -6832,15 +6791,6 @@ dependencies = [
 [[package]]
 name = "sp-consensus-spartan"
 version = "0.1.0"
-dependencies = [
- "ring",
- "spartan-codec",
-]
-
-[[package]]
-name = "sp-consensus-spartan"
-version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
 dependencies = [
  "ring",
  "spartan-codec",
@@ -7538,27 +7488,30 @@ dependencies = [
 [[package]]
 name = "substrate-test-runtime"
 version = "2.0.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
 dependencies = [
  "cfg-if 1.0.0",
  "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
+ "futures 0.3.16",
  "log",
  "memory-db",
  "pallet-babe",
- "pallet-spartan 0.1.0 (git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a)",
+ "pallet-spartan",
  "pallet-timestamp",
  "parity-scale-codec",
  "parity-util-mem",
+ "sc-block-builder",
+ "sc-executor",
  "sc-service",
  "serde",
  "sp-api",
  "sp-application-crypto",
  "sp-block-builder",
+ "sp-consensus",
  "sp-consensus-aura",
  "sp-consensus-babe",
- "sp-consensus-poc 0.1.0 (git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a)",
+ "sp-consensus-poc",
  "sp-core",
  "sp-externalities",
  "sp-finality-grandpa",
@@ -7574,6 +7527,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "sp-version",
+ "substrate-test-runtime-client",
  "substrate-wasm-builder",
  "trie-db",
 ]
@@ -7581,7 +7535,6 @@ dependencies = [
 [[package]]
 name = "substrate-test-runtime-client"
 version = "2.0.0"
-source = "git+https://github.com/subspace/substrate?rev=f5d71a20fbcd1844d19a9d8201397b651fd0712a#f5d71a20fbcd1844d19a9d8201397b651fd0712a"
 dependencies = [
  "futures 0.3.16",
  "parity-scale-codec",
@@ -7597,6 +7550,21 @@ dependencies = [
  "sp-runtime",
  "substrate-test-client",
  "substrate-test-runtime",
+]
+
+[[package]]
+name = "substrate-test-runtime-transaction-pool"
+version = "2.0.0"
+dependencies = [
+ "derive_more",
+ "futures 0.3.16",
+ "parity-scale-codec",
+ "parking_lot 0.11.1",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sp-blockchain",
+ "sp-runtime",
+ "substrate-test-runtime-client",
 ]
 
 [[package]]

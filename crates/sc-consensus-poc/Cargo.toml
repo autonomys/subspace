@@ -57,8 +57,8 @@ sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/subst
 sp-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sc-network-test = { version = "0.8.0", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-network-test = { version = "0.8.0", path = "../sc-network-test" }
 sc-service = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
 sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
 spartan-codec = "0.1.0"

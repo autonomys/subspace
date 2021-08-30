@@ -1,0 +1,23 @@
+[package]
+name = "substrate-test-runtime-transaction-pool"
+version = "2.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+publish = false
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
+parking_lot = "0.11.1"
+codec = { package = "parity-scale-codec", version = "2.0.0" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-runtime = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a", features = ["test-helpers"] }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+futures = { version = "0.3.1", features = ["compat"] }
+derive_more = "0.99.2"
