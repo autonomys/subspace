@@ -5,7 +5,7 @@ authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspa
 edition = "2018"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/substrate"
+repository = "https://github.com/subspace/subspace"
 description = "FRAME offences-poc pallet"
 readme = "README.md"
 
@@ -13,19 +13,19 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 serde = { version = "1.0.127", optional = true }
-sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 log = { version = "0.4.14", default-features = false }
 
 [dev-dependencies]
-sp-io = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
-sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "f5d71a20fbcd1844d19a9d8201397b651fd0712a" }
+sp-io = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
 schnorrkel = { version = "0.9.1" }
 
 [features]
