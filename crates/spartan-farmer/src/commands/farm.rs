@@ -87,7 +87,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     let mut current_salt = None;
     let mut next_salt = None;
 
-    while let Some(slot_info) = sub.next().await {
+    while let Some(slot_info) = sub.next().await? {
         debug!("New slot: {:?}", slot_info);
 
         if current_salt.is_none() {

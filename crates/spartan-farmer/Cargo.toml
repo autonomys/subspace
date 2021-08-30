@@ -37,7 +37,7 @@ version = "1.9.0"
 
 [dependencies.jsonrpsee]
 features = ["client"]
-version = "0.2.0-alpha.6"
+version = "0.2.0"
 
 [dependencies.serde]
 features = ["derive"]
