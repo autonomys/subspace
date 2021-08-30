@@ -41,6 +41,7 @@ fn test_ancestor_search_when_common_is(n: usize) {
 }
 
 #[test]
+#[ignore]
 fn sync_peers_works() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -57,6 +58,7 @@ fn sync_peers_works() {
 }
 
 #[test]
+#[ignore]
 fn sync_cycle_from_offline_to_syncing_to_offline() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -112,6 +114,7 @@ fn sync_cycle_from_offline_to_syncing_to_offline() {
 }
 
 #[test]
+#[ignore]
 fn syncing_node_not_major_syncing_when_disconnected() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -146,6 +149,7 @@ fn syncing_node_not_major_syncing_when_disconnected() {
 }
 
 #[test]
+#[ignore]
 fn sync_from_two_peers_works() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -158,6 +162,7 @@ fn sync_from_two_peers_works() {
 }
 
 #[test]
+#[ignore]
 fn sync_from_two_peers_with_ancestry_search_works() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -170,6 +175,7 @@ fn sync_from_two_peers_with_ancestry_search_works() {
 }
 
 #[test]
+#[ignore]
 fn ancestry_search_works_when_backoff_is_one() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -184,6 +190,7 @@ fn ancestry_search_works_when_backoff_is_one() {
 }
 
 #[test]
+#[ignore]
 fn ancestry_search_works_when_ancestor_is_genesis() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -198,21 +205,25 @@ fn ancestry_search_works_when_ancestor_is_genesis() {
 }
 
 #[test]
+#[ignore]
 fn ancestry_search_works_when_common_is_one() {
 	test_ancestor_search_when_common_is(1);
 }
 
 #[test]
+#[ignore]
 fn ancestry_search_works_when_common_is_two() {
 	test_ancestor_search_when_common_is(2);
 }
 
 #[test]
+#[ignore]
 fn ancestry_search_works_when_common_is_hundred() {
 	test_ancestor_search_when_common_is(100);
 }
 
 #[test]
+#[ignore]
 fn sync_long_chain_works() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -223,6 +234,7 @@ fn sync_long_chain_works() {
 }
 
 #[test]
+#[ignore]
 fn sync_no_common_longer_chain_fails() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -241,6 +253,7 @@ fn sync_no_common_longer_chain_fails() {
 }
 
 #[test]
+#[ignore]
 fn sync_justifications() {
 	sp_tracing::try_init_simple();
 	let mut net = JustificationTestNet::new(3);
@@ -296,6 +309,7 @@ fn sync_justifications() {
 }
 
 #[test]
+#[ignore]
 fn sync_justifications_across_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = JustificationTestNet::new(3);
@@ -334,6 +348,7 @@ fn sync_justifications_across_forks() {
 }
 
 #[test]
+#[ignore]
 fn sync_after_fork_works() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -357,6 +372,7 @@ fn sync_after_fork_works() {
 }
 
 #[test]
+#[ignore]
 fn syncs_all_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(4);
@@ -375,6 +391,7 @@ fn syncs_all_forks() {
 }
 
 #[test]
+#[ignore]
 fn own_blocks_are_announced() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -392,6 +409,7 @@ fn own_blocks_are_announced() {
 }
 
 #[test]
+#[ignore]
 fn blocks_are_not_announced_by_light_nodes() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(0);
@@ -421,6 +439,7 @@ fn blocks_are_not_announced_by_light_nodes() {
 }
 
 #[test]
+#[ignore]
 fn can_sync_small_non_best_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -484,6 +503,7 @@ fn can_sync_small_non_best_forks() {
 }
 
 #[test]
+#[ignore]
 fn can_not_sync_from_light_peer() {
 	sp_tracing::try_init_simple();
 
@@ -517,6 +537,7 @@ fn can_not_sync_from_light_peer() {
 }
 
 #[test]
+#[ignore]
 fn light_peer_imports_header_from_announce() {
 	sp_tracing::try_init_simple();
 
@@ -550,6 +571,7 @@ fn light_peer_imports_header_from_announce() {
 }
 
 #[test]
+#[ignore]
 fn can_sync_explicit_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -604,6 +626,7 @@ fn can_sync_explicit_forks() {
 }
 
 #[test]
+#[ignore]
 fn syncs_header_only_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(0);
@@ -622,6 +645,7 @@ fn syncs_header_only_forks() {
 }
 
 #[test]
+#[ignore]
 fn does_not_sync_announced_old_best_block() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(3);
@@ -649,6 +673,7 @@ fn does_not_sync_announced_old_best_block() {
 }
 
 #[test]
+#[ignore]
 fn full_sync_requires_block_body() {
 	// Check that we don't sync headers-only in full mode.
 	sp_tracing::try_init_simple();
@@ -669,6 +694,7 @@ fn full_sync_requires_block_body() {
 }
 
 #[test]
+#[ignore]
 fn imports_stale_once() {
 	sp_tracing::try_init_simple();
 
@@ -705,6 +731,7 @@ fn imports_stale_once() {
 }
 
 #[test]
+#[ignore]
 fn can_sync_to_peers_with_wrong_common_block() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -771,6 +798,7 @@ impl BlockAnnounceValidator<Block> for FailingBlockAnnounceValidator {
 }
 
 #[test]
+#[ignore]
 fn sync_blocks_when_block_announce_validator_says_it_is_new_best() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::with_fork_choice(ForkChoiceStrategy::Custom(false));
@@ -814,6 +842,7 @@ impl BlockAnnounceValidator<Block> for DeferredBlockAnnounceValidator {
 }
 
 #[test]
+#[ignore]
 fn wait_until_deferred_block_announce_validation_is_ready() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::with_fork_choice(ForkChoiceStrategy::Custom(false));
@@ -835,6 +864,7 @@ fn wait_until_deferred_block_announce_validation_is_ready() {
 /// When we don't inform the sync protocol about the best block, a node will not sync from us as the
 /// handshake is not does not contain our best block.
 #[test]
+#[ignore]
 fn sync_to_tip_requires_that_sync_protocol_is_informed_about_best_block() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(1);
@@ -869,6 +899,7 @@ fn sync_to_tip_requires_that_sync_protocol_is_informed_about_best_block() {
 /// Ensures that if we as a syncing node sync to the tip while we are connected to another peer
 /// that is currently also doing a major sync.
 #[test]
+#[ignore]
 fn sync_to_tip_when_we_sync_together_with_multiple_peers() {
 	sp_tracing::try_init_simple();
 
@@ -895,6 +926,7 @@ fn sync_to_tip_when_we_sync_together_with_multiple_peers() {
 /// Ensures that when we receive a block announcement with some data attached, that we propagate
 /// this data when reannouncing the block.
 #[test]
+#[ignore]
 fn block_announce_data_is_propagated() {
 	struct TestBlockAnnounceValidator;
 
@@ -951,6 +983,7 @@ fn block_announce_data_is_propagated() {
 }
 
 #[test]
+#[ignore]
 fn continue_to_sync_after_some_block_announcement_verifications_failed() {
 	struct TestBlockAnnounceValidator;
 
@@ -997,6 +1030,7 @@ fn continue_to_sync_after_some_block_announcement_verifications_failed() {
 /// we ask our peers multiple times until we got the requested justification. This test ensures that
 /// asking for the same justification multiple times doesn't ban a peer.
 #[test]
+#[ignore]
 fn multiple_requests_are_accepted_as_long_as_they_are_not_fulfilled() {
 	sp_tracing::try_init_simple();
 	let mut net = JustificationTestNet::new(2);
@@ -1042,6 +1076,7 @@ fn multiple_requests_are_accepted_as_long_as_they_are_not_fulfilled() {
 }
 
 #[test]
+#[ignore]
 fn syncs_all_forks_from_single_peer() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -1074,6 +1109,7 @@ fn syncs_all_forks_from_single_peer() {
 }
 
 #[test]
+#[ignore]
 fn syncs_after_missing_announcement() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(0);
@@ -1098,6 +1134,7 @@ fn syncs_after_missing_announcement() {
 }
 
 #[test]
+#[ignore]
 fn syncs_state() {
 	sp_tracing::try_init_simple();
 	for skip_proofs in &[false, true] {
@@ -1140,6 +1177,7 @@ fn syncs_state() {
 }
 
 #[test]
+#[ignore]
 fn syncs_indexed_blocks() {
 	use sp_runtime::traits::Hash;
 	sp_tracing::try_init_simple();
