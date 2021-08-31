@@ -1,7 +1,12 @@
 [workspace]
+resolver = "2"
 members = [
     "node-template-spartan/node",
     "node-template-spartan/runtime",
     "crates/*",
     "substrate/*",
 ]
+
+[profile.release]
+# Substrate runtime requires unwinding.
+panic = "unwind"
