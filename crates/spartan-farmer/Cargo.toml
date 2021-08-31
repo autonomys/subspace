@@ -43,7 +43,7 @@ version = "0.2.0"
 # https://github.com/rust-rocksdb/rust-rocksdb/issues/514
 default-features = false
 # Re-enable all compression algorithms except `zstd`, which is the only one causing issues so far
-default = ["snappy", "lz4", "zlib", "bzip2"]
+features = ["snappy", "lz4", "zlib", "bzip2"]
 version = "0.16.0"
 
 [dependencies.serde]
