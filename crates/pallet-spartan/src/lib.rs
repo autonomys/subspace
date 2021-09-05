@@ -387,9 +387,9 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
         pub fn report_equivocation(
             _origin: OriginFor<T>,
-            equivocation_proof: EquivocationProof<T::Header>,
+            equivocation_proof: Box<EquivocationProof<T::Header>>,
         ) -> DispatchResultWithPostInfo {
-            Self::do_report_equivocation(equivocation_proof)
+            Self::do_report_equivocation(*equivocation_proof)
         }
 
         /// Report authority equivocation/misbehavior. This method will verify
@@ -403,11 +403,11 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
         pub fn report_equivocation_unsigned(
             origin: OriginFor<T>,
-            equivocation_proof: EquivocationProof<T::Header>,
+            equivocation_proof: Box<EquivocationProof<T::Header>>,
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
-            Self::do_report_equivocation(equivocation_proof)
+            Self::do_report_equivocation(*equivocation_proof)
         }
 
         /// Plan an epoch config change. The epoch config change is recorded and will be enacted on

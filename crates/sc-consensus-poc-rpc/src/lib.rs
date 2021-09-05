@@ -19,12 +19,8 @@
 
 use futures::channel::mpsc::UnboundedSender;
 use futures::future;
-use futures::{FutureExt as _, SinkExt, StreamExt, TryFutureExt as _, TryStreamExt};
-use jsonrpc_core::{
-    futures::future as rpc_future,
-    futures::{future::Executor as Executor01, future::Future as Future01, Sink, Stream},
-    Error as RpcError, Result as RpcResult,
-};
+use futures::{task::Spawn, FutureExt, SinkExt, StreamExt};
+use jsonrpc_core::{Error as RpcError, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
 use log::{debug, warn};
@@ -41,7 +37,7 @@ use std::{collections::HashMap, sync::Arc};
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Slot = u64;
-type FutureResult<T> = Box<dyn rpc_future::Future<Item = T, Error = RpcError> + Send>;
+type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +122,7 @@ impl PoCRpcHandler {
     /// Creates a new instance of the PoCRpc handler.
     pub fn new<E>(executor: E, new_slot_notifier: NewSlotNotifier) -> Self
     where
-        E: Executor01<Box<dyn Future01<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
+        E: Spawn + Send + Sync + 'static,
     {
         let notification_senders: Arc<Mutex<Vec<UnboundedSender<RpcNewSlotInfo>>>> = Arc::default();
         let solution_senders: Arc<
@@ -243,15 +239,15 @@ impl PoCApi for PoCRpcHandler {
             .lock()
             .get(&proposed_proof_of_space_result.slot_number)
             .cloned();
-        let future = async move {
+
+        async move {
             if let Some(mut sender) = sender {
                 let _ = sender.send(proposed_proof_of_space_result).await;
             }
 
             Ok(())
         }
-        .boxed();
-        Box::new(future.compat())
+        .boxed()
     }
 
     fn subscribe_slot_info(
@@ -262,8 +258,8 @@ impl PoCApi for PoCRpcHandler {
         self.manager.add(subscriber, |sink| {
             let (tx, rx) = futures::channel::mpsc::unbounded();
             self.notification_senders.lock().push(tx);
-            sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e))
-                .send_all(rx.map(Ok::<_, ()>).compat().map(|res| Ok(res)))
+            rx.map(|x| Ok(Ok(x)))
+                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
                 .map(|_| ())
         });
     }

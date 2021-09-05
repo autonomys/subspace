@@ -26,6 +26,7 @@ use env_logger::Env;
 use log::info;
 use std::fs;
 use std::path::PathBuf;
+use tokio::runtime::Runtime;
 
 type Piece = [u8; PIECE_SIZE];
 type Tag = [u8; PRIME_SIZE_BYTES];
@@ -100,7 +101,8 @@ fn main() {
             ws_server,
         } => {
             let path = utils::get_path(custom_path);
-            task::block_on(commands::farm(path, &ws_server)).unwrap();
+            let runtime = Runtime::new().unwrap();
+            runtime.block_on(commands::farm(path, &ws_server)).unwrap();
         }
     }
 }

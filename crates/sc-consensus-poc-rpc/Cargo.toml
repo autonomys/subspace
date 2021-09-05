@@ -14,16 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
-sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
-jsonrpc-core = "15.1.0"
-jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
-jsonrpc-pubsub = "15.1.0"
+sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+jsonrpc-core = "18.0.0"
+jsonrpc-core-client = "18.0.0"
+jsonrpc-derive = "18.0.0"
+jsonrpc-pubsub = "18.0.0"
 sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 serde = { version = "1.0.127", features = ["derive"] }
-futures = { version = "0.3.16", features = ["compat"] }
+futures = "0.3.17"
 futures-timer = "3.0.2"
-sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "4d28ebeb8b027ca0227fe7779c5beb70a7b56467" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
 log = "0.4.14"
 parking_lot = "0.11.1"
 

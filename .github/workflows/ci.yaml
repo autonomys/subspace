@@ -3,6 +3,8 @@ name: CI
 on: [push, pull_request]
 
 env:
+  # Not needed in CI, should make things a bit faster
+  CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
 
 jobs:
