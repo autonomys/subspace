@@ -76,7 +76,6 @@ use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvid
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
     traits::{Block as BlockT, DigestItemFor, Header, Zero},
-    Justifications,
 };
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
@@ -108,7 +107,7 @@ use sp_consensus_poc::Randomness;
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
-use sp_core::Pair as PairTrait;
+use sp_core::{ExecutionContext, Pair as PairTrait};
 use std::sync::mpsc;
 
 mod verification;
@@ -1165,6 +1164,7 @@ where
         block_id: BlockId<Block>,
         inherent_data: InherentData,
         create_inherent_data_providers: CIDP::InherentDataProviders,
+        execution_context: ExecutionContext,
     ) -> Result<(), Error<Block>> {
         if let Err(e) = self.can_author_with.can_author_with(&block_id) {
             debug!(
@@ -1179,7 +1179,7 @@ where
         let inherent_res = self
             .client
             .runtime_api()
-            .check_inherents(&block_id, block, inherent_data)
+            .check_inherents_with_context(&block_id, execution_context, block, inherent_data)
             .map_err(Error::RuntimeApi)?;
 
         if !inherent_res.ok() {
@@ -1276,24 +1276,21 @@ where
 {
     async fn verify(
         &mut self,
-        origin: BlockOrigin,
-        header: Block::Header,
-        justifications: Option<Justifications>,
-        mut body: Option<Vec<Block::Extrinsic>>,
+        mut block: BlockImportParams<Block, ()>,
     ) -> BlockVerificationResult<Block> {
         trace!(
             target: "poc",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
-            origin,
-            header,
-            justifications,
-            body,
+            block.origin,
+            block.header,
+            block.justifications,
+            block.body,
         );
 
-        let hash = header.hash();
-        let parent_hash = *header.parent_hash();
+        let hash = block.header.hash();
+        let parent_hash = *block.header.parent_hash();
 
-        debug!(target: "poc", "We have {:?} logs in this header", header.digest().logs().len());
+        debug!(target: "poc", "We have {:?} logs in this header", block.header.digest().logs().len());
 
         let create_inherent_data_providers = self
             .create_inherent_data_providers
@@ -1308,7 +1305,7 @@ where
             .header_metadata(parent_hash)
             .map_err(Error::<Block>::FetchParentHeader)?;
 
-        let pre_digest = find_pre_digest::<Block>(&header)?;
+        let pre_digest = find_pre_digest::<Block>(&block.header)?;
         let (check_header, epoch_descriptor) = {
             let epoch_changes = self.epoch_changes.shared_data();
             let epoch_descriptor = epoch_changes
@@ -1324,10 +1321,10 @@ where
                 .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))
                 .ok_or_else(|| Error::<Block>::FetchEpoch(parent_hash))?;
             // TODO: Is it actually secure to validate it using solution range digest?
-            let solution_range = find_solution_range_digest::<Block>(&header)?
+            let solution_range = find_solution_range_digest::<Block>(&block.header)?
                 .ok_or_else(|| Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
-            let salt = find_salt_digest::<Block>(&header)?
+            let salt = find_salt_digest::<Block>(&block.header)?
                 .ok_or_else(|| Error::<Block>::MissingSalt(hash))?
                 .salt;
 
@@ -1351,7 +1348,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME #1019 in the future, alter this queue to allow deferring of headers
             let v_params = verification::VerificationParams {
-                header: header.clone(),
+                header: block.header.clone(),
                 pre_digest: Some(pre_digest),
                 slot_now: slot_now + 1,
                 epoch: viable_epoch.as_ref(),
@@ -1382,9 +1379,9 @@ where
                     .check_and_report_equivocation(
                         slot_now,
                         slot,
-                        &header,
+                        &block.header,
                         &poc_pre_digest.solution.public_key,
-                        &origin,
+                        &block.origin,
                     )
                     .await
                 {
@@ -1394,23 +1391,24 @@ where
                 // if the body is passed through, we need to use the runtime
                 // to check that the internally-set timestamp in the inherents
                 // actually matches the slot set in the seal.
-                if let Some(inner_body) = body.take() {
+                if let Some(inner_body) = block.body {
                     let mut inherent_data = create_inherent_data_providers
                         .create_inherent_data()
                         .map_err(Error::<Block>::CreateInherents)?;
                     inherent_data.poc_replace_inherent_data(slot);
-                    let block = Block::new(pre_header.clone(), inner_body);
+                    let new_block = Block::new(pre_header.clone(), inner_body);
 
                     self.check_inherents(
-                        block.clone(),
+                        new_block.clone(),
                         BlockId::Hash(parent_hash),
                         inherent_data,
                         create_inherent_data_providers,
+                        block.origin.into(),
                     )
                     .await?;
 
-                    let (_, inner_body) = block.deconstruct();
-                    body = Some(inner_body);
+                    let (_, inner_body) = new_block.deconstruct();
+                    block.body = Some(inner_body);
                 }
 
                 trace!(target: "poc", "Checked {:?}; importing.", pre_header);
@@ -1421,17 +1419,15 @@ where
                     "pre_header" => ?pre_header,
                 );
 
-                let mut import_block = BlockImportParams::new(origin, pre_header);
-                import_block.post_digests.push(verified_info.seal);
-                import_block.body = body;
-                import_block.justifications = justifications;
-                import_block.intermediates.insert(
+                block.header = pre_header;
+                block.post_digests.push(verified_info.seal);
+                block.intermediates.insert(
                     Cow::from(INTERMEDIATE_KEY),
                     Box::new(PoCIntermediate::<Block> { epoch_descriptor }) as Box<_>,
                 );
-                import_block.post_hash = Some(hash);
+                block.post_hash = Some(hash);
 
-                Ok((import_block, Default::default()))
+                Ok((block, Default::default()))
             }
             CheckedHeader::Deferred(a, b) => {
                 debug!(target: "poc", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
@@ -1520,7 +1516,7 @@ where
         match self.client.status(BlockId::Hash(hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 // When re-importing existing block strip away intermediates.
-                let _ = block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY)?;
+                let _ = block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY);
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
                 return self
                     .inner

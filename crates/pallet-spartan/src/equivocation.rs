@@ -127,7 +127,7 @@ where
     ) -> DispatchResult {
         use frame_system::offchain::SubmitTransaction;
 
-        let call = Call::report_equivocation_unsigned(equivocation_proof);
+        let call = Call::report_equivocation_unsigned(Box::new(equivocation_proof));
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
