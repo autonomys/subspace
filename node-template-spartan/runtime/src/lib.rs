@@ -35,6 +35,7 @@ use pallet_transaction_payment::CurrencyAdapter;
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
+pub use pallet_feeds;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -315,6 +316,10 @@ impl pallet_offences_poc::Config for Runtime {
     type OnOffenceHandler = PoC;
 }
 
+impl pallet_feeds::Config for Runtime {
+	type Event = Event;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
@@ -330,6 +335,7 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
         OffencesPoC: pallet_offences_poc::{Pallet, Storage, Event},
+        Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>},
     }
 );
 

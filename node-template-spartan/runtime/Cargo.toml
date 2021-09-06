@@ -13,6 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 
+pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crates/pallet-feeds" }
 pallet-spartan = { version = "0.1.0", default-features = false, path = "../../crates/pallet-spartan" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
 pallet-session = { version = "4.0.0-dev", default-features = false, features = ["historical"], git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
@@ -56,6 +57,7 @@ std = [
 	"frame-support/std",
 	"frame-system-rpc-runtime-api/std",
 	"frame-system/std",
+	"pallet-feeds/std",
 	"pallet-spartan/std",
 	"pallet-balances/std",
 	"pallet-session/std",
