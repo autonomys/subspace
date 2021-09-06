@@ -1,76 +1,37 @@
 [package]
-authors = ['Serge Kovbasiuk <serge@subspace.network>']
-description = 'Subspace node pallet for interacting with storage'
-edition = '2018'
-homepage = 'https://subspace.network'
-license = 'Apache-2.0'
-name = 'pallet-feeds'
-publish = false
-readme = 'README.md'
-repository = 'https://github.com/subspace/subspace'
-version = '0.1.0'
+authors = ["Serge Kovbasiuk <serge@subspace.network>"]
+description = "Subspace node pallet for interacting with storage"
+edition = "2018"
+homepage = "https://subspace.network"
+license = "Apache-2.0"
+name = "pallet-feeds"
+readme = "README.md"
+repository = "https://github.com/subspace/subspace"
+version = "0.1.0"
 
 [package.metadata.docs.rs]
-targets = ['x86_64-unknown-linux-gnu']
+targets = ["x86_64-unknown-linux-gnu"]
 
-[dev-dependencies.serde]
-version = '1.0.126'
+[dependencies]
+codec = {package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"]}
+frame-support = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
+frame-system = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
+log = {version = "0.4.14", default-features = false}
+sp-std = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
 
-[dev-dependencies.sp-core]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dev-dependencies.sp-io]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dev-dependencies.sp-runtime]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dependencies.codec]
-default-features = false
-features = ['derive']
-package = 'parity-scale-codec'
-version = '2.0.0'
-
-[dependencies.frame-benchmarking]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-optional = true
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dependencies.frame-support]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dependencies.frame-system]
-default-features = false
-git = 'https://github.com/paritytech/substrate.git'
-tag = 'monthly-2021-08'
-version = '4.0.0-dev'
-
-[dependencies.log]
-default-features = false
-version = '0.4.14'
+[dev-dependencies]
+serde = {version = "1.0.127"}
+sp-core = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
+sp-io = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
+sp-runtime = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3"}
 
 [features]
-default = ['std']
-runtime-benchmarks = ['frame-benchmarking']
+default = ["std"]
 std = [
-  'codec/std',
-  'frame-support/std',
-  'frame-system/std',
-  'frame-benchmarking/std',
-  'log/std',
+  "codec/std",
+  "sp-std/std",
+  "frame-support/std",
+  "frame-system/std",
+  "log/std",
 ]
-try-runtime = ['frame-support/try-runtime']
+try-runtime = ["frame-support/try-runtime"]
