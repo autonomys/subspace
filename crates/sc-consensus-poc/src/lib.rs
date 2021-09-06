@@ -114,6 +114,7 @@ use std::sync::mpsc;
 mod verification;
 
 pub mod aux_schema;
+pub mod notification;
 #[cfg(test)]
 mod tests;
 

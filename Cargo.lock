@@ -5563,6 +5563,7 @@ dependencies = [
  "sc-network",
  "sc-network-test",
  "sc-telemetry",
+ "sc-utils",
  "schnorrkel 0.9.1",
  "serde",
  "sp-api",
