@@ -45,6 +45,7 @@
 //! The fork choice rule is weight-based, where weight equals the number of
 //! primary blocks in the chain. We will pick the heaviest chain (more
 //! blocks) and will go with the longest one in case of a tie.
+#![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 use futures::channel::mpsc::{channel, Receiver, Sender};
@@ -717,6 +718,7 @@ where
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
+    type ClaimSlot = Pin<Box<dyn Future<Output = Option<Self::Claim>> + Send + 'static>>;
     type Claim = (PreDigest, Pair);
     type SyncOracle = SO;
     type JustificationSyncLink = L;
@@ -751,92 +753,99 @@ where
     }
 
     fn claim_slot(
-        &self,
-        parent_header: &B::Header,
+        &mut self,
+        parent_header: B::Header,
         slot: Slot,
-        epoch_descriptor: &ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>,
-    ) -> Option<Self::Claim> {
+        epoch_descriptor: Self::EpochData,
+    ) -> Self::ClaimSlot {
         debug!(target: "poc", "Attempting to claim slot {}", slot);
 
-        let epoch_changes = self.epoch_changes.shared_data();
-        let epoch = epoch_changes
-            .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))?;
-        let block_id = BlockId::Hash(parent_header.hash());
-        // Here we always use parent block as the source of information, thus on the edge of the era
-        // the very first block of the era still uses solution range from the previous one, but the
-        // block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_next_solution_range_digest::<B>(&parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when there is
-                // no solution range stored yet
-                self.client.runtime_api().solution_range(&block_id).ok()
-            })?;
-        // Here we always use parent block as the source of information, thus on the edge of the eon
-        // the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let salt = find_next_salt_digest::<B>(&parent_header)
-            .ok()?
-            .map(|d| d.salt)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when there is
-                // no salt stored yet
-                self.client.runtime_api().salt(&block_id).ok()
-            })?;
-
-        let (solution_sender, solution_receiver) = mpsc::channel();
-
-        (self.on_claim_slot)(
-            slot,
-            epoch.as_ref(),
-            salt.to_le_bytes(),
-            solution_range,
-            solution_sender,
-        );
-
-        while let Ok((solution, secret_key)) = solution_receiver.recv() {
-            // TODO: We need also need to check for equivocation of farmers connected to *this node*
-            //  during block import, currently farmers connected to this node are considered trusted
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(&block_id, &solution.public_key)
+        let maybe_claim = try {
+            let epoch_changes = self.epoch_changes.shared_data();
+            let epoch = epoch_changes
+                .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))?;
+            let block_id = BlockId::Hash(parent_header.hash());
+            // Here we always use parent block as the source of information, thus on the edge of the era
+            // the very first block of the era still uses solution range from the previous one, but the
+            // block after it uses "next" solution range deposited in the first block.
+            let solution_range = find_next_solution_range_digest::<B>(&parent_header)
                 .ok()?
-            {
-                warn!(
-                    target: "poc",
-                    "Ignoring solution for slot {} provided by farmer in block list: {}",
-                    slot,
-                    solution.public_key,
-                );
+                .map(|d| d.solution_range)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when there is
+                    // no solution range stored yet
+                    self.client.runtime_api().solution_range(&block_id).ok()
+                })?;
+            // Here we always use parent block as the source of information, thus on the edge of the eon
+            // the very first block of the eon still uses salt from the previous one, but the
+            // block after it uses "next" salt deposited in the first block.
+            let salt = find_next_salt_digest::<B>(&parent_header)
+                .ok()?
+                .map(|d| d.salt)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when there is
+                    // no salt stored yet
+                    self.client.runtime_api().salt(&block_id).ok()
+                })?;
 
-                continue;
-            }
+            let (solution_sender, solution_receiver) = mpsc::channel();
 
-            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
-
-            match verification::verify_solution::<B>(
-                &solution,
-                epoch.as_ref(),
-                solution_range,
+            (self.on_claim_slot)(
                 slot,
+                epoch.as_ref(),
                 salt.to_le_bytes(),
-                &self.spartan,
-                &self.signing_context,
-            ) {
-                Ok(_) => {
-                    debug!(target: "poc", "Claimed slot {}", slot);
+                solution_range,
+                solution_sender,
+            );
 
-                    return Some((PreDigest { solution, slot }, secret_key.into()));
+            let mut maybe_claim = None;
+
+            while let Ok((solution, secret_key)) = solution_receiver.recv() {
+                // TODO: We need also need to check for equivocation of farmers connected to *this node*
+                //  during block import, currently farmers connected to this node are considered trusted
+                if self
+                    .client
+                    .runtime_api()
+                    .is_in_block_list(&block_id, &solution.public_key)
+                    .ok()?
+                {
+                    warn!(
+                        target: "poc",
+                        "Ignoring solution for slot {} provided by farmer in block list: {}",
+                        slot,
+                        solution.public_key,
+                    );
+
+                    continue;
                 }
-                Err(error) => {
-                    warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
+
+                let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
+
+                match verification::verify_solution::<B>(
+                    &solution,
+                    epoch.as_ref(),
+                    solution_range,
+                    slot,
+                    salt.to_le_bytes(),
+                    &self.spartan,
+                    &self.signing_context,
+                ) {
+                    Ok(_) => {
+                        debug!(target: "poc", "Claimed slot {}", slot);
+
+                        maybe_claim = Some((PreDigest { solution, slot }, secret_key.into()));
+                        break;
+                    }
+                    Err(error) => {
+                        warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
+                    }
                 }
             }
-        }
 
-        None
+            maybe_claim?
+        };
+
+        Box::pin(async move { maybe_claim })
     }
 
     fn pre_digest_data(
