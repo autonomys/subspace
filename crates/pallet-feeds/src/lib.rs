@@ -2,6 +2,7 @@
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -29,12 +30,12 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-		// TODO: add proper weights
+        // TODO: add proper weights
         #[pallet::weight(10_000)]
         pub fn put(origin: OriginFor<T>, data: PutDataObject) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-			// TODO: add data handling
+            // TODO: add data handling
             log::info!("SUBMITTED BY: {:?}", who);
             log::info!("NEW DATA OBJECT: {:?}", data);
 
