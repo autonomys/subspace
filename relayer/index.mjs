@@ -29,8 +29,8 @@ const types = {
 
   // TODO: add old block processing
 
-  await sourceApi.rpc.chain.subscribeFinalizedHeads(async (lastHeader) => {
-    const block = await sourceApi.rpc.chain.getBlock(lastHeader.hash);
+  await sourceApi.rpc.chain.subscribeFinalizedHeads(async ({ hash }) => {
+    const block = await sourceApi.rpc.chain.getBlock(hash);
 
     // TODO: replace templateModule with feeds
     const txHash = await targetApi.tx.templateModule
