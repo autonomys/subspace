@@ -31,6 +31,7 @@ pub type Piece = [u8; PIECE_SIZE];
 pub type Tag = [u8; PRIME_SIZE_BYTES];
 pub type Salt = [u8; 8];
 
+#[derive(Clone)]
 pub struct Spartan {
     instance: spartan_codec::Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>,
 }

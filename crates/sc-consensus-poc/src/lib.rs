@@ -45,11 +45,17 @@
 //! The fork choice rule is weight-based, where weight equals the number of
 //! primary blocks in the chain. We will pick the heaviest chain (more
 //! blocks) and will go with the longest one in case of a tie.
+#![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
+use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::channel::oneshot;
-use parking_lot::Mutex;
+use futures::prelude::*;
+use log::{debug, info, log, trace, warn};
+use prometheus_endpoint::Registry;
+use ring::digest;
 use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::{
     block_import::{
@@ -58,20 +64,41 @@ use sc_consensus::{
     },
     import_queue::{BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier},
 };
+use sc_consensus_epochs::{
+    descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
+};
 pub use sc_consensus_slots::SlotProportion;
+use sc_consensus_slots::{
+    check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
+    SimpleSlotWorker, SlotInfo, StorageChanges,
+};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use schnorrkel::context::SigningContext;
+use schnorrkel::SecretKey;
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-pub use sp_consensus::SyncOracle;
+use sp_blockchain::{
+    Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
+};
 use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
-    SelectChain, SlotData,
+    SelectChain, SlotData, SyncOracle,
 };
-use sp_consensus_poc::inherents::PoCInherentData;
+
 pub use sp_consensus_poc::{
-    digests::{CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest},
-    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
+    digests::{
+        CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
+        NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    },
+    inherents::PoCInherentData,
+    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, Randomness,
+    POC_ENGINE_ID,
 };
+use sp_consensus_slots::Slot;
+use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
+use sp_core::sr25519::Pair;
+use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
@@ -81,43 +108,14 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 
-use codec::{Decode, Encode};
-use futures::prelude::*;
-use log::{debug, info, log, trace, warn};
-use prometheus_endpoint::Registry;
-use ring::digest;
-use sc_consensus_epochs::{
-    descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
-};
-use sc_consensus_slots::{
-    check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SimpleSlotWorker, SlotInfo, StorageChanges,
-};
-use schnorrkel::context::SigningContext;
-use schnorrkel::SecretKey;
-use sp_api::ApiExt;
-use sp_blockchain::{
-    Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
-};
-use sp_consensus_poc::digests::{
-    NextSaltDescriptor, NextSolutionRangeDescriptor, SaltDescriptor, Solution,
-    SolutionRangeDescriptor,
-};
-use sp_consensus_poc::Randomness;
-use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
-use sp_core::sr25519::Pair;
-use sp_core::{ExecutionContext, Pair as PairTrait};
-use std::sync::mpsc;
-
-mod verification;
-
 pub mod aux_schema;
+pub mod notification;
 #[cfg(test)]
 mod tests;
+mod verification;
 
 /// Information about new slot that just arrived
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
@@ -131,14 +129,14 @@ pub struct NewSlotInfo {
     pub solution_range: u64,
 }
 
-/// A function that can be called whenever it is necessary to create a subscription for new slots
-pub type NewSlotNotifier = Arc<
-    Box<
-        dyn (Fn() -> mpsc::Receiver<(NewSlotInfo, mpsc::Sender<(Solution, Vec<u8>)>)>)
-            + Send
-            + Sync,
-    >,
->;
+/// New slot notification with slot information and sender for solution for the slot
+#[derive(Debug, Clone)]
+pub struct NewSlotNotification {
+    /// New slot information
+    pub new_slot_info: NewSlotInfo,
+    /// Sender that can be used to send solutions for the slot
+    pub response_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
+}
 
 /// PoC epoch information
 #[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
@@ -482,12 +480,6 @@ where
 {
     const HANDLE_BUFFER_SIZE: usize = 1024;
 
-    let config = poc_link.config;
-
-    let new_slot_senders: Arc<
-        Mutex<Vec<mpsc::Sender<(NewSlotInfo, mpsc::Sender<(Solution, Vec<u8>)>)>>>,
-    > = Arc::default();
-
     let worker = PoCSlotWorker {
         client: client.clone(),
         block_import,
@@ -496,44 +488,7 @@ where
         justification_sync_link,
         force_authoring,
         backoff_authoring_blocks,
-        epoch_changes: poc_link.epoch_changes.clone(),
-        config: config.clone(),
-        on_claim_slot: Box::new({
-            let new_slot_senders = Arc::clone(&new_slot_senders);
-
-            move |slot,
-                  epoch,
-                  salt,
-                  solution_range,
-                  solution_sender: mpsc::Sender<(Solution, Vec<u8>)>| {
-                let slot_info = NewSlotInfo {
-                    slot,
-                    challenge: create_global_challenge(epoch, slot),
-                    salt,
-                    // TODO: This will not be the correct way in the future once salt is no longer
-                    //  just an incremented number
-                    next_salt: Some((u64::from_le_bytes(salt) + 1).to_le_bytes()),
-                    solution_range,
-                };
-                {
-                    // drain_filter() would be more convenient here
-                    let mut new_slot_senders = new_slot_senders.lock();
-                    let mut i = 0;
-                    while i != new_slot_senders.len() {
-                        if new_slot_senders
-                            .get_mut(i)
-                            .unwrap()
-                            .send((slot_info.clone(), solution_sender.clone()))
-                            .is_err()
-                        {
-                            new_slot_senders.remove(i);
-                        } else {
-                            i += 1;
-                        }
-                    }
-                }
-            }
-        }),
+        poc_link: poc_link.clone(),
         spartan: Spartan::default(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
@@ -544,7 +499,7 @@ where
 
     info!(target: "poc", "🧑‍🌾 Starting PoC Authorship worker");
     let inner = sc_consensus_slots::start_slot_worker(
-        config.0.clone(),
+        poc_link.config.0.clone(),
         select_chain,
         worker,
         sync_oracle,
@@ -554,12 +509,15 @@ where
 
     let (worker_tx, worker_rx) = channel(HANDLE_BUFFER_SIZE);
 
-    let answer_requests =
-        answer_requests(worker_rx, config.0, client, poc_link.epoch_changes.clone());
+    let answer_requests = answer_requests(
+        worker_rx,
+        poc_link.config.0,
+        client,
+        poc_link.epoch_changes.clone(),
+    );
     Ok(PoCWorker {
         inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
         handle: PoCWorkerHandle(worker_tx),
-        new_slot_senders,
     })
 }
 
@@ -647,22 +605,9 @@ impl<B: BlockT> PoCWorkerHandle<B> {
 pub struct PoCWorker<B: BlockT> {
     inner: Pin<Box<dyn futures::Future<Output = ()> + Send + 'static>>,
     handle: PoCWorkerHandle<B>,
-    new_slot_senders:
-        Arc<Mutex<Vec<mpsc::Sender<(NewSlotInfo, mpsc::Sender<(Solution, Vec<u8>)>)>>>>,
 }
 
 impl<B: BlockT> PoCWorker<B> {
-    /// Returns a function that can be called whenever it is necessary to create a subscription for
-    /// new slots
-    pub fn get_new_slot_notifier(&self) -> NewSlotNotifier {
-        let new_slot_senders = Arc::clone(&self.new_slot_senders);
-        Arc::new(Box::new(move || {
-            let (new_slot_sender, new_slot_receiver) = mpsc::channel();
-            new_slot_senders.lock().push(new_slot_sender);
-            new_slot_receiver
-        }))
-    }
-
     /// Get a handle to the worker.
     pub fn handle(&self) -> PoCWorkerHandle<B> {
         self.handle.clone()
@@ -688,11 +633,7 @@ struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     justification_sync_link: L,
     force_authoring: bool,
     backoff_authoring_blocks: Option<BS>,
-    epoch_changes: SharedEpochChanges<B, Epoch>,
-    config: Config,
-    on_claim_slot: Box<
-        dyn Fn(Slot, &Epoch, Salt, u64, mpsc::Sender<(Solution, Vec<u8>)>) + Send + Sync + 'static,
-    >,
+    poc_link: PoCLink<B>,
     spartan: Spartan,
     signing_context: SigningContext,
     block_proposal_slot_portion: SlotProportion,
@@ -706,7 +647,8 @@ where
     C: ProvideRuntimeApi<B>
         + ProvideCache<B>
         + HeaderBackend<B>
-        + HeaderMetadata<B, Error = ClientError>,
+        + HeaderMetadata<B, Error = ClientError>
+        + 'static,
     C::Api: PoCApi<B>,
     E: Environment<B, Error = Error>,
     E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
@@ -717,6 +659,7 @@ where
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
+    type ClaimSlot = Pin<Box<dyn Future<Output = Option<Self::Claim>> + Send + 'static>>;
     type Claim = (PreDigest, Pair);
     type SyncOracle = SO;
     type JustificationSyncLink = L;
@@ -738,7 +681,8 @@ where
         parent: &B::Header,
         slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
-        self.epoch_changes
+        self.poc_link
+            .epoch_changes
             .shared_data()
             .epoch_descriptor_for_child_of(
                 descendent_query(&*self.client),
@@ -751,92 +695,134 @@ where
     }
 
     fn claim_slot(
-        &self,
-        parent_header: &B::Header,
+        &mut self,
+        parent_header: B::Header,
         slot: Slot,
-        epoch_descriptor: &ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>,
-    ) -> Option<Self::Claim> {
+        epoch_descriptor: Self::EpochData,
+    ) -> Self::ClaimSlot {
         debug!(target: "poc", "Attempting to claim slot {}", slot);
 
-        let epoch_changes = self.epoch_changes.shared_data();
-        let epoch = epoch_changes
-            .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))?;
-        let block_id = BlockId::Hash(parent_header.hash());
-        // Here we always use parent block as the source of information, thus on the edge of the era
-        // the very first block of the era still uses solution range from the previous one, but the
-        // block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_next_solution_range_digest::<B>(&parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when there is
-                // no solution range stored yet
-                self.client.runtime_api().solution_range(&block_id).ok()
-            })?;
-        // Here we always use parent block as the source of information, thus on the edge of the eon
-        // the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let salt = find_next_salt_digest::<B>(&parent_header)
-            .ok()?
-            .map(|d| d.salt)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when there is
-                // no salt stored yet
-                self.client.runtime_api().salt(&block_id).ok()
-            })?;
-
-        let (solution_sender, solution_receiver) = mpsc::channel();
-
-        (self.on_claim_slot)(
-            slot,
-            epoch.as_ref(),
-            salt.to_le_bytes(),
-            solution_range,
-            solution_sender,
-        );
-
-        while let Ok((solution, secret_key)) = solution_receiver.recv() {
-            // TODO: We need also need to check for equivocation of farmers connected to *this node*
-            //  during block import, currently farmers connected to this node are considered trusted
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(&block_id, &solution.public_key)
-                .ok()?
-            {
-                warn!(
-                    target: "poc",
-                    "Ignoring solution for slot {} provided by farmer in block list: {}",
-                    slot,
-                    solution.public_key,
-                );
-
-                continue;
-            }
-
-            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
-
-            match verification::verify_solution::<B>(
-                &solution,
-                epoch.as_ref(),
-                solution_range,
-                slot,
-                salt.to_le_bytes(),
-                &self.spartan,
-                &self.signing_context,
-            ) {
-                Ok(_) => {
-                    debug!(target: "poc", "Claimed slot {}", slot);
-
-                    return Some((PreDigest { solution, slot }, secret_key.into()));
-                }
-                Err(error) => {
-                    warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
-                }
-            }
+        struct PreparedData<B: BlockT> {
+            block_id: BlockId<B>,
+            solution_range: u64,
+            epoch_randomness: Randomness,
+            salt: Salt,
+            solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
         }
 
-        None
+        let maybe_prepared_data: Option<PreparedData<B>> = try {
+            let epoch_changes = self.poc_link.epoch_changes.shared_data();
+            let epoch = epoch_changes.viable_epoch(&epoch_descriptor, |slot| {
+                Epoch::genesis(&self.poc_link.config, slot)
+            })?;
+            let epoch_randomness = epoch.as_ref().randomness;
+            let block_id = BlockId::Hash(parent_header.hash());
+            // Here we always use parent block as the source of information, thus on the edge of the era
+            // the very first block of the era still uses solution range from the previous one, but the
+            // block after it uses "next" solution range deposited in the first block.
+            let solution_range = find_next_solution_range_digest::<B>(&parent_header)
+                .ok()?
+                .map(|d| d.solution_range)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when there is
+                    // no solution range stored yet
+                    self.client.runtime_api().solution_range(&block_id).ok()
+                })?;
+            // Here we always use parent block as the source of information, thus on the edge of the eon
+            // the very first block of the eon still uses salt from the previous one, but the
+            // block after it uses "next" salt deposited in the first block.
+            let salt = find_next_salt_digest::<B>(&parent_header)
+                .ok()?
+                .map(|d| d.salt)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when there is
+                    // no salt stored yet
+                    self.client.runtime_api().salt(&block_id).ok()
+                })?;
+
+            let new_slot_info = NewSlotInfo {
+                slot,
+                challenge: create_global_challenge(&epoch_randomness, slot),
+                salt: salt.to_le_bytes(),
+                // TODO: This will not be the correct way in the future once salt is no longer
+                //  just an incremented number
+                next_salt: Some((salt + 1).to_le_bytes()),
+                solution_range,
+            };
+            let (solution_sender, solution_receiver) =
+                tracing_unbounded("poc_slot_solution_stream");
+
+            self.poc_link
+                .new_slot_notification_sender
+                .notify(|| NewSlotNotification {
+                    new_slot_info,
+                    response_sender: solution_sender,
+                });
+
+            PreparedData {
+                block_id,
+                solution_range,
+                epoch_randomness,
+                salt: salt.to_le_bytes(),
+                solution_receiver,
+            }
+        };
+
+        let client = self.client.clone();
+        let spartan = self.spartan.clone();
+        let signing_context = self.signing_context.clone();
+
+        Box::pin(async move {
+            let PreparedData {
+                block_id,
+                solution_range,
+                epoch_randomness,
+                salt,
+                mut solution_receiver,
+            } = maybe_prepared_data?;
+
+            while let Some((solution, secret_key)) = solution_receiver.next().await {
+                // TODO: We need also need to check for equivocation of farmers connected to *this node*
+                //  during block import, currently farmers connected to this node are considered trusted
+                if client
+                    .runtime_api()
+                    .is_in_block_list(&block_id, &solution.public_key)
+                    .ok()?
+                {
+                    warn!(
+                        target: "poc",
+                        "Ignoring solution for slot {} provided by farmer in block list: {}",
+                        slot,
+                        solution.public_key,
+                    );
+
+                    continue;
+                }
+
+                let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
+
+                match verification::verify_solution::<B>(
+                    &solution,
+                    &epoch_randomness,
+                    solution_range,
+                    slot,
+                    salt,
+                    &spartan,
+                    &signing_context,
+                ) {
+                    Ok(_) => {
+                        debug!(target: "poc", "Claimed slot {}", slot);
+
+                        return Some((PreDigest { solution, slot }, secret_key.into()));
+                    }
+                    Err(error) => {
+                        warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
+                    }
+                }
+            }
+
+            None
+        })
     }
 
     fn pre_digest_data(
@@ -1122,6 +1108,8 @@ where
 pub struct PoCLink<Block: BlockT> {
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
+    new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
+    new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1133,6 +1121,11 @@ impl<Block: BlockT> PoCLink<Block> {
     /// Get the config of this link.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Get stream with notifications about new slot arrival with ability to send solution back
+    pub fn new_slot_notification_stream(&self) -> SubspaceNotificationStream<NewSlotNotification> {
+        self.new_slot_notification_stream.clone()
     }
 }
 
@@ -1818,9 +1811,15 @@ where
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block, Error = sp_blockchain::Error>,
 {
     let epoch_changes = aux_schema::load_epoch_changes::<Block, _>(&*client, &config)?;
+
+    let (new_slot_notification_sender, new_slot_notification_stream) =
+        notification::channel("poc_new_slot_notification_stream");
+
     let link = PoCLink {
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
+        new_slot_notification_sender,
+        new_slot_notification_stream,
     };
 
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
@@ -1898,10 +1897,10 @@ where
     ))
 }
 
-pub(crate) fn create_global_challenge(epoch: &Epoch, slot: Slot) -> [u8; 8] {
+pub(crate) fn create_global_challenge(epoch_randomness: &Randomness, slot: Slot) -> [u8; 8] {
     digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(epoch.randomness.len() + std::mem::size_of::<Slot>());
-        data.extend_from_slice(&epoch.randomness);
+        let mut data = Vec::with_capacity(epoch_randomness.len() + std::mem::size_of::<Slot>());
+        data.extend_from_slice(epoch_randomness);
         data.extend_from_slice(&slot.to_le_bytes());
         data
     })

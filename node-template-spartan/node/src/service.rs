@@ -170,7 +170,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
     let backoff_authoring_blocks: Option<()> = None;
     let prometheus_registry = config.prometheus_registry().cloned();
 
-    let mut new_slot_notifier = None;
+    let new_slot_notification_stream = poc_link.new_slot_notification_stream();
 
     if role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -222,13 +222,12 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
         };
 
         let poc = sc_consensus_poc::start_poc(poc_config)?;
-        new_slot_notifier.replace(poc.get_new_slot_notifier());
 
-        // the PoC authoring task is considered essential, i.e. if it
-        // fails we take down the service with it.
+        // the PoC authoring task is considered essential, i.e. if it fails we take down the service
+        // with it.
         task_manager
             .spawn_essential_handle()
-            .spawn_blocking("poc", poc);
+            .spawn_blocking("poc-worker", poc);
     }
 
     let rpc_extensions_builder = {
@@ -241,7 +240,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
                 pool: pool.clone(),
                 deny_unsafe,
                 subscription_executor,
-                new_slot_notifier: new_slot_notifier.clone(),
+                new_slot_notification_stream: new_slot_notification_stream.clone(),
             };
 
             Ok(crate::rpc::create_full(deps))
