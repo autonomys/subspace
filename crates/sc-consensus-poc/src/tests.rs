@@ -25,6 +25,7 @@
 use super::*;
 use futures::executor::block_on;
 use log::debug;
+use parking_lot::Mutex;
 use ring::{digest, hmac};
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sc_client_api::{backend::TransactionFor, BlockchainEvents};
@@ -426,7 +427,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
     let net = Arc::new(Mutex::new(net));
     let mut import_notifications = Vec::new();
-    let mut poc_futures = Vec::new();
+    let mut poc_futures = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
 
     for peer_id in [0, 1, 2_usize].iter() {
         let mut net = net.lock();
@@ -506,8 +507,8 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         })
         .expect("Starts poc");
 
-        let notifier = poc_worker.get_new_slot_notifier()();
-        std::thread::spawn(move || {
+        let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
+        let poc_farmer = async move {
             let spartan = spartan_codec::Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(
                 genesis_piece_from_seed(GENESIS_PIECE_SEED),
             );
@@ -517,25 +518,32 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             let nonce = 0;
             let encoding: Piece = spartan.encode(public_key_hash, nonce, ENCODE_ROUNDS);
 
-            while let Ok((new_slot_info, solution_sender)) = notifier.recv() {
+            while let Some(NewSlotNotification {
+                new_slot_info,
+                mut response_sender,
+            }) = new_slot_notification_stream.next().await
+            {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
                     let tag: Tag = create_tag(&encoding, &new_slot_info.salt);
 
-                    let _ = solution_sender.send((
-                        Solution {
-                            public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-                            nonce,
-                            encoding: encoding.to_vec(),
-                            signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
-                            tag,
-                        },
-                        keypair.secret.to_bytes().into(),
-                    ));
+                    let _ = response_sender
+                        .send((
+                            Solution {
+                                public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
+                                nonce,
+                                encoding: encoding.to_vec(),
+                                signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
+                                tag,
+                            },
+                            keypair.secret.to_bytes().into(),
+                        ))
+                        .await;
                 }
             }
-        });
+        };
 
-        poc_futures.push(poc_worker);
+        poc_futures.push(Box::pin(poc_worker));
+        poc_futures.push(Box::pin(poc_farmer));
     }
     block_on(future::select(
         futures::future::poll_fn(move |cx| {
