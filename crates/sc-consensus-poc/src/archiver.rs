@@ -1,3 +1,21 @@
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//! Utility module for handling Subspace client notifications.
+
+use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 
 /// State associated with archiving process of Subspace blockchain (permanent storage of
@@ -28,6 +46,16 @@ impl<Block: BlockT> Default for RecordingHistoryState<Block> {
     }
 }
 
+pub(super) struct ArchivedSegment {
+    segment: Vec<u8>,
+    // TODO
+    root_block_header: (),
+}
+
+pub(super) enum ArchivingResult {
+    Success { segments: Vec<ArchivedSegment> },
+}
+
 #[derive(Debug)]
 pub(super) struct Archiver<Block: BlockT> {
     recorded_history_segment_size: u32,
@@ -42,7 +70,8 @@ impl<Block: BlockT> Archiver<Block> {
         }
     }
 
-    pub(super) fn add_block(&self, block: Block) {
+    pub(super) fn add_block(&self, block: SignedBlock<Block>) -> ArchivingResult {
         // TODO
+        ArchivingResult::Success { segments: vec![] }
     }
 }

@@ -48,7 +48,7 @@
 #![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::Archiver;
+use crate::archiver::{Archiver, ArchivingResult};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
@@ -57,7 +57,9 @@ use futures::prelude::*;
 use log::{debug, info, log, trace, warn};
 use prometheus_endpoint::Registry;
 use ring::digest;
-use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
+use sc_client_api::{
+    backend::AuxStore, BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider,
+};
 use sc_consensus::{
     block_import::{
         BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
@@ -1884,6 +1886,7 @@ where
     Client: ProvideRuntimeApi<Block>
         + ProvideCache<Block>
         + HeaderBackend<Block>
+        + BlockBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore
         + Send
@@ -1898,9 +1901,6 @@ where
     spawner.spawn_essential_blocking(
         "poc-archiver",
         Box::pin({
-            let mut imported_block_notification_stream =
-                poc_link.imported_block_notification_stream.subscribe();
-
             // TODO: Move these constants somewhere more appropriate and adjust if necessary
             const CONFIRMATION_DEPTH_K: u32 = 10;
 
@@ -1908,6 +1908,10 @@ where
             const MERKLE_NUM_LEAVES: u32 = 256;
 
             const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+
+            let mut imported_block_notification_stream =
+                poc_link.imported_block_notification_stream.subscribe();
+            let client = Arc::clone(&client);
 
             async move {
                 let archiver = Archiver::<Block>::new(RECORDED_HISTORY_SEGMENT_SIZE);
@@ -1922,8 +1926,19 @@ where
                         };
                     debug!(target: "poc", "Archiving block {:?}", block_to_archive);
 
-                    // TODO
-                    // archiver.add_block();
+                    let id = BlockId::number(block_to_archive);
+                    let block = client
+                        .block(&id)
+                        .expect("Older block by number should always exist; qed")
+                        .expect("Older block by number should always exist; qed");
+
+                    match archiver.add_block(block) {
+                        ArchivingResult::Success { segments } => {
+                            if !segments.is_empty() {
+                                // TODO:
+                            }
+                        }
+                    }
                 }
             }
         }),
