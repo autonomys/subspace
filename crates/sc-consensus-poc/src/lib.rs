@@ -48,6 +48,7 @@
 #![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+use crate::archiver::Archiver;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
@@ -85,7 +86,6 @@ use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
     SelectChain, SlotData, SyncOracle,
 };
-
 pub use sp_consensus_poc::{
     digests::{
         CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
@@ -102,12 +102,13 @@ use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
-    traits::{Block as BlockT, DigestItemFor, Header, Zero},
+    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
 };
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 
+mod archiver;
 pub mod aux_schema;
 pub mod notification;
 #[cfg(test)]
@@ -1110,6 +1111,7 @@ pub struct PoCLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    imported_block_notification_stream: SubspaceNotificationStream<NumberFor<Block>>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1449,6 +1451,7 @@ pub struct PoCBlockImport<Block: BlockT, Client, I> {
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
+    imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
 }
 
 impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I> {
@@ -1458,6 +1461,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I>
             client: self.client.clone(),
             epoch_changes: self.epoch_changes.clone(),
             config: self.config.clone(),
+            imported_block_notification_sender: self.imported_block_notification_sender.clone(),
         }
     }
 }
@@ -1468,12 +1472,14 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
         epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
         config: Config,
+        imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
     ) -> Self {
         PoCBlockImport {
             client,
             inner: block_import,
             epoch_changes,
             config,
+            imported_block_notification_sender,
         }
     }
 }
@@ -1738,15 +1744,20 @@ where
 
         let import_result = self.inner.import_block(block, new_cache).await;
 
-        // revert to the original epoch changes in case there's an error
-        // importing the block
-        if import_result.is_err() {
-            if let Some(old_epoch_changes) = old_epoch_changes {
-                *epoch_changes.upgrade() = old_epoch_changes;
+        match import_result {
+            Ok(import_result) => {
+                self.imported_block_notification_sender.notify(|| number);
+                Ok(import_result)
+            }
+            Err(error) => {
+                // revert to the original epoch changes in case there's an error importing the block
+                if let Some(old_epoch_changes) = old_epoch_changes {
+                    *epoch_changes.upgrade() = old_epoch_changes;
+                }
+
+                Err(error.into())
             }
         }
-
-        import_result.map_err(Into::into)
     }
 
     async fn check_block(
@@ -1814,12 +1825,15 @@ where
 
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("poc_new_slot_notification_stream");
+    let (imported_block_notification_sender, imported_block_notification_stream) =
+        notification::channel("poc_imported_block_notification_stream");
 
     let link = PoCLink {
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
         new_slot_notification_sender,
         new_slot_notification_stream,
+        imported_block_notification_stream,
     };
 
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
@@ -1827,7 +1841,13 @@ where
     // startup rather than waiting until importing the next epoch change block.
     prune_finalized(client.clone(), &mut epoch_changes.shared_data())?;
 
-    let import = PoCBlockImport::new(client, epoch_changes, wrapped_block_import, config);
+    let import = PoCBlockImport::new(
+        client,
+        epoch_changes,
+        wrapped_block_import,
+        config,
+        imported_block_notification_sender,
+    );
 
     Ok((import, link))
 }
@@ -1875,6 +1895,40 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
 {
+    spawner.spawn_essential_blocking(
+        "poc-archiver",
+        Box::pin({
+            let mut imported_block_notification_stream =
+                poc_link.imported_block_notification_stream.subscribe();
+
+            // TODO: Move these constants somewhere more appropriate and adjust if necessary
+            const CONFIRMATION_DEPTH_K: u32 = 10;
+
+            const RECORD_SIZE: u32 = 3840;
+            const MERKLE_NUM_LEAVES: u32 = 256;
+
+            const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+
+            async move {
+                let archiver = Archiver::<Block>::new(RECORDED_HISTORY_SEGMENT_SIZE);
+
+                while let Some(block_number) = imported_block_notification_stream.next().await {
+                    let block_to_archive =
+                        match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
+                            Some(block_to_archive) => block_to_archive,
+                            None => {
+                                continue;
+                            }
+                        };
+                    debug!(target: "poc", "Archiving block {:?}", block_to_archive);
+
+                    // TODO
+                    // archiver.add_block();
+                }
+            }
+        }),
+    );
+
     let verifier = PoCVerifier {
         select_chain,
         create_inherent_data_providers,
