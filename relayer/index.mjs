@@ -17,7 +17,8 @@ const types = {
   });
 
   // use getAccount func because we cannot create keyring instance before API is instanciated
-  const signer = getAccount();
+  // TODO: replace hardcoded seed with configurable
+  const signer = getAccount("//Alice");
 
   // TODO: add old block processing
 
