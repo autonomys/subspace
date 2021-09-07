@@ -8,7 +8,8 @@
 use std::sync::Arc;
 
 use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
-use sc_consensus_poc::NewSlotNotifier;
+use sc_consensus_poc::notification::SubspaceNotificationStream;
+use sc_consensus_poc::NewSlotNotification;
 use sc_rpc::SubscriptionTaskExecutor;
 pub use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -26,8 +27,8 @@ pub struct FullDeps<C, P> {
     pub deny_unsafe: DenyUnsafe,
     /// Executor to drive the subscription manager in the Grandpa RPC handler.
     pub subscription_executor: SubscriptionTaskExecutor,
-    /// A function that can be called whenever it is necessary to create a subscription for new slots
-    pub new_slot_notifier: Option<NewSlotNotifier>,
+    /// A stream with notifications about new slot arrival with ability to send solution back
+    pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
 }
 
 /// Instantiate all full RPC extensions.
@@ -50,7 +51,7 @@ where
         pool,
         deny_unsafe,
         subscription_executor,
-        new_slot_notifier,
+        new_slot_notification_stream,
     } = deps;
 
     io.extend_with(SystemApi::to_delegate(FullSystem::new(
@@ -63,11 +64,12 @@ where
         client.clone(),
     )));
 
-    if let Some(new_slot_notifier) = new_slot_notifier {
-        io.extend_with(sc_consensus_poc_rpc::PoCApi::to_delegate(
-            sc_consensus_poc_rpc::PoCRpcHandler::new(subscription_executor, new_slot_notifier),
-        ));
-    }
+    io.extend_with(sc_consensus_poc_rpc::PoCApi::to_delegate(
+        sc_consensus_poc_rpc::PoCRpcHandler::new(
+            subscription_executor,
+            new_slot_notification_stream,
+        ),
+    ));
 
     // Extend this RPC with a custom API by using the following syntax.
     // `YourRpcStruct` should have a reference to a client, which is needed
