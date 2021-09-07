@@ -48,8 +48,8 @@
 #![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{Archiver, ArchivingResult};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
+use crate::slicer::Slicer;
 use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::channel::oneshot;
@@ -110,9 +110,9 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 
-mod archiver;
 pub mod aux_schema;
 pub mod notification;
+mod slicer;
 #[cfg(test)]
 mod tests;
 mod verification;
@@ -1914,7 +1914,7 @@ where
             let client = Arc::clone(&client);
 
             async move {
-                let archiver = Archiver::<Block>::new(RECORDED_HISTORY_SEGMENT_SIZE);
+                let mut slicer = Slicer::new(RECORDED_HISTORY_SEGMENT_SIZE);
 
                 while let Some(block_number) = imported_block_notification_stream.next().await {
                     let block_to_archive =
@@ -1932,12 +1932,8 @@ where
                         .expect("Older block by number should always exist; qed")
                         .expect("Older block by number should always exist; qed");
 
-                    match archiver.add_block(block) {
-                        ArchivingResult::Success { segments } => {
-                            if !segments.is_empty() {
-                                // TODO:
-                            }
-                        }
+                    for segment in slicer.add_block(block) {
+                        println!("Got {} bytes segment", segment.len());
                     }
                 }
             }
