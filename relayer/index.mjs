@@ -30,6 +30,8 @@ const types = {
   // TODO: add old block processing
 
   await sourceApi.rpc.chain.subscribeFinalizedHeads(async ({ hash }) => {
+    console.log(`Finalized block hash: ${hash}`);
+
     const block = await sourceApi.rpc.chain.getBlock(hash);
 
     // TODO: replace templateModule with feeds
@@ -37,6 +39,6 @@ const types = {
       .put(block.toString())
       .signAndSend(signer);
 
-    console.log(txHash.toString());
+    console.log(`Transaction sent: ${txHash}`);
   });
 })();
