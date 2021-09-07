@@ -1,5 +1,5 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-
+import { getAccount } from "./account.mjs";
 // TODO: ensure we're connecting to archive node
 // TODO: replace hardcoded value with configurable
 const wsProvider = new WsProvider("ws://127.0.0.1:9944");
@@ -16,12 +16,19 @@ const types = {
     types,
   });
 
+  // use getAccount func because we cannot create keyring instance before API is instanciated
+  const signer = getAccount();
+
   // TODO: add old block processing
 
   await api.rpc.chain.subscribeFinalizedHeads(async (lastHeader) => {
     const block = await api.rpc.chain.getBlock(lastHeader.hash);
 
-    // TODO: send tx with block data
-    console.log(block.toJSON());
+    // TODO: replace templateModule with feeds
+    const txHash = await api.tx.templateModule
+      .put(block.toString())
+      .signAndSend(signer);
+
+    console.log(txHash.toString());
   });
 })();
