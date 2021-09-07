@@ -16,8 +16,12 @@ const types = {
     types,
   });
 
+  // TODO: add old block processing
+
   await api.rpc.chain.subscribeFinalizedHeads(async (lastHeader) => {
     const block = await api.rpc.chain.getBlock(lastHeader.hash);
-    console.log(JSON.stringify(block));
+
+    // TODO: send tx with block data
+    console.log(block.toJSON());
   });
 })();
