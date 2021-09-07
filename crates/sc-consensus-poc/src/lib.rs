@@ -48,8 +48,14 @@
 #![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
+use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::channel::oneshot;
+use futures::prelude::*;
+use log::{debug, info, log, trace, warn};
+use prometheus_endpoint::Registry;
+use ring::digest;
 use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::{
     block_import::{
@@ -58,20 +64,41 @@ use sc_consensus::{
     },
     import_queue::{BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier},
 };
+use sc_consensus_epochs::{
+    descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
+};
 pub use sc_consensus_slots::SlotProportion;
+use sc_consensus_slots::{
+    check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
+    SimpleSlotWorker, SlotInfo, StorageChanges,
+};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use schnorrkel::context::SigningContext;
+use schnorrkel::SecretKey;
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-pub use sp_consensus::SyncOracle;
+use sp_blockchain::{
+    Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
+};
 use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
-    SelectChain, SlotData,
+    SelectChain, SlotData, SyncOracle,
 };
-use sp_consensus_poc::inherents::PoCInherentData;
+
 pub use sp_consensus_poc::{
-    digests::{CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest},
-    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
+    digests::{
+        CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
+        NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    },
+    inherents::PoCInherentData,
+    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, Randomness,
+    POC_ENGINE_ID,
 };
+use sp_consensus_slots::Slot;
+use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
+use sp_core::sr25519::Pair;
+use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
@@ -81,42 +108,11 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 
-use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
-use codec::{Decode, Encode};
-use futures::prelude::*;
-use log::{debug, info, log, trace, warn};
-use prometheus_endpoint::Registry;
-use ring::digest;
-use sc_consensus_epochs::{
-    descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
-};
-use sc_consensus_slots::{
-    check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SimpleSlotWorker, SlotInfo, StorageChanges,
-};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
-use schnorrkel::context::SigningContext;
-use schnorrkel::SecretKey;
-use sp_api::ApiExt;
-use sp_blockchain::{
-    Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
-};
-use sp_consensus_poc::digests::{
-    NextSaltDescriptor, NextSolutionRangeDescriptor, SaltDescriptor, Solution,
-    SolutionRangeDescriptor,
-};
-use sp_consensus_poc::Randomness;
-use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
-use sp_core::sr25519::Pair;
-use sp_core::{ExecutionContext, Pair as PairTrait};
-
-mod verification;
-
 pub mod aux_schema;
 pub mod notification;
 #[cfg(test)]
 mod tests;
+mod verification;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
