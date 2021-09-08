@@ -36,7 +36,10 @@ const types = {
 
     const txHash = await targetApi.tx.feeds
       .put(block.toString())
-      .signAndSend(signer);
+      // it is required to specify nonce, otherwise transaction within same block will be rejected
+      // if nonce is -1 API will do the lookup for the right value
+      // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
+      .signAndSend(signer, { nonce: -1 }); 
 
     console.log(`Transaction sent: ${txHash}`);
   });
