@@ -1905,6 +1905,7 @@ where
             const SEGMENT_VERSION: u8 = 0;
             const CONFIRMATION_DEPTH_K: u32 = 10;
             const RECORD_SIZE: u32 = 3840;
+            const WITNESS_SIZE: u32 = 3840;
             const MERKLE_NUM_LEAVES: u32 = 256;
             const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
@@ -1913,8 +1914,12 @@ where
             let client = Arc::clone(&client);
 
             async move {
-                let mut archiver =
-                    Archiver::new(SEGMENT_VERSION, RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
+                let mut archiver = Archiver::new(
+                    SEGMENT_VERSION,
+                    RECORD_SIZE,
+                    WITNESS_SIZE,
+                    RECORDED_HISTORY_SEGMENT_SIZE,
+                );
 
                 while let Some(block_number) = imported_block_notification_stream.next().await {
                     let block_to_archive =

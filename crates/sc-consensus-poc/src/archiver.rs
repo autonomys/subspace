@@ -16,11 +16,14 @@
 //! Utility module for handling Subspace client notifications.
 
 use codec::Encode;
+use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::collections::VecDeque;
+use std::convert::TryInto;
+use std::iter;
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Encode)]
-pub struct Segment {
+struct Segment {
     /// Version of the segment data structure and its contents
     version: u8,
     /// Segment items
@@ -55,11 +58,15 @@ pub(super) struct Archiver {
     buffer: VecDeque<SegmentItem>,
     /// Version of the segment data structure and its contents
     segment_version: u8,
-    /// Configuration parameter defining the size of one recorded history segment
-    segment_size: usize,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: usize,
+    /// Size of the witness for every record
+    witness_size: usize,
+    /// Configuration parameter defining the size of one recorded history segment
+    segment_size: usize,
+    /// Erasure coding data structure
+    reed_solomon: ReedSolomon,
 }
 
 impl Archiver {
@@ -69,13 +76,22 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(segment_version: u8, record_size: u32, segment_size: u32) -> Self {
+    pub(super) fn new(
+        segment_version: u8,
+        record_size: u32,
+        witness_size: u32,
+        segment_size: u32,
+    ) -> Self {
+        let record_size = record_size as usize;
+        let witness_size = witness_size as usize;
+        let segment_size = segment_size as usize;
+
         let empty_segment = Segment {
             version: 0,
             items: Vec::new(),
         };
         assert!(
-            record_size as usize > empty_segment.encoded_size(),
+            record_size > empty_segment.encoded_size(),
             "Record size it smaller that needed to hold any information",
         );
         assert!(
@@ -88,11 +104,17 @@ impl Archiver {
             "Segment size is not a multiple of record size",
         );
 
+        let shards = segment_size / record_size;
+        let reed_solomon = ReedSolomon::new(shards, shards)
+            .expect("ReedSolomon should always be correctly instantiated");
+
         Self {
             buffer: VecDeque::default(),
             segment_version,
-            segment_size: segment_size as usize,
-            record_size: record_size as usize,
+            record_size,
+            witness_size,
+            segment_size,
+            reed_solomon,
         }
     }
 
@@ -101,16 +123,53 @@ impl Archiver {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block(block.encode()));
 
-        while let Some(segment) = self.produce_segment().map(Segment::encode) {
+        while let Some(segment) = self.produce_segment().map(|s| s.encode()) {
             assert_eq!(
                 segment.len(),
                 self.segment_size,
                 "Segment must always be of correct size",
             );
 
-            let chunks = segment.chunks_exact(self.record_size).collect::<Vec<_>>();
+            fn slice_to_arrays(slice: &[u8]) -> Vec<[u8; 2]> {
+                slice
+                    .chunks_exact(2)
+                    .map(|s| s.try_into().unwrap())
+                    .collect()
+            }
 
-            // TODO: Erasure coding, slice into records, build Merkle Tree, create pieces, etc.
+            let data_shards: Vec<Vec<[u8; 2]>> = segment
+                .chunks_exact(self.record_size)
+                .map(slice_to_arrays)
+                .collect();
+
+            drop(segment);
+
+            let mut parity_shards: Vec<Vec<[u8; 2]>> =
+                iter::repeat(vec![[0u8; 2]; self.record_size / 2])
+                    .take(data_shards.len())
+                    .collect();
+
+            self.reed_solomon
+                .encode_sep(&data_shards, &mut parity_shards)
+                .expect("Encoding is running with fixed parameters and should never fail");
+
+            let pieces: Vec<Vec<u8>> = data_shards
+                .into_iter()
+                .chain(parity_shards)
+                .map(|shard| {
+                    // Here we pre-allocate vectors of piece size (record + witness) to avoid
+                    // re-allocations later
+                    let mut piece = Vec::with_capacity(self.record_size + self.witness_size);
+
+                    for chunk in shard {
+                        piece.extend_from_slice(&chunk);
+                    }
+
+                    piece
+                })
+                .collect();
+
+            // TODO: Build Merkle Tree, fill pieces, etc.
         }
     }
 

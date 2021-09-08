@@ -5085,6 +5085,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reed-solomon-erasure"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a415a013dd7c5d4221382329a5a3482566da675737494935cbbbcdec04662f9d"
+dependencies = [
+ "cc",
+ "libc",
+ "smallvec",
+]
+
+[[package]]
 name = "ref-cast"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5571,6 +5582,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.7.3",
+ "reed-solomon-erasure",
  "ring",
  "sc-block-builder",
  "sc-client-api",
