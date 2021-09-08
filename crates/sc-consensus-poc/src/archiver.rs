@@ -123,7 +123,17 @@ impl Archiver {
         };
 
         while segment.encoded_size() < self.segment_size {
-            let segment_item = self.buffer.pop_front()?;
+            let segment_item = match self.buffer.pop_front() {
+                Some(segment_item) => segment_item,
+                None => {
+                    // Push all of the items back into the buffer, we don't have enough data yet
+                    for segment_item in segment.items.into_iter().rev() {
+                        self.buffer.push_front(segment_item);
+                    }
+
+                    return None;
+                }
+            };
             segment.items.push(segment_item);
         }
 
