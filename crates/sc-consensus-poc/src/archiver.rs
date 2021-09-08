@@ -17,22 +17,14 @@
 
 use codec::Encode;
 use std::collections::VecDeque;
-use std::ops::Deref;
 
-pub(super) struct Segment(Vec<u8>);
-
-impl Deref for Segment {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<Segment> for Vec<u8> {
-    fn from(segment: Segment) -> Self {
-        segment.0
-    }
+/// Segment represents a collection of items stored in archival history of the Subspace blockchain
+#[derive(Debug, Encode)]
+pub struct Segment {
+    /// Version of the segment data structure and its contents
+    version: u8,
+    /// Segment items
+    items: Vec<SegmentItem>,
 }
 
 /// Kinds of items that are contained within a segment
@@ -61,6 +53,8 @@ pub(super) struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
+    /// Version of the segment data structure and its contents
+    segment_version: u8,
     /// Configuration parameter defining the size of one recorded history segment
     segment_size: usize,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
@@ -72,16 +66,31 @@ impl Archiver {
     /// Create a new instance with specified record size and recorded history segment size.
     ///
     /// Panics if:
-    /// * record_size it smaller that needed to hold any information
+    /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(record_size: u32, segment_size: u32) -> Self {
-        assert!(record_size as usize > Vec::<u8>::new().encoded_size());
-        assert!(segment_size > record_size);
-        assert_eq!(segment_size % record_size, 0);
+    pub(super) fn new(segment_version: u8, record_size: u32, segment_size: u32) -> Self {
+        let empty_segment = Segment {
+            version: 0,
+            items: Vec::new(),
+        };
+        assert!(
+            record_size as usize > empty_segment.encoded_size(),
+            "Record size it smaller that needed to hold any information",
+        );
+        assert!(
+            segment_size > record_size,
+            "Segment size is not bigger than record size",
+        );
+        assert_eq!(
+            segment_size % record_size,
+            0,
+            "Segment size is not a multiple of record size",
+        );
 
         Self {
             buffer: VecDeque::default(),
+            segment_version,
             segment_size: segment_size as usize,
             record_size: record_size as usize,
         }
@@ -92,61 +101,73 @@ impl Archiver {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block(block.encode()));
 
-        // Try to slice buffer contents into segments if there is enough data
-        while self.buffer.encoded_size() >= self.segment_size {
-            let mut segment = Vec::with_capacity(self.buffer.len());
+        while let Some(segment) = self.produce_segment().map(Segment::encode) {
+            assert_eq!(
+                segment.len(),
+                self.segment_size,
+                "Segment must always be of correct size",
+            );
 
-            while segment.encoded_size() < self.segment_size {
-                let segment_item = self.buffer.pop_front().expect(
-                    "Size of the buffer is at least as big as one segment, so this will never \
-                    return None; qed",
-                );
-                segment.push(segment_item);
-            }
-
-            // We may have gotten more data than needed, check and move the excess into the next
-            // segment
-            {
-                let spill_over = segment.encoded_size() - self.segment_size;
-
-                if spill_over > 0 {
-                    let segment_item = segment
-                        .pop()
-                        .expect("Segment over segment size always has at least one item; qed");
-
-                    let (segment_item, continuation_segment_item_bytes) = match segment_item {
-                        SegmentItem::Block(mut bytes) => {
-                            let split_point = bytes.len() - spill_over;
-                            let continuation_bytes = bytes[split_point..].to_vec();
-
-                            bytes.truncate(split_point);
-
-                            (SegmentItem::BlockStart(bytes), continuation_bytes)
-                        }
-                        SegmentItem::BlockStart(_) => {
-                            unreachable!("Block start never goes into the next segment; qed")
-                        }
-                        SegmentItem::Continuation(mut bytes) => {
-                            let split_point = bytes.len() - spill_over;
-                            let continuation_bytes = bytes[split_point..].to_vec();
-
-                            bytes.truncate(split_point);
-
-                            (SegmentItem::Continuation(bytes), continuation_bytes)
-                        }
-                    };
-
-                    // Push back shortened segment item
-                    segment.push(segment_item);
-                    // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::Continuation(continuation_segment_item_bytes));
-                }
-            }
-
-            let segment = segment.encode();
+            let chunks = segment.chunks_exact(self.record_size).collect::<Vec<_>>();
 
             // TODO: Erasure coding, slice into records, build Merkle Tree, create pieces, etc.
         }
+    }
+
+    // Try to slice buffer contents into segments if there is enough data, producing one segment at
+    // a time
+    fn produce_segment(&mut self) -> Option<Segment> {
+        let mut segment = Segment {
+            version: self.segment_version,
+            items: Vec::with_capacity(self.buffer.len()),
+        };
+
+        while segment.encoded_size() < self.segment_size {
+            let segment_item = self.buffer.pop_front()?;
+            segment.items.push(segment_item);
+        }
+
+        // We may have gotten more data than needed, check and move the excess into the next
+        // segment
+        {
+            let spill_over = segment.encoded_size() - self.segment_size;
+
+            if spill_over > 0 {
+                let segment_item = segment
+                    .items
+                    .pop()
+                    .expect("Segment over segment size always has at least one item; qed");
+
+                let (segment_item, continuation_segment_item_bytes) = match segment_item {
+                    SegmentItem::Block(mut bytes) => {
+                        let split_point = bytes.len() - spill_over;
+                        let continuation_bytes = bytes[split_point..].to_vec();
+
+                        bytes.truncate(split_point);
+
+                        (SegmentItem::BlockStart(bytes), continuation_bytes)
+                    }
+                    SegmentItem::BlockStart(_) => {
+                        unreachable!("Block start never is the first element in the segment; qed",);
+                    }
+                    SegmentItem::Continuation(mut bytes) => {
+                        let split_point = bytes.len() - spill_over;
+                        let continuation_bytes = bytes[split_point..].to_vec();
+
+                        bytes.truncate(split_point);
+
+                        (SegmentItem::Continuation(bytes), continuation_bytes)
+                    }
+                };
+
+                // Push back shortened segment item
+                segment.items.push(segment_item);
+                // Push continuation element back into the buffer where removed segment item was
+                self.buffer
+                    .push_front(SegmentItem::Continuation(continuation_segment_item_bytes));
+            }
+        }
+
+        Some(segment)
     }
 }
