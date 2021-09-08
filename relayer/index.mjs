@@ -34,8 +34,7 @@ const types = {
 
     const block = await sourceApi.rpc.chain.getBlock(hash);
 
-    // TODO: replace templateModule with feeds
-    const txHash = await targetApi.tx.templateModule
+    const txHash = await targetApi.tx.feeds
       .put(block.toString())
       .signAndSend(signer);
 
