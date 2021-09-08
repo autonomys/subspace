@@ -16,18 +16,94 @@
 //! Utility module for handling Subspace client notifications.
 
 use codec::Encode;
+use itertools::Itertools;
+use merkletree::hash::Algorithm;
+use merkletree::merkle::MerkleTree;
+use merkletree::store::VecStore;
 use reed_solomon_erasure::galois_16::ReedSolomon;
+use ring::digest;
+use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::iter;
+use std::hash::Hasher;
+use std::io::Write;
+use std::{iter, mem};
+
+type Sha256Hash = [u8; 32];
+
+struct Sha256Algorithm(digest::Context);
+
+impl Default for Sha256Algorithm {
+    fn default() -> Sha256Algorithm {
+        Sha256Algorithm(digest::Context::new(&digest::SHA256))
+    }
+}
+
+impl Hasher for Sha256Algorithm {
+    #[inline]
+    fn write(&mut self, msg: &[u8]) {
+        self.0.update(msg);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        unimplemented!()
+    }
+}
+
+impl Algorithm<Sha256Hash> for Sha256Algorithm {
+    #[inline]
+    fn hash(&mut self) -> Sha256Hash {
+        self.0
+            .clone()
+            .finish()
+            .as_ref()
+            .try_into()
+            .expect("Sha256 output is always 32 bytes; qed")
+    }
+
+    #[inline]
+    fn reset(&mut self) {
+        self.0 = digest::Context::new(&digest::SHA256);
+    }
+}
+
+// TODO: Custom struct that supports verification with root and leaf nodes removed
+type Sha256MerkleTree = MerkleTree<Sha256Hash, Sha256Algorithm, VecStore<Sha256Hash>>;
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Encode)]
-struct Segment {
-    /// Version of the segment data structure and its contents
-    version: u8,
-    /// Segment items
-    items: Vec<SegmentItem>,
+enum Segment {
+    // V0 of the segment data structure
+    #[codec(index = 0)]
+    V0 {
+        /// Segment items
+        items: Vec<SegmentItem>,
+    },
+}
+
+/// Root block for a specific segment
+#[derive(Debug, Encode)]
+enum RootBlock {
+    // V0 of the root block data structure
+    #[codec(index = 0)]
+    V0 {
+        /// Segment index
+        segment_index: u64,
+        /// Merkle tree root of all pieces within segment
+        merkle_tree_root: Sha256Hash,
+        /// Hash of the root block of the previous segment
+        prev_root_block_hash: Sha256Hash,
+    },
+}
+
+impl RootBlock {
+    fn hash(&self) -> Sha256Hash {
+        digest::digest(&digest::SHA256, &self.encode())
+            .as_ref()
+            .try_into()
+            .expect("Sha256 output is always 32 bytes; qed")
+    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -41,7 +117,21 @@ enum SegmentItem {
     BlockStart(Vec<u8>),
     /// Continuation of the partial block spilled over into the next segment
     #[codec(index = 2)]
-    Continuation(Vec<u8>),
+    BlockContinuation(Vec<u8>),
+    /// Root block
+    #[codec(index = 2)]
+    RootBlock(RootBlock),
+}
+
+#[derive(Debug, Encode, Clone)]
+/// Archived segment as a combination of root block hash, segment index and corresponding pieces
+pub(super) struct ArchivedSegment {
+    /// Segment index
+    pub(super) segment_index: u64,
+    /// Root block hash
+    pub(super) root_block_hash: Sha256Hash,
+    /// Pieces that correspond to this segment
+    pub(super) pieces: Vec<Piece>,
 }
 
 /// Archiver for Subspace blockchain.
@@ -51,13 +141,12 @@ enum SegmentItem {
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
+// TODO: Make this survive restarts without loosing state
 #[derive(Debug)]
 pub(super) struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
-    /// Version of the segment data structure and its contents
-    segment_version: u8,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: usize,
@@ -67,6 +156,10 @@ pub(super) struct Archiver {
     segment_size: usize,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
+    /// An index of the current segment
+    segment_index: u64,
+    /// Hash of the root block of the previous segment
+    prev_root_block_hash: Sha256Hash,
 }
 
 impl Archiver {
@@ -76,20 +169,12 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(
-        segment_version: u8,
-        record_size: u32,
-        witness_size: u32,
-        segment_size: u32,
-    ) -> Self {
+    pub(super) fn new(record_size: u32, witness_size: u32, segment_size: u32) -> Self {
         let record_size = record_size as usize;
         let witness_size = witness_size as usize;
         let segment_size = segment_size as usize;
 
-        let empty_segment = Segment {
-            version: 0,
-            items: Vec::new(),
-        };
+        let empty_segment = Segment::V0 { items: Vec::new() };
         assert!(
             record_size > empty_segment.encoded_size(),
             "Record size it smaller that needed to hold any information",
@@ -110,74 +195,33 @@ impl Archiver {
 
         Self {
             buffer: VecDeque::default(),
-            segment_version,
             record_size,
             witness_size,
             segment_size,
             reed_solomon,
+            segment_index: 0,
+            prev_root_block_hash: Sha256Hash::default(),
         }
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub(super) fn add_block<B: Encode>(&mut self, block: B) {
+    pub(super) fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block(block.encode()));
 
-        while let Some(segment) = self.produce_segment().map(|s| s.encode()) {
-            assert_eq!(
-                segment.len(),
-                self.segment_size,
-                "Segment must always be of correct size",
-            );
+        let mut archived_segments = Vec::new();
 
-            fn slice_to_arrays(slice: &[u8]) -> Vec<[u8; 2]> {
-                slice
-                    .chunks_exact(2)
-                    .map(|s| s.try_into().unwrap())
-                    .collect()
-            }
-
-            let data_shards: Vec<Vec<[u8; 2]>> = segment
-                .chunks_exact(self.record_size)
-                .map(slice_to_arrays)
-                .collect();
-
-            drop(segment);
-
-            let mut parity_shards: Vec<Vec<[u8; 2]>> =
-                iter::repeat(vec![[0u8; 2]; self.record_size / 2])
-                    .take(data_shards.len())
-                    .collect();
-
-            self.reed_solomon
-                .encode_sep(&data_shards, &mut parity_shards)
-                .expect("Encoding is running with fixed parameters and should never fail");
-
-            let pieces: Vec<Vec<u8>> = data_shards
-                .into_iter()
-                .chain(parity_shards)
-                .map(|shard| {
-                    // Here we pre-allocate vectors of piece size (record + witness) to avoid
-                    // re-allocations later
-                    let mut piece = Vec::with_capacity(self.record_size + self.witness_size);
-
-                    for chunk in shard {
-                        piece.extend_from_slice(&chunk);
-                    }
-
-                    piece
-                })
-                .collect();
-
-            // TODO: Build Merkle Tree, fill pieces, etc.
+        while let Some(segment) = self.produce_segment() {
+            archived_segments.push(self.produce_archived_segment(segment));
         }
+
+        archived_segments
     }
 
-    // Try to slice buffer contents into segments if there is enough data, producing one segment at
-    // a time
+    /// Try to slice buffer contents into segments if there is enough data, producing one segment at
+    /// a time
     fn produce_segment(&mut self) -> Option<Segment> {
-        let mut segment = Segment {
-            version: self.segment_version,
+        let mut segment = Segment::V0 {
             items: Vec::with_capacity(self.buffer.len()),
         };
 
@@ -185,15 +229,17 @@ impl Archiver {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
+                    let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
-                    for segment_item in segment.items.into_iter().rev() {
+                    for segment_item in items.into_iter().rev() {
                         self.buffer.push_front(segment_item);
                     }
 
                     return None;
                 }
             };
-            segment.items.push(segment_item);
+            let Segment::V0 { items } = &mut segment;
+            items.push(segment_item);
         }
 
         // We may have gotten more data than needed, check and move the excess into the next
@@ -202,41 +248,170 @@ impl Archiver {
             let spill_over = segment.encoded_size() - self.segment_size;
 
             if spill_over > 0 {
-                let segment_item = segment
-                    .items
+                let Segment::V0 { items } = &mut segment;
+                let segment_item = items
                     .pop()
                     .expect("Segment over segment size always has at least one item; qed");
 
                 let (segment_item, continuation_segment_item_bytes) = match segment_item {
                     SegmentItem::Block(mut bytes) => {
                         let split_point = bytes.len() - spill_over;
-                        let continuation_bytes = bytes[split_point..].to_vec();
+                        let block_continuation_bytes = bytes[split_point..].to_vec();
 
                         bytes.truncate(split_point);
 
-                        (SegmentItem::BlockStart(bytes), continuation_bytes)
+                        (SegmentItem::BlockStart(bytes), block_continuation_bytes)
                     }
                     SegmentItem::BlockStart(_) => {
-                        unreachable!("Block start never is the first element in the segment; qed",);
+                        unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                     }
-                    SegmentItem::Continuation(mut bytes) => {
-                        let split_point = bytes.len() - spill_over;
-                        let continuation_bytes = bytes[split_point..].to_vec();
+                    SegmentItem::BlockContinuation(mut block_bytes) => {
+                        let split_point = block_bytes.len() - spill_over;
+                        let block_continuation_bytes = block_bytes[split_point..].to_vec();
 
-                        bytes.truncate(split_point);
+                        block_bytes.truncate(split_point);
 
-                        (SegmentItem::Continuation(bytes), continuation_bytes)
+                        (
+                            SegmentItem::BlockContinuation(block_bytes),
+                            block_continuation_bytes,
+                        )
+                    }
+                    SegmentItem::RootBlock(_) => {
+                        unreachable!(
+                            "SegmentItem::RootBlock is always the first element in the buffer and \
+                            fits into the segment; qed",
+                        );
                     }
                 };
 
                 // Push back shortened segment item
-                segment.items.push(segment_item);
+                items.push(segment_item);
                 // Push continuation element back into the buffer where removed segment item was
-                self.buffer
-                    .push_front(SegmentItem::Continuation(continuation_segment_item_bytes));
+                self.buffer.push_front(SegmentItem::BlockContinuation(
+                    continuation_segment_item_bytes,
+                ));
             }
         }
 
         Some(segment)
     }
+
+    // Take segment as an input, apply necessary transformations and produce archived segment
+    fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
+        let segment = segment.encode();
+        assert_eq!(
+            segment.len(),
+            self.segment_size,
+            "Segment must always be of correct size",
+        );
+
+        fn slice_to_arrays(slice: &[u8]) -> Vec<[u8; 2]> {
+            slice
+                .chunks_exact(2)
+                .map(|s| s.try_into().unwrap())
+                .collect()
+        }
+
+        let data_shards: Vec<Vec<[u8; 2]>> = segment
+            .chunks_exact(self.record_size)
+            .map(slice_to_arrays)
+            .collect();
+
+        drop(segment);
+
+        let mut parity_shards: Vec<Vec<[u8; 2]>> =
+            iter::repeat(vec![[0u8; 2]; self.record_size / 2])
+                .take(data_shards.len())
+                .collect();
+
+        // Apply erasure coding to to create parity shards/records
+        self.reed_solomon
+            .encode_sep(&data_shards, &mut parity_shards)
+            .expect("Encoding is running with fixed parameters and should never fail");
+
+        // Combine data and parity records back into vectors for further processing
+        let records: Vec<Vec<u8>> = data_shards
+            .into_iter()
+            .chain(parity_shards)
+            .map(|shard| {
+                let mut record = Vec::with_capacity(self.record_size);
+
+                for chunk in shard {
+                    record.extend_from_slice(&chunk);
+                }
+
+                record
+            })
+            .collect();
+
+        // Build a Merkle tree over data and parity records
+        let merkle_tree = Sha256MerkleTree::from_data(records.iter())
+            .expect("This version of the tree from the library never returns error; qed");
+
+        // Take records, combine them with witnesses (Merkle proofs) to produce data and parity
+        // pieces
+        let pieces: Vec<Piece> = records
+            .into_iter()
+            .enumerate()
+            .map(|(index, record)| {
+                let proof = merkle_tree
+                    .gen_proof(index)
+                    .expect("This version of the tree from the library never returns error; qed");
+                let mut piece: Piece = [0u8; PIECE_SIZE];
+
+                piece.as_mut().write_all(&record).expect(
+                    "With correct archiver parameters record is always smaller than \
+                        piece size; qed",
+                );
+                drop(record);
+
+                // The first lemma element is root and the last is the item itself, we skip
+                // both here
+                piece[self.record_size..]
+                    .chunks_exact_mut(1 + mem::size_of::<Sha256Hash>())
+                    .zip_eq(proof.path())
+                    .zip_eq(proof.lemma().iter().skip(1).rev().skip(1).rev())
+                    .for_each(|((witness_chunk, path), lemma)| {
+                        witness_chunk[0] = *path as u8;
+                        witness_chunk[1..].as_mut().write_all(lemma).expect(
+                            "With correct archiver parameters there should be just enough \
+                                space to write a witness after this; qed",
+                        );
+                    });
+
+                piece.try_into().expect(
+                    "With correct archiver parameters piece should always be of a correct \
+                        size after this; qed",
+                )
+            })
+            .collect();
+
+        let segment_index = self.segment_index;
+        let merkle_tree_root = merkle_tree.root();
+
+        // Now produce root block
+        let root_block = RootBlock::V0 {
+            segment_index,
+            merkle_tree_root,
+            prev_root_block_hash: self.prev_root_block_hash,
+        };
+
+        let root_block_hash = root_block.hash();
+
+        // Update state
+        self.segment_index = segment_index + 1;
+        self.prev_root_block_hash = root_block_hash;
+
+        // Add root block to the beginning of the buffer to be the first thing included in the next
+        // segment
+        self.buffer.push_front(SegmentItem::RootBlock(root_block));
+
+        ArchivedSegment {
+            segment_index,
+            root_block_hash,
+            pieces,
+        }
+    }
 }
+
+// TODO: Tests

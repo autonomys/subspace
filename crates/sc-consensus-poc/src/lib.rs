@@ -46,6 +46,7 @@
 //! primary blocks in the chain. We will pick the heaviest chain (more
 //! blocks) and will go with the longest one in case of a tie.
 #![feature(try_blocks)]
+#![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 use crate::archiver::Archiver;
@@ -98,7 +99,7 @@ pub use sp_consensus_poc::{
     POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
+use sp_consensus_spartan::spartan::{Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -1749,6 +1750,8 @@ where
         match import_result {
             Ok(import_result) => {
                 self.imported_block_notification_sender.notify(|| number);
+                // TODO: Wait for Archived segment and insert extrinsic with root block hash into
+                //  transaction pool
                 Ok(import_result)
             }
             Err(error) => {
@@ -1902,11 +1905,13 @@ where
         "poc-archiver",
         Box::pin({
             // TODO: Move these constants somewhere more appropriate and adjust if necessary
-            const SEGMENT_VERSION: u8 = 0;
             const CONFIRMATION_DEPTH_K: u32 = 10;
-            const RECORD_SIZE: u32 = 3840;
-            const WITNESS_SIZE: u32 = 3840;
+            const HASH_OUTPUT_BYTES: u32 = 32;
+            // This is a nice power of 2 for Merkle Tree
             const MERKLE_NUM_LEAVES: u32 = 256;
+            // `+1` corresponds to the path boolean for every hash
+            const WITNESS_SIZE: u32 = (1 + HASH_OUTPUT_BYTES) * MERKLE_NUM_LEAVES.log2();
+            const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
             const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
             let mut imported_block_notification_stream =
@@ -1914,12 +1919,8 @@ where
             let client = Arc::clone(&client);
 
             async move {
-                let mut archiver = Archiver::new(
-                    SEGMENT_VERSION,
-                    RECORD_SIZE,
-                    WITNESS_SIZE,
-                    RECORDED_HISTORY_SEGMENT_SIZE,
-                );
+                let mut archiver =
+                    Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
 
                 while let Some(block_number) = imported_block_notification_stream.next().await {
                     let block_to_archive =
@@ -1937,7 +1938,8 @@ where
                         .expect("Older block by number should always exist; qed")
                         .expect("Older block by number should always exist; qed");
 
-                    archiver.add_block(block);
+                    let archived_segments = archiver.add_block(block);
+                    // TODO: Use above
                 }
             }
         }),

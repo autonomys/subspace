@@ -48,8 +48,10 @@ rand = "0.7.2"
 merlin = "2.0"
 derive_more = "0.99.16"
 async-trait = "0.1.51"
-ring = "0.16"
+itertools = "0.10.1"
+merkletree = "0.21.0"
 reed-solomon-erasure = { version = "4.0.2", features = ["simd-accel"] }
+ring = "0.16"
 
 [dev-dependencies]
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
