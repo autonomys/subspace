@@ -1,6 +1,6 @@
-import dotenv from "dotenv";
+import * as dotenv from "dotenv";
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { getAccount } from "./account.mjs";
+import { getAccount } from "./account";
 
 dotenv.config();
 
