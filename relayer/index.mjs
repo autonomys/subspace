@@ -34,6 +34,8 @@ const types = {
 
     const block = await sourceApi.rpc.chain.getBlock(hash);
 
+    // TODO: check size - if too big reject
+
     const txHash = await targetApi.tx.feeds
       .put(block.toString())
       // it is required to specify nonce, otherwise transaction within same block will be rejected
