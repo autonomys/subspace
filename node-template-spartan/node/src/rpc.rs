@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
 use sc_consensus_poc::notification::SubspaceNotificationStream;
-use sc_consensus_poc::NewSlotNotification;
+use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
 pub use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -29,6 +29,9 @@ pub struct FullDeps<C, P> {
     pub subscription_executor: SubscriptionTaskExecutor,
     /// A stream with notifications about new slot arrival with ability to send solution back
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    /// A stream with notifications about archived segment creation
+    pub archived_segment_notification_stream:
+        SubspaceNotificationStream<ArchivedSegmentNotification>,
 }
 
 /// Instantiate all full RPC extensions.
@@ -52,6 +55,7 @@ where
         deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
+        archived_segment_notification_stream,
     } = deps;
 
     io.extend_with(SystemApi::to_delegate(FullSystem::new(
@@ -68,6 +72,7 @@ where
         sc_consensus_poc_rpc::PoCRpcHandler::new(
             subscription_executor,
             new_slot_notification_stream,
+            archived_segment_notification_stream,
         ),
     ));
 

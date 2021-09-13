@@ -49,7 +49,7 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::Archiver;
+use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::mpsc::{channel, Receiver, Sender};
@@ -99,7 +99,7 @@ pub use sp_consensus_poc::{
     POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
+use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -140,6 +140,15 @@ pub struct NewSlotNotification {
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot
     pub response_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
+}
+
+/// Archived segments notification with new pieces
+#[derive(Debug, Clone)]
+pub struct ArchivedSegmentNotification {
+    /// Segment index
+    pub segment_index: u64,
+    /// Pieces that correspond to this segment
+    pub pieces: Vec<Piece>,
 }
 
 /// PoC epoch information
@@ -1114,6 +1123,8 @@ pub struct PoCLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream: SubspaceNotificationStream<NumberFor<Block>>,
 }
 
@@ -1131,6 +1142,13 @@ impl<Block: BlockT> PoCLink<Block> {
     /// Get stream with notifications about new slot arrival with ability to send solution back
     pub fn new_slot_notification_stream(&self) -> SubspaceNotificationStream<NewSlotNotification> {
         self.new_slot_notification_stream.clone()
+    }
+
+    /// Get stream with notifications about archived segment creation
+    pub fn archived_segment_notification_stream(
+        &self,
+    ) -> SubspaceNotificationStream<ArchivedSegmentNotification> {
+        self.archived_segment_notification_stream.clone()
     }
 }
 
@@ -1830,6 +1848,8 @@ where
 
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("poc_new_slot_notification_stream");
+    let (archived_segment_notification_sender, archived_segment_notification_stream) =
+        notification::channel("poc_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
         notification::channel("poc_imported_block_notification_stream");
 
@@ -1838,6 +1858,8 @@ where
         config: config.clone(),
         new_slot_notification_sender,
         new_slot_notification_stream,
+        archived_segment_notification_sender,
+        archived_segment_notification_stream,
         imported_block_notification_stream,
     };
 
@@ -1916,6 +1938,8 @@ where
 
             let mut imported_block_notification_stream =
                 poc_link.imported_block_notification_stream.subscribe();
+            let archived_segment_notification_sender =
+                poc_link.archived_segment_notification_sender.clone();
             let client = Arc::clone(&client);
 
             async move {
@@ -1938,8 +1962,21 @@ where
                         .expect("Older block by number should always exist; qed")
                         .expect("Older block by number should always exist; qed");
 
-                    let archived_segments = archiver.add_block(block);
-                    // TODO: Use above
+                    for archived_segment in archiver.add_block(block) {
+                        let ArchivedSegment {
+                            segment_index,
+                            root_block_hash,
+                            pieces,
+                        } = archived_segment;
+                        archived_segment_notification_sender.notify(move || {
+                            ArchivedSegmentNotification {
+                                segment_index,
+                                pieces,
+                            }
+                        });
+
+                        // TODO: Reply back to block import with root block hash and segment index
+                    }
                 }
             }
         }),

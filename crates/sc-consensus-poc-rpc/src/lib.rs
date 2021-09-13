@@ -25,7 +25,7 @@ use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, Subscripti
 use log::warn;
 use parking_lot::Mutex;
 use sc_consensus_poc::notification::SubspaceNotificationStream;
-use sc_consensus_poc::NewSlotNotification;
+use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use serde::{Deserialize, Serialize};
 use sp_consensus_poc::digests::Solution;
 use sp_consensus_poc::{FarmerId, Slot};
@@ -51,6 +51,15 @@ pub struct RpcNewSlotInfo {
     pub next_salt: Option<[u8; 8]>,
     /// Acceptable solution range
     pub solution_range: u64,
+}
+
+/// Information about new slot that just arrived
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcArchivedSegment {
+    /// Segment index
+    pub segment_index: u64,
+    /// Pieces that correspond to this segment
+    pub pieces: Vec<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -100,6 +109,30 @@ pub trait PoCApi {
         metadata: Option<Self::Metadata>,
         id: SubscriptionId,
     ) -> RpcResult<bool>;
+
+    /// Archived segment subscription
+    #[pubsub(
+        subscription = "poc_archived_segment",
+        subscribe,
+        name = "poc_subscribeArchivedSegment"
+    )]
+    fn subscribe_archived_segment(
+        &self,
+        metadata: Self::Metadata,
+        subscriber: Subscriber<RpcArchivedSegment>,
+    );
+
+    /// Unsubscribe from archived segment subscription.
+    #[pubsub(
+        subscription = "poc_archived_segment",
+        unsubscribe,
+        name = "poc_unsubscribeArchivedSegment"
+    )]
+    fn unsubscribe_archived_segment(
+        &self,
+        metadata: Option<Self::Metadata>,
+        id: SubscriptionId,
+    ) -> RpcResult<bool>;
 }
 
 #[derive(Default)]
@@ -112,6 +145,7 @@ struct ResponseSenders {
 pub struct PoCRpcHandler {
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     response_senders: Arc<Mutex<ResponseSenders>>,
 }
 
@@ -127,6 +161,9 @@ impl PoCRpcHandler {
     pub fn new<E>(
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+        archived_segment_notification_stream: SubspaceNotificationStream<
+            ArchivedSegmentNotification,
+        >,
     ) -> Self
     where
         E: Spawn + Send + Sync + 'static,
@@ -134,6 +171,7 @@ impl PoCRpcHandler {
         Self {
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
+            archived_segment_notification_stream,
             response_senders: Arc::default(),
         }
     }
@@ -172,7 +210,7 @@ impl PoCApi for PoCRpcHandler {
     ) {
         self.subscription_manager.add(
             subscriber,
-            move |sink: jsonrpc_pubsub::typed::Sink<RpcNewSlotInfo>| {
+            |sink: jsonrpc_pubsub::typed::Sink<RpcNewSlotInfo>| {
                 let executor = self.subscription_manager.executor().clone();
                 let response_senders = Arc::clone(&self.response_senders);
 
@@ -244,6 +282,42 @@ impl PoCApi for PoCRpcHandler {
     }
 
     fn unsubscribe_slot_info(
+        &self,
+        _metadata: Option<Self::Metadata>,
+        id: SubscriptionId,
+    ) -> RpcResult<bool> {
+        Ok(self.subscription_manager.cancel(id))
+    }
+
+    fn subscribe_archived_segment(
+        &self,
+        _metadata: Self::Metadata,
+        subscriber: Subscriber<RpcArchivedSegment>,
+    ) {
+        self.subscription_manager.add(
+            subscriber,
+            |sink: jsonrpc_pubsub::typed::Sink<RpcArchivedSegment>| {
+                self.archived_segment_notification_stream
+                    .subscribe()
+                    .map(move |archived_segment_notification| {
+                        let ArchivedSegmentNotification {
+                            segment_index,
+                            pieces,
+                        } = archived_segment_notification;
+
+                        // This will be sent to the farmer
+                        Ok(Ok(RpcArchivedSegment {
+                            segment_index,
+                            pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
+                        }))
+                    })
+                    .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
+                    .map(|_| ())
+            },
+        );
+    }
+
+    fn unsubscribe_archived_segment(
         &self,
         _metadata: Option<Self::Metadata>,
         id: SubscriptionId,

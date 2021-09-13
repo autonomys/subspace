@@ -171,6 +171,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
     let prometheus_registry = config.prometheus_registry().cloned();
 
     let new_slot_notification_stream = poc_link.new_slot_notification_stream();
+    let archived_segment_notification_stream = poc_link.archived_segment_notification_stream();
 
     if role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -241,6 +242,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
                 deny_unsafe,
                 subscription_executor,
                 new_slot_notification_stream: new_slot_notification_stream.clone(),
+                archived_segment_notification_stream: archived_segment_notification_stream.clone(),
             };
 
             Ok(crate::rpc::create_full(deps))
