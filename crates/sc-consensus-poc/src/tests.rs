@@ -520,13 +520,13 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
             while let Some(NewSlotNotification {
                 new_slot_info,
-                mut response_sender,
+                mut solution_sender,
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
                     let tag: Tag = create_tag(&encoding, &new_slot_info.salt);
 
-                    let _ = response_sender
+                    let _ = solution_sender
                         .send((
                             Solution {
                                 public_key: FarmerId::from_slice(&keypair.public.to_bytes()),

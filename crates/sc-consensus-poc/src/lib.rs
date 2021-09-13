@@ -52,8 +52,7 @@
 use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
-use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 use log::{debug, info, log, trace, warn};
 use prometheus_endpoint::Registry;
@@ -150,7 +149,7 @@ pub struct NewSlotNotification {
     /// New slot information
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot
-    pub response_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
+    pub solution_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
 }
 
 /// Archived segments notification with new pieces
@@ -531,7 +530,7 @@ where
         can_author_with,
     );
 
-    let (worker_tx, worker_rx) = channel(HANDLE_BUFFER_SIZE);
+    let (worker_tx, worker_rx) = mpsc::channel(HANDLE_BUFFER_SIZE);
 
     let answer_requests = answer_requests(
         worker_rx,
@@ -546,7 +545,7 @@ where
 }
 
 async fn answer_requests<B: BlockT, C>(
-    mut request_rx: Receiver<PoCRequest<B>>,
+    mut request_rx: mpsc::Receiver<PoCRequest<B>>,
     genesis_config: sc_consensus_slots::SlotDuration<PoCGenesisConfiguration>,
     client: Arc<C>,
     epoch_changes: SharedEpochChanges<B, Epoch>,
@@ -613,7 +612,7 @@ pub enum PoCRequest<B: BlockT> {
 
 /// A handle to the PoC worker for issuing requests.
 #[derive(Clone)]
-pub struct PoCWorkerHandle<B: BlockT>(Sender<PoCRequest<B>>);
+pub struct PoCWorkerHandle<B: BlockT>(mpsc::Sender<PoCRequest<B>>);
 
 impl<B: BlockT> PoCWorkerHandle<B> {
     /// Send a request to the PoC service.
@@ -780,7 +779,7 @@ where
                 .new_slot_notification_sender
                 .notify(|| NewSlotNotification {
                     new_slot_info,
-                    response_sender: solution_sender,
+                    solution_sender,
                 });
 
             PreparedData {
