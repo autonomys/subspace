@@ -1,5 +1,5 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { Observable, merge } from "rxjs";
+import { merge } from "rxjs";
 import { concatMap, map } from "rxjs/operators";
 
 import { getAccount } from "./account";
