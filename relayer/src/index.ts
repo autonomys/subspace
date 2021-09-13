@@ -32,6 +32,7 @@ const types = {
 
   sourceApi.rx.rpc.chain
     .subscribeFinalizedHeads()
+    // use pipe and concatMap to process events one by one, otherwise multiple headers arrive simultaneously and there will be risk of having same nonce for multiple txs
     .pipe(
       concatMap(async ({ hash }) => {
         console.log(`Finalized block hash: ${hash}`);
