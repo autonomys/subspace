@@ -1,12 +1,8 @@
-import * as dotenv from "dotenv";
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { concatMap } from "rxjs/operators";
+
 import { getAccount } from "./account";
-
-dotenv.config();
-
-const sourceProvider = new WsProvider(process.env.SOURCE_CHAIN_URL);
-const targetProvider = new WsProvider(process.env.TARGET_CHAIN_URL);
+import config from "./config";
 
 // TODO: use typedefs from subspace.js
 const types = {
@@ -15,6 +11,9 @@ const types = {
 
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
+  const sourceProvider = new WsProvider(config.sourceChainUrls[0]);
+  const targetProvider = new WsProvider(config.targetChainUrl);
+
   const sourceApi = await ApiPromise.create({
     provider: sourceProvider,
   });
@@ -25,7 +24,7 @@ const types = {
   });
 
   // use getAccount func because we cannot create keyring instance before API is instanciated
-  const signer = getAccount(process.env.ACCOUNT_SEED);
+  const signer = getAccount(config.accountSeed);
 
   // TODO: add old block processing
 
