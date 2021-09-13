@@ -372,8 +372,9 @@ impl Archiver {
                     .zip_eq(proof.path())
                     .zip_eq(proof.lemma().iter().skip(1).rev().skip(1).rev())
                     .for_each(|((witness_chunk, path), lemma)| {
+                        assert_eq!(witness_chunk.len(), self.witness_size);
                         witness_chunk[0] = *path as u8;
-                        witness_chunk[1..].as_mut().write_all(lemma).expect(
+                        (&mut witness_chunk[1..]).write_all(lemma).expect(
                             "With correct archiver parameters there should be just enough \
                                 space to write a witness after this; qed",
                         );
