@@ -62,6 +62,20 @@ pub struct RpcArchivedSegment {
     pub pieces: Vec<Vec<u8>>,
 }
 
+impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
+    fn from(archived_segment_notification: ArchivedSegmentNotification) -> Self {
+        let ArchivedSegmentNotification {
+            segment_index,
+            pieces,
+        } = archived_segment_notification;
+
+        Self {
+            segment_index,
+            pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RpcSolution {
     pub public_key: [u8; 32],
@@ -208,77 +222,74 @@ impl PoCApi for PoCRpcHandler {
         _metadata: Self::Metadata,
         subscriber: Subscriber<RpcNewSlotInfo>,
     ) {
-        self.subscription_manager.add(
-            subscriber,
-            |sink: jsonrpc_pubsub::typed::Sink<RpcNewSlotInfo>| {
-                let executor = self.subscription_manager.executor().clone();
-                let response_senders = Arc::clone(&self.response_senders);
+        self.subscription_manager.add(subscriber, |sink| {
+            let executor = self.subscription_manager.executor().clone();
+            let response_senders = Arc::clone(&self.response_senders);
 
-                self.new_slot_notification_stream
-                    .subscribe()
-                    .map(move |new_slot_notification| {
-                        let NewSlotNotification {
-                            new_slot_info,
-                            mut response_sender,
-                        } = new_slot_notification;
+            self.new_slot_notification_stream
+                .subscribe()
+                .map(move |new_slot_notification| {
+                    let NewSlotNotification {
+                        new_slot_info,
+                        mut response_sender,
+                    } = new_slot_notification;
 
-                        let (solution_sender, solution_receiver) = async_oneshot::oneshot();
+                    let (solution_sender, solution_receiver) = async_oneshot::oneshot();
 
-                        // Store solution sender so that we can retrieve it when solution comes from
-                        // the farmer
-                        {
-                            let mut response_senders = response_senders.lock();
+                    // Store solution sender so that we can retrieve it when solution comes from
+                    // the farmer
+                    {
+                        let mut response_senders = response_senders.lock();
 
-                            if response_senders.current_slot != new_slot_info.slot {
-                                response_senders.current_slot = new_slot_info.slot;
-                                response_senders.senders.clear();
-                            }
-
-                            response_senders.senders.push(solution_sender);
+                        if response_senders.current_slot != new_slot_info.slot {
+                            response_senders.current_slot = new_slot_info.slot;
+                            response_senders.senders.clear();
                         }
 
-                        // Wait for solutions and transform proposed proof of space solutions into
-                        // data structure `sc-consensus-poc` expects
-                        let forward_solution_fut = async move {
-                            if let Ok(proposed_proof_of_space_result) = solution_receiver.await {
-                                if let Some(solution) = proposed_proof_of_space_result.solution {
-                                    let solution = Solution {
-                                        public_key: FarmerId::from_slice(&solution.public_key),
-                                        nonce: solution.nonce,
-                                        encoding: solution.encoding,
-                                        signature: solution.signature,
-                                        tag: solution.tag,
-                                    };
+                        response_senders.senders.push(solution_sender);
+                    }
 
-                                    let _ = response_sender
-                                        .send((solution, proposed_proof_of_space_result.secret_key))
-                                        .await;
-                                }
+                    // Wait for solutions and transform proposed proof of space solutions into
+                    // data structure `sc-consensus-poc` expects
+                    let forward_solution_fut = async move {
+                        if let Ok(proposed_proof_of_space_result) = solution_receiver.await {
+                            if let Some(solution) = proposed_proof_of_space_result.solution {
+                                let solution = Solution {
+                                    public_key: FarmerId::from_slice(&solution.public_key),
+                                    nonce: solution.nonce,
+                                    encoding: solution.encoding,
+                                    signature: solution.signature,
+                                    tag: solution.tag,
+                                };
+
+                                let _ = response_sender
+                                    .send((solution, proposed_proof_of_space_result.secret_key))
+                                    .await;
                             }
-                        };
+                        }
+                    };
 
-                        // Run above future with timeout
-                        let _ = executor.spawn(
-                            future::select(
-                                futures_timer::Delay::new(SOLUTION_TIMEOUT),
-                                Box::pin(forward_solution_fut),
-                            )
-                            .map(|_| {}),
-                        );
+                    // Run above future with timeout
+                    let _ = executor.spawn(
+                        future::select(
+                            futures_timer::Delay::new(SOLUTION_TIMEOUT),
+                            Box::pin(forward_solution_fut),
+                        )
+                        .map(|_| ()),
+                    );
 
-                        // This will be sent to the farmer
-                        Ok(Ok(RpcNewSlotInfo {
-                            slot_number: new_slot_info.slot.into(),
-                            challenge: new_slot_info.challenge,
-                            salt: new_slot_info.salt,
-                            next_salt: new_slot_info.next_salt,
-                            solution_range: new_slot_info.solution_range,
-                        }))
-                    })
-                    .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
-                    .map(|_| ())
-            },
-        );
+                    // This will be sent to the farmer
+                    Ok(Ok(RpcNewSlotInfo {
+                        slot_number: new_slot_info.slot.into(),
+                        challenge: new_slot_info.challenge,
+                        salt: new_slot_info.salt,
+                        next_salt: new_slot_info.next_salt,
+                        solution_range: new_slot_info.solution_range,
+                    }))
+                })
+                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
+                .map(|_| ())
+        });
     }
 
     fn unsubscribe_slot_info(
@@ -294,27 +305,16 @@ impl PoCApi for PoCRpcHandler {
         _metadata: Self::Metadata,
         subscriber: Subscriber<RpcArchivedSegment>,
     ) {
-        self.subscription_manager.add(
-            subscriber,
-            |sink: jsonrpc_pubsub::typed::Sink<RpcArchivedSegment>| {
-                self.archived_segment_notification_stream
-                    .subscribe()
-                    .map(move |archived_segment_notification| {
-                        let ArchivedSegmentNotification {
-                            segment_index,
-                            pieces,
-                        } = archived_segment_notification;
-
-                        // This will be sent to the farmer
-                        Ok(Ok(RpcArchivedSegment {
-                            segment_index,
-                            pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
-                        }))
-                    })
-                    .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
-                    .map(|_| ())
-            },
-        );
+        self.subscription_manager.add(subscriber, |sink| {
+            self.archived_segment_notification_stream
+                .subscribe()
+                .map(|archived_segment_notification| {
+                    // This will be sent to the farmer
+                    Ok(Ok(archived_segment_notification.into()))
+                })
+                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
+                .map(|_| ())
+        });
     }
 
     fn unsubscribe_archived_segment(
