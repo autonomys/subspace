@@ -17,7 +17,6 @@ const types = {
 (async () => {
   const sourceApi = await ApiPromise.create({
     provider: sourceProvider,
-    types,
   });
 
   const targetApi = await ApiPromise.create({
