@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import { ApiPromise, WsProvider } from "@polkadot/api";
+import { concatMap } from "rxjs/operators";
 import { getAccount } from "./account";
 
 dotenv.config();
@@ -29,20 +30,25 @@ const types = {
 
   // TODO: add old block processing
 
-  await sourceApi.rpc.chain.subscribeFinalizedHeads(async ({ hash }) => {
-    console.log(`Finalized block hash: ${hash}`);
+  sourceApi.rx.rpc.chain
+    .subscribeFinalizedHeads()
+    .pipe(
+      concatMap(async ({ hash }) => {
+        console.log(`Finalized block hash: ${hash}`);
 
-    const block = await sourceApi.rpc.chain.getBlock(hash);
+        const block = await sourceApi.rpc.chain.getBlock(hash);
 
-    // TODO: check size - if too big reject
+        // TODO: check size - if too big reject
 
-    const txHash = await targetApi.tx.feeds
-      .put(block.toString())
-      // it is required to specify nonce, otherwise transaction within same block will be rejected
-      // if nonce is -1 API will do the lookup for the right value
-      // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-      .signAndSend(signer, { nonce: -1 }); 
+        const txHash = await targetApi.tx.feeds
+          .put(block.toString())
+          // it is required to specify nonce, otherwise transaction within same block will be rejected
+          // if nonce is -1 API will do the lookup for the right value
+          // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
+          .signAndSend(signer, { nonce: -1 });
 
-    console.log(`Transaction sent: ${txHash}`);
-  });
+        console.log(`Transaction sent: ${txHash}`);
+      })
+    )
+    .subscribe();
 })();
