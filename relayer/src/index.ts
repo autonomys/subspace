@@ -14,6 +14,11 @@ const types = {
 (async () => {
   const targetProvider = new WsProvider(config.targetChainUrl);
 
+  const targetApi = await ApiPromise.create({
+    provider: targetProvider,
+    types,
+  });
+
   const sourceApis = await Promise.all(
     config.sourceChainUrls.map(async (url) => {
       const provider = new WsProvider(url);
@@ -25,38 +30,33 @@ const types = {
     })
   );
 
-  const targetApi = await ApiPromise.create({
-    provider: targetProvider,
-    types,
-  });
-
   // use getAccount func because we cannot create keyring instance before API is instanciated
   const signer = getAccount(config.accountSeed);
 
   // TODO: add old block processing
-  const observables = sourceApis.map((api) => {
+  const chainObservables = sourceApis.map((api) => {
     return api.rx.rpc.chain.subscribeFinalizedHeads().pipe(
-      map(async ({ hash }) => {
+      concatMap(async ({ hash }) => {
         const chain = await api.rpc.system.chain();
         const block = await api.rpc.chain.getBlock(hash);
         console.log(`Chain ${chain}: Finalized block hash: ${hash}`);
-        return block;
+        return { ...block.toJSON(), chain };
       })
     );
   });
 
-  merge(...observables)
+  merge(...chainObservables)
     // use pipe and concatMap to process events one by one, otherwise multiple headers arrive simultaneously and there will be risk of having same nonce for multiple txs
     .pipe(
       concatMap(async (block) => {
         // TODO: check size - if too big reject
         const txHash = await targetApi.tx.feeds
-          .put(block.toString())
+          .put(JSON.stringify(block))
           // it is required to specify nonce, otherwise transaction within same block will be rejected
           // if nonce is -1 API will do the lookup for the right value
           // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
           .signAndSend(signer, { nonce: -1 });
-        console.log(`Transaction sent: ${txHash}`);
+        console.log(`Chain ${block.chain}: Transaction sent: ${txHash}`);
       })
     )
     .subscribe();
