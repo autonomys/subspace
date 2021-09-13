@@ -1,10 +1,14 @@
 //! This module includes Merkle Tree implementation used in Subspace
 
-use itertools::Itertools;
+use crate::{HASH_OUTPUT_BYTES, MERKLE_NUM_LEAVES, RECORD_SIZE, WITNESS_SIZE};
 use ring::digest;
+use sp_consensus_spartan::spartan::Piece;
+use std::borrow::Cow;
 use std::convert::TryInto;
 use std::hash::Hasher;
-use std::mem;
+use std::iter;
+use std::ops::Deref;
+use typenum::{U0, U2};
 
 type Sha256Hash = [u8; 32];
 
@@ -46,23 +50,94 @@ impl merkletree::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
     }
 }
 
-// TODO: Custom struct that supports verification with root and leaf nodes removed
 type InternalMerkleTree = merkletree::merkle::MerkleTree<
     Sha256Hash,
     Sha256Algorithm,
     merkletree::store::VecStore<Sha256Hash>,
 >;
 
-/// Merkle Proof
+/// Merkle Proof-based witness
 #[derive(Debug, Clone)]
-pub struct Proof {
-    /// Path of this proof
-    pub path: Vec<u8>,
-    /// Lemma of this proof
-    pub lemma: Vec<Sha256Hash>,
+pub struct Witness<'a>(Cow<'a, [u8]>);
+
+impl<'a> Witness<'a> {
+    /// Create witness from vector of bytes, will return bytes back as error in case length is
+    /// incorrect
+    pub fn new(bytes: Cow<'a, [u8]>) -> Result<Self, Cow<'a, [u8]>> {
+        if bytes.len() != WITNESS_SIZE {
+            return Err(bytes);
+        }
+
+        Ok(Self(bytes))
+    }
+
+    /// Check whether witness is valid for a specific leaf hash (none of these parameters are stored
+    /// in the witness itself) given its index within a segment
+    pub fn is_valid(&self, root: Sha256Hash, index: usize, leaf_hash: Sha256Hash) -> bool {
+        if index >= MERKLE_NUM_LEAVES {
+            return false;
+        }
+
+        // Reconstruct lemma for verification
+        let lemma = iter::once(root)
+            .chain(
+                self.0
+                    .chunks_exact(HASH_OUTPUT_BYTES)
+                    .map(|hash| -> Sha256Hash {
+                        hash.try_into()
+                            .expect("Hash is always of correct length with above constant; qed")
+                    }),
+            )
+            .chain(iter::once(leaf_hash))
+            .collect();
+
+        // There is no path inside of witness, but by knowing index and number of leaves we can
+        // recover it
+        let path = {
+            let mut path = Vec::with_capacity(MERKLE_NUM_LEAVES as usize);
+            let mut mid_point = MERKLE_NUM_LEAVES;
+
+            for _ in 0..MERKLE_NUM_LEAVES {
+                mid_point /= 2;
+                path.push(if index <= mid_point { 0 } else { 1 });
+            }
+
+            // Path should go from leaves to the root, so let's reverse it
+            path.reverse();
+            path
+        };
+
+        let proof = merkletree::proof::Proof::<Sha256Hash, U2>::new::<U0, U0>(None, lemma, path)
+            .expect("Prepared data above are always correct; qed");
+
+        proof.validate::<Sha256Algorithm>().unwrap_or_default()
+    }
+
+    /// validate witness embedded within a piece
+    pub fn is_piece_valid(piece: &Piece, root: Sha256Hash, index: usize) -> bool {
+        let witness = Witness(Cow::Borrowed(&piece[RECORD_SIZE..]));
+        let leaf_hash = digest::digest(&digest::SHA256, &piece[..RECORD_SIZE])
+            .as_ref()
+            .try_into()
+            .expect("Sha256 output is always 32 bytes; qed");
+
+        witness.is_valid(root, index, leaf_hash)
+    }
 }
 
-// TODO: Proof verification, construction from witness
+impl<'a> Deref for Witness<'a> {
+    type Target = Cow<'a, [u8]>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> From<Witness<'a>> for Cow<'a, [u8]> {
+    fn from(witness: Witness<'a>) -> Self {
+        witness.0
+    }
+}
 
 /// Merkle Tree
 #[derive(Debug, Clone)]
@@ -101,35 +176,9 @@ impl MerkleTree {
         self.merkle_tree.root()
     }
 
-    /// Creates a proof for a leaf at specified index, returns error if leaf with such index doesn't
-    /// exist
-    pub fn get_proof(&self, index: usize) -> Result<Proof, ()> {
-        if index >= self.merkle_tree.leafs() {
-            return Err(());
-        }
-
-        let proof = self
-            .merkle_tree
-            .gen_proof(index)
-            .expect("This version of the tree from the library never returns error; qed");
-
-        Ok(Proof {
-            path: proof.path().iter().map(|p| *p as u8).collect(),
-            lemma: proof
-                .lemma()
-                .iter()
-                .skip(1)
-                .rev()
-                .skip(1)
-                .rev()
-                .cloned()
-                .collect(),
-        })
-    }
-
     /// Creates a Merkle Tree proof-based witness for a leaf at specified index, returns error if
     /// leaf with such index doesn't exist
-    pub fn get_witness(&self, index: usize) -> Result<Vec<u8>, ()> {
+    pub fn get_witness(&self, index: usize) -> Result<Witness<'static>, ()> {
         if index >= self.merkle_tree.leafs() {
             return Err(());
         }
@@ -139,18 +188,14 @@ impl MerkleTree {
             .gen_proof(index)
             .expect("This version of the tree from the library never returns error; qed");
 
-        let mut witness = Vec::with_capacity(
-            (1 + mem::size_of::<Sha256Hash>()) * self.merkle_tree.leafs().log2() as usize,
-        );
-        for (path, lemma) in proof
-            .path()
-            .iter()
-            .zip_eq(proof.lemma().iter().skip(1).rev().skip(1).rev())
-        {
-            witness.extend_from_slice(&[*path as u8]);
+        let mut witness = Vec::with_capacity(WITNESS_SIZE);
+
+        // The first lemma element is root and the last is the item itself, we skip both here
+        for lemma in proof.lemma().iter().skip(1).rev().skip(1).rev() {
             witness.extend_from_slice(lemma);
         }
 
-        Ok(witness)
+        Ok(Witness::new(witness.into())
+            .expect("Witness is never expected to have incorrect length"))
     }
 }

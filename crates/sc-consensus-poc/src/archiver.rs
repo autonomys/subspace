@@ -125,11 +125,7 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(record_size: u32, witness_size: u32, segment_size: u32) -> Self {
-        let record_size = record_size as usize;
-        let witness_size = witness_size as usize;
-        let segment_size = segment_size as usize;
-
+    pub(super) fn new(record_size: usize, witness_size: usize, segment_size: usize) -> Self {
         let empty_segment = Segment::V0 { items: Vec::new() };
         assert!(
             record_size > empty_segment.encoded_size(),
@@ -320,8 +316,6 @@ impl Archiver {
                 );
                 drop(record);
 
-                // The first lemma element is root and the last is the item itself, we skip
-                // both here
                 (&mut piece[self.record_size..]).write_all(&witness).expect(
                     "With correct archiver parameters there should be just enough space to write \
                     a witness; qed",

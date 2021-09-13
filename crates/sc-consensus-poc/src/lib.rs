@@ -120,6 +120,15 @@ pub mod notification;
 mod tests;
 mod verification;
 
+// TODO: Move these constants somewhere more appropriate and adjust if necessary
+const CONFIRMATION_DEPTH_K: u32 = 10;
+const HASH_OUTPUT_BYTES: usize = 32;
+// This is a nice power of 2 for Merkle Tree
+const MERKLE_NUM_LEAVES: usize = 256;
+const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2();
+const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
+const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
 pub struct NewSlotInfo {
@@ -1928,16 +1937,6 @@ where
     spawner.spawn_essential_blocking(
         "poc-archiver",
         Box::pin({
-            // TODO: Move these constants somewhere more appropriate and adjust if necessary
-            const CONFIRMATION_DEPTH_K: u32 = 10;
-            const HASH_OUTPUT_BYTES: u32 = 32;
-            // This is a nice power of 2 for Merkle Tree
-            const MERKLE_NUM_LEAVES: u32 = 256;
-            // `+1` corresponds to the path boolean for every hash
-            const WITNESS_SIZE: u32 = (1 + HASH_OUTPUT_BYTES) * MERKLE_NUM_LEAVES.log2();
-            const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-            const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
-
             let mut imported_block_notification_stream =
                 poc_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =

@@ -5621,7 +5621,6 @@ dependencies = [
  "derive_more",
  "fork-tree",
  "futures 0.3.17",
- "itertools",
  "log",
  "merkletree",
  "merlin 2.0.1",
@@ -5663,6 +5662,7 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
+ "typenum",
 ]
 
 [[package]]
