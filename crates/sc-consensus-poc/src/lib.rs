@@ -1984,6 +1984,7 @@ where
             let client = Arc::clone(&client);
 
             async move {
+                let mut last_archived_block = None;
                 let mut archiver =
                     Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
 
@@ -1997,6 +1998,18 @@ where
                                 continue;
                             }
                         };
+
+                    if let Some(last_archived_block) = &mut last_archived_block {
+                        if *last_archived_block >= block_to_archive {
+                            // This block was already archived, skip
+                            continue;
+                        }
+
+                        *last_archived_block = block_to_archive;
+                    } else {
+                        last_archived_block.replace(block_to_archive);
+                    }
+
                     debug!(target: "poc", "Archiving block {:?}", block_to_archive);
 
                     let id = BlockId::number(block_to_archive);
