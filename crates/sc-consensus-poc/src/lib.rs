@@ -49,12 +49,14 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{ArchivedSegment, Archiver};
+use crate::archiver::{ArchivedSegment, Archiver, RootBlock};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
-use futures::prelude::*;
+use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
 use log::{debug, info, log, trace, warn};
+use lru::LruCache;
+use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
 use ring::digest;
 use sc_client_api::{
@@ -102,10 +104,12 @@ use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CO
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_runtime::traits::One;
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
     traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
 };
+use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
@@ -1135,7 +1139,8 @@ pub struct PoCLink<Block: BlockT> {
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    imported_block_notification_stream: SubspaceNotificationStream<NumberFor<Block>>,
+    imported_block_notification_stream:
+        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1482,7 +1487,11 @@ pub struct PoCBlockImport<Block: BlockT, Client, I> {
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
-    imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
+    imported_block_notification_sender:
+        SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// validation
+    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
 impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I> {
@@ -1493,6 +1502,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I>
             epoch_changes: self.epoch_changes.clone(),
             config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
+            root_blocks: Arc::clone(&self.root_blocks),
         }
     }
 }
@@ -1503,7 +1513,10 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
         epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
         config: Config,
-        imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
+        imported_block_notification_sender: SubspaceNotificationSender<(
+            NumberFor<Block>,
+            mpsc::Sender<RootBlock>,
+        )>,
     ) -> Self {
         PoCBlockImport {
             client,
@@ -1511,6 +1524,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             epoch_changes,
             config,
             imported_block_notification_sender,
+            root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
         }
     }
 }
@@ -1774,12 +1788,27 @@ where
         };
 
         let import_result = self.inner.import_block(block, new_cache).await;
+        let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
 
         match import_result {
             Ok(import_result) => {
-                self.imported_block_notification_sender.notify(|| number);
-                // TODO: Wait for Archived segment and insert extrinsic with root block hash into
-                //  transaction pool
+                self.imported_block_notification_sender
+                    .notify(|| (number, root_block_sender.clone()));
+
+                let next_block_number = number + One::one();
+                while let Some(root_block) = root_block_receiver.next().await {
+                    let mut root_blocks = self.root_blocks.lock();
+                    match root_blocks.get_mut(&next_block_number) {
+                        Some(list) => {
+                            list.push(root_block);
+                        }
+                        None => {
+                            root_blocks.put(next_block_number, vec![root_block]);
+                        }
+                    }
+                    // TODO: Insert extrinsic with root block hash into transaction pool
+                }
+
                 Ok(import_result)
             }
             Err(error) => {
@@ -1946,7 +1975,9 @@ where
                 let mut archiver =
                     Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
 
-                while let Some(block_number) = imported_block_notification_stream.next().await {
+                while let Some((block_number, mut root_block_sender)) =
+                    imported_block_notification_stream.next().await
+                {
                     let block_to_archive =
                         match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
                             Some(block_to_archive) => block_to_archive,
@@ -1963,19 +1994,16 @@ where
                         .expect("Older block by number should always exist; qed");
 
                     for archived_segment in archiver.add_block(block) {
-                        let ArchivedSegment {
-                            segment_index,
-                            root_block_hash,
-                            pieces,
-                        } = archived_segment;
+                        let ArchivedSegment { root_block, pieces } = archived_segment;
+
                         archived_segment_notification_sender.notify(move || {
                             ArchivedSegmentNotification {
-                                segment_index,
+                                segment_index: root_block.segment_index(),
                                 pieces,
                             }
                         });
 
-                        // TODO: Reply back to block import with root block hash and segment index
+                        let _ = root_block_sender.send(root_block).await;
                     }
                 }
             }

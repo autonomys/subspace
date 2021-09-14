@@ -39,8 +39,8 @@ enum Segment {
 }
 
 /// Root block for a specific segment
-#[derive(Debug, Encode)]
-enum RootBlock {
+#[derive(Debug, Encode, Copy, Clone)]
+pub enum RootBlock {
     // V0 of the root block data structure
     #[codec(index = 0)]
     V0 {
@@ -54,11 +54,28 @@ enum RootBlock {
 }
 
 impl RootBlock {
-    fn hash(&self) -> Sha256Hash {
+    /// Hash of the whole root block
+    pub fn hash(&self) -> Sha256Hash {
         digest::digest(&digest::SHA256, &self.encode())
             .as_ref()
             .try_into()
             .expect("Sha256 output is always 32 bytes; qed")
+    }
+
+    /// Segment index
+    pub fn segment_index(&self) -> u64 {
+        match self {
+            RootBlock::V0 { segment_index, .. } => *segment_index,
+        }
+    }
+
+    /// Merkle tree root of all pieces within segment
+    pub fn merkle_tree_root(&self) -> Sha256Hash {
+        match self {
+            RootBlock::V0 {
+                merkle_tree_root, ..
+            } => *merkle_tree_root,
+        }
     }
 }
 
@@ -82,10 +99,8 @@ enum SegmentItem {
 #[derive(Debug, Encode, Clone)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 pub(super) struct ArchivedSegment {
-    /// Segment index
-    pub(super) segment_index: u64,
-    /// Root block hash
-    pub(super) root_block_hash: Sha256Hash,
+    /// Root block of the segment
+    pub(super) root_block: RootBlock,
     /// Pieces that correspond to this segment
     pub(super) pieces: Vec<Piece>,
 }
@@ -348,11 +363,7 @@ impl Archiver {
         // segment
         self.buffer.push_front(SegmentItem::RootBlock(root_block));
 
-        ArchivedSegment {
-            segment_index,
-            root_block_hash,
-            pieces,
-        }
+        ArchivedSegment { root_block, pieces }
     }
 }
 

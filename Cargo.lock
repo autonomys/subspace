@@ -5622,6 +5622,7 @@ dependencies = [
  "fork-tree",
  "futures 0.3.17",
  "log",
+ "lru",
  "merkletree",
  "merlin 2.0.1",
  "num-bigint",
