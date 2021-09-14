@@ -34,19 +34,21 @@ const types = {
   const signer = getAccount(config.accountSeed);
 
   // TODO: add old block processing
-  const chainObservables = sourceApis.map((api) => {
+  const blockSubscriptions = sourceApis.map((api) => {
+    // use pipe and concatMap to process events one by one
     return api.rx.rpc.chain.subscribeFinalizedHeads().pipe(
       concatMap(async ({ hash }) => {
         const chain = await api.rpc.system.chain();
         const block = await api.rpc.chain.getBlock(hash);
         console.log(`Chain ${chain}: Finalized block hash: ${hash}`);
+        // TODO: clarify how we identify chains
         return { ...block.toJSON(), chain };
       })
     );
   });
 
-  merge(...chainObservables)
-    // use pipe and concatMap to process events one by one, otherwise multiple headers arrive simultaneously and there will be risk of having same nonce for multiple txs
+  merge(...blockSubscriptions)
+    // use pipe and concatMap to process events one by one
     .pipe(
       concatMap(async (block) => {
         // TODO: check size - if too big reject
