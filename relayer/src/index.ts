@@ -1,7 +1,5 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { RegistryTypes } from "@polkadot/types/types";
-import { merge } from "rxjs";
-import { concatMap, map } from "rxjs/operators";
 
 import { getAccount } from "./account";
 import config from "./config";
@@ -42,13 +40,5 @@ const createApi = async (url: string, types?: RegistryTypes) => {
 
   const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
 
-  merge(...blockSubscriptions)
-    .pipe(
-      concatMap(target.sendBlockTx),
-      map((txHash) => {
-        // TODO: clarify if we need to know which tx corresponds to which chain
-        console.log(`Transaction sent: ${txHash}`);
-      })
-    )
-    .subscribe();
+  target.processBlocks(blockSubscriptions).subscribe();
 })();
