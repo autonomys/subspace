@@ -63,7 +63,7 @@ pub trait HandleEquivocation<T: Config> {
     fn is_known_offence(offenders: &[FarmerId], time_slot: &Slot) -> bool;
 
     /// Create and dispatch an equivocation report extrinsic.
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult;
 }
@@ -79,7 +79,7 @@ impl<T: Config> HandleEquivocation<T> for () {
         true
     }
 
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         _equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult {
         Ok(())
@@ -122,12 +122,12 @@ where
         R::is_known_offence(offenders, time_slot)
     }
 
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult {
         use frame_system::offchain::SubmitTransaction;
 
-        let call = Call::report_equivocation_unsigned(Box::new(equivocation_proof));
+        let call = Call::report_equivocation(Box::new(equivocation_proof));
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
@@ -146,23 +146,26 @@ where
 }
 
 /// Methods for the `ValidateUnsigned` implementation:
-/// It restricts calls to `report_equivocation_unsigned` to local calls (i.e. extrinsics generated
-/// on this node) or that already in a block. This guarantees that only block authors can include
-/// unsigned equivocation reports.
+/// It restricts calls to `report_equivocation`` to local calls (i.e. extrinsics generated on this
+/// node) or that already in a block. This guarantees that only block authors can include
+/// equivocation reports.
 impl<T: Config> Pallet<T> {
-    pub fn validate_unsigned(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::report_equivocation_unsigned(equivocation_proof) = call {
-            // discard equivocation report not coming from the local node
-            match source {
-                TransactionSource::Local | TransactionSource::InBlock => { /* allowed */ }
-                _ => {
-                    log::warn!(
-                        target: "runtime::poc",
-                        "rejecting unsigned report equivocation transaction because it is not local/in-block.",
-                    );
+    pub fn validate_equivocation_report(
+        source: TransactionSource,
+        call: &Call<T>,
+    ) -> TransactionValidity {
+        if let Call::report_equivocation(equivocation_proof) = call {
+            // Discard equivocation report not coming from the local node
+            if !matches!(
+                source,
+                TransactionSource::Local | TransactionSource::InBlock
+            ) {
+                log::warn!(
+                    target: "runtime::poc",
+                    "Rejecting report equivocation extrinsic because it is not local/in-block.",
+                );
 
-                    return InvalidTransaction::Call.into();
-                }
+                return InvalidTransaction::Call.into();
             }
 
             // check report staleness
@@ -172,8 +175,10 @@ impl<T: Config> Pallet<T> {
                 <T::HandleEquivocation as HandleEquivocation<T>>::ReportLongevity::get();
 
             ValidTransaction::with_tag_prefix("PoCEquivocation")
-                // We assign the maximum priority for any equivocation report.
-                .priority(TransactionPriority::max_value())
+                // We assign the `(maximum - 1)` priority for any equivocation report (`-1` is
+                // to make sure potential root block transactions are always included no matter
+                // what).
+                .priority(TransactionPriority::MAX - 1)
                 // Only one equivocation report for the same offender at the same slot.
                 .and_provides((
                     equivocation_proof.offender.clone(),
@@ -188,8 +193,10 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    pub fn pre_dispatch(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::report_equivocation_unsigned(equivocation_proof) = call {
+    pub fn pre_dispatch_equivocation_report(
+        call: &Call<T>,
+    ) -> Result<(), TransactionValidityError> {
+        if let Call::report_equivocation(equivocation_proof) = call {
             is_known_offence::<T>(equivocation_proof)
         } else {
             Err(InvalidTransaction::Call.into())

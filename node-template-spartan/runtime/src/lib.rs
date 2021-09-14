@@ -453,12 +453,14 @@ impl_runtime_apis! {
             PoC::next_epoch()
         }
 
-        fn submit_report_equivocation_unsigned_extrinsic(
+        fn submit_report_equivocation_extrinsic(
             equivocation_proof: sp_consensus_poc::EquivocationProof<<Block as BlockT>::Header>,
         ) -> Option<()> {
-            PoC::submit_unsigned_equivocation_report(
-                equivocation_proof,
-            )
+            PoC::submit_equivocation_report(equivocation_proof)
+        }
+
+        fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+            PoC::submit_store_root_block(root_block)
         }
 
         fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {

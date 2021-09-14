@@ -171,7 +171,7 @@ impl MerkleTree {
         }))
     }
 
-    /// Get Merkle root
+    /// Get Merkle Root
     pub fn root(&self) -> Sha256Hash {
         self.merkle_tree.root()
     }

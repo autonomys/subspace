@@ -49,7 +49,7 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{ArchivedSegment, Archiver, RootBlock};
+use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
@@ -101,6 +101,7 @@ pub use sp_consensus_poc::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
+use sp_consensus_spartan::RootBlock;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -1270,7 +1271,7 @@ where
         // submit equivocation report at best block.
         self.client
             .runtime_api()
-            .submit_report_equivocation_unsigned_extrinsic(&best_id, equivocation_proof)
+            .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
             .map_err(Error::RuntimeApi)?;
 
         info!(target: "poc", "Submitted equivocation report for author {:?}", author);
@@ -1552,12 +1553,12 @@ where
         mut block: BlockImportParams<Block, Self::Transaction>,
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
-        let hash = block.post_hash();
-        let number = *block.header.number();
+        let block_hash = block.post_hash();
+        let block_number = *block.header.number();
 
         // early exit if block already in chain, otherwise the check for
         // epoch changes will error when trying to re-import an epoch change
-        match self.client.status(BlockId::Hash(hash)) {
+        match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 // When re-importing existing block strip away intermediates.
                 let _ = block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY);
@@ -1585,7 +1586,7 @@ where
             .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
             .ok_or_else(|| {
                 ConsensusError::ChainLookup(
-                    poc_err(Error::<Block>::ParentUnavailable(parent_hash, hash)).into(),
+                    poc_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
                 )
             })?;
 
@@ -1625,7 +1626,8 @@ where
                         .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                         .ok_or_else(|| {
                             ConsensusError::ClientImport(
-                                poc_err(Error::<Block>::ParentBlockNoAssociatedWeight(hash)).into(),
+                                poc_err(Error::<Block>::ParentBlockNoAssociatedWeight(block_hash))
+                                    .into(),
                             )
                         })?
                 };
@@ -1660,7 +1662,7 @@ where
                 }
                 (true, false, _) => {
                     return Err(ConsensusError::ClientImport(
-                        poc_err(Error::<Block>::ExpectedEpochChange(hash, slot)).into(),
+                        poc_err(Error::<Block>::ExpectedEpochChange(block_hash, slot)).into(),
                     ))
                 }
                 (false, true, _) => {
@@ -1696,7 +1698,7 @@ where
                      log_level,
                      "🧑‍🌾 New epoch {} launching at block {} (block slot {} >= start slot {}).",
                      viable_epoch.as_ref().epoch_index,
-                     hash,
+                     block_hash,
                      slot,
                      viable_epoch.as_ref().start_slot,
                 );
@@ -1722,8 +1724,8 @@ where
                     epoch_changes
                         .import(
                             descendent_query(&*self.client),
-                            hash,
-                            number,
+                            block_hash,
+                            block_number,
                             *block.header.parent_hash(),
                             next_epoch,
                         )
@@ -1746,7 +1748,7 @@ where
                 });
             }
 
-            aux_schema::write_block_weight(hash, total_weight, |values| {
+            aux_schema::write_block_weight(block_hash, total_weight, |values| {
                 block
                     .auxiliary
                     .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
@@ -1776,7 +1778,7 @@ where
                     if total_weight > last_best_weight {
                         true
                     } else if total_weight == last_best_weight {
-                        number > last_best_number
+                        block_number > last_best_number
                     } else {
                         false
                     },
@@ -1793,20 +1795,30 @@ where
         match import_result {
             Ok(import_result) => {
                 self.imported_block_notification_sender
-                    .notify(move || (number, root_block_sender.clone()));
+                    .notify(move || (block_number, root_block_sender.clone()));
 
-                let next_block_number = number + One::one();
+                let next_block_number = block_number + One::one();
                 while let Some(root_block) = root_block_receiver.next().await {
-                    let mut root_blocks = self.root_blocks.lock();
-                    match root_blocks.get_mut(&next_block_number) {
-                        Some(list) => {
+                    {
+                        let mut root_blocks = self.root_blocks.lock();
+                        if let Some(list) = root_blocks.get_mut(&next_block_number) {
                             list.push(root_block);
-                        }
-                        None => {
+                        } else {
                             root_blocks.put(next_block_number, vec![root_block]);
                         }
                     }
-                    // TODO: Insert extrinsic with root block hash into transaction pool
+
+                    // TODO: Validate this extrinsic against the cache of root blocks above
+                    // Submit store root block extrinsic at the current block.
+                    self.client
+                        .runtime_api()
+                        .submit_store_root_block_extrinsic(&BlockId::Hash(block_hash), root_block)
+                        .map_err(|error| {
+                            ConsensusError::ClientImport(format!(
+                                "Failed to submit store root block extrinsic: {}",
+                                error
+                            ))
+                        })?;
                 }
 
                 Ok(import_result)
@@ -1972,6 +1984,7 @@ where
             let client = Arc::clone(&client);
 
             async move {
+                let mut last_archived_block = None;
                 let mut archiver =
                     Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
 
@@ -1985,6 +1998,18 @@ where
                                 continue;
                             }
                         };
+
+                    if let Some(last_archived_block) = &mut last_archived_block {
+                        if *last_archived_block >= block_to_archive {
+                            // This block was already archived, skip
+                            continue;
+                        }
+
+                        *last_archived_block = block_to_archive;
+                    } else {
+                        last_archived_block.replace(block_to_archive);
+                    }
+
                     debug!(target: "poc", "Archiving block {:?}", block_to_archive);
 
                     let id = BlockId::number(block_to_archive);

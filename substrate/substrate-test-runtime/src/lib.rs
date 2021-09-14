@@ -917,7 +917,7 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::next_epoch()
 				}
 
-				fn submit_report_equivocation_unsigned_extrinsic(
+				fn submit_report_equivocation_extrinsic(
 					equivocation_proof: sp_consensus_poc::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
@@ -925,6 +925,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
+				}
+
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
@@ -1221,7 +1225,7 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::next_epoch()
 				}
 
-				fn submit_report_equivocation_unsigned_extrinsic(
+				fn submit_report_equivocation_extrinsic(
 					equivocation_proof: sp_consensus_poc::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
@@ -1229,6 +1233,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
+				}
+
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {

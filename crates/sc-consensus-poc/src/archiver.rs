@@ -18,8 +18,8 @@
 use crate::merkle_tree::MerkleTree;
 use codec::Encode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use ring::digest;
 use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
+use sp_consensus_spartan::RootBlock;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
@@ -36,47 +36,6 @@ enum Segment {
         /// Segment items
         items: Vec<SegmentItem>,
     },
-}
-
-/// Root block for a specific segment
-#[derive(Debug, Encode, Copy, Clone)]
-pub enum RootBlock {
-    // V0 of the root block data structure
-    #[codec(index = 0)]
-    V0 {
-        /// Segment index
-        segment_index: u64,
-        /// Merkle tree root of all pieces within segment
-        merkle_tree_root: Sha256Hash,
-        /// Hash of the root block of the previous segment
-        prev_root_block_hash: Sha256Hash,
-    },
-}
-
-impl RootBlock {
-    /// Hash of the whole root block
-    pub fn hash(&self) -> Sha256Hash {
-        digest::digest(&digest::SHA256, &self.encode())
-            .as_ref()
-            .try_into()
-            .expect("Sha256 output is always 32 bytes; qed")
-    }
-
-    /// Segment index
-    pub fn segment_index(&self) -> u64 {
-        match self {
-            RootBlock::V0 { segment_index, .. } => *segment_index,
-        }
-    }
-
-    /// Merkle tree root of all pieces within segment
-    pub fn merkle_tree_root(&self) -> Sha256Hash {
-        match self {
-            RootBlock::V0 {
-                merkle_tree_root, ..
-            } => *merkle_tree_root,
-        }
-    }
 }
 
 /// Kinds of items that are contained within a segment
