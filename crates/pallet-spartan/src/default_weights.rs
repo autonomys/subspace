@@ -1,4 +1,3 @@
-// Copyright (C) 2020-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -25,6 +24,11 @@ impl crate::WeightInfo for () {
     }
 
     fn report_equivocation() -> Weight {
+        // TODO: Proper value
+        1
+    }
+
+    fn submit_root_block() -> Weight {
         // TODO: Proper value
         1
     }

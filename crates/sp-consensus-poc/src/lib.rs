@@ -275,7 +275,7 @@ sp_api::decl_runtime_apis! {
         /// `None` when creation of the extrinsic fails, e.g. if equivocation
         /// reporting is disabled for the given runtime (i.e. this method is
         /// hardcoded to return `None`). Only useful in an offchain context.
-        fn submit_report_equivocation_unsigned_extrinsic(
+        fn submit_report_equivocation_extrinsic(
             equivocation_proof: EquivocationProof<Block::Header>,
         ) -> Option<()>;
 

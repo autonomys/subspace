@@ -20,7 +20,7 @@
 pub mod spartan;
 
 use core::convert::TryInto;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use sha2::{Digest, Sha256};
 use sp_debug_derive::RuntimeDebug;
 
@@ -33,7 +33,7 @@ pub type Randomness = [u8; RANDOMNESS_LENGTH];
 pub type Sha256Hash = [u8; 32];
 
 /// Root block for a specific segment
-#[derive(Encode, Copy, Clone, RuntimeDebug)]
+#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
 pub enum RootBlock {
     // V0 of the root block data structure
     #[codec(index = 0)]

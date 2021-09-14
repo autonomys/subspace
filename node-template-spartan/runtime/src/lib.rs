@@ -453,7 +453,7 @@ impl_runtime_apis! {
             PoC::next_epoch()
         }
 
-        fn submit_report_equivocation_unsigned_extrinsic(
+        fn submit_report_equivocation_extrinsic(
             equivocation_proof: sp_consensus_poc::EquivocationProof<<Block as BlockT>::Header>,
         ) -> Option<()> {
             PoC::submit_unsigned_equivocation_report(

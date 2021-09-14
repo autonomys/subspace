@@ -1271,7 +1271,7 @@ where
         // submit equivocation report at best block.
         self.client
             .runtime_api()
-            .submit_report_equivocation_unsigned_extrinsic(&best_id, equivocation_proof)
+            .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
             .map_err(Error::RuntimeApi)?;
 
         info!(target: "poc", "Submitted equivocation report for author {:?}", author);
