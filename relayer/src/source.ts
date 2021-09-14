@@ -1,11 +1,11 @@
 import { ApiPromise } from "@polkadot/api";
-import { Header, Hash } from "@polkadot/types/interfaces";
+import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
 import { concatMap } from "rxjs/operators";
 
 class Source {
-  api: ApiPromise;
-  chain: string;
+  private api: ApiPromise;
+  private chain: string;
 
   constructor({ api, chain }) {
     this.api = api;
@@ -15,7 +15,8 @@ class Source {
   private subscribeHeads = (): Observable<Header> =>
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
-  private getBlock = (hash: Hash) => this.api.rpc.chain.getBlock(hash);
+  private getBlock = (hash: Hash): Promise<SignedBlock> =>
+    this.api.rpc.chain.getBlock(hash);
 
   private getBlockByHeader = async ({ hash }: Header): Promise<string> => {
     const block = await this.getBlock(hash);

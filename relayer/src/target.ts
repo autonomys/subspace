@@ -6,8 +6,8 @@ import { merge } from "rxjs";
 import { concatMap, map } from "rxjs/operators";
 
 class Target {
-  api: ApiPromise;
-  signer: AddressOrPair;
+  private api: ApiPromise;
+  private signer: AddressOrPair;
 
   constructor({ api, signer }) {
     this.api = api;
