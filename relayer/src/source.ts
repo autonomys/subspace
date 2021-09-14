@@ -12,12 +12,12 @@ class Source {
     this.chain = chain;
   }
 
-  subscribeHeads = (): Observable<Header> =>
+  private subscribeHeads = (): Observable<Header> =>
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
-  getBlock = (hash: Hash) => this.api.rpc.chain.getBlock(hash);
+  private getBlock = (hash: Hash) => this.api.rpc.chain.getBlock(hash);
 
-  getBlockByHeader = async ({ hash }: Header): Promise<string> => {
+  private getBlockByHeader = async ({ hash }: Header): Promise<string> => {
     const block = await this.getBlock(hash);
     // TODO: should include size of headers?
     // TODO: what is the size limit?

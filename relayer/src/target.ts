@@ -14,7 +14,7 @@ class Target {
     this.signer = signer;
   }
 
-  sendBlockTx = (block: string): Promise<Hash> => {
+  private sendBlockTx = (block: string): Promise<Hash> => {
     return (
       this.api.tx.feeds
         .put(block)
