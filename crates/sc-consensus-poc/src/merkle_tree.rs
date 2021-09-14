@@ -140,7 +140,7 @@ impl MerkleTree {
             .expect("This version of the tree from the library never returns error; qed");
 
         let mut witness = Vec::with_capacity(
-            (1 + mem::size_of::<Sha256Hash>()) * self.merkle_tree.leafs().log2(),
+            (1 + mem::size_of::<Sha256Hash>()) * self.merkle_tree.leafs().log2() as usize,
         );
         for (path, lemma) in proof
             .path()
