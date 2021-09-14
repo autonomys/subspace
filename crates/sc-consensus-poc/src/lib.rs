@@ -49,7 +49,7 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{ArchivedSegment, Archiver, RootBlock};
+use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
@@ -101,6 +101,7 @@ pub use sp_consensus_poc::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
+use sp_consensus_spartan::RootBlock;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
