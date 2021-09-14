@@ -972,12 +972,16 @@ fn check_root_block_for_segment_index<T: Config>(
         return Err(InvalidTransaction::Stale.into());
     }
 
-    // TODO: Check if order can be guaranteed for transactions with the same weight and type though
-    // Check if the root block for previous segment is already added, it must be at this point
-    if !MerkleRootsBySegmentIndex::<T>::contains_key(segment_index - 1) {
-        Err(InvalidTransaction::Stale.into())
-    } else {
+    // TODO: Check if order can be guaranteed for transactions with the same weight and type though,
+    //  that is in case we have a blockchain block that causes two root blocks to be created and
+    //  submitted for inclusion in the same blockchain block
+    // Check if the root block for previous segment is already added, it must be at this point.
+    //
+    // NOTE: The very first segment will not have predecessor, we check for that as well.
+    if segment_index == 0 || MerkleRootsBySegmentIndex::<T>::contains_key(segment_index - 1) {
         Ok(())
+    } else {
+        Err(InvalidTransaction::Stale.into())
     }
 }
 
