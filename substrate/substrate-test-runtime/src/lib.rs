@@ -927,6 +927,10 @@ cfg_if! {
 					)
 				}
 
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
+				}
+
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
 				}
@@ -1229,6 +1233,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
+				}
+
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {

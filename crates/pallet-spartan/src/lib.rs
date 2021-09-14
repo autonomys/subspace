@@ -62,7 +62,7 @@ use sp_std::prelude::*;
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
     fn report_equivocation() -> Weight;
-    fn submit_root_block() -> Weight;
+    fn store_root_block() -> Weight;
 }
 
 /// Trigger an epoch change, if any should take place.
@@ -389,9 +389,8 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Report authority equivocation/misbehavior. This method will verify the equivocation
-        /// proof and validate the given key ownership proof against the extracted offender. If both
-        /// are valid, the offence will be reported.
+        /// Report farmer equivocation/misbehavior. This method will verify the equivocation proof.
+        /// If valid, the offence will be reported.
         ///
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
@@ -425,14 +424,14 @@ pub mod pallet {
         ///
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`).
-        #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
-        pub fn submit_root_block(
+        #[pallet::weight(<T as Config>::WeightInfo::store_root_block())]
+        pub fn store_root_block(
             origin: OriginFor<T>,
             root_block: RootBlock,
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
-            Self::do_submit_root_block(root_block)
+            Self::do_store_root_block(root_block)
         }
     }
 
@@ -442,7 +441,7 @@ pub mod pallet {
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::report_equivocation(_) => Self::validate_equivocation_report(source, call),
-                Call::submit_root_block(_) => Self::validate_root_block(source, call),
+                Call::store_root_block(_) => Self::validate_root_block(source, call),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -450,7 +449,7 @@ pub mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::report_equivocation(_) => Self::pre_dispatch_equivocation_report(call),
-                Call::submit_root_block(_) => Self::pre_dispatch_root_block(call),
+                Call::store_root_block(_) => Self::pre_dispatch_root_block(call),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -849,7 +848,7 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    fn do_submit_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
+    fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
         MerkleRootsBySegmentIndex::<T>::insert(
             root_block.segment_index(),
             root_block.merkle_tree_root(),
@@ -859,14 +858,13 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    /// Submits an extrinsic to report an equivocation. This method will create
-    /// an unsigned extrinsic with a call to `report_equivocation` and
-    /// will push the transaction to the pool. Only useful in an offchain
-    /// context.
-    pub fn submit_unsigned_equivocation_report(
+    /// Submits an extrinsic to report an equivocation. This method will create an unsigned
+    /// extrinsic with a call to `report_equivocation` and will push the transaction to the pool.
+    /// Only useful in an offchain context.
+    pub fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> Option<()> {
-        T::HandleEquivocation::submit_unsigned_equivocation_report(equivocation_proof).ok()
+        T::HandleEquivocation::submit_equivocation_report(equivocation_proof).ok()
     }
 
     /// Just stores offender from equivocation report in block list, only used for tests.
@@ -877,20 +875,54 @@ impl<T: Config> Pallet<T> {
         Some(())
     }
 
+    /// Just stores root block in the storage, only used for tests.
+    pub fn submit_test_store_root_block(root_block: RootBlock) {
+        MerkleRootsBySegmentIndex::<T>::insert(
+            root_block.segment_index(),
+            root_block.merkle_tree_root(),
+        );
+    }
+
     /// Check if `farmer_id` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_id: &FarmerId) -> bool {
         BlockList::<T>::contains_key(farmer_id)
     }
 }
 
+impl<T> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
+    /// Submits an extrinsic to store root block. This method will create an unsigned extrinsic with
+    /// a call to `store_root_block` and will push the transaction to the pool. Only useful in an
+    /// offchain context.
+    pub fn submit_store_root_block(root_block: RootBlock) {
+        use frame_system::offchain::SubmitTransaction;
+
+        let call = Call::store_root_block(root_block);
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => log::info!(
+                target: "runtime::poc",
+                "Submitted Subspace root block.",
+            ),
+            Err(e) => log::error!(
+                target: "runtime::poc",
+                "Error submitting Subspace root block: {:?}",
+                e,
+            ),
+        }
+    }
+}
+
 // TODO: Tests for root block
 /// Methods for the `ValidateUnsigned` implementation:
-/// It restricts calls to `submit_root_block` to local calls (i.e. extrinsics generated on this
+/// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include root
 /// blocks.
 impl<T: Config> Pallet<T> {
     pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::submit_root_block(root_block) = call {
+        if let Call::store_root_block(root_block) = call {
             // Discard root block not coming from the local node
             if !matches!(
                 source,
@@ -924,7 +956,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::submit_root_block(root_block) = call {
+        if let Call::store_root_block(root_block) = call {
             check_root_block_for_segment_index::<T>(root_block.segment_index())
         } else {
             Err(InvalidTransaction::Call.into())

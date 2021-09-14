@@ -63,7 +63,7 @@ pub trait HandleEquivocation<T: Config> {
     fn is_known_offence(offenders: &[FarmerId], time_slot: &Slot) -> bool;
 
     /// Create and dispatch an equivocation report extrinsic.
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult;
 }
@@ -79,7 +79,7 @@ impl<T: Config> HandleEquivocation<T> for () {
         true
     }
 
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         _equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult {
         Ok(())
@@ -122,7 +122,7 @@ where
         R::is_known_offence(offenders, time_slot)
     }
 
-    fn submit_unsigned_equivocation_report(
+    fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult {
         use frame_system::offchain::SubmitTransaction;

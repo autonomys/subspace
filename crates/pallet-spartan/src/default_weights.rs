@@ -28,7 +28,7 @@ impl crate::WeightInfo for () {
         1
     }
 
-    fn submit_root_block() -> Weight {
+    fn store_root_block() -> Weight {
         // TODO: Proper value
         1
     }
