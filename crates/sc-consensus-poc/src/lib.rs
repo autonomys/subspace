@@ -113,6 +113,8 @@ use std::{
 
 mod archiver;
 pub mod aux_schema;
+// TODO: Move this into separate crate
+pub mod merkle_tree;
 pub mod notification;
 #[cfg(test)]
 mod tests;

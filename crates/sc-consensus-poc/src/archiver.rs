@@ -15,61 +15,17 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //! Utility module for handling Subspace client notifications.
 
+use crate::merkle_tree::MerkleTree;
 use codec::Encode;
-use itertools::Itertools;
-use merkletree::hash::Algorithm;
-use merkletree::merkle::MerkleTree;
-use merkletree::store::VecStore;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use ring::digest;
 use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::hash::Hasher;
 use std::io::Write;
-use std::{iter, mem};
+use std::iter;
 
 type Sha256Hash = [u8; 32];
-
-struct Sha256Algorithm(digest::Context);
-
-impl Default for Sha256Algorithm {
-    fn default() -> Sha256Algorithm {
-        Sha256Algorithm(digest::Context::new(&digest::SHA256))
-    }
-}
-
-impl Hasher for Sha256Algorithm {
-    #[inline]
-    fn write(&mut self, msg: &[u8]) {
-        self.0.update(msg);
-    }
-
-    #[inline]
-    fn finish(&self) -> u64 {
-        unimplemented!()
-    }
-}
-
-impl Algorithm<Sha256Hash> for Sha256Algorithm {
-    #[inline]
-    fn hash(&mut self) -> Sha256Hash {
-        self.0
-            .clone()
-            .finish()
-            .as_ref()
-            .try_into()
-            .expect("Sha256 output is always 32 bytes; qed")
-    }
-
-    #[inline]
-    fn reset(&mut self) {
-        self.0 = digest::Context::new(&digest::SHA256);
-    }
-}
-
-// TODO: Custom struct that supports verification with root and leaf nodes removed
-type Sha256MerkleTree = MerkleTree<Sha256Hash, Sha256Algorithm, VecStore<Sha256Hash>>;
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Encode)]
@@ -345,8 +301,7 @@ impl Archiver {
             .collect();
 
         // Build a Merkle tree over data and parity records
-        let merkle_tree = Sha256MerkleTree::from_data(records.iter())
-            .expect("This version of the tree from the library never returns error; qed");
+        let merkle_tree = MerkleTree::from_data(records.iter());
 
         // Take records, combine them with witnesses (Merkle proofs) to produce data and parity
         // pieces
@@ -354,9 +309,9 @@ impl Archiver {
             .into_iter()
             .enumerate()
             .map(|(index, record)| {
-                let proof = merkle_tree
-                    .gen_proof(index)
-                    .expect("This version of the tree from the library never returns error; qed");
+                let witness = merkle_tree
+                    .get_witness(index)
+                    .expect("We use the same indexes as during Merkle tree creation; qed");
                 let mut piece: Piece = [0u8; PIECE_SIZE];
 
                 piece.as_mut().write_all(&record).expect(
@@ -367,18 +322,10 @@ impl Archiver {
 
                 // The first lemma element is root and the last is the item itself, we skip
                 // both here
-                piece[self.record_size..]
-                    .chunks_exact_mut(1 + mem::size_of::<Sha256Hash>())
-                    .zip_eq(proof.path())
-                    .zip_eq(proof.lemma().iter().skip(1).rev().skip(1).rev())
-                    .for_each(|((witness_chunk, path), lemma)| {
-                        assert_eq!(witness_chunk.len(), self.witness_size);
-                        witness_chunk[0] = *path as u8;
-                        (&mut witness_chunk[1..]).write_all(lemma).expect(
-                            "With correct archiver parameters there should be just enough \
-                                space to write a witness after this; qed",
-                        );
-                    });
+                (&mut piece[self.record_size..]).write_all(&witness).expect(
+                    "With correct archiver parameters there should be just enough space to write \
+                    a witness; qed",
+                );
 
                 piece.try_into().expect(
                     "With correct archiver parameters piece should always be of a correct \
