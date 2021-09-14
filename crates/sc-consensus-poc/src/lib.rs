@@ -1793,7 +1793,7 @@ where
         match import_result {
             Ok(import_result) => {
                 self.imported_block_notification_sender
-                    .notify(|| (number, root_block_sender.clone()));
+                    .notify(move || (number, root_block_sender.clone()));
 
                 let next_block_number = number + One::one();
                 while let Some(root_block) = root_block_receiver.next().await {
