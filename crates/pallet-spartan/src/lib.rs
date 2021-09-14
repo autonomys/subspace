@@ -380,18 +380,6 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Report farmer equivocation/misbehavior. This method will verify
-        /// the equivocation proof and validate the given key ownership proof
-        /// against the extracted offender. If both are valid, the offence will
-        /// be reported.
-        #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
-        pub fn report_equivocation(
-            _origin: OriginFor<T>,
-            equivocation_proof: Box<EquivocationProof<T::Header>>,
-        ) -> DispatchResultWithPostInfo {
-            Self::do_report_equivocation(*equivocation_proof)
-        }
-
         /// Report authority equivocation/misbehavior. This method will verify
         /// the equivocation proof and validate the given key ownership proof
         /// against the extracted offender. If both are valid, the offence will
