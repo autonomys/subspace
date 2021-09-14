@@ -231,10 +231,10 @@ impl PoCApi for PoCRpcHandler {
                 .map(move |new_slot_notification| {
                     let NewSlotNotification {
                         new_slot_info,
-                        mut response_sender,
+                        mut solution_sender,
                     } = new_slot_notification;
 
-                    let (solution_sender, solution_receiver) = async_oneshot::oneshot();
+                    let (response_sender, response_receiver) = async_oneshot::oneshot();
 
                     // Store solution sender so that we can retrieve it when solution comes from
                     // the farmer
@@ -246,13 +246,13 @@ impl PoCApi for PoCRpcHandler {
                             response_senders.senders.clear();
                         }
 
-                        response_senders.senders.push(solution_sender);
+                        response_senders.senders.push(response_sender);
                     }
 
                     // Wait for solutions and transform proposed proof of space solutions into
                     // data structure `sc-consensus-poc` expects
                     let forward_solution_fut = async move {
-                        if let Ok(proposed_proof_of_space_result) = solution_receiver.await {
+                        if let Ok(proposed_proof_of_space_result) = response_receiver.await {
                             if let Some(solution) = proposed_proof_of_space_result.solution {
                                 let solution = Solution {
                                     public_key: FarmerId::from_slice(&solution.public_key),
@@ -262,7 +262,7 @@ impl PoCApi for PoCRpcHandler {
                                     tag: solution.tag,
                                 };
 
-                                let _ = response_sender
+                                let _ = solution_sender
                                     .send((solution, proposed_proof_of_space_result.secret_key))
                                     .await;
                             }
