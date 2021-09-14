@@ -55,17 +55,12 @@ const createSendBlockTx =
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
   const targetApi = await createApi(config.targetChainUrl, types);
+  const sourceApis = await Promise.all(
+    config.sourceChainUrls.map((url) => createApi(url))
+  );
+
   // use getAccount func because we cannot create keyring instance before API is instanciated
   const signer = getAccount(config.accountSeed);
-
-  const sendBlockTx = createSendBlockTx(targetApi, signer);
-
-  const sourceApis = await Promise.all(
-    config.sourceChainUrls.map(async (url) => {
-      const api = await createApi(url);
-      return api;
-    })
-  );
 
   const blockSubscriptions = sourceApis.map((api) => {
     const getBlockByHeader = createGetBlockByHeader(api);
@@ -74,6 +69,8 @@ const createSendBlockTx =
       .subscribeFinalizedHeads()
       .pipe(concatMap(getBlockByHeader));
   });
+
+  const sendBlockTx = createSendBlockTx(targetApi, signer);
 
   merge(...blockSubscriptions)
     // use pipe and concatMap to process events one by one
