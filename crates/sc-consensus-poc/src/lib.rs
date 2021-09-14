@@ -128,7 +128,7 @@ const CONFIRMATION_DEPTH_K: u32 = 10;
 const HASH_OUTPUT_BYTES: usize = 32;
 // This is a nice power of 2 for Merkle Tree
 const MERKLE_NUM_LEAVES: usize = 256;
-const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2();
+const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
