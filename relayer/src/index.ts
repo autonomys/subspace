@@ -34,14 +34,13 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   const sources = await Promise.all(
     config.sourceChainUrls.map(async (url) => {
       const api = await createApi(url);
+      const chain = await api.rpc.system.chain();
 
-      return new Source({ api });
+      return new Source({ api, chain });
     })
   );
 
-  const blockSubscriptions = sources.map((source) =>
-    source.subscribeHeads().pipe(concatMap(source.getBlockByHeader))
-  );
+  const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
 
   merge(...blockSubscriptions)
     .pipe(
