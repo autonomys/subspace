@@ -1,7 +1,8 @@
-#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![warn(missing_debug_implementations, missing_docs)]
 //! This is an adaptation of [SLOTH](https://eprint.iacr.org/2015/366) (slow-timed hash function) into a time-asymmetric permutation using a standard CBC block cipher. This code is largely based on the C implementation used in [PySloth](https://github.com/randomchain/pysloth/blob/master/sloth.c) which is the same as used in the paper.
 
 use sloth256_189::cpu;
+use sloth256_189::cuda;
 
 /// Spartan struct used to encode and validate
 #[derive(Debug, Clone)]
@@ -26,8 +27,12 @@ impl Spartan {
         }
 
         let mut encoding = self.genesis_piece;
-        cpu::encode(&mut encoding, expanded_iv, rounds).unwrap();
 
+        if cuda::check_cuda() {
+            cuda::encode(&mut encoding, &expanded_iv, rounds).unwrap();
+        } else {
+            cpu::encode(&mut encoding, &expanded_iv, rounds).unwrap();
+        }
         encoding
     }
 
@@ -44,7 +49,7 @@ impl Spartan {
             expanded_iv[32 - i - 1] ^= byte;
         }
 
-        cpu::decode(&mut encoding, expanded_iv, rounds);
+        cpu::decode(&mut encoding, &expanded_iv, rounds);
 
         encoding == self.genesis_piece
     }

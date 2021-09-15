@@ -6538,8 +6538,8 @@ dependencies = [
 
 [[package]]
 name = "sloth256-189"
-version = "0.1.0"
-source = "git+https://github.com/subspace/sloth256-189.git#f3135cfcab7ed65adb361dcaae1a8ad518d8cac6"
+version = "0.2.0"
+source = "git+https://github.com/subspace/sloth256-189.git#09485267e86cc531eb618b0ab4a3cdbb50adcd6d"
 dependencies = [
  "cc",
  "glob",
