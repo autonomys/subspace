@@ -302,9 +302,6 @@ cfg_if! {
 				fn balance_of(id: AccountId) -> u64;
 				/// A benchmark function that adds one to the given value and returns the result.
 				fn benchmark_add_one(val: &u64) -> u64;
-				/// A benchmark function that adds one to each value in the given vector and returns the
-				/// result.
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64>;
 				/// A function that always fails to convert a parameter between runtime and node.
 				fn fail_convert_parameter(param: DecodeFails<Block>);
 				/// A function that always fails to convert its return value between runtime and node.
@@ -355,9 +352,6 @@ cfg_if! {
 				fn balance_of(id: AccountId) -> u64;
 				/// A benchmark function that adds one to the given value and returns the result.
 				fn benchmark_add_one(val: &u64) -> u64;
-				/// A benchmark function that adds one to each value in the given vector and returns the
-				/// result.
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64>;
 				/// A function that always fails to convert a parameter between runtime and node.
 				fn fail_convert_parameter(param: DecodeFails<Block>);
 				/// A function that always fails to convert its return value between runtime and node.
@@ -736,12 +730,6 @@ cfg_if! {
 					val + 1
 				}
 
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64> {
-					let mut vec = vec.clone();
-					vec.iter_mut().for_each(|v| *v += 1);
-					vec
-				}
-
 				fn fail_convert_parameter(_: DecodeFails<Block>) {}
 
 				fn fail_convert_return_value() -> DecodeFails<Block> {
@@ -1038,12 +1026,6 @@ cfg_if! {
 
 				fn benchmark_add_one(val: &u64) -> u64 {
 					val + 1
-				}
-
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64> {
-					let mut vec = vec.clone();
-					vec.iter_mut().for_each(|v| *v += 1);
-					vec
 				}
 
 				fn fail_convert_parameter(_: DecodeFails<Block>) {}

@@ -388,6 +388,9 @@ pub mod pallet {
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
         /// will be defined as the equivocation reporter.
         #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
+        // Suppression because the custom syntax will also generate an enum and we need enum to have
+        // boxed value.
+        #[allow(clippy::boxed_local)]
         pub fn report_equivocation(
             origin: OriginFor<T>,
             equivocation_proof: Box<EquivocationProof<T::Header>>,
