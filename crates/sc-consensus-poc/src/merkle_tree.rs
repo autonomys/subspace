@@ -99,7 +99,7 @@ impl<'a> Witness<'a> {
 
             for _ in 0..MERKLE_NUM_LEAVES {
                 mid_point /= 2;
-                path.push(if index <= mid_point { 0 } else { 1 });
+                path.push(if index < mid_point { 0 } else { 1 });
             }
 
             // Path should go from leaves to the root, so let's reverse it
