@@ -36,6 +36,62 @@ impl Spartan {
         encoding
     }
 
+    pub fn batch_encode(
+        &self,
+        piece_amount: usize,
+        pieces: &mut [u8],
+        encoding_key_hash: [u8; 32],
+        nonce_array: &mut [u64],
+        rounds: usize,
+    ) {
+        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(len * 32);
+        for x in 0..piece_amount {
+            let mut expanded_iv = encoding_key_hash;
+            for (i, &byte) in nonce_array[x].to_le_bytes().iter().rev().enumerate() {
+                expanded_iv[32 - i - 1] ^= byte;
+            }
+            expanded_iv_vector.extend(expanded_iv);
+        }
+        if cuda::is_cuda_available() {
+            // TODO
+            // tweak the this with respect to CPU and GPU performance
+            // so the load balancing can be done better
+            // right now it puts all the hard work to GPU
+            // and handles the remaining dust in CPU
+            let cpu_encode_end_index = piece_amount % 1024;
+
+            // Do this in parallel with the GPU encode
+            for x in 0..cpu_encode_end_index {
+                cpu::encode(
+                    &mut pieces[x * 4096..(x + 1) * 4096],
+                    &expanded_iv_vector[x * 32..(x + 1) * 32],
+                    rounds,
+                )
+                .unwrap();
+            }
+
+            // Do this in parallel with the CPU encode
+            cuda::encode(
+                &mut pieces[cpu_encode_end_index * 4096..],
+                &expanded_iv_vector[cpu_encode_end_index * 32..],
+                rounds,
+            )
+            .unwrap();
+        }
+        // if there is no CUDA in this device
+        else {
+            // do all the pieces in CPU (currently)
+            for x in 0..piece_amount {
+                cpu::encode(
+                    &mut pieces[x * 4096..(x + 1) * 4096],
+                    &expanded_iv_vector[x * 32..(x + 1) * 32],
+                    rounds,
+                )
+                .unwrap();
+            }
+        }
+    }
+
     /// Check if previously created encoding is valid
     pub fn is_valid(
         &self,
