@@ -5663,6 +5663,7 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
+ "thiserror",
  "typenum",
 ]
 

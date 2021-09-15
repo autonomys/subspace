@@ -65,7 +65,7 @@ where
     )));
 
     io.extend_with(TransactionPaymentApi::to_delegate(TransactionPayment::new(
-        client.clone(),
+        client,
     )));
 
     io.extend_with(sc_consensus_poc_rpc::PoCApi::to_delegate(

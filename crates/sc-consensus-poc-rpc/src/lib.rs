@@ -205,9 +205,7 @@ impl PoCApi for PoCRpcHandler {
         Box::pin(async move {
             let mut response_senders = response_senders.lock();
 
-            if response_senders.current_slot
-                == Slot::from(proposed_proof_of_space_result.slot_number)
-            {
+            if *response_senders.current_slot == proposed_proof_of_space_result.slot_number {
                 if let Some(mut sender) = response_senders.senders.pop() {
                     let _ = sender.send(proposed_proof_of_space_result);
                 }

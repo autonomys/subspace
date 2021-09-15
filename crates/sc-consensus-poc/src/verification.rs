@@ -143,8 +143,8 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     signing_context: &SigningContext,
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
-        &solution,
-        crate::create_global_challenge(&epoch_randomness, slot),
+        solution,
+        crate::create_global_challenge(epoch_randomness, slot),
         solution_range,
     ) {
         return Err(Error::OutsideOfSolutionRange(slot));
@@ -160,7 +160,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::InvalidCommitment(slot));
     }
 
-    if !is_signature_valid(signing_context, &solution) {
+    if !is_signature_valid(signing_context, solution) {
         return Err(Error::BadSolutionSignature(slot));
     }
 

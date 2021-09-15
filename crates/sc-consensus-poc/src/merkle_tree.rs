@@ -8,6 +8,7 @@ use std::convert::TryInto;
 use std::hash::Hasher;
 use std::iter;
 use std::ops::Deref;
+use thiserror::Error;
 use typenum::{U0, U2};
 
 type Sha256Hash = [u8; 32];
@@ -139,6 +140,14 @@ impl<'a> From<Witness<'a>> for Cow<'a, [u8]> {
     }
 }
 
+/// Errors that can happen when creating a witness
+#[derive(Debug, Error, Copy, Clone, Eq, PartialEq)]
+pub enum MerkleTreeWitnessError {
+    /// Wrong index
+    #[error("Wrong index, there is just {0} leaves available")]
+    WrongIndex(usize),
+}
+
 /// Merkle Tree
 #[derive(Debug, Clone)]
 pub struct MerkleTree {
@@ -178,9 +187,9 @@ impl MerkleTree {
 
     /// Creates a Merkle Tree proof-based witness for a leaf at specified index, returns error if
     /// leaf with such index doesn't exist
-    pub fn get_witness(&self, index: usize) -> Result<Witness<'static>, ()> {
+    pub fn get_witness(&self, index: usize) -> Result<Witness<'static>, MerkleTreeWitnessError> {
         if index >= self.merkle_tree.leafs() {
-            return Err(());
+            return Err(MerkleTreeWitnessError::WrongIndex(self.merkle_tree.leafs()));
         }
 
         let proof = self

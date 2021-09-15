@@ -295,10 +295,7 @@ impl Archiver {
                     a witness; qed",
                 );
 
-                piece.try_into().expect(
-                    "With correct archiver parameters piece should always be of a correct \
-                        size after this; qed",
-                )
+                piece
             })
             .collect();
 
