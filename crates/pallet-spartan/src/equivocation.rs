@@ -146,7 +146,7 @@ where
 }
 
 /// Methods for the `ValidateUnsigned` implementation:
-/// It restricts calls to `report_equivocation`` to local calls (i.e. extrinsics generated on this
+/// It restricts calls to `report_equivocation` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include
 /// equivocation reports.
 impl<T: Config> Pallet<T> {
