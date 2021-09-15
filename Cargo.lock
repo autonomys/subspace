@@ -6564,6 +6564,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sloth256-189"
+version = "0.1.0"
+source = "git+https://github.com/subspace/sloth256-189.git#f3135cfcab7ed65adb361dcaae1a8ad518d8cac6"
+dependencies = [
+ "cc",
+ "glob",
+ "thiserror",
+ "which",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7345,7 +7356,7 @@ dependencies = [
  "schnorrkel 0.10.1",
  "serde",
  "serde_json",
- "spartan-codec",
+ "sloth256-189",
  "thiserror",
  "tokio",
 ]

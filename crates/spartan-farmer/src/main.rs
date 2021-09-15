@@ -18,6 +18,7 @@
 mod commands;
 mod crypto;
 mod plot;
+mod spartan;
 mod utils;
 
 use async_std::task;
@@ -29,10 +30,10 @@ use std::path::PathBuf;
 use tokio::runtime::Runtime;
 
 type Piece = [u8; PIECE_SIZE];
-type Tag = [u8; PRIME_SIZE_BYTES];
-type Salt = [u8; PRIME_SIZE_BYTES];
+type Tag = [u8; 8];
+type Salt = [u8; 8];
 
-const PRIME_SIZE_BYTES: usize = 8;
+const PRIME_SIZE_BYTES: usize = 32;
 const PIECE_SIZE: usize = 4096;
 const ENCODE_ROUNDS: usize = 1;
 const SIGNING_CONTEXT: &[u8] = b"FARMER";
