@@ -1,12 +1,12 @@
 use crate::plot::Plot;
-use crate::{crypto, Piece, BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE, PRIME_SIZE_BYTES};
+use crate::spartan::Spartan;
+use crate::{crypto, Piece, BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
 use log::{info, warn};
 use rayon::prelude::*;
 use schnorrkel::Keypair;
-use spartan_codec::Spartan;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,8 +31,7 @@ pub(crate) async fn plot(
 
     let plot = Plot::open_or_create(&path.into()).await?;
     let public_key_hash = crypto::hash_public_key(&keypair.public);
-    let spartan: Arc<Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>> =
-        Arc::new(Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(genesis_piece));
+    let spartan: Arc<Spartan> = Arc::new(Spartan::new(genesis_piece));
 
     if plot.is_empty().await {
         let plotting_fut = {
