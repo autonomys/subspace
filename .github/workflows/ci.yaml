@@ -120,9 +120,10 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: cd relayer
       - run: npm i
+        working-directory: relayer
       - run: npm run lint
+        working-directory: relayer
   tsc:
     runs-on: ubuntu-20.04
     name: Check typescript
@@ -131,6 +132,7 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: cd relayer
       - run: npm i
+        working-directory: relayer
       - run: npm run build
+        working-directory: relayer
