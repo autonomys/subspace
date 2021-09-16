@@ -183,7 +183,7 @@ impl<T: Config> Pallet<T> {
             let concurrent_offenders = storage
                 .concurrent_reports
                 .iter()
-                .filter_map(|report_id| <Reports<T>>::get(report_id))
+                .filter_map(<Reports<T>>::get)
                 .collect::<Vec<_>>();
 
             storage.save();

@@ -110,6 +110,7 @@ use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
     traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
 };
+use std::cmp::Ordering;
 use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
@@ -374,7 +375,7 @@ impl Config {
     {
         trace!(target: "poc", "Getting slot duration");
         match sc_consensus_slots::SlotDuration::get_or_compute(client, |a, b| {
-            let has_api_v1 = a.has_api_with::<dyn PoCApi<B>, _>(&b, |v| v == 1)?;
+            let has_api_v1 = a.has_api_with::<dyn PoCApi<B>, _>(b, |v| v == 1)?;
 
             if has_api_v1 {
                 a.configuration(b).map_err(Into::into)
@@ -537,12 +538,8 @@ where
 
     let (worker_tx, worker_rx) = mpsc::channel(HANDLE_BUFFER_SIZE);
 
-    let answer_requests = answer_requests(
-        worker_rx,
-        poc_link.config.0,
-        client,
-        poc_link.epoch_changes.clone(),
-    );
+    let answer_requests =
+        answer_requests(worker_rx, poc_link.config.0, client, poc_link.epoch_changes);
     Ok(PoCWorker {
         inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
         handle: PoCWorkerHandle(worker_tx),
@@ -578,13 +575,13 @@ async fn answer_requests<B: BlockT, C>(
                             slot_number,
                         )
                         .map_err(|e| Error::<B>::ForkTree(Box::new(e)))?
-                        .ok_or_else(|| Error::<B>::FetchEpoch(parent_hash))?;
+                        .ok_or(Error::<B>::FetchEpoch(parent_hash))?;
 
                     let viable_epoch = epoch_changes
                         .viable_epoch(&epoch_descriptor, |slot| {
                             Epoch::genesis(&genesis_config, slot)
                         })
-                        .ok_or_else(|| Error::<B>::FetchEpoch(parent_hash))?;
+                        .ok_or(Error::<B>::FetchEpoch(parent_hash))?;
 
                     Ok(sp_consensus_poc::Epoch {
                         epoch_index: viable_epoch.as_ref().epoch_index,
@@ -715,7 +712,7 @@ where
             .epoch_descriptor_for_child_of(
                 descendent_query(&*self.client),
                 &parent.hash(),
-                parent.number().clone(),
+                *parent.number(),
                 slot,
             )
             .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
@@ -863,6 +860,7 @@ where
         )]
     }
 
+    #[allow(clippy::type_complexity)]
     fn block_import_params(
         &self,
     ) -> Box<
@@ -1220,7 +1218,7 @@ where
                     .try_handle_error(&i, &e)
                     .await
                 {
-                    Some(res) => res.map_err(|e| Error::CheckInherents(e))?,
+                    Some(res) => res.map_err(Error::CheckInherents)?,
                     None => return Err(Error::CheckInherentsUnhandled(i)),
                 }
             }
@@ -1348,16 +1346,16 @@ where
                     pre_digest.slot,
                 )
                 .map_err(|e| Error::<Block>::ForkTree(Box::new(e)))?
-                .ok_or_else(|| Error::<Block>::FetchEpoch(parent_hash))?;
+                .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
             let viable_epoch = epoch_changes
                 .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))
-                .ok_or_else(|| Error::<Block>::FetchEpoch(parent_hash))?;
+                .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
             // TODO: Is it actually secure to validate it using solution range digest?
             let solution_range = find_solution_range_digest::<Block>(&block.header)?
-                .ok_or_else(|| Error::<Block>::MissingSolutionRange(hash))?
+                .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
             let salt = find_salt_digest::<Block>(&block.header)?
-                .ok_or_else(|| Error::<Block>::MissingSalt(hash))?
+                .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
 
             if self
@@ -1775,12 +1773,10 @@ where
                 };
 
                 Some(ForkChoiceStrategy::Custom(
-                    if total_weight > last_best_weight {
-                        true
-                    } else if total_weight == last_best_weight {
-                        block_number > last_best_number
-                    } else {
-                        false
+                    match total_weight.cmp(&last_best_weight) {
+                        Ordering::Greater => true,
+                        Ordering::Equal => block_number > last_best_number,
+                        Ordering::Less => false,
                     },
                 ))
             };
@@ -1795,7 +1791,7 @@ where
         match import_result {
             Ok(import_result) => {
                 self.imported_block_notification_sender
-                    .notify(move || (block_number, root_block_sender.clone()));
+                    .notify(move || (block_number, root_block_sender));
 
                 let next_block_number = block_number + One::one();
                 while let Some(root_block) = root_block_receiver.next().await {
@@ -1939,6 +1935,8 @@ where
 ///
 /// The block import object provided must be the `PocBlockImport` or a wrapper
 /// of it, otherwise crucial import logic will be omitted.
+// TODO: Create a struct for these parameters
+#[allow(clippy::too_many_arguments)]
 pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
     poc_link: PoCLink<Block>,
     block_import: Inner,

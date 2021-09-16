@@ -29,6 +29,7 @@ type FullClient =
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+#[allow(clippy::type_complexity)]
 pub fn new_partial(
     config: &Configuration,
 ) -> Result<
@@ -65,7 +66,7 @@ pub fn new_partial(
 
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
-            &config,
+            config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor,
         )?;
@@ -189,7 +190,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
         let slot_duration = poc_link.config().slot_duration();
         let poc_config = sc_consensus_poc::PoCParams {
             client: client.clone(),
-            select_chain: select_chain.clone(),
+            select_chain,
             env: proposer_factory,
             block_import,
             sync_oracle: network.clone(),
@@ -250,8 +251,8 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
     };
 
     let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-        network: network.clone(),
-        client: client.clone(),
+        network,
+        client,
         keystore: keystore_container.sync_keystore(),
         task_manager: &mut task_manager,
         transaction_pool,
@@ -321,7 +322,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
         poc_block_import,
         None,
         client.clone(),
-        select_chain.clone(),
+        select_chain,
         move |_, ()| async move {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 

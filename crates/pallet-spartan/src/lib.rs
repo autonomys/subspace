@@ -338,17 +338,9 @@ pub mod pallet {
     pub(super) type MerkleRootsBySegmentIndex<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::genesis_config]
+    #[cfg_attr(feature = "std", derive(Default))]
     pub struct GenesisConfig {
         pub epoch_config: Option<PoCEpochConfiguration>,
-    }
-
-    #[cfg(feature = "std")]
-    impl Default for GenesisConfig {
-        fn default() -> Self {
-            GenesisConfig {
-                epoch_config: Default::default(),
-            }
-        }
     }
 
     #[pallet::genesis_build]
@@ -396,6 +388,9 @@ pub mod pallet {
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
         /// will be defined as the equivocation reporter.
         #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
+        // Suppression because the custom syntax will also generate an enum and we need enum to have
+        // boxed value.
+        #[allow(clippy::boxed_local)]
         pub fn report_equivocation(
             origin: OriginFor<T>,
             equivocation_proof: Box<EquivocationProof<T::Header>>,
@@ -598,7 +593,7 @@ impl<T: Config> Pallet<T> {
 
         let current_slot = CurrentSlot::<T>::get();
         // If Era start slot is not found it means we have just finished the first era
-        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(|| GenesisSlot::<T>::get());
+        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
         let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
         // Now we need to re-calculate solution range. The idea here is to keep block production at
@@ -721,7 +716,7 @@ impl<T: Config> Pallet<T> {
 
     fn deposit_consensus<U: Encode>(new: U) {
         let log: DigestItem<T::Hash> = DigestItem::Consensus(POC_ENGINE_ID, new.encode());
-        <frame_system::Pallet<T>>::deposit_log(log.into())
+        <frame_system::Pallet<T>>::deposit_log(log)
     }
 
     fn deposit_randomness(randomness: &sp_consensus_poc::Randomness) {
@@ -734,7 +729,7 @@ impl<T: Config> Pallet<T> {
         } else {
             // move onto the next segment and update the index.
             let segment_idx = segment_idx + 1;
-            UnderConstruction::<T>::insert(&segment_idx, &vec![randomness.clone()]);
+            UnderConstruction::<T>::insert(&segment_idx, &vec![*randomness]);
             SegmentIndex::<T>::put(&segment_idx);
         }
     }
@@ -871,7 +866,7 @@ impl<T: Config> Pallet<T> {
     pub fn submit_test_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> Option<()> {
-        BlockList::<T>::insert(equivocation_proof.offender.clone(), ());
+        BlockList::<T>::insert(equivocation_proof.offender, ());
         Some(())
     }
 

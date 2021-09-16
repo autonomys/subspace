@@ -81,6 +81,8 @@ pub(super) struct Archiver {
     /// size)
     record_size: usize,
     /// Size of the witness for every record
+    // TODO: Use this in combination with merkle tree instead of using constants there
+    #[allow(dead_code)]
     witness_size: usize,
     /// Configuration parameter defining the size of one recorded history segment
     segment_size: usize,
@@ -295,10 +297,7 @@ impl Archiver {
                     a witness; qed",
                 );
 
-                piece.try_into().expect(
-                    "With correct archiver parameters piece should always be of a correct \
-                        size after this; qed",
-                )
+                piece
             })
             .collect();
 
