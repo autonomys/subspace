@@ -14,26 +14,26 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 serde = { version = "1.0.127", optional = true }
 sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
 sp-consensus-spartan = { version = "0.1.0", default-features = false, path = "../sp-consensus-spartan" }
-sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-staking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-staking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 log = { version = "0.4.14", default-features = false }
 num-traits = { version = "0.2.14", default-features = false }
 
 [dev-dependencies]
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 pallet-offences-poc = { version = "0.1.0", path = "../pallet-offences-poc" }
-pallet-staking = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-pallet-staking-reward-curve = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-frame-election-provider-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+pallet-staking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+pallet-staking-reward-curve = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+frame-election-provider-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 schnorrkel = { version = "0.9.1" }
 spartan-codec = "0.1.0"
 ring = "0.16"

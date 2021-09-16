@@ -22,6 +22,7 @@ use ring::digest;
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
+use sp_consensus_poc::Randomness;
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan};
 use sp_core::Public;
@@ -112,7 +113,7 @@ where
     // Verify that solution is valid
     verify_solution(
         &pre_digest.solution,
-        epoch,
+        &epoch.randomness,
         solution_range,
         pre_digest.slot,
         salt,
@@ -134,7 +135,7 @@ pub(super) struct VerifiedHeaderInfo<B: BlockT> {
 
 pub(crate) fn verify_solution<B: BlockT + Sized>(
     solution: &Solution,
-    epoch: &Epoch,
+    epoch_randomness: &Randomness,
     solution_range: u64,
     slot: Slot,
     salt: Salt,
@@ -142,8 +143,8 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     signing_context: &SigningContext,
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
-        &solution,
-        crate::create_global_challenge(epoch, slot),
+        solution,
+        crate::create_global_challenge(epoch_randomness, slot),
         solution_range,
     ) {
         return Err(Error::OutsideOfSolutionRange(slot));
@@ -159,7 +160,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::InvalidCommitment(slot));
     }
 
-    if !is_signature_valid(signing_context, &solution) {
+    if !is_signature_valid(signing_context, solution) {
         return Err(Error::BadSolutionSignature(slot));
     }
 

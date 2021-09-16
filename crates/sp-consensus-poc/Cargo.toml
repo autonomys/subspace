@@ -13,17 +13,17 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-sp-application-crypto = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+sp-application-crypto = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan", default-features = false }
-sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3" }
-sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "d73c37ecc16f4895c5f6ed5126d72af8cf87d9b3", optional = true }
+sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798", optional = true }
 serde = { version = "1.0.127", features = ["derive"], optional = true }
 async-trait = { version = "0.1.51", optional = true }
 

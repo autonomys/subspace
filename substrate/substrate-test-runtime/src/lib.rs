@@ -127,8 +127,7 @@ impl Transfer {
 	pub fn into_signed_tx(self) -> Extrinsic {
 		let signature = sp_keyring::AccountKeyring::from_public(&self.from)
 			.expect("Creates keyring from public key.")
-			.sign(&self.encode())
-			.into();
+			.sign(&self.encode());
 		Extrinsic::Transfer { transfer: self, signature, exhaust_resources_when_not_first: false }
 	}
 
@@ -139,8 +138,7 @@ impl Transfer {
 	pub fn into_resources_exhausting_tx(self) -> Extrinsic {
 		let signature = sp_keyring::AccountKeyring::from_public(&self.from)
 			.expect("Creates keyring from public key.")
-			.sign(&self.encode())
-			.into();
+			.sign(&self.encode());
 		Extrinsic::Transfer { transfer: self, signature, exhaust_resources_when_not_first: true }
 	}
 }
@@ -268,18 +266,6 @@ pub type Block = sp_runtime::generic::Block<Header, Extrinsic>;
 /// A test block's header.
 pub type Header = sp_runtime::generic::Header<BlockNumber, Hashing>;
 
-/// Run whatever tests we have.
-pub fn run_tests(mut input: &[u8]) -> Vec<u8> {
-	use sp_runtime::print;
-
-	print("run_tests...");
-	let block = Block::decode(&mut input).unwrap();
-	print("deserialized block.");
-	let stxs = block.extrinsics.iter().map(Encode::encode).collect::<Vec<_>>();
-	print("reserialized transactions.");
-	[stxs.len() as u8].encode()
-}
-
 /// A type that can not be decoded.
 #[derive(PartialEq)]
 pub struct DecodeFails<B: BlockT> {
@@ -294,9 +280,9 @@ impl<B: BlockT> Encode for DecodeFails<B> {
 
 impl<B: BlockT> codec::EncodeLike for DecodeFails<B> {}
 
-impl<B: BlockT> DecodeFails<B> {
+impl<B: BlockT> Default for DecodeFails<B> {
 	/// Create a new instance.
-	pub fn new() -> DecodeFails<B> {
+	fn default() -> DecodeFails<B> {
 		DecodeFails { _phantom: Default::default() }
 	}
 }
@@ -316,9 +302,6 @@ cfg_if! {
 				fn balance_of(id: AccountId) -> u64;
 				/// A benchmark function that adds one to the given value and returns the result.
 				fn benchmark_add_one(val: &u64) -> u64;
-				/// A benchmark function that adds one to each value in the given vector and returns the
-				/// result.
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64>;
 				/// A function that always fails to convert a parameter between runtime and node.
 				fn fail_convert_parameter(param: DecodeFails<Block>);
 				/// A function that always fails to convert its return value between runtime and node.
@@ -369,9 +352,6 @@ cfg_if! {
 				fn balance_of(id: AccountId) -> u64;
 				/// A benchmark function that adds one to the given value and returns the result.
 				fn benchmark_add_one(val: &u64) -> u64;
-				/// A benchmark function that adds one to each value in the given vector and returns the
-				/// result.
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64>;
 				/// A function that always fails to convert a parameter between runtime and node.
 				fn fail_convert_parameter(param: DecodeFails<Block>);
 				/// A function that always fails to convert its return value between runtime and node.
@@ -434,8 +414,8 @@ impl From<frame_system::Origin<Runtime>> for Origin {
 		unimplemented!("Not required in tests!")
 	}
 }
-impl Into<Result<frame_system::Origin<Runtime>, Origin>> for Origin {
-	fn into(self) -> Result<frame_system::Origin<Runtime>, Origin> {
+impl From<Origin> for Result<frame_system::Origin<Runtime>, Origin> {
+	fn from(_origin: Origin) -> Result<frame_system::Origin<Runtime>, Origin> {
 		unimplemented!("Not required in tests!")
 	}
 }
@@ -646,12 +626,11 @@ fn code_using_trie() -> u64 {
 	let mut mdb = PrefixedMemoryDB::default();
 	let mut root = sp_std::default::Default::default();
 	let _ = {
-		let v = &pairs;
 		let mut t = TrieDBMut::<Hashing>::new(&mut mdb, &mut root);
-		for i in 0..v.len() {
-			let key: &[u8] = &v[i].0;
-			let val: &[u8] = &v[i].1;
-			if !t.insert(key, val).is_ok() {
+		for pair in &pairs {
+			let key: &[u8] = &pair.0;
+			let val: &[u8] = &pair.1;
+			if t.insert(key, val).is_err() {
 				return 101
 			}
 		}
@@ -661,10 +640,8 @@ fn code_using_trie() -> u64 {
 	if let Ok(trie) = TrieDB::<Hashing>::new(&mdb, &root) {
 		if let Ok(iter) = trie.iter() {
 			let mut iter_pairs = Vec::new();
-			for pair in iter {
-				if let Ok((key, value)) = pair {
-					iter_pairs.push((key, value.to_vec()));
-				}
+			for (key, value) in iter.flatten() {
+				iter_pairs.push((key, value.to_vec()));
 			}
 			iter_pairs.len() as u64
 		} else {
@@ -753,16 +730,10 @@ cfg_if! {
 					val + 1
 				}
 
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64> {
-					let mut vec = vec.clone();
-					vec.iter_mut().for_each(|v| *v += 1);
-					vec
-				}
-
 				fn fail_convert_parameter(_: DecodeFails<Block>) {}
 
 				fn fail_convert_return_value() -> DecodeFails<Block> {
-					DecodeFails::new()
+					DecodeFails::default()
 				}
 
 				fn function_signature_changed() -> u64 {
@@ -917,7 +888,7 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::next_epoch()
 				}
 
-				fn submit_report_equivocation_unsigned_extrinsic(
+				fn submit_report_equivocation_extrinsic(
 					equivocation_proof: sp_consensus_poc::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
@@ -925,6 +896,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
+				}
+
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
@@ -1053,16 +1028,10 @@ cfg_if! {
 					val + 1
 				}
 
-				fn benchmark_vector_add_one(vec: &Vec<u64>) -> Vec<u64> {
-					let mut vec = vec.clone();
-					vec.iter_mut().for_each(|v| *v += 1);
-					vec
-				}
-
 				fn fail_convert_parameter(_: DecodeFails<Block>) {}
 
 				fn fail_convert_return_value() -> DecodeFails<Block> {
-					DecodeFails::new()
+					DecodeFails::default()
 				}
 
 				fn function_signature_changed() -> Vec<u64> {
@@ -1221,7 +1190,7 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::next_epoch()
 				}
 
-				fn submit_report_equivocation_unsigned_extrinsic(
+				fn submit_report_equivocation_extrinsic(
 					equivocation_proof: sp_consensus_poc::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
@@ -1229,6 +1198,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
+				}
+
+				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {

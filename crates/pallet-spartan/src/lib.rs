@@ -21,7 +21,16 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
+mod default_weights;
+mod equivocation;
+
+#[cfg(all(feature = "std", test))]
+mod mock;
+#[cfg(all(feature = "std", test))]
+mod tests;
+
 use codec::{Decode, Encode};
+pub use equivocation::{EquivocationHandler, HandleEquivocation, PoCEquivocationOffence};
 use frame_support::{
     dispatch::DispatchResultWithPostInfo,
     traits::{Get, OnTimestampSet},
@@ -29,6 +38,7 @@ use frame_support::{
 };
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
+pub use pallet::*;
 use sp_consensus_poc::{
     digests::{
         NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
@@ -38,27 +48,21 @@ use sp_consensus_poc::{
     ConsensusLog, Epoch, EquivocationProof, PoCEpochConfiguration, Slot, POC_ENGINE_ID,
 };
 pub use sp_consensus_poc::{FarmerId, RANDOMNESS_LENGTH};
+use sp_consensus_spartan::{RootBlock, Sha256Hash};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+    TransactionValidityError, ValidTransaction,
+};
 use sp_runtime::{
     generic::DigestItem,
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
 
-mod default_weights;
-mod equivocation;
-
-#[cfg(all(feature = "std", test))]
-mod mock;
-#[cfg(all(feature = "std", test))]
-mod tests;
-
-pub use equivocation::{EquivocationHandler, HandleEquivocation, PoCEquivocationOffence};
-
-pub use pallet::*;
-
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
     fn report_equivocation() -> Weight;
+    fn store_root_block() -> Weight;
 }
 
 /// Trigger an epoch change, if any should take place.
@@ -194,6 +198,7 @@ pub mod pallet {
         /// definition.
         type HandleEquivocation: HandleEquivocation<Self>;
 
+        /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
     }
 
@@ -328,18 +333,14 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerId, ()>;
 
+    /// Mapping from segment index to corresponding Merkle Root.
+    #[pallet::storage]
+    pub(super) type MerkleRootsBySegmentIndex<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
+
     #[pallet::genesis_config]
+    #[cfg_attr(feature = "std", derive(Default))]
     pub struct GenesisConfig {
         pub epoch_config: Option<PoCEpochConfiguration>,
-    }
-
-    #[cfg(feature = "std")]
-    impl Default for GenesisConfig {
-        fn default() -> Self {
-            GenesisConfig {
-                epoch_config: Default::default(),
-            }
-        }
     }
 
     #[pallet::genesis_build]
@@ -380,28 +381,17 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Report farmer equivocation/misbehavior. This method will verify
-        /// the equivocation proof and validate the given key ownership proof
-        /// against the extracted offender. If both are valid, the offence will
-        /// be reported.
+        /// Report farmer equivocation/misbehavior. This method will verify the equivocation proof.
+        /// If valid, the offence will be reported.
+        ///
+        /// This extrinsic must be called unsigned and it is expected that only block authors will
+        /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
+        /// will be defined as the equivocation reporter.
         #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
+        // Suppression because the custom syntax will also generate an enum and we need enum to have
+        // boxed value.
+        #[allow(clippy::boxed_local)]
         pub fn report_equivocation(
-            _origin: OriginFor<T>,
-            equivocation_proof: Box<EquivocationProof<T::Header>>,
-        ) -> DispatchResultWithPostInfo {
-            Self::do_report_equivocation(*equivocation_proof)
-        }
-
-        /// Report authority equivocation/misbehavior. This method will verify
-        /// the equivocation proof and validate the given key ownership proof
-        /// against the extracted offender. If both are valid, the offence will
-        /// be reported.
-        /// This extrinsic must be called unsigned and it is expected that only
-        /// block authors will call it (validated in `ValidateUnsigned`), as such
-        /// if the block author is defined it will be defined as the equivocation
-        /// reporter.
-        #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
-        pub fn report_equivocation_unsigned(
             origin: OriginFor<T>,
             equivocation_proof: Box<EquivocationProof<T::Header>>,
         ) -> DispatchResultWithPostInfo {
@@ -423,17 +413,40 @@ pub mod pallet {
             PendingEpochConfigChange::<T>::put(config);
             Ok(())
         }
+
+        /// Submit new root block to the blockchain. Contents of this extrinsic can't be verified in
+        /// the runtime at the moment, so that is done in block import pipeline instead.
+        ///
+        /// This extrinsic must be called unsigned and it is expected that only block authors will
+        /// call it (validated in `ValidateUnsigned`).
+        #[pallet::weight(<T as Config>::WeightInfo::store_root_block())]
+        pub fn store_root_block(
+            origin: OriginFor<T>,
+            root_block: RootBlock,
+        ) -> DispatchResultWithPostInfo {
+            ensure_none(origin)?;
+
+            Self::do_store_root_block(root_block)
+        }
     }
 
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            Self::validate_unsigned(source, call)
+            match call {
+                Call::report_equivocation(_) => Self::validate_equivocation_report(source, call),
+                Call::store_root_block(_) => Self::validate_root_block(source, call),
+                _ => InvalidTransaction::Call.into(),
+            }
         }
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
-            Self::pre_dispatch(call)
+            match call {
+                Call::report_equivocation(_) => Self::pre_dispatch_equivocation_report(call),
+                Call::store_root_block(_) => Self::pre_dispatch_root_block(call),
+                _ => Err(InvalidTransaction::Call.into()),
+            }
         }
     }
 }
@@ -580,7 +593,7 @@ impl<T: Config> Pallet<T> {
 
         let current_slot = CurrentSlot::<T>::get();
         // If Era start slot is not found it means we have just finished the first era
-        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(|| GenesisSlot::<T>::get());
+        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
         let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
         // Now we need to re-calculate solution range. The idea here is to keep block production at
@@ -703,7 +716,7 @@ impl<T: Config> Pallet<T> {
 
     fn deposit_consensus<U: Encode>(new: U) {
         let log: DigestItem<T::Hash> = DigestItem::Consensus(POC_ENGINE_ID, new.encode());
-        <frame_system::Pallet<T>>::deposit_log(log.into())
+        <frame_system::Pallet<T>>::deposit_log(log)
     }
 
     fn deposit_randomness(randomness: &sp_consensus_poc::Randomness) {
@@ -716,7 +729,7 @@ impl<T: Config> Pallet<T> {
         } else {
             // move onto the next segment and update the index.
             let segment_idx = segment_idx + 1;
-            UnderConstruction::<T>::insert(&segment_idx, &vec![randomness.clone()]);
+            UnderConstruction::<T>::insert(&segment_idx, &vec![*randomness]);
             SegmentIndex::<T>::put(&segment_idx);
         }
     }
@@ -830,27 +843,140 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    /// Submits an extrinsic to report an equivocation. This method will create
-    /// an unsigned extrinsic with a call to `report_equivocation_unsigned` and
-    /// will push the transaction to the pool. Only useful in an offchain
-    /// context.
-    pub fn submit_unsigned_equivocation_report(
+    fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
+        MerkleRootsBySegmentIndex::<T>::insert(
+            root_block.segment_index(),
+            root_block.merkle_tree_root(),
+        );
+
+        // Waive the fee since the root block is required by the protocol and beneficial
+        Ok(Pays::No.into())
+    }
+
+    /// Submits an extrinsic to report an equivocation. This method will create an unsigned
+    /// extrinsic with a call to `report_equivocation` and will push the transaction to the pool.
+    /// Only useful in an offchain context.
+    pub fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> Option<()> {
-        T::HandleEquivocation::submit_unsigned_equivocation_report(equivocation_proof).ok()
+        T::HandleEquivocation::submit_equivocation_report(equivocation_proof).ok()
     }
 
     /// Just stores offender from equivocation report in block list, only used for tests.
     pub fn submit_test_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> Option<()> {
-        BlockList::<T>::insert(equivocation_proof.offender.clone(), ());
+        BlockList::<T>::insert(equivocation_proof.offender, ());
         Some(())
+    }
+
+    /// Just stores root block in the storage, only used for tests.
+    pub fn submit_test_store_root_block(root_block: RootBlock) {
+        MerkleRootsBySegmentIndex::<T>::insert(
+            root_block.segment_index(),
+            root_block.merkle_tree_root(),
+        );
     }
 
     /// Check if `farmer_id` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_id: &FarmerId) -> bool {
         BlockList::<T>::contains_key(farmer_id)
+    }
+}
+
+impl<T> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
+    /// Submits an extrinsic to store root block. This method will create an unsigned extrinsic with
+    /// a call to `store_root_block` and will push the transaction to the pool. Only useful in an
+    /// offchain context.
+    pub fn submit_store_root_block(root_block: RootBlock) {
+        use frame_system::offchain::SubmitTransaction;
+
+        let call = Call::store_root_block(root_block);
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => log::info!(
+                target: "runtime::poc",
+                "Submitted Subspace root block.",
+            ),
+            Err(e) => log::error!(
+                target: "runtime::poc",
+                "Error submitting Subspace root block: {:?}",
+                e,
+            ),
+        }
+    }
+}
+
+// TODO: Tests for root block
+/// Methods for the `ValidateUnsigned` implementation:
+/// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
+/// node) or that already in a block. This guarantees that only block authors can include root
+/// blocks.
+impl<T: Config> Pallet<T> {
+    pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
+        if let Call::store_root_block(root_block) = call {
+            // Discard root block not coming from the local node
+            if !matches!(
+                source,
+                TransactionSource::Local | TransactionSource::InBlock,
+            ) {
+                log::warn!(
+                    target: "runtime::poc",
+                    "Rejecting root block extrinsic because it is not local/in-block.",
+                );
+
+                return InvalidTransaction::Call.into();
+            }
+
+            // Check if root block for this segment index already exists
+            check_root_block_for_segment_index::<T>(root_block.segment_index())?;
+
+            ValidTransaction::with_tag_prefix("SubspaceRootBlock")
+                // We assign the maximum priority for any equivocation report.
+                .priority(TransactionPriority::MAX)
+                // Only one root block for every segment index.
+                .and_provides(root_block.segment_index())
+                // TODO: Should this be `0` or `1`?
+                // Should be included immediately with no exceptions
+                .longevity(1)
+                // We don't propagate this. This can never be included on a remote node.
+                .propagate(false)
+                .build()
+        } else {
+            InvalidTransaction::Call.into()
+        }
+    }
+
+    pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
+        if let Call::store_root_block(root_block) = call {
+            check_root_block_for_segment_index::<T>(root_block.segment_index())
+        } else {
+            Err(InvalidTransaction::Call.into())
+        }
+    }
+}
+
+fn check_root_block_for_segment_index<T: Config>(
+    segment_index: u64,
+) -> Result<(), TransactionValidityError> {
+    // Check if the root block was already set for this segment index
+    if MerkleRootsBySegmentIndex::<T>::contains_key(segment_index) {
+        return Err(InvalidTransaction::Stale.into());
+    }
+
+    // TODO: Check if order can be guaranteed for transactions with the same weight and type though,
+    //  that is in case we have a blockchain block that causes two root blocks to be created and
+    //  submitted for inclusion in the same blockchain block
+    // Check if the root block for previous segment is already added, it must be at this point.
+    //
+    // NOTE: The very first segment will not have predecessor, we check for that as well.
+    if segment_index == 0 || MerkleRootsBySegmentIndex::<T>::contains_key(segment_index - 1) {
+        Ok(())
+    } else {
+        Err(InvalidTransaction::Stale.into())
     }
 }
 

@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
+  cargo-fmt:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -34,6 +34,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: cargo fmt
         uses: actions-rs/cargo@v1
@@ -41,12 +43,69 @@ jobs:
           command: fmt
           args: --all -- --check
 
-      # TODO: Currently wouldn't pass because of substrate macros
-      #- name: cargo clippy
-      #  uses: actions-rs/cargo@v1
-      #  with:
-      #    command: clippy
-      #    args: -- -D warnings
+  cargo-clippy:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        rust:
+          - nightly
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
+          override: true
+          components: rustfmt, clippy
+
+      - name: Configure cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+
+  cargo-test:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        rust:
+          - nightly
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
+          override: true
+          components: rustfmt, clippy
+
+      - name: Configure cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: cargo test
         uses: actions-rs/cargo@v1

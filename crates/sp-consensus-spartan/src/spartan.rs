@@ -1,5 +1,3 @@
-// This file is part of Substrate.
-
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -31,6 +29,7 @@ pub type Piece = [u8; PIECE_SIZE];
 pub type Tag = [u8; PRIME_SIZE_BYTES];
 pub type Salt = [u8; 8];
 
+#[derive(Clone)]
 pub struct Spartan {
     instance: spartan_codec::Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>,
 }
