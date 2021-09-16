@@ -39,6 +39,7 @@ pub mod pallet {
             log::info!("SUBMITTED BY: {:?}", who);
             log::info!("NEW DATA OBJECT: {:?}", data);
 
+            // TODO: Consider removing in the future
             Self::deposit_event(Event::DataSubmitted(data, who));
 
             Ok(())
