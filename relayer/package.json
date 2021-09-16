@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prestart": "npm run build",
     "start": "node dist/index.js",
-    "build": "tsc"
+    "build": "tsc",
+    "lint": "eslint . --ext .ts"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +20,9 @@
     "rxjs": "^7.3.0"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.31.1",
     "eslint": "^7.32.0",
+    "eslint-plugin-eslint-plugin": "^3.5.3",
     "typescript": "^4.4.2"
   }
 }
