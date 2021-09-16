@@ -111,3 +111,24 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+
+  lint:
+    runs-on: ubuntu-20.04
+    name: Run eslint
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: "13.x"
+      - run: npm i
+      - run: npm run lint
+  tsc:
+    runs-on: ubuntu-20.04
+    name: Check typescript
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: "13.x"
+      - run: npm i
+      - run: npm run build
