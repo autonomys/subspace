@@ -1,5 +1,3 @@
-// This file is part of Substrate.
-
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -185,7 +183,7 @@ impl<T: Config> Pallet<T> {
             let concurrent_offenders = storage
                 .concurrent_reports
                 .iter()
-                .filter_map(|report_id| <Reports<T>>::get(report_id))
+                .filter_map(<Reports<T>>::get)
                 .collect::<Vec<_>>();
 
             storage.save();

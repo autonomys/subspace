@@ -82,7 +82,7 @@ pub fn initialize_block(header: &Header) {
 	// try to read something that depends on current header digest
 	// so that it'll be included in execution proof
 	if let Some(generic::DigestItem::Other(v)) = header.digest().logs().iter().next() {
-		let _: Option<u32> = storage::unhashed::get(&v);
+		let _: Option<u32> = storage::unhashed::get(v);
 	}
 }
 
@@ -201,7 +201,7 @@ pub fn execute_transaction(utx: Extrinsic) -> ApplyExtrinsicResult {
 pub fn finalize_block() -> Header {
 	let extrinsic_index: u32 = storage::unhashed::take(well_known_keys::EXTRINSIC_INDEX).unwrap();
 	let txs: Vec<_> = (0..extrinsic_index).map(ExtrinsicData::take).collect();
-	let extrinsics_root = trie::blake2_256_ordered_root(txs).into();
+	let extrinsics_root = trie::blake2_256_ordered_root(txs);
 	let number = <Number>::take().expect("Number is set by `initialize_block`");
 	let parent_hash = <ParentHash>::take();
 	let mut digest = <StorageDigest>::take().expect("StorageDigest is set by `initialize_block`");
@@ -254,11 +254,11 @@ fn execute_transaction_backend(utx: &Extrinsic, extrinsic_index: u32) -> ApplyEx
 		Extrinsic::ChangesTrieConfigUpdate(ref new_config) =>
 			execute_changes_trie_config_update(new_config.clone()),
 		Extrinsic::OffchainIndexSet(key, value) => {
-			sp_io::offchain_index::set(&key, &value);
+			sp_io::offchain_index::set(key, value);
 			Ok(Ok(()))
 		},
 		Extrinsic::OffchainIndexClear(key) => {
-			sp_io::offchain_index::clear(&key);
+			sp_io::offchain_index::clear(key);
 			Ok(Ok(()))
 		},
 		Extrinsic::Store(data) => execute_store(data.clone()),
@@ -269,7 +269,7 @@ fn execute_transfer_backend(tx: &Transfer) -> ApplyExtrinsicResult {
 	// check nonce
 	let nonce_key = tx.from.to_keyed_vec(NONCE_OF);
 	let expected_nonce: u64 = storage::hashed::get_or(&blake2_256, &nonce_key, 0);
-	if !(tx.nonce == expected_nonce) {
+	if tx.nonce != expected_nonce {
 		return Err(InvalidTransaction::Stale.into())
 	}
 
@@ -281,7 +281,7 @@ fn execute_transfer_backend(tx: &Transfer) -> ApplyExtrinsicResult {
 	let from_balance: u64 = storage::hashed::get_or(&blake2_256, &from_balance_key, 0);
 
 	// enact transfer
-	if !(tx.amount <= from_balance) {
+	if tx.amount > from_balance {
 		return Err(InvalidTransaction::Payment.into())
 	}
 	let to_balance_key = tx.to.to_keyed_vec(BALANCE_OF);
