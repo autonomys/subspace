@@ -120,6 +120,7 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
+      - run: cd relayer
       - run: npm i
       - run: npm run lint
   tsc:
@@ -130,5 +131,6 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
+      - run: cd relayer
       - run: npm i
       - run: npm run build
