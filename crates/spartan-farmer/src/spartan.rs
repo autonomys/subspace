@@ -28,11 +28,8 @@ impl Spartan {
 
         let mut encoding = self.genesis_piece;
 
-        if cuda::check_cuda() {
-            cuda::encode(&mut encoding, &expanded_iv, rounds).unwrap();
-        } else {
-            cpu::encode(&mut encoding, &expanded_iv, rounds).unwrap();
-        }
+        cpu::encode(&mut encoding, &expanded_iv, rounds).unwrap();
+
         encoding
     }
 
@@ -41,26 +38,29 @@ impl Spartan {
         piece_amount: usize,
         pieces: &mut [u8],
         encoding_key_hash: [u8; 32],
-        nonce_array: &mut [u64],
+        nonce_array: &[u64],
         rounds: usize,
     ) {
-        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(len * 32);
+        // each expanded_iv will be in format [u8; 32], so `piece_amount` expanded_iv's
+        // should consume [u8; 32 * piece_amount] space.
+        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_amount * 32);
         for x in 0..piece_amount {
-            let mut expanded_iv = encoding_key_hash;
+            // same encoding_key_hash will be used for each expanded_iv
+            let mut expanded_iv = encoding_key_hash.clone();
+
+            // select the nonce from nonce_array, xor it with the encoding_key_hash
             for (i, &byte) in nonce_array[x].to_le_bytes().iter().rev().enumerate() {
                 expanded_iv[32 - i - 1] ^= byte;
             }
             expanded_iv_vector.extend(expanded_iv);
         }
+
+        // if we have access to CUDA, we will utilize GPU and CPU together
         if cuda::is_cuda_available() {
-            // TODO
-            // tweak the this with respect to CPU and GPU performance
-            // so the load balancing can be done better
-            // right now it puts all the hard work to GPU
-            // and handles the remaining dust in CPU
+            // GPU can handle multiples of 1024 pieces. If there any leftovers, cpu will handle them
             let cpu_encode_end_index = piece_amount % 1024;
 
-            // Do this in parallel with the GPU encode
+            // CPU encoding:
             for x in 0..cpu_encode_end_index {
                 cpu::encode(
                     &mut pieces[x * 4096..(x + 1) * 4096],
@@ -70,7 +70,7 @@ impl Spartan {
                 .unwrap();
             }
 
-            // Do this in parallel with the CPU encode
+            // GPU encoding:
             cuda::encode(
                 &mut pieces[cpu_encode_end_index * 4096..],
                 &expanded_iv_vector[cpu_encode_end_index * 32..],
@@ -80,7 +80,7 @@ impl Spartan {
         }
         // if there is no CUDA in this device
         else {
-            // do all the pieces in CPU (currently)
+            // do all the pieces in CPU
             for x in 0..piece_amount {
                 cpu::encode(
                     &mut pieces[x * 4096..(x + 1) * 4096],
@@ -95,7 +95,7 @@ impl Spartan {
     /// Check if previously created encoding is valid
     pub fn is_valid(
         &self,
-        mut encoding: [u8; 4096],
+        encoding: &mut [u8],
         encoding_key_hash: [u8; 32],
         nonce: u64,
         rounds: usize,
@@ -105,7 +105,7 @@ impl Spartan {
             expanded_iv[32 - i - 1] ^= byte;
         }
 
-        cpu::decode(&mut encoding, &expanded_iv, rounds);
+        cpu::decode(encoding, &expanded_iv, rounds).unwrap();
 
         encoding == self.genesis_piece
     }
@@ -129,8 +129,40 @@ mod tests {
         let nonce = rand::random();
 
         let spartan = Spartan::new(genesis_piece);
-        let encoding = spartan.encode(encoding_key, nonce, 1);
+        let mut encoding = spartan.encode(encoding_key, nonce, 1);
 
-        assert!(spartan.is_valid(encoding, encoding_key, nonce, 1));
+        assert!(spartan.is_valid(&mut encoding, encoding_key, nonce, 1));
+    }
+
+    #[test]
+    fn test_1026_piece() {
+        let genesis_piece = random_bytes();
+        let mut piece_array: Vec<u8> = Vec::with_capacity(4096 * 1026);
+        let encoding_key_hash = random_bytes();
+        let nonce: u64 = rand::random();
+        let nonce_array = vec![nonce; 1026];
+
+        let spartan = Spartan::new(genesis_piece);
+
+        for _ in 0..1026 {
+            piece_array.extend_from_slice(&genesis_piece);
+        }
+
+        spartan.batch_encode(
+            1026,
+            &mut piece_array,
+            encoding_key_hash,
+            nonce_array.as_slice(),
+            1,
+        );
+
+        for x in 0..1026 {
+            assert!(spartan.is_valid(
+                &mut piece_array[x * 4096..(x + 1) * 4096],
+                encoding_key_hash,
+                nonce_array[x],
+                1
+            ));
+        }
     }
 }
