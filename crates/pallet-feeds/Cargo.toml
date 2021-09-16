@@ -14,16 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = {package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"]}
-frame-support = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
-frame-system = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+frame-support = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+frame-system = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
 log = {version = "0.4.14", default-features = false}
-sp-std = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+sp-std = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
 
 [dev-dependencies]
 serde = {version = "1.0.127"}
-sp-core = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
-sp-io = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
-sp-runtime = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+sp-core = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+sp-io = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
+sp-runtime = {version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798"}
 
 [features]
 default = ["std"]
