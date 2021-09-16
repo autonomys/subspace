@@ -52,10 +52,11 @@
 use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
-use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::channel::oneshot;
-use futures::prelude::*;
+use futures::channel::{mpsc, oneshot};
+use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
 use log::{debug, info, log, trace, warn};
+use lru::LruCache;
+use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
 use ring::digest;
 use sc_client_api::{
@@ -100,13 +101,16 @@ pub use sp_consensus_poc::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
+use sp_consensus_spartan::RootBlock;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_runtime::traits::One;
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
     traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
 };
+use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
@@ -119,6 +123,15 @@ pub mod notification;
 #[cfg(test)]
 mod tests;
 mod verification;
+
+// TODO: Move these constants somewhere more appropriate and adjust if necessary
+const CONFIRMATION_DEPTH_K: u32 = 10;
+const HASH_OUTPUT_BYTES: usize = 32;
+// This is a nice power of 2 for Merkle Tree
+const MERKLE_NUM_LEAVES: usize = 256;
+const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2() as usize;
+const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
+const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -141,7 +154,7 @@ pub struct NewSlotNotification {
     /// New slot information
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot
-    pub response_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
+    pub solution_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
 }
 
 /// Archived segments notification with new pieces
@@ -522,7 +535,7 @@ where
         can_author_with,
     );
 
-    let (worker_tx, worker_rx) = channel(HANDLE_BUFFER_SIZE);
+    let (worker_tx, worker_rx) = mpsc::channel(HANDLE_BUFFER_SIZE);
 
     let answer_requests = answer_requests(
         worker_rx,
@@ -537,7 +550,7 @@ where
 }
 
 async fn answer_requests<B: BlockT, C>(
-    mut request_rx: Receiver<PoCRequest<B>>,
+    mut request_rx: mpsc::Receiver<PoCRequest<B>>,
     genesis_config: sc_consensus_slots::SlotDuration<PoCGenesisConfiguration>,
     client: Arc<C>,
     epoch_changes: SharedEpochChanges<B, Epoch>,
@@ -604,7 +617,7 @@ pub enum PoCRequest<B: BlockT> {
 
 /// A handle to the PoC worker for issuing requests.
 #[derive(Clone)]
-pub struct PoCWorkerHandle<B: BlockT>(Sender<PoCRequest<B>>);
+pub struct PoCWorkerHandle<B: BlockT>(mpsc::Sender<PoCRequest<B>>);
 
 impl<B: BlockT> PoCWorkerHandle<B> {
     /// Send a request to the PoC service.
@@ -771,7 +784,7 @@ where
                 .new_slot_notification_sender
                 .notify(|| NewSlotNotification {
                     new_slot_info,
-                    response_sender: solution_sender,
+                    solution_sender,
                 });
 
             PreparedData {
@@ -1127,7 +1140,8 @@ pub struct PoCLink<Block: BlockT> {
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    imported_block_notification_stream: SubspaceNotificationStream<NumberFor<Block>>,
+    imported_block_notification_stream:
+        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1257,7 +1271,7 @@ where
         // submit equivocation report at best block.
         self.client
             .runtime_api()
-            .submit_report_equivocation_unsigned_extrinsic(&best_id, equivocation_proof)
+            .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
             .map_err(Error::RuntimeApi)?;
 
         info!(target: "poc", "Submitted equivocation report for author {:?}", author);
@@ -1474,7 +1488,11 @@ pub struct PoCBlockImport<Block: BlockT, Client, I> {
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
-    imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
+    imported_block_notification_sender:
+        SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// validation
+    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
 impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I> {
@@ -1485,6 +1503,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I>
             epoch_changes: self.epoch_changes.clone(),
             config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
+            root_blocks: Arc::clone(&self.root_blocks),
         }
     }
 }
@@ -1495,7 +1514,10 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
         epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
         config: Config,
-        imported_block_notification_sender: SubspaceNotificationSender<NumberFor<Block>>,
+        imported_block_notification_sender: SubspaceNotificationSender<(
+            NumberFor<Block>,
+            mpsc::Sender<RootBlock>,
+        )>,
     ) -> Self {
         PoCBlockImport {
             client,
@@ -1503,6 +1525,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             epoch_changes,
             config,
             imported_block_notification_sender,
+            root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
         }
     }
 }
@@ -1530,12 +1553,12 @@ where
         mut block: BlockImportParams<Block, Self::Transaction>,
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
-        let hash = block.post_hash();
-        let number = *block.header.number();
+        let block_hash = block.post_hash();
+        let block_number = *block.header.number();
 
         // early exit if block already in chain, otherwise the check for
         // epoch changes will error when trying to re-import an epoch change
-        match self.client.status(BlockId::Hash(hash)) {
+        match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 // When re-importing existing block strip away intermediates.
                 let _ = block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY);
@@ -1563,7 +1586,7 @@ where
             .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
             .ok_or_else(|| {
                 ConsensusError::ChainLookup(
-                    poc_err(Error::<Block>::ParentUnavailable(parent_hash, hash)).into(),
+                    poc_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
                 )
             })?;
 
@@ -1603,7 +1626,8 @@ where
                         .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                         .ok_or_else(|| {
                             ConsensusError::ClientImport(
-                                poc_err(Error::<Block>::ParentBlockNoAssociatedWeight(hash)).into(),
+                                poc_err(Error::<Block>::ParentBlockNoAssociatedWeight(block_hash))
+                                    .into(),
                             )
                         })?
                 };
@@ -1638,7 +1662,7 @@ where
                 }
                 (true, false, _) => {
                     return Err(ConsensusError::ClientImport(
-                        poc_err(Error::<Block>::ExpectedEpochChange(hash, slot)).into(),
+                        poc_err(Error::<Block>::ExpectedEpochChange(block_hash, slot)).into(),
                     ))
                 }
                 (false, true, _) => {
@@ -1674,7 +1698,7 @@ where
                      log_level,
                      "🧑‍🌾 New epoch {} launching at block {} (block slot {} >= start slot {}).",
                      viable_epoch.as_ref().epoch_index,
-                     hash,
+                     block_hash,
                      slot,
                      viable_epoch.as_ref().start_slot,
                 );
@@ -1700,8 +1724,8 @@ where
                     epoch_changes
                         .import(
                             descendent_query(&*self.client),
-                            hash,
-                            number,
+                            block_hash,
+                            block_number,
                             *block.header.parent_hash(),
                             next_epoch,
                         )
@@ -1724,7 +1748,7 @@ where
                 });
             }
 
-            aux_schema::write_block_weight(hash, total_weight, |values| {
+            aux_schema::write_block_weight(block_hash, total_weight, |values| {
                 block
                     .auxiliary
                     .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
@@ -1754,7 +1778,7 @@ where
                     if total_weight > last_best_weight {
                         true
                     } else if total_weight == last_best_weight {
-                        number > last_best_number
+                        block_number > last_best_number
                     } else {
                         false
                     },
@@ -1766,12 +1790,37 @@ where
         };
 
         let import_result = self.inner.import_block(block, new_cache).await;
+        let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
 
         match import_result {
             Ok(import_result) => {
-                self.imported_block_notification_sender.notify(|| number);
-                // TODO: Wait for Archived segment and insert extrinsic with root block hash into
-                //  transaction pool
+                self.imported_block_notification_sender
+                    .notify(move || (block_number, root_block_sender.clone()));
+
+                let next_block_number = block_number + One::one();
+                while let Some(root_block) = root_block_receiver.next().await {
+                    {
+                        let mut root_blocks = self.root_blocks.lock();
+                        if let Some(list) = root_blocks.get_mut(&next_block_number) {
+                            list.push(root_block);
+                        } else {
+                            root_blocks.put(next_block_number, vec![root_block]);
+                        }
+                    }
+
+                    // TODO: Validate this extrinsic against the cache of root blocks above
+                    // Submit store root block extrinsic at the current block.
+                    self.client
+                        .runtime_api()
+                        .submit_store_root_block_extrinsic(&BlockId::Hash(block_hash), root_block)
+                        .map_err(|error| {
+                            ConsensusError::ClientImport(format!(
+                                "Failed to submit store root block extrinsic: {}",
+                                error
+                            ))
+                        })?;
+                }
+
                 Ok(import_result)
             }
             Err(error) => {
@@ -1928,16 +1977,6 @@ where
     spawner.spawn_essential_blocking(
         "poc-archiver",
         Box::pin({
-            // TODO: Move these constants somewhere more appropriate and adjust if necessary
-            const CONFIRMATION_DEPTH_K: u32 = 10;
-            const HASH_OUTPUT_BYTES: u32 = 32;
-            // This is a nice power of 2 for Merkle Tree
-            const MERKLE_NUM_LEAVES: u32 = 256;
-            // `+1` corresponds to the path boolean for every hash
-            const WITNESS_SIZE: u32 = (1 + HASH_OUTPUT_BYTES) * MERKLE_NUM_LEAVES.log2();
-            const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-            const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
-
             let mut imported_block_notification_stream =
                 poc_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =
@@ -1945,10 +1984,13 @@ where
             let client = Arc::clone(&client);
 
             async move {
+                let mut last_archived_block = None;
                 let mut archiver =
                     Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
 
-                while let Some(block_number) = imported_block_notification_stream.next().await {
+                while let Some((block_number, mut root_block_sender)) =
+                    imported_block_notification_stream.next().await
+                {
                     let block_to_archive =
                         match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
                             Some(block_to_archive) => block_to_archive,
@@ -1956,6 +1998,18 @@ where
                                 continue;
                             }
                         };
+
+                    if let Some(last_archived_block) = &mut last_archived_block {
+                        if *last_archived_block >= block_to_archive {
+                            // This block was already archived, skip
+                            continue;
+                        }
+
+                        *last_archived_block = block_to_archive;
+                    } else {
+                        last_archived_block.replace(block_to_archive);
+                    }
+
                     debug!(target: "poc", "Archiving block {:?}", block_to_archive);
 
                     let id = BlockId::number(block_to_archive);
@@ -1965,19 +2019,16 @@ where
                         .expect("Older block by number should always exist; qed");
 
                     for archived_segment in archiver.add_block(block) {
-                        let ArchivedSegment {
-                            segment_index,
-                            root_block_hash,
-                            pieces,
-                        } = archived_segment;
+                        let ArchivedSegment { root_block, pieces } = archived_segment;
+
                         archived_segment_notification_sender.notify(move || {
                             ArchivedSegmentNotification {
-                                segment_index,
+                                segment_index: root_block.segment_index(),
                                 pieces,
                             }
                         });
 
-                        // TODO: Reply back to block import with root block hash and segment index
+                        let _ = root_block_sender.send(root_block).await;
                     }
                 }
             }

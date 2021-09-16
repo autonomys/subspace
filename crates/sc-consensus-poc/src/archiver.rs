@@ -18,8 +18,8 @@
 use crate::merkle_tree::MerkleTree;
 use codec::Encode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use ring::digest;
 use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
+use sp_consensus_spartan::RootBlock;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
@@ -36,30 +36,6 @@ enum Segment {
         /// Segment items
         items: Vec<SegmentItem>,
     },
-}
-
-/// Root block for a specific segment
-#[derive(Debug, Encode)]
-enum RootBlock {
-    // V0 of the root block data structure
-    #[codec(index = 0)]
-    V0 {
-        /// Segment index
-        segment_index: u64,
-        /// Merkle tree root of all pieces within segment
-        merkle_tree_root: Sha256Hash,
-        /// Hash of the root block of the previous segment
-        prev_root_block_hash: Sha256Hash,
-    },
-}
-
-impl RootBlock {
-    fn hash(&self) -> Sha256Hash {
-        digest::digest(&digest::SHA256, &self.encode())
-            .as_ref()
-            .try_into()
-            .expect("Sha256 output is always 32 bytes; qed")
-    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -82,10 +58,8 @@ enum SegmentItem {
 #[derive(Debug, Encode, Clone)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 pub(super) struct ArchivedSegment {
-    /// Segment index
-    pub(super) segment_index: u64,
-    /// Root block hash
-    pub(super) root_block_hash: Sha256Hash,
+    /// Root block of the segment
+    pub(super) root_block: RootBlock,
     /// Pieces that correspond to this segment
     pub(super) pieces: Vec<Piece>,
 }
@@ -125,11 +99,7 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(record_size: u32, witness_size: u32, segment_size: u32) -> Self {
-        let record_size = record_size as usize;
-        let witness_size = witness_size as usize;
-        let segment_size = segment_size as usize;
-
+    pub(super) fn new(record_size: usize, witness_size: usize, segment_size: usize) -> Self {
         let empty_segment = Segment::V0 { items: Vec::new() };
         assert!(
             record_size > empty_segment.encoded_size(),
@@ -320,8 +290,6 @@ impl Archiver {
                 );
                 drop(record);
 
-                // The first lemma element is root and the last is the item itself, we skip
-                // both here
                 (&mut piece[self.record_size..]).write_all(&witness).expect(
                     "With correct archiver parameters there should be just enough space to write \
                     a witness; qed",
@@ -354,11 +322,7 @@ impl Archiver {
         // segment
         self.buffer.push_front(SegmentItem::RootBlock(root_block));
 
-        ArchivedSegment {
-            segment_index,
-            root_block_hash,
-            pieces,
-        }
+        ArchivedSegment { root_block, pieces }
     }
 }
 

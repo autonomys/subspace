@@ -23,7 +23,7 @@ pub mod digests;
 pub mod inherents;
 pub mod offence;
 
-pub use sp_consensus_spartan::{Randomness, RANDOMNESS_LENGTH};
+pub use sp_consensus_spartan::{Randomness, RootBlock, RANDOMNESS_LENGTH};
 
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
@@ -267,17 +267,20 @@ sp_api::decl_runtime_apis! {
         /// previously announced).
         fn next_epoch() -> Epoch;
 
-        /// Submits an unsigned extrinsic to report an equivocation. The caller
-        /// must provide the equivocation proof and a key ownership proof
-        /// (should be obtained using `generate_key_ownership_proof`). The
-        /// extrinsic will be unsigned and should only be accepted for local
-        /// authorship (not to be broadcast to the network). This method returns
-        /// `None` when creation of the extrinsic fails, e.g. if equivocation
-        /// reporting is disabled for the given runtime (i.e. this method is
-        /// hardcoded to return `None`). Only useful in an offchain context.
-        fn submit_report_equivocation_unsigned_extrinsic(
+        /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
+        /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local
+        /// authorship (not to be broadcast to the network). This method returns `None` when
+        /// creation of the extrinsic fails, e.g. if equivocation reporting is disabled for the
+        /// given runtime (i.e. this method is hardcoded to return `None`). Only useful in an
+        /// offchain context.
+        fn submit_report_equivocation_extrinsic(
             equivocation_proof: EquivocationProof<Block::Header>,
         ) -> Option<()>;
+
+        /// Submits an unsigned extrinsic to store root block. The extrinsic will be unsigned and
+        /// should only be accepted for local authorship (not to be broadcast to the network). Only
+        /// useful in an offchain context.
+        fn submit_store_root_block_extrinsic(root_block: RootBlock);
 
         /// Check if `farmer_id` is in block list (due to equivocation)
         fn is_in_block_list(farmer_id: &FarmerId) -> bool;

@@ -1,5 +1,3 @@
-// This file is part of Substrate.
-
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -336,8 +334,7 @@ fn report_equivocation_current_session_works() {
         assert_eq!(Spartan::is_in_block_list(&farmer_id), false);
 
         // report the equivocation
-        Spartan::report_equivocation_unsigned(Origin::none(), Box::new(equivocation_proof))
-            .unwrap();
+        Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
 
         progress_to_block(&keypair, 2);
 
@@ -366,8 +363,7 @@ fn report_equivocation_old_session_works() {
         assert_eq!(Spartan::is_in_block_list(&farmer_id), false);
 
         // report the equivocation
-        Spartan::report_equivocation_unsigned(Origin::none(), Box::new(equivocation_proof))
-            .unwrap();
+        Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
 
         progress_to_block(&keypair, 3);
 
@@ -387,7 +383,7 @@ fn report_equivocation_invalid_equivocation_proof() {
 
         let assert_invalid_equivocation = |equivocation_proof| {
             assert_err!(
-                Spartan::report_equivocation_unsigned(Origin::none(), Box::new(equivocation_proof),),
+                Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof),),
                 Error::<Test>::InvalidEquivocationProof,
             )
         };
@@ -460,7 +456,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
-        let inner = Call::report_equivocation_unsigned(Box::new(equivocation_proof.clone()));
+        let inner = Call::report_equivocation(Box::new(equivocation_proof.clone()));
 
         // only local/inblock reports are allowed
         assert_eq!(
@@ -479,7 +475,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
                 &inner,
             ),
             TransactionValidity::Ok(ValidTransaction {
-                priority: TransactionPriority::max_value(),
+                priority: TransactionPriority::MAX - 1,
                 requires: vec![],
                 provides: vec![("PoCEquivocation", tx_tag).encode()],
                 longevity: ReportLongevity::get(),
@@ -491,8 +487,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
         assert_ok!(<Spartan as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
         // we submit the report
-        Spartan::report_equivocation_unsigned(Origin::none(), Box::new(equivocation_proof))
-            .unwrap();
+        Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
 
         // the report should now be considered stale and the transaction is invalid.
         // the check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
@@ -532,7 +527,7 @@ fn valid_equivocation_reports_dont_pay_fees() {
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
         // check the dispatch info for the call.
-        let info = Call::<Test>::report_equivocation_unsigned(Box::new(equivocation_proof.clone()))
+        let info = Call::<Test>::report_equivocation(Box::new(equivocation_proof.clone()))
             .get_dispatch_info();
 
         // it should have non-zero weight and the fee has to be paid.
@@ -540,11 +535,9 @@ fn valid_equivocation_reports_dont_pay_fees() {
         assert_eq!(info.pays_fee, Pays::Yes);
 
         // report the equivocation.
-        let post_info = Spartan::report_equivocation_unsigned(
-            Origin::none(),
-            Box::new(equivocation_proof.clone()),
-        )
-        .unwrap();
+        let post_info =
+            Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof.clone()))
+                .unwrap();
 
         // the original weight should be kept, but given that the report
         // is valid the fee is waived.
@@ -553,11 +546,10 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
         // report the equivocation again which is invalid now since it is
         // duplicate.
-        let post_info =
-            Spartan::report_equivocation_unsigned(Origin::none(), Box::new(equivocation_proof))
-                .err()
-                .unwrap()
-                .post_info;
+        let post_info = Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof))
+            .err()
+            .unwrap()
+            .post_info;
 
         // the fee is not waived and the original weight is kept.
         assert!(post_info.actual_weight.is_none());

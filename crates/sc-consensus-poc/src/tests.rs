@@ -1,5 +1,3 @@
-// This file is part of Substrate.
-
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
@@ -520,13 +518,13 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
             while let Some(NewSlotNotification {
                 new_slot_info,
-                mut response_sender,
+                mut solution_sender,
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
                     let tag: Tag = create_tag(&encoding, &new_slot_info.salt);
 
-                    let _ = response_sender
+                    let _ = solution_sender
                         .send((
                             Solution {
                                 public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
