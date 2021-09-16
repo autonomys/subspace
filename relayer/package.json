@@ -12,7 +12,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "Apache 2.0",
   "dependencies": {
     "@polkadot/api": "^5.8.1",
     "@polkadot/keyring": "^7.3.1",
