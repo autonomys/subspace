@@ -9,7 +9,7 @@ class Target {
   private api: ApiPromise;
   private signer: AddressOrPair;
 
-  constructor({ api, signer }) {
+  constructor({ api, signer }: { api: ApiPromise; signer: AddressOrPair }) {
     this.api = api;
     this.signer = signer;
   }

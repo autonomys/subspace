@@ -1,13 +1,14 @@
 import { ApiPromise } from "@polkadot/api";
 import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
+import { Text } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 
 class Source {
   private api: ApiPromise;
-  private chain: string;
+  private chain: Text;
 
-  constructor({ api, chain }) {
+  constructor({ api, chain }: { api: ApiPromise; chain: Text }) {
     this.api = api;
     this.chain = chain;
   }

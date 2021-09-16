@@ -11,7 +11,9 @@ const types = {
   PutDataObject: "Vec<u8>",
 };
 
-const createApi = async (url: string, types?: RegistryTypes) => {
+const createApi = async (url?: string, types?: RegistryTypes) => {
+  if (!url) throw new Error("Endpoint url is not provided");
+
   const provider = new WsProvider(url);
   const api = await ApiPromise.create({
     provider,
