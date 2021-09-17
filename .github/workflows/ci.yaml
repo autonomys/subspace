@@ -114,25 +114,15 @@ jobs:
 
   lint:
     runs-on: ubuntu-20.04
-    name: Run eslint
+    name: Run eslint and check typescript
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
         with:
-          node-version: "13.x"
-      - run: npm i
+          node-version: "16.x"
+      - run: npm ci
         working-directory: relayer
       - run: npm run lint
-        working-directory: relayer
-  tsc:
-    runs-on: ubuntu-20.04
-    name: Check typescript
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: "13.x"
-      - run: npm i
         working-directory: relayer
       - run: npm run build
         working-directory: relayer
