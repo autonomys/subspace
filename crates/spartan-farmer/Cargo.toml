@@ -40,9 +40,9 @@ version = "0.2.0"
 # This disables compression algorithms that cause issues during linking due to
 # https://github.com/rust-rocksdb/rust-rocksdb/issues/514
 default-features = false
-# Re-enable all compression algorithms except `zstd`, which is the only one causing issues so far
-features = ["snappy", "lz4", "zlib", "bzip2"]
-version = "0.16.0"
+# `zstd` causes compilation errors, others are unnecessary for now
+features = ["snappy"]
+version = "0.17.0"
 
 [dependencies.serde]
 features = ["derive"]
