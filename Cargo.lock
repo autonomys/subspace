@@ -222,7 +222,7 @@ dependencies = [
  "parking",
  "polling",
  "slab",
- "socket2 0.4.1",
+ "socket2 0.4.2",
  "waker-fn",
  "winapi 0.3.9",
 ]
@@ -642,9 +642,9 @@ checksum = "9c59e7af012c713f529e7a3ee57ce9b31ddd858d4b512923602f74608b009631"
 
 [[package]]
 name = "byte-slice-cast"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c1bf4a04a88c54f589125563643d773f3254b5c38571395e2b591c693bbc81"
+checksum = "ca0796d76a983651b4a0ddda16203032759f2fd9103d9181f7c65c06ee8872e6"
 
 [[package]]
 name = "byte-tools"
@@ -1188,9 +1188,9 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek-ng"
-version = "4.0.1"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "574d8b2cd0bae5434fd50d53280f8299d95557a978686555880aaf5b8f4f81e9"
+checksum = "b2d05dbe571a5f832174d536b65101025c33693189830372032c005af68cbaec"
 dependencies = [
  "byteorder 1.4.3",
  "digest 0.9.0",
@@ -1722,7 +1722,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
  "frame-support-procedural-tools-derive",
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -2278,9 +2278,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hyper"
-version = "0.14.12"
+version = "0.14.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13f67199e765030fa08fe0bd581af683f0d5bc04ea09c2b1102012c5fb90e7fd"
+checksum = "15d1cfb9e4f68655fa04c01f59edb405b6074a0f7118ea881e5026e4a1cd8593"
 dependencies = [
  "bytes 1.1.0",
  "futures-channel",
@@ -2293,7 +2293,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite 0.2.7",
- "socket2 0.4.1",
+ "socket2 0.4.2",
  "tokio",
  "tower-service",
  "tracing",
@@ -2515,9 +2515,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.54"
+version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1866b355d9c878e5e607473cbe3f63282c0b7aad2db1dbebf55076c686918254"
+checksum = "7cc9ffccd38c451a86bf13657df244e9c3f37493cce8e5e21e940963777acc84"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -2814,9 +2814,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.101"
+version = "0.2.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cb00336871be5ed2c8ed44b60ae9959dc5b9f08539422ed43f09e34ecaeba21"
+checksum = "a2a5ac8f984bfcf3a823267e5fde638acc3325f6496633a5da6bb6eb2171e103"
 
 [[package]]
 name = "libloading"
@@ -3045,7 +3045,7 @@ dependencies = [
  "log",
  "rand 0.8.4",
  "smallvec",
- "socket2 0.4.1",
+ "socket2 0.4.2",
  "void",
 ]
 
@@ -3218,7 +3218,7 @@ dependencies = [
  "libc",
  "libp2p-core",
  "log",
- "socket2 0.4.1",
+ "socket2 0.4.2",
 ]
 
 [[package]]
@@ -3764,7 +3764,7 @@ version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "424f6e86263cd5294cbd7f1e95746b95aca0e0d66bff31e5a40d6baa87b4aa99"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -4243,7 +4243,7 @@ name = "pallet-staking-reward-curve"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -4362,7 +4362,7 @@ version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b157dc92b3db2bae522afb31b3843e91ae097eb01d66c72dda66a2e86bc3ca14"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -4745,9 +4745,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-crate"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fdbd1df62156fbc5945f4762632564d7d038153091c3fcf1067f6aef7cff92"
+checksum = "1ebace6889caf889b4d3f76becee12e90353f2b8c7d875534a71e5742f8f6f83"
 dependencies = [
  "thiserror",
  "toml",
@@ -5479,7 +5479,7 @@ name = "sc-chain-spec-derive"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -6180,7 +6180,7 @@ name = "sc-tracing-proc-macro"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -6257,7 +6257,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baeb2780690380592f86205aa4ee49815feb2acad8c2f59e6dd207148c3f1fcd"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -6567,7 +6567,7 @@ dependencies = [
 [[package]]
 name = "sloth256-189"
 version = "0.2.0"
-source = "git+https://github.com/subspace/sloth256-189.git#09485267e86cc531eb618b0ab4a3cdbb50adcd6d"
+source = "git+https://github.com/subspace/sloth256-189?branch=unresolved_symbol_test#ed2032734db71044bf7a1ed037fd2041d794ce21"
 dependencies = [
  "cc",
  "glob",
@@ -6618,9 +6618,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "765f090f0e423d2b55843402a07915add955e7d60657db13707a159727326cad"
+checksum = "5dc90fe6c7be1a323296982db1836d1ea9e47b6839496dde9a541bc496df3516"
 dependencies = [
  "libc",
  "winapi 0.3.9",
@@ -6680,7 +6680,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
  "blake2-rfc",
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -7049,7 +7049,7 @@ name = "sp-npos-elections-solution-type"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -7127,7 +7127,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
 dependencies = [
  "Inflector",
- "proc-macro-crate 1.0.0",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -7641,9 +7641,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "subtle-ng"
-version = "2.4.1"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8049cf85f0e715d6af38dde439cb0ccb91f67fb9f5f63c80f8b43e48356e1a3f"
+checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "syn"
@@ -7967,9 +7967,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.2.22"
+version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62af966210b88ad5776ee3ba12d5f35b8d6a2b2a12168f3080cf02b814d7376b"
+checksum = "56c42e73a9d277d4d2b6a88389a137ccf3c58599660b17e8f5fc39305e490669"
 dependencies = [
  "ansi_term 0.12.1",
  "chrono",
@@ -8125,9 +8125,9 @@ checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-width"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9337591893a19b88d8d87f2cec1e73fad5cdfd10e5a6f349f498ad6ea2ffb1e3"
+checksum = "3ed742d4ea2bd1176e236172c8429aaf54486e7ac098db29ffe6529e0ce50973"
 
 [[package]]
 name = "unicode-xid"
@@ -8279,9 +8279,9 @@ checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.77"
+version = "0.2.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e68338db6becec24d3c7977b5bf8a48be992c934b5d07177e3931f5dc9b076c"
+checksum = "632f73e236b219150ea279196e54e610f5dbafa5d61786303d4da54f84e47fce"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen-macro",
@@ -8289,9 +8289,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.77"
+version = "0.2.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f34c405b4f0658583dba0c1c7c9b694f3cac32655db463b56c254a1c75269523"
+checksum = "a317bf8f9fba2476b4b2c85ef4c4af8ff39c3c7f0cdfeed4f82c34a880aa837b"
 dependencies = [
  "bumpalo",
  "lazy_static",
@@ -8304,9 +8304,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a87d738d4abc4cf22f6eb142f5b9a81301331ee3c767f2fef2fda4e325492060"
+checksum = "8e8d7523cb1f2a4c96c1317ca690031b714a51cc14e05f712446691f413f5d39"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
@@ -8316,9 +8316,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.77"
+version = "0.2.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9d5a6580be83b19dc570a8f9c324251687ab2184e57086f71625feb57ec77c8"
+checksum = "d56146e7c495528bf6587663bea13a8eb588d39b36b679d83972e1a2dbbdacf9"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -8326,9 +8326,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.77"
+version = "0.2.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3775a030dc6f5a0afd8a84981a21cc92a781eb429acef9ecce476d0c9113e92"
+checksum = "7803e0eea25835f8abdc585cd3021b3deb11543c6fe226dcd30b228857c5c5ab"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8339,9 +8339,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.77"
+version = "0.2.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c279e376c7a8e8752a8f1eaa35b7b0bee6bb9fb0cdacfa97cc3f1f289c87e2b4"
+checksum = "0237232789cf037d5480773fe568aac745bfe2afbc11a863e97901780a6b47cc"
 
 [[package]]
 name = "wasm-gc-api"
@@ -8590,9 +8590,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.54"
+version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a84d70d1ec7d2da2d26a5bd78f4bca1b8c3254805363ce743b7a05bc30d195a"
+checksum = "38eb105f1c59d9eaa6b5cdc92b859d85b926e82cb2e0945cd0c9259faa6fe9fb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
