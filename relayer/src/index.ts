@@ -33,12 +33,15 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   const target = new Target({ api: targetApi, signer });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async (url) => {
+    config.sourceChainUrls.map(async ({ url, chainId }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
 
-      // TODO: remove hardcode
-      return new Source({ api, chain, chainId: api.createType("u32", 123) });
+      return new Source({
+        api,
+        chain,
+        chainId: api.createType("u32", chainId),
+      });
     })
   );
 
