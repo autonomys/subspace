@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "allowJs": false,
+    "target": "ES2020",
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "moduleResolution": "node",
+    "module": "commonjs"
+  },
+  "include": ["./src/**/*"]
+}
