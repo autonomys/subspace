@@ -5,6 +5,8 @@ import { Observable } from "@polkadot/types/types";
 import { merge } from "rxjs";
 import { concatMap, map } from "rxjs/operators";
 
+import { TxData } from "./types";
+
 class Target {
   private api: ApiPromise;
   private signer: AddressOrPair;
@@ -14,10 +16,10 @@ class Target {
     this.signer = signer;
   }
 
-  private sendBlockTx = (block: string): Promise<Hash> => {
+  private sendBlockTx = ({ block, chainId }: TxData): Promise<Hash> => {
     return (
       this.api.tx.feeds
-        .put(block)
+        .put(block, chainId)
         // it is required to specify nonce, otherwise transaction within same block will be rejected
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
@@ -25,7 +27,7 @@ class Target {
     );
   };
 
-  processBlocks = (subscriptions: Observable<string>[]): Observable<void> => {
+  processBlocks = (subscriptions: Observable<TxData>[]): Observable<void> => {
     return merge(...subscriptions).pipe(
       concatMap(this.sendBlockTx),
       map((txHash) => {
