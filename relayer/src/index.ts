@@ -2,9 +2,11 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import { RegistryTypes } from "@polkadot/types/types";
 
 import { getAccount } from "./account";
-import config from "./config";
+import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
+
+const config = loadConfig();
 
 // TODO: use typedefs from subspace.js
 const types = {
@@ -12,9 +14,7 @@ const types = {
   ChainId: "u32",
 };
 
-const createApi = async (url?: string, types?: RegistryTypes) => {
-  if (!url) throw new Error("Endpoint url is not provided");
-
+const createApi = async (url: string, types?: RegistryTypes) => {
   const provider = new WsProvider(url);
   const api = await ApiPromise.create({
     provider,
@@ -33,12 +33,15 @@ const createApi = async (url?: string, types?: RegistryTypes) => {
   const target = new Target({ api: targetApi, signer });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async (url) => {
+    config.sourceChainUrls.map(async ({ url, chainId }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
 
-      // TODO: remove hardcode
-      return new Source({ api, chain, chainId: api.createType("u32", 123) });
+      return new Source({
+        api,
+        chain,
+        chainId: api.createType("u32", chainId),
+      });
     })
   );
 
