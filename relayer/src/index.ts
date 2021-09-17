@@ -9,6 +9,7 @@ import Target from "./target";
 // TODO: use typedefs from subspace.js
 const types = {
   PutDataObject: "Vec<u8>",
+  ChainId: "u32",
 };
 
 const createApi = async (url?: string, types?: RegistryTypes) => {
@@ -36,7 +37,8 @@ const createApi = async (url?: string, types?: RegistryTypes) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
 
-      return new Source({ api, chain });
+      // TODO: remove hardcode
+      return new Source({ api, chain, chainId: api.createType("u32", 123) });
     })
   );
 
