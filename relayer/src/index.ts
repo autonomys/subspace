@@ -2,18 +2,18 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import { RegistryTypes } from "@polkadot/types/types";
 
 import { getAccount } from "./account";
-import config from "./config";
+import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
+
+const config = loadConfig();
 
 // TODO: use typedefs from subspace.js
 const types = {
   PutDataObject: "Vec<u8>",
 };
 
-const createApi = async (url?: string, types?: RegistryTypes) => {
-  if (!url) throw new Error("Endpoint url is not provided");
-
+const createApi = async (url: string, types?: RegistryTypes) => {
   const provider = new WsProvider(url);
   const api = await ApiPromise.create({
     provider,
