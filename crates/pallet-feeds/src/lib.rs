@@ -17,6 +17,8 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     pub type PutDataObject = Vec<u8>;
+    // TODO: clarify if it should be u32
+    pub type ChainId = u32;
 
     #[pallet::event]
     #[pallet::metadata(T::AccountId = "AccountId")]
@@ -32,12 +34,12 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
         #[pallet::weight(10_000)]
-        pub fn put(origin: OriginFor<T>, data: PutDataObject) -> DispatchResult {
+        pub fn put(origin: OriginFor<T>, data: PutDataObject, chain_id: ChainId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // TODO: add data handling
-            log::info!("SUBMITTED BY: {:?}", who);
-            log::info!("NEW DATA OBJECT: {:?}", data);
+            log::info!("CHAIN ID: {:?}", chain_id);
+            log::info!("NEW DATA OBJECT: {:?}", data.len());
 
             // TODO: Consider removing in the future
             Self::deposit_event(Event::DataSubmitted(data, who));
