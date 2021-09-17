@@ -26,12 +26,13 @@ class Source {
   private subscribeHeads = (): Observable<Header> =>
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
+  // TODO: should return Uint8Array instead of string
   private getBlock = (hash: Hash): Promise<string> =>
     this.api.rpc.chain.getBlock(hash).then((block) => block.toString());
 
   private getBlockByHeader = async ({ hash }: Header): Promise<TxData> => {
     const block = await this.getBlock(hash);
-    const size = Buffer.byteLength(JSON.stringify(block));
+    const size = Buffer.byteLength(block);
 
     console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
     console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
