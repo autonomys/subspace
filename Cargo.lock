@@ -3213,12 +3213,14 @@ dependencies = [
  "async-io",
  "futures 0.3.17",
  "futures-timer 3.0.2",
+ "if-addrs",
  "if-watch",
  "ipnet",
  "libc",
  "libp2p-core",
  "log",
  "socket2 0.4.1",
+ "tokio",
 ]
 
 [[package]]
@@ -7358,6 +7360,7 @@ dependencies = [
  "hex",
  "indicatif",
  "jsonrpsee",
+ "libp2p",
  "log",
  "rand 0.8.4",
  "rayon",
