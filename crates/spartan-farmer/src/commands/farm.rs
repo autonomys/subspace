@@ -14,6 +14,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use super::dht::client as dht;
+
 type SlotNumber = u64;
 
 #[derive(Debug, Serialize)]
@@ -61,6 +63,20 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     if !identity_file.exists() {
         panic!("Identity not found, please create it first using plot command");
     }
+
+    // When a farmer starts, I want to start a libp2p peer, as well.
+    // The peer will connect to a given a bootstrap node and seek other peers.
+    // 1. We will create the peer.
+    // 2. We will put the swarm in its own task.
+    // 3. The task will run an eventloop and keep discovering new peers.
+    let (mut dht_client, mut dht_eventloop) = dht::dht_listener().await;
+
+    tokio::spawn(async move { 
+        dht_eventloop.run().await
+    });
+
+    info!("Connecting to DHT");
+    dht_client.start_listening();
 
     info!("Opening existing keypair");
     let keypair =
