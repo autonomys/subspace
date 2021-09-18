@@ -2,8 +2,9 @@ use super::core::{create_swarm, ComposedEvent};
 use super::eventloop::EventLoop;
 use super::*;
 
+#[derive(Debug)]
 pub enum ClientEvent {
-    Listen,
+    Listen { addr: Multiaddr },
     Dial,
     Provide,
     Find,
@@ -32,5 +33,11 @@ impl Client {
             client_tx,
         }
     }
-    pub fn start_listening(&mut self) {}
+
+    pub async fn start_listening(&mut self, addr: Multiaddr) {
+        self.client_tx
+            .send(ClientEvent::Listen { addr })
+            .await
+            .expect("Listening failed.");
+    }
 }
