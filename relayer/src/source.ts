@@ -4,6 +4,7 @@ import { EventRecord } from "@polkadot/types/interfaces/system";
 import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
+import fetch from "node-fetch";
 
 import { TxData } from "./types";
 
@@ -39,6 +40,12 @@ type SourceParams = {
   parachains: Record<string, string>;
 };
 
+// TODO: better name
+type ParablockIds = {
+  paraId: string;
+  paraHead: Hash;
+};
+
 class Source {
   private api: ApiPromise;
   private chain: Text;
@@ -63,44 +70,66 @@ class Source {
   }
 
   // TODO: refactor and implement tests
-  private async getParablockIds(block: Block) {
+  private async getParablockIds(block: Block): Promise<ParablockIds[]> {
     const blockRecords = await this.api.query.system.events.at(
       block.header.hash
     );
 
-    return block.extrinsics
-      .map(({ method: { method, section } }, index) => {
-        if (section == "paraInherent" && method == "enter") {
-          return blockRecords
-            .filter(isRelevantRecord(index))
-            .map(getParablockIdsFromRecord);
-        }
+    const parablockIds: ParablockIds[] = [];
 
-        return;
-      })
-      .filter(Boolean)[0];
+    for (let index = 0; index < block.extrinsics.length; index++) {
+      const { method } = block.extrinsics[index];
+
+      if (method.section == "paraInherent" && method.method == "enter") {
+        blockRecords
+          .filter(isRelevantRecord(index))
+          .map(getParablockIdsFromRecord)
+          .forEach((parablockData) => parablockIds.push(parablockData));
+      }
+    }
+
+    return parablockIds;
+  }
+
+  private async fetchBlock(url: string, hash: Hash): Promise<Block> {
+    const options = {
+      method: "post",
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: "2.0",
+        method: "chain_getBlock",
+        params: [hash],
+      }),
+      headers: { "Content-Type": "application/json" },
+    };
+
+    return (
+      fetch(url, options)
+        .then((response) => response.json())
+        .then(({ result }) => result)
+        // TODO: better error handling
+        .catch((error) => console.error(error))
+    );
   }
 
   // TODO: add implementation
   private async getParablocks({ block }: SignedBlock) {
     const parablockIds = await this.getParablockIds(block);
-    const blocks = parablockIds?.map(({ paraHead, paraId }) => {
-      // TODO: add handling for uknown paraId
-      const paraUrl = this.parachains[paraId];
-      console.log({ paraHead, paraUrl });
 
-      // get chain api by paraId
-      // get block from api by hash
+    return Promise.all(
+      parablockIds.map(({ paraHead, paraId }) => {
+        // TODO: add handling for uknown paraId
+        const paraUrl = this.parachains[paraId];
 
-      return;
-    });
-
-    return blocks;
+        return this.fetchBlock(paraUrl, paraHead);
+      })
+    );
   }
 
   private async getBlocksByRelayHeader({ hash }: Header): Promise<TxData[]> {
     const block = await this.getBlock(hash);
     const parablocks = await this.getParablocks(block);
+
     console.log({ parablocks });
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
