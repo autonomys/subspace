@@ -10,7 +10,7 @@ import { TxData } from "./types";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
-const getParablockIdsFromRecord = ({ event }: EventRecord) => {
+const getParaHeadAndIdFromRecord = ({ event }: EventRecord) => {
   // use 'any' because this is not typed array - element can be number, string or Record<string, unknown>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { paraHead, paraId } = (event.toJSON().data as Array<any>)[0]
@@ -40,8 +40,7 @@ type SourceParams = {
   parachains: Record<string, string>;
 };
 
-// TODO: better name
-type ParablockIds = {
+type ParaHeadAndId = {
   paraId: string;
   paraHead: Hash;
 };
@@ -57,7 +56,7 @@ class Source {
     this.chain = chain;
     this.chainId = chainId;
     this.parachains = parachains;
-    this.getBlocksByRelayHeader = this.getBlocksByRelayHeader.bind(this);
+    this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
   private subscribeHeads(): Observable<Header> {
@@ -70,12 +69,12 @@ class Source {
   }
 
   // TODO: refactor and implement tests
-  private async getParablockIds(block: Block): Promise<ParablockIds[]> {
+  private async getParaHeadsAndIds(block: Block): Promise<ParaHeadAndId[]> {
     const blockRecords = await this.api.query.system.events.at(
       block.header.hash
     );
 
-    const parablockIds: ParablockIds[] = [];
+    const result: ParaHeadAndId[] = [];
 
     for (let index = 0; index < block.extrinsics.length; index++) {
       const { method } = block.extrinsics[index];
@@ -83,15 +82,15 @@ class Source {
       if (method.section == "paraInherent" && method.method == "enter") {
         blockRecords
           .filter(isRelevantRecord(index))
-          .map(getParablockIdsFromRecord)
-          .forEach((parablockData) => parablockIds.push(parablockData));
+          .map(getParaHeadAndIdFromRecord)
+          .forEach((parablockData) => result.push(parablockData));
       }
     }
 
-    return parablockIds;
+    return result;
   }
 
-  private async fetchBlock(url: string, hash: Hash): Promise<Block> {
+  private async fetchBlock(url: string, hash: Hash) {
     const options = {
       method: "post",
       body: JSON.stringify({
@@ -114,35 +113,38 @@ class Source {
 
   // TODO: add implementation
   private async getParablocks({ block }: SignedBlock) {
-    const parablockIds = await this.getParablockIds(block);
+    const paraItems = await this.getParaHeadsAndIds(block);
 
     return Promise.all(
-      parablockIds.map(({ paraHead, paraId }) => {
-        // TODO: add handling for uknown paraId
+      paraItems.map(({ paraHead, paraId }) => {
         const paraUrl = this.parachains[paraId];
 
+        if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
+
+        // TODO: return { block, chainId }
         return this.fetchBlock(paraUrl, paraHead);
       })
     );
   }
 
-  private async getBlocksByRelayHeader({ hash }: Header): Promise<TxData[]> {
+  private async getBlocksByHeader({ hash }: Header): Promise<TxData[]> {
     const block = await this.getBlock(hash);
     const parablocks = await this.getParablocks(block);
 
-    console.log({ parablocks });
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
-
-    console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
     // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
+
+    console.log(`Relay chain ${this.chain} - finalized block hash: ${hash}`);
+    console.log(`Associated parablocks: ${parablocks.length}`);
+    console.log(parablocks);
 
     // TODO: return parablocks
     return [{ block: block.toString(), chainId: this.chainId }];
   }
 
   subscribeBlocks(): Observable<TxData[]> {
-    return this.subscribeHeads().pipe(concatMap(this.getBlocksByRelayHeader));
+    return this.subscribeHeads().pipe(concatMap(this.getBlocksByHeader));
   }
 }
 
