@@ -66,15 +66,18 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
 
     // When a farmer starts, I want to start a libp2p peer, as well.
     // The peer will connect to a given a bootstrap node and seek other peers.
-    // 1. We will create the peer.
-    // 2. We will put the swarm in its own task.
+    // 1. Create the swarm with the peer in it.
+    // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
     let (mut dht_client, mut dht_eventloop) = dht::dht_listener().await;
 
     tokio::spawn(async move { dht_eventloop.run().await });
 
     info!("Connecting to DHT");
-    dht_client.start_listening();
+    // For now, I just want to listen to a random port the OS assigns to me.
+    dht_client
+        .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
+        .await;
 
     info!("Opening existing keypair");
     let keypair =

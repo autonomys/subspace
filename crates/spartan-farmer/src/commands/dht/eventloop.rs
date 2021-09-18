@@ -22,5 +22,12 @@ impl EventLoop {
         }
     }
     /// Run event loop. We will use this method to spawn the event loop in a background task.
-    pub async fn run(&mut self) {}
+    pub async fn run(mut self) {
+        loop {
+            futures::select! {
+                client = self.client_rx.next() => {},
+                swarm = self.swarm.next() => {},
+            }
+        }
+    }
 }

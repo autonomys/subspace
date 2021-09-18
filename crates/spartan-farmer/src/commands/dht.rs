@@ -14,7 +14,9 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::{Multiaddr, PeerId, Swarm};
 
 // Stuff needed to set up channels between Client API task and EventLoop task.
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::prelude::*;
+use futures::StreamExt;
 
 // The Client API which the end-user is supposed to interact with.
 pub mod client;
