@@ -1,10 +1,33 @@
 import { ApiPromise } from "@polkadot/api";
-import { Header, Hash } from "@polkadot/types/interfaces";
+import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
+import { EventRecord } from "@polkadot/types/interfaces/system";
 import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 
 import { TxData } from "./types";
+
+// TODO: consider moving to a separate utils module
+// TODO: implement tests
+const getDescriptors = ({ event }: EventRecord) =>
+  // use any because array element can be number, string or object
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (event.toJSON().data as Array<any>)[0].descriptor;
+
+// TODO: more explicit function name
+const isRelevantEventRecord = (
+  { phase, event }: EventRecord,
+  index: number
+) => {
+  return (
+    // filter the specific events based on the phase and then the
+    // index of our extrinsic in the block
+    phase.isApplyExtrinsic &&
+    phase.asApplyExtrinsic.eq(index) &&
+    event.section == "paraInclusion" &&
+    event.method == "CandidateIncluded"
+  );
+};
 
 type SourceParams = {
   api: ApiPromise;
@@ -27,17 +50,42 @@ class Source {
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
   // TODO: should return Uint8Array instead of string
-  private getBlock = (hash: Hash): Promise<string> =>
-    this.api.rpc.chain.getBlock(hash).then((block) => block.toString());
+  private getBlock = (hash: Hash): Promise<SignedBlock> =>
+    this.api.rpc.chain.getBlock(hash);
+
+  private async getBlockEvents(signedBlock: SignedBlock) {
+    const allRecords = await this.api.query.system.events.at(
+      signedBlock.block.header.hash
+    );
+    // map between the extrinsics and events
+    signedBlock.block.extrinsics.forEach(
+      ({ method: { method, section } }, index) => {
+        if (section == "paraInherent" && method == "enter") {
+          const eventsData = allRecords
+            .filter((record) => isRelevantEventRecord(record, index))
+            .map(getDescriptors);
+
+          console.log(eventsData);
+        }
+      }
+    );
+  }
 
   private getBlockByHeader = async ({ hash }: Header): Promise<TxData> => {
     const block = await this.getBlock(hash);
-    const size = Buffer.byteLength(block);
+
+    await this.getBlockEvents(block);
+    // console.log(block.toJSON());
+    // TODO: check relay block and parablocks size
+    // const size = Buffer.byteLength(block);
+    // get block events
+    // get para_hashes
+    // get parablocks
 
     console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
-    console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
+    // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    return { block, chainId: this.chainId };
+    return { block: block.toString(), chainId: this.chainId };
   };
 
   subscribeBlocks = (): Observable<TxData> =>
