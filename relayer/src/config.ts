@@ -5,7 +5,7 @@ dotenv.config();
 type SourceChain = {
   url: string;
   chainId: number;
-  parachains: string[];
+  parachains: Record<string, string>;
 };
 
 type Config = {
@@ -34,16 +34,16 @@ export const loadConfig = (): Config => {
       {
         url: "wss://kusama-rpc.polkadot.io",
         chainId: 0,
-        parachains: [
-          // TODO: add parachains
-          // "wss://kusama-statemine-rpc.paritytech.net",
-          // "wss://karura-rpc-3.aca-api.network/ws", // requires custom types
-          // "wss://bifrost-rpc.liebi.com/ws", // requires custom types
-          // "wss://khala-api.phala.network/ws", // requires custom types
-          // "wss://rpc.shiden.astar.network",
-          // "wss://wss.moonriver.moonbeam.network", // requires custom types
-          // "wss://spiritnet.kilt.io/",
-        ],
+        parachains: {
+          [1000]: "wss://kusama-statemine-rpc.paritytech.net",
+          [2000]: "wss://karura-rpc-3.aca-api.network/ws",
+          [2001]: "wss://bifrost-rpc.liebi.com/ws",
+          [2004]: "wss://khala-api.phala.network/ws",
+          [2007]: "wss://rpc.shiden.astar.network",
+          [2023]: "wss://wss.moonriver.moonbeam.network",
+          [2084]: "wss://falafel.calamari.systems/",
+          [2086]: "wss://spiritnet.kilt.io/",
+        },
       },
     ],
   };
