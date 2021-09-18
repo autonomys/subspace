@@ -1,54 +1,46 @@
-import * as dotenv from "dotenv";
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { concatMap } from "rxjs/operators";
+import { RegistryTypes } from "@polkadot/types/types";
+
 import { getAccount } from "./account";
+import { loadConfig } from "./config";
+import Source from "./source";
+import Target from "./target";
 
-dotenv.config();
-
-const sourceProvider = new WsProvider(process.env.SOURCE_CHAIN_URL);
-const targetProvider = new WsProvider(process.env.TARGET_CHAIN_URL);
+const config = loadConfig();
 
 // TODO: use typedefs from subspace.js
 const types = {
   PutDataObject: "Vec<u8>",
 };
 
-// TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
-(async () => {
-  const sourceApi = await ApiPromise.create({
-    provider: sourceProvider,
-  });
-
-  const targetApi = await ApiPromise.create({
-    provider: targetProvider,
+const createApi = async (url: string, types?: RegistryTypes) => {
+  const provider = new WsProvider(url);
+  const api = await ApiPromise.create({
+    provider,
     types,
   });
 
+  return api;
+};
+
+// TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
+(async () => {
+  const targetApi = await createApi(config.targetChainUrl, types);
   // use getAccount func because we cannot create keyring instance before API is instanciated
-  const signer = getAccount(process.env.ACCOUNT_SEED);
+  const signer = getAccount(config.accountSeed);
 
-  // TODO: add old block processing
+  const target = new Target({ api: targetApi, signer });
 
-  sourceApi.rx.rpc.chain
-    .subscribeFinalizedHeads()
-    // use pipe and concatMap to process events one by one, otherwise multiple headers arrive simultaneously and there will be risk of having same nonce for multiple txs
-    .pipe(
-      concatMap(async ({ hash }) => {
-        console.log(`Finalized block hash: ${hash}`);
+  const sources = await Promise.all(
+    config.sourceChainUrls.map(async (url) => {
+      const api = await createApi(url);
+      const chain = await api.rpc.system.chain();
 
-        const block = await sourceApi.rpc.chain.getBlock(hash);
+      return new Source({ api, chain });
+    })
+  );
 
-        // TODO: check size - if too big reject
+  const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
 
-        const txHash = await targetApi.tx.feeds
-          .put(block.toString())
-          // it is required to specify nonce, otherwise transaction within same block will be rejected
-          // if nonce is -1 API will do the lookup for the right value
-          // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-          .signAndSend(signer, { nonce: -1 });
-
-        console.log(`Transaction sent: ${txHash}`);
-      })
-    )
-    .subscribe();
+  target.processBlocks(blockSubscriptions).subscribe();
 })();

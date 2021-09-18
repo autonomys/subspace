@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
     "outDir": "./dist",
-    "allowJs": false,
     "target": "ES2020",
-    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "module": "commonjs",
     "skipLibCheck": true,
     "strict": true,
-    "moduleResolution": "node",
-    "module": "commonjs"
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": true,
+    "noUnusedParameters": true,
+    "noUnusedLocals": true
   },
   "include": ["./src/**/*"]
 }
