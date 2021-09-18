@@ -14,6 +14,7 @@ type Config = {
   sourceChainUrls: SourceChain[];
 };
 
+// TODO: convert to class
 export const loadConfig = (): Config => {
   const accountSeed = process.env.ACCOUNT_SEED;
   const targetChainUrl = process.env.TARGET_CHAIN_URL;
