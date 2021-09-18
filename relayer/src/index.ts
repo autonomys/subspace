@@ -33,7 +33,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   const target = new Target({ api: targetApi, signer });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, chainId }) => {
+    config.sourceChainUrls.map(async ({ url, chainId, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
 
@@ -41,6 +41,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
         api,
         chain,
         chainId: api.createType("u32", chainId),
+        parachains,
       });
     })
   );

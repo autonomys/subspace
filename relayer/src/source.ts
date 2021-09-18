@@ -36,17 +36,20 @@ type SourceParams = {
   api: ApiPromise;
   chain: Text;
   chainId: U32;
+  parachains: Record<string, string>;
 };
 
 class Source {
   private api: ApiPromise;
   private chain: Text;
   private chainId: U32;
+  private parachains: Record<string, string>;
 
-  constructor({ api, chain, chainId }: SourceParams) {
+  constructor({ api, chain, chainId, parachains }: SourceParams) {
     this.api = api;
     this.chain = chain;
     this.chainId = chainId;
+    this.parachains = parachains;
     this.getBlocksByRelayHeader = this.getBlocksByRelayHeader.bind(this);
   }
 
@@ -82,7 +85,9 @@ class Source {
   private async getParablocks({ block }: SignedBlock) {
     const parablockIds = await this.getParablockIds(block);
     const blocks = parablockIds?.map(({ paraHead, paraId }) => {
-      console.log({ paraHead, paraId });
+      // TODO: add handling for uknown paraId
+      const paraUrl = this.parachains[paraId];
+      console.log({ paraHead, paraUrl });
 
       // get chain api by paraId
       // get block from api by hash
