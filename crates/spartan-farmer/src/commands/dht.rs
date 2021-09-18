@@ -11,7 +11,7 @@ use libp2p::mplex;
 use libp2p::noise::{Keypair, NoiseConfig, X25519Spec};
 use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::TokioTcpConfig;
-use libp2p::{PeerId, Swarm};
+use libp2p::{Multiaddr, PeerId, Swarm};
 
 // Stuff needed to set up channels between Client API task and EventLoop task.
 use tokio::sync::mpsc::{channel, Receiver, Sender};

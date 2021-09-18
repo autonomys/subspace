@@ -3,7 +3,7 @@ use super::eventloop::EventLoop;
 use super::*;
 
 pub enum ClientEvent {
-    StartListening,
+    Listen,
     Dial,
     Provide,
     Find,
@@ -14,6 +14,7 @@ pub struct Client {
     client_tx: Sender<ClientEvent>,
 }
 
+/// This method will construct a new Swarm and EventLoop object.
 pub async fn dht_listener() -> (Client, EventLoop) {
     let (network_tx, network_rx) = channel(10);
     let (client_tx, client_rx) = channel(10);
@@ -25,13 +26,11 @@ pub async fn dht_listener() -> (Client, EventLoop) {
 }
 
 impl Client {
-    /// This method will construct a new Swarm and eventloop.
     pub fn new(network_rx: Receiver<ComposedEvent>, client_tx: Sender<ClientEvent>) -> Self {
         Client {
             network_rx,
             client_tx,
         }
     }
-    pub fn start_listening(&mut self) {
-    }
+    pub fn start_listening(&mut self) {}
 }

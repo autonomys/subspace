@@ -71,9 +71,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     // 3. The task will run an eventloop and keep discovering new peers.
     let (mut dht_client, mut dht_eventloop) = dht::dht_listener().await;
 
-    tokio::spawn(async move { 
-        dht_eventloop.run().await
-    });
+    tokio::spawn(async move { dht_eventloop.run().await });
 
     info!("Connecting to DHT");
     dht_client.start_listening();
