@@ -1,6 +1,6 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
-import { Block } from "@polkadot/types/interfaces";
+import { Block, Hash } from "@polkadot/types/interfaces";
 import { of } from "rxjs";
 
 const block = {
@@ -18,7 +18,7 @@ export const apiMock = {
       chain: {
         subscribeFinalizedHeads() {
           return of({
-            hash: "random hash",
+            hash: "random hash" as unknown as Hash,
           });
         },
       },
@@ -38,6 +38,15 @@ export const apiMock = {
           return [];
         },
       },
+    },
+  },
+  tx: {
+    feeds: {
+      put: () => ({
+        signAndSend: jest.fn(() =>
+          Promise.resolve("random hash" as unknown as Hash)
+        ),
+      }),
     },
   },
 } as unknown as ApiPromise;
