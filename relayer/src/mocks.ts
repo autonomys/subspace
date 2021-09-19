@@ -3,6 +3,8 @@ import { Logger } from "pino";
 import { Block, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { of } from "rxjs";
 
+export const txHashMock = "random hash" as unknown as Hash;
+
 const block = {
   block: {
     header: {
@@ -41,9 +43,7 @@ export const apiMock = {
   tx: {
     feeds: {
       put: jest.fn().mockReturnValue({
-        signAndSend: jest
-          .fn()
-          .mockResolvedValue("random hash" as unknown as Hash),
+        signAndSend: jest.fn().mockResolvedValue(txHashMock),
       }),
     },
   },

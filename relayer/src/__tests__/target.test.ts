@@ -1,5 +1,5 @@
 import Target from "../target";
-import { apiMock, loggerMock } from "../mocks";
+import { apiMock, loggerMock, txHashMock } from "../mocks";
 import { Observable, of } from "rxjs";
 import { TxData } from "../types";
 import { U32 } from "@polkadot/types/primitive";
@@ -27,10 +27,15 @@ describe("Target class", () => {
     const stream = target.processSubscriptions(blockSubscriptions);
 
     stream.subscribe(() => {
-      // TODO: check values
-      expect(params.api.tx.feeds.put().signAndSend).toHaveBeenCalled();
-      // TODO: check tx hash value
-      expect(params.logger.info).toHaveBeenCalled();
+      expect(params.api.tx.feeds.put().signAndSend).toHaveBeenCalledWith(
+        params.signer,
+        { nonce: -1 }
+      );
+
+      expect(params.logger.info).toHaveBeenCalledWith(
+        `Transaction sent: ${txHashMock}`
+      );
+
       done();
     });
   });
