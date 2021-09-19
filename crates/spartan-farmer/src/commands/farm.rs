@@ -14,7 +14,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use super::dht::client as dht;
+use super::dht::{client as dht, client::ClientConfig};
 
 type SlotNumber = u64;
 
@@ -55,7 +55,11 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) async fn farm(
+    bootstrap: bool,
+    path: PathBuf,
+    ws_server: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     info!("Connecting to RPC server");
     let client = WsClientBuilder::default().build(ws_server).await?;
 
@@ -69,7 +73,9 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     // 1. Create the swarm with the peer in it.
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
-    let (mut dht_client, mut dht_eventloop) = dht::dht_listener().await;
+    let config = ClientConfig { bootstrap };
+
+    let (mut dht_client, mut dht_eventloop) = dht::dht_listener(config).await;
 
     tokio::spawn(async move { dht_eventloop.run().await });
 

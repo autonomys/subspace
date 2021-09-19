@@ -17,7 +17,7 @@ impl From<KademliaEvent> for ComposedEvent {
     }
 }
 
-pub async fn create_swarm() -> Swarm<ComposedBehaviour> {
+pub async fn create_swarm(bootstrap: bool) -> Swarm<ComposedBehaviour> {
     // Generate IDs.
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());

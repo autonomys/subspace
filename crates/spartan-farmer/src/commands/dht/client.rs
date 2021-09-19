@@ -6,6 +6,7 @@ use super::*;
 pub enum ClientEvent {
     Listen { addr: Multiaddr },
     Dial,
+    Bootstrap,
     Provide,
     Find,
 }
@@ -13,17 +14,6 @@ pub enum ClientEvent {
 pub struct Client {
     network_rx: Receiver<ComposedEvent>,
     client_tx: Sender<ClientEvent>,
-}
-
-/// This method will construct a new Swarm and EventLoop object.
-pub async fn dht_listener() -> (Client, EventLoop) {
-    let (network_tx, network_rx) = channel(10);
-    let (client_tx, client_rx) = channel(10);
-
-    return (
-        Client::new(network_rx, client_tx),
-        EventLoop::new(create_swarm().await, client_rx, network_tx),
-    );
 }
 
 impl Client {
@@ -41,3 +31,20 @@ impl Client {
             .expect("Listening failed.");
     }
 }
+
+pub struct ClientConfig {
+    // This will be true, if we are running a bootstrap node.
+    pub bootstrap: bool,
+}
+
+/// This method will construct a new Swarm and EventLoop object.
+pub async fn dht_listener(config: ClientConfig) -> (Client, EventLoop) {
+    let (network_tx, network_rx) = channel(10);
+    let (client_tx, client_rx) = channel(10);
+
+    return (
+        Client::new(network_rx, client_tx),
+        EventLoop::new(create_swarm(config.bootstrap).await, client_rx, network_tx),
+    );
+}
+
