@@ -22,13 +22,6 @@ describe("Target class", () => {
     expect(target).toHaveProperty("processSubscriptions");
   });
 
-  it("processSubscriptions should return Observable", () => {
-    const target = new Target(params);
-    const stream = target.processSubscriptions(blockSubscriptions);
-
-    expect(stream).toBeInstanceOf(Observable);
-  });
-
   it("processSubscriptions should send transactions per block per subscription", (done) => {
     const target = new Target(params);
     const stream = target.processSubscriptions(blockSubscriptions);
