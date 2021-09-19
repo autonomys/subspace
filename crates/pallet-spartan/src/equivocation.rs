@@ -127,7 +127,9 @@ where
     ) -> DispatchResult {
         use frame_system::offchain::SubmitTransaction;
 
-        let call = Call::report_equivocation(Box::new(equivocation_proof));
+        let call = Call::report_equivocation {
+            equivocation_proof: Box::new(equivocation_proof),
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
@@ -154,7 +156,7 @@ impl<T: Config> Pallet<T> {
         source: TransactionSource,
         call: &Call<T>,
     ) -> TransactionValidity {
-        if let Call::report_equivocation(equivocation_proof) = call {
+        if let Call::report_equivocation { equivocation_proof } = call {
             // Discard equivocation report not coming from the local node
             if !matches!(
                 source,
@@ -196,7 +198,7 @@ impl<T: Config> Pallet<T> {
     pub fn pre_dispatch_equivocation_report(
         call: &Call<T>,
     ) -> Result<(), TransactionValidityError> {
-        if let Call::report_equivocation(equivocation_proof) = call {
+        if let Call::report_equivocation { equivocation_proof } = call {
             is_known_offence::<T>(equivocation_proof)
         } else {
             Err(InvalidTransaction::Call.into())

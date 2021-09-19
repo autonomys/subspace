@@ -503,7 +503,7 @@ where
     L: sc_consensus::JustificationSyncLink<B> + 'static,
     CIDP: CreateInherentDataProviders<B, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + 'static,
+    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync + 'static,
     CAW: CanAuthorWith<B> + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
@@ -666,6 +666,7 @@ struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     telemetry: Option<TelemetryHandle>,
 }
 
+#[async_trait::async_trait]
 impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for PoCSlotWorker<B, C, E, I, SO, L, BS>
 where
     B: BlockT,
@@ -675,16 +676,15 @@ where
         + HeaderMetadata<B, Error = ClientError>
         + 'static,
     C::Api: PoCApi<B>,
-    E: Environment<B, Error = Error>,
+    E: Environment<B, Error = Error> + Send + Sync,
     E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
     I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
-    SO: SyncOracle + Send + Clone,
+    SO: SyncOracle + Send + Sync + Clone,
     L: sc_consensus::JustificationSyncLink<B>,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>>,
+    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
-    type ClaimSlot = Pin<Box<dyn Future<Output = Option<Self::Claim>> + Send + 'static>>;
     type Claim = (PreDigest, Pair);
     type SyncOracle = SO;
     type JustificationSyncLink = L;
@@ -719,12 +719,12 @@ where
             .ok_or(sp_consensus::Error::InvalidAuthoritiesSet)
     }
 
-    fn claim_slot(
-        &mut self,
-        parent_header: B::Header,
+    async fn claim_slot(
+        &self,
+        parent_header: &B::Header,
         slot: Slot,
-        epoch_descriptor: Self::EpochData,
-    ) -> Self::ClaimSlot {
+        epoch_descriptor: &Self::EpochData,
+    ) -> Option<Self::Claim> {
         debug!(target: "poc", "Attempting to claim slot {}", slot);
 
         struct PreparedData<B: BlockT> {
@@ -797,57 +797,55 @@ where
         let spartan = self.spartan.clone();
         let signing_context = self.signing_context.clone();
 
-        Box::pin(async move {
-            let PreparedData {
-                block_id,
-                solution_range,
-                epoch_randomness,
-                salt,
-                mut solution_receiver,
-            } = maybe_prepared_data?;
+        let PreparedData {
+            block_id,
+            solution_range,
+            epoch_randomness,
+            salt,
+            mut solution_receiver,
+        } = maybe_prepared_data?;
 
-            while let Some((solution, secret_key)) = solution_receiver.next().await {
-                // TODO: We need also need to check for equivocation of farmers connected to *this node*
-                //  during block import, currently farmers connected to this node are considered trusted
-                if client
-                    .runtime_api()
-                    .is_in_block_list(&block_id, &solution.public_key)
-                    .ok()?
-                {
-                    warn!(
-                        target: "poc",
-                        "Ignoring solution for slot {} provided by farmer in block list: {}",
-                        slot,
-                        solution.public_key,
-                    );
-
-                    continue;
-                }
-
-                let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
-
-                match verification::verify_solution::<B>(
-                    &solution,
-                    &epoch_randomness,
-                    solution_range,
+        while let Some((solution, secret_key)) = solution_receiver.next().await {
+            // TODO: We need also need to check for equivocation of farmers connected to *this node*
+            //  during block import, currently farmers connected to this node are considered trusted
+            if client
+                .runtime_api()
+                .is_in_block_list(&block_id, &solution.public_key)
+                .ok()?
+            {
+                warn!(
+                    target: "poc",
+                    "Ignoring solution for slot {} provided by farmer in block list: {}",
                     slot,
-                    salt,
-                    &spartan,
-                    &signing_context,
-                ) {
-                    Ok(_) => {
-                        debug!(target: "poc", "Claimed slot {}", slot);
+                    solution.public_key,
+                );
 
-                        return Some((PreDigest { solution, slot }, secret_key.into()));
-                    }
-                    Err(error) => {
-                        warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
-                    }
-                }
+                continue;
             }
 
-            None
-        })
+            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
+
+            match verification::verify_solution::<B>(
+                &solution,
+                &epoch_randomness,
+                solution_range,
+                slot,
+                salt,
+                &spartan,
+                &signing_context,
+            ) {
+                Ok(_) => {
+                    debug!(target: "poc", "Claimed slot {}", slot);
+
+                    return Some((PreDigest { solution, slot }, secret_key.into()));
+                }
+                Err(error) => {
+                    warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
+                }
+            }
+        }
+
+        None
     }
 
     fn pre_digest_data(

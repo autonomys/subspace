@@ -17,11 +17,11 @@
 //! Private implementation details of Proof-of-Capacity (PoC) consensus digests.
 
 use super::{FarmerSignature, PoCEpochConfiguration, Slot, POC_ENGINE_ID};
-use codec::{Codec, Decode, Encode};
-use sp_runtime::{DigestItem, RuntimeDebug};
-
 use crate::FarmerId;
+use codec::{Codec, Decode, Encode};
+use scale_info::TypeInfo;
 use sp_consensus_spartan::Randomness;
+use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
 
 // TODO: better documentation here
@@ -81,7 +81,7 @@ pub struct NextEpochDescriptor {
 
 /// Information about the next epoch config, if changed. This is broadcast in the first
 /// block of the epoch, and applies using the same rules as `NextEpochDescriptor`.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, TypeInfo)]
 pub enum NextConfigDescriptor {
     /// Version 1.
     #[codec(index = 1)]

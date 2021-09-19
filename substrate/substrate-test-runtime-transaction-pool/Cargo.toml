@@ -15,9 +15,9 @@ targets = ["x86_64-unknown-linux-gnu"]
 substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
 parking_lot = "0.11.1"
 codec = { package = "parity-scale-codec", version = "2.0.0" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
-sp-runtime = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
-sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798", features = ["test-helpers"] }
-sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", features = ["test-helpers"] }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 futures = "0.3.16"
 derive_more = "0.99.2"
