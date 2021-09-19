@@ -45,9 +45,10 @@ impl EventLoop {
     async fn handle_network_event(&mut self, event: SwarmEvent<ComposedEvent, std::io::Error>) {
         match event {
             SwarmEvent::Behaviour(event) => match event {
-                ComposedEvent::Kademlia(event) => match event {},
+                ComposedEvent::Kademlia(event) => match event {
+                    _ => {}
+                },
             },
-            SwarmEvent::UnreachableAddr { .. } => todo!(),
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.network_tx
                     .send(ClientEvent::ReturnListen {
@@ -57,6 +58,7 @@ impl EventLoop {
                     .unwrap();
                 info!("Farmer is listening to K-DHT on: {:?}", address)
             }
+            SwarmEvent::UnreachableAddr { .. } => todo!(),
             SwarmEvent::Dialing(_) => todo!(),
             _ => {}
         }

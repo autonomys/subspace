@@ -75,7 +75,7 @@ pub(crate) async fn farm(
     // 3. The task will run an eventloop and keep discovering new peers.
     let config = ClientConfig { bootstrap };
 
-    let (mut dht_client, mut dht_eventloop) = dht::dht_listener(config).await;
+    let (mut dht_client, dht_eventloop) = dht::dht_listener(config).await;
 
     tokio::spawn(async move { dht_eventloop.run().await });
 
