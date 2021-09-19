@@ -1,9 +1,12 @@
 import fetch from "node-fetch";
 import { Hash, Block } from "@polkadot/types/interfaces";
 
-export type FetchBlockFunc = (url: string, hash: Hash) => Promise<Block>;
+export type FetchParaBlockFunc = (url: string, hash: Hash) => Promise<Block>;
 
-export const fetchBlock = async (url: string, hash: Hash): Promise<Block> => {
+export const fetchParaBlock = async (
+  url: string,
+  hash: Hash
+): Promise<Block> => {
   const options = {
     method: "post",
     body: JSON.stringify({

@@ -4,7 +4,7 @@ import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
-import { fetchBlock } from "./rpc";
+import { fetchParaBlock } from "./rpc";
 import { RegistryTypes } from "@polkadot/types/types";
 
 const config = loadConfig();
@@ -44,7 +44,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
         chainId: api.createType("u32", chainId),
         parachains,
         logger,
-        fetchBlock,
+        fetchParaBlock,
       });
     })
   );

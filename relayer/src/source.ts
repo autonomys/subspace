@@ -7,7 +7,7 @@ import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 
 import { TxData } from "./types";
-import { FetchBlockFunc } from "./rpc";
+import { FetchParaBlockFunc } from "./rpc";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
@@ -40,7 +40,7 @@ type SourceConstructorParams = {
   chainId: U32;
   parachains: Record<string, string>;
   logger: Logger;
-  fetchBlock: FetchBlockFunc;
+  fetchParaBlock: FetchParaBlockFunc;
 };
 
 type ParaHeadAndId = {
@@ -54,7 +54,7 @@ class Source {
   private chainId: U32;
   private parachains: Record<string, string>;
   private logger: Logger;
-  private fetchBlock: FetchBlockFunc;
+  private fetchParaBlock: FetchParaBlockFunc;
 
   constructor(params: SourceConstructorParams) {
     this.api = params.api;
@@ -62,7 +62,7 @@ class Source {
     this.chainId = params.chainId;
     this.parachains = params.parachains;
     this.logger = params.logger;
-    this.fetchBlock = params.fetchBlock;
+    this.fetchParaBlock = params.fetchParaBlock;
     this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
@@ -103,7 +103,7 @@ class Source {
       const paraUrl = this.parachains[paraId];
       if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
       // TODO: return { block, chainId }
-      return this.fetchBlock(paraUrl, paraHead);
+      return this.fetchParaBlock(paraUrl, paraHead);
     });
 
     return Promise.all(parablockRequests);
