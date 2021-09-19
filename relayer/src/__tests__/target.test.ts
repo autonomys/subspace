@@ -11,6 +11,10 @@ describe("Target class", () => {
     logger: loggerMock,
   };
 
+  const blockSubscriptions: Observable<TxData[]>[] = [
+    of([{ chainId: 1 as unknown as U32, block: "stringified block" }]),
+  ];
+
   it("should create an instance", () => {
     const target = new Target(params);
 
@@ -20,11 +24,6 @@ describe("Target class", () => {
 
   it("processSubscriptions should return Observable", () => {
     const target = new Target(params);
-
-    const blockSubscriptions: Observable<TxData[]>[] = [
-      of([{ chainId: 1 as unknown as U32, block: "stringified block" }]),
-    ];
-
     const stream = target.processSubscriptions(blockSubscriptions);
 
     expect(stream).toBeInstanceOf(Observable);
@@ -32,11 +31,6 @@ describe("Target class", () => {
 
   it("processSubscriptions should send transactions per block per subscription", (done) => {
     const target = new Target(params);
-
-    const blockSubscriptions: Observable<TxData[]>[] = [
-      of([{ chainId: 1 as unknown as U32, block: "stringified block" }]),
-    ];
-
     const stream = target.processSubscriptions(blockSubscriptions);
 
     stream.subscribe(() => {
