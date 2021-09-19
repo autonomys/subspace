@@ -1,6 +1,5 @@
 import { ApiPromise } from "@polkadot/api";
 import { concatMap } from "rxjs/operators";
-import fetch from "node-fetch";
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { EventRecord } from "@polkadot/types/interfaces/system";
@@ -8,6 +7,7 @@ import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 
 import { TxData } from "./types";
+import { FetchBlockFunc } from "./rpc";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
@@ -40,6 +40,7 @@ type SourceConstructorParams = {
   chainId: U32;
   parachains: Record<string, string>;
   logger: Logger;
+  fetchBlock: FetchBlockFunc;
 };
 
 type ParaHeadAndId = {
@@ -53,6 +54,7 @@ class Source {
   private chainId: U32;
   private parachains: Record<string, string>;
   private logger: Logger;
+  private fetchBlock: FetchBlockFunc;
 
   constructor({
     api,
@@ -60,12 +62,14 @@ class Source {
     chainId,
     parachains,
     logger,
+    fetchBlock,
   }: SourceConstructorParams) {
     this.api = api;
     this.chain = chain;
     this.chainId = chainId;
     this.parachains = parachains;
     this.logger = logger;
+    this.fetchBlock = fetchBlock;
     this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
@@ -98,27 +102,6 @@ class Source {
     }
 
     return result;
-  }
-
-  private async fetchBlock(url: string, hash: Hash) {
-    const options = {
-      method: "post",
-      body: JSON.stringify({
-        id: 1,
-        jsonrpc: "2.0",
-        method: "chain_getBlock",
-        params: [hash],
-      }),
-      headers: { "Content-Type": "application/json" },
-    };
-
-    return (
-      fetch(url, options)
-        .then((response) => response.json())
-        .then(({ result }) => result)
-        // TODO: better error handling
-        .catch((error) => console.error(error))
-    );
   }
 
   // TODO: add implementation
