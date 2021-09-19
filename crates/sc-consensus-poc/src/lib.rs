@@ -737,7 +737,7 @@ where
 
         let maybe_prepared_data: Option<PreparedData<B>> = try {
             let epoch_changes = self.poc_link.epoch_changes.shared_data();
-            let epoch = epoch_changes.viable_epoch(&epoch_descriptor, |slot| {
+            let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
                 Epoch::genesis(&self.poc_link.config, slot)
             })?;
             let epoch_randomness = epoch.as_ref().randomness;
@@ -745,7 +745,7 @@ where
             // Here we always use parent block as the source of information, thus on the edge of the era
             // the very first block of the era still uses solution range from the previous one, but the
             // block after it uses "next" solution range deposited in the first block.
-            let solution_range = find_next_solution_range_digest::<B>(&parent_header)
+            let solution_range = find_next_solution_range_digest::<B>(parent_header)
                 .ok()?
                 .map(|d| d.solution_range)
                 .or_else(|| {
@@ -756,7 +756,7 @@ where
             // Here we always use parent block as the source of information, thus on the edge of the eon
             // the very first block of the eon still uses salt from the previous one, but the
             // block after it uses "next" salt deposited in the first block.
-            let salt = find_next_salt_digest::<B>(&parent_header)
+            let salt = find_next_salt_digest::<B>(parent_header)
                 .ok()?
                 .map(|d| d.salt)
                 .or_else(|| {
