@@ -56,20 +56,13 @@ class Source {
   private logger: Logger;
   private fetchBlock: FetchBlockFunc;
 
-  constructor({
-    api,
-    chain,
-    chainId,
-    parachains,
-    logger,
-    fetchBlock,
-  }: SourceConstructorParams) {
-    this.api = api;
-    this.chain = chain;
-    this.chainId = chainId;
-    this.parachains = parachains;
-    this.logger = logger;
-    this.fetchBlock = fetchBlock;
+  constructor(params: SourceConstructorParams) {
+    this.api = params.api;
+    this.chain = params.chain;
+    this.chainId = params.chainId;
+    this.parachains = params.parachains;
+    this.logger = params.logger;
+    this.fetchBlock = params.fetchBlock;
     this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
@@ -82,7 +75,6 @@ class Source {
     return this.api.rpc.chain.getBlock(hash);
   }
 
-  // TODO: refactor and implement tests
   private async getParaHeadsAndIds(block: Block): Promise<ParaHeadAndId[]> {
     const blockRecords = await this.api.query.system.events.at(
       block.header.hash
@@ -104,20 +96,17 @@ class Source {
     return result;
   }
 
-  // TODO: add implementation
   private async getParablocks({ block }: SignedBlock) {
     const paraItems = await this.getParaHeadsAndIds(block);
 
-    return Promise.all(
-      paraItems.map(({ paraHead, paraId }) => {
-        const paraUrl = this.parachains[paraId];
+    const parablockRequests = paraItems.map(({ paraHead, paraId }) => {
+      const paraUrl = this.parachains[paraId];
+      if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
+      // TODO: return { block, chainId }
+      return this.fetchBlock(paraUrl, paraHead);
+    });
 
-        if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
-
-        // TODO: return { block, chainId }
-        return this.fetchBlock(paraUrl, paraHead);
-      })
-    );
+    return Promise.all(parablockRequests);
   }
 
   private async getBlocksByHeader({ hash }: Header): Promise<TxData[]> {
@@ -128,9 +117,7 @@ class Source {
     // const size = Buffer.byteLength(block.toString());
     // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    this.logger.info(
-      `Relay chain ${this.chain} - finalized block hash: ${hash}`
-    );
+    this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
     // this.logger.info(parablocks);
 
