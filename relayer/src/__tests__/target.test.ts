@@ -27,7 +27,8 @@ describe("Target class", () => {
     const stream = target.processSubscriptions(blockSubscriptions);
 
     stream.subscribe(() => {
-      // TODO: check if api.tx.feeds.put has been called
+      // TODO: check values
+      expect(params.api.tx.feeds.put().signAndSend).toHaveBeenCalled();
       // TODO: check tx hash value
       expect(params.logger.info).toHaveBeenCalled();
       done();

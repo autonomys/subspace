@@ -29,6 +29,7 @@ describe("Source class", () => {
     expect(stream).toBeInstanceOf(Observable);
 
     stream.subscribe((data) => {
+      expect(params.api.rpc.chain.getBlock).toHaveBeenCalled();
       expect(data).toHaveLength(1);
       expect(data[0]).toHaveProperty("chainId");
       expect(data[0].chainId).toBe(params.chainId);

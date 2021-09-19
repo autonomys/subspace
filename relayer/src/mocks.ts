@@ -1,6 +1,6 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
-import { Block, Hash } from "@polkadot/types/interfaces";
+import { Block, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { of } from "rxjs";
 
 const block = {
@@ -26,9 +26,7 @@ export const apiMock = {
   },
   rpc: {
     chain: {
-      getBlock() {
-        return block;
-      },
+      getBlock: jest.fn().mockResolvedValue(block as unknown as SignedBlock),
     },
   },
   query: {
@@ -42,10 +40,10 @@ export const apiMock = {
   },
   tx: {
     feeds: {
-      put: () => ({
-        signAndSend: jest.fn(() =>
-          Promise.resolve("random hash" as unknown as Hash)
-        ),
+      put: jest.fn().mockReturnValue({
+        signAndSend: jest
+          .fn()
+          .mockResolvedValue("random hash" as unknown as Hash),
       }),
     },
   },
@@ -55,4 +53,4 @@ export const loggerMock = {
   info: jest.fn(),
 } as unknown as Logger;
 
-export const fetchParaBlockMock = jest.fn(() => Promise.resolve({} as Block));
+export const fetchParaBlockMock = jest.fn().mockResolvedValue({} as Block);
