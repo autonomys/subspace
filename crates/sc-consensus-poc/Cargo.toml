@@ -18,15 +18,11 @@ codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive
 sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
-num-bigint = "0.2.3"
-num-rational = "0.2.2"
-num-traits = "0.2.14"
 serde = { version = "1.0.127", features = ["derive"] }
 sp-version = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sp-io = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
-sc-keystore = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sc-consensus-epochs = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
@@ -45,7 +41,6 @@ parking_lot = "0.11.1"
 log = "0.4.14"
 schnorrkel = { version = "0.9.1" }
 rand = "0.7.2"
-merlin = "2.0"
 derive_more = "0.99.16"
 async-trait = "0.1.51"
 lru = { version = "0.6.6", default-features = false }

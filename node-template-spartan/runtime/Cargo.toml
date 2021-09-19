@@ -16,7 +16,6 @@ codec = { package = "parity-scale-codec", version = "2.0.0", default-features = 
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crates/pallet-feeds" }
 pallet-spartan = { version = "0.1.0", default-features = false, path = "../../crates/pallet-spartan" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
-pallet-session = { version = "4.0.0-dev", default-features = false, features = ["historical"], git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 pallet-randomness-collective-flip = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
@@ -60,7 +59,6 @@ std = [
 	"pallet-feeds/std",
 	"pallet-spartan/std",
 	"pallet-balances/std",
-	"pallet-session/std",
 	"pallet-randomness-collective-flip/std",
 	"pallet-sudo/std",
 	"pallet-offences-poc/std",

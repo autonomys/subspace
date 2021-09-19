@@ -17,8 +17,6 @@ name = "node-template-spartan"
 
 [dependencies]
 structopt = "0.3.22"
-serde = { version = "1.0.127", features = ["derive"] }
-serde_json = "1.0.66"
 
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798", features = ["wasmtime"] }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }

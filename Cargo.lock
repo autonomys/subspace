@@ -1640,19 +1640,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "frame-election-provider-support"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "sp-arithmetic",
- "sp-npos-elections",
- "sp-std",
-]
-
-[[package]]
 name = "frame-executive"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
@@ -3864,8 +3851,6 @@ dependencies = [
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "serde",
- "serde_json",
  "sp-api",
  "sp-authorship",
  "sp-block-builder",
@@ -3895,7 +3880,6 @@ dependencies = [
  "pallet-feeds",
  "pallet-offences-poc",
  "pallet-randomness-collective-flip",
- "pallet-session",
  "pallet-spartan",
  "pallet-sudo",
  "pallet-timestamp",
@@ -4162,10 +4146,8 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
- "pallet-balances",
  "parity-scale-codec",
  "schnorrkel 0.9.1",
- "serde",
  "sp-consensus-poc",
  "sp-core",
  "sp-io",
@@ -4210,59 +4192,23 @@ dependencies = [
 name = "pallet-spartan"
 version = "0.1.0"
 dependencies = [
- "frame-election-provider-support",
  "frame-support",
  "frame-system",
  "log",
  "num-traits",
  "pallet-balances",
  "pallet-offences-poc",
- "pallet-staking",
- "pallet-staking-reward-curve",
  "pallet-timestamp",
  "parity-scale-codec",
  "ring",
  "schnorrkel 0.9.1",
- "serde",
  "sp-consensus-poc",
  "sp-consensus-spartan",
  "sp-core",
  "sp-io",
  "sp-runtime",
- "sp-staking",
  "sp-std",
  "spartan-codec",
-]
-
-[[package]]
-name = "pallet-staking"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
-dependencies = [
- "frame-election-provider-support",
- "frame-support",
- "frame-system",
- "log",
- "pallet-authorship",
- "pallet-session",
- "parity-scale-codec",
- "serde",
- "sp-application-crypto",
- "sp-io",
- "sp-runtime",
- "sp-staking",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-staking-reward-curve"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
-dependencies = [
- "proc-macro-crate 1.0.0",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -5630,10 +5576,6 @@ dependencies = [
  "log",
  "lru",
  "merkletree",
- "merlin 2.0.1",
- "num-bigint",
- "num-rational 0.2.4",
- "num-traits",
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.7.3",
@@ -5644,7 +5586,6 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-epochs",
  "sc-consensus-slots",
- "sc-keystore",
  "sc-network",
  "sc-network-test",
  "sc-telemetry",
@@ -7025,30 +6966,6 @@ source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff9
 dependencies = [
  "ruzstd",
  "zstd",
-]
-
-[[package]]
-name = "sp-npos-elections"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
-dependencies = [
- "parity-scale-codec",
- "serde",
- "sp-arithmetic",
- "sp-core",
- "sp-npos-elections-solution-type",
- "sp-std",
-]
-
-[[package]]
-name = "sp-npos-elections-solution-type"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fa635c968e831110b13f7ff997c4cd3f5e9a3798#fa635c968e831110b13f7ff997c4cd3f5e9a3798"
-dependencies = [
- "proc-macro-crate 1.0.0",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
