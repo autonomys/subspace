@@ -5582,11 +5582,9 @@ dependencies = [
  "futures 0.3.17",
  "log",
  "lru",
- "merkletree",
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.8.4",
- "reed-solomon-erasure",
  "ring",
  "sc-block-builder",
  "sc-client-api",
@@ -5614,11 +5612,10 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "spartan-codec",
+ "subspace-archiving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
- "thiserror",
- "typenum",
 ]
 
 [[package]]
@@ -6442,6 +6439,16 @@ dependencies = [
  "cpufeatures 0.2.1",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
+ "sha2-asm",
+]
+
+[[package]]
+name = "sha2-asm"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf27176fb5d15398e3a479c652c20459d9dac830dedd1fa55b42a77dbcdbfcea"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -7389,6 +7396,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "subspace-archiving"
+version = "0.1.0"
+dependencies = [
+ "merkletree",
+ "parity-scale-codec",
+ "reed-solomon-erasure",
+ "sha2 0.9.8",
+ "sp-consensus-spartan",
+ "thiserror",
+ "typenum",
 ]
 
 [[package]]

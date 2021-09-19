@@ -49,7 +49,6 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
@@ -116,11 +115,9 @@ use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 
-mod archiver;
 pub mod aux_schema;
-// TODO: Move this into separate crate
-pub mod merkle_tree;
 pub mod notification;
 #[cfg(test)]
 mod tests;

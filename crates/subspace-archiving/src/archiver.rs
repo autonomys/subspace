@@ -1,22 +1,20 @@
 // Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+// SPDX-License-Identifier: Apache-2.0
 
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-//! Utility module for handling Subspace client notifications.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use crate::merkle_tree::MerkleTree;
-use codec::Encode;
+use parity_scale_codec::Encode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
 use sp_consensus_spartan::RootBlock;
@@ -57,11 +55,11 @@ enum SegmentItem {
 
 #[derive(Debug, Encode, Clone)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
-pub(super) struct ArchivedSegment {
+pub struct ArchivedSegment {
     /// Root block of the segment
-    pub(super) root_block: RootBlock,
+    pub root_block: RootBlock,
     /// Pieces that correspond to this segment
-    pub(super) pieces: Vec<Piece>,
+    pub pieces: Vec<Piece>,
 }
 
 /// Archiver for Subspace blockchain.
@@ -73,7 +71,7 @@ pub(super) struct ArchivedSegment {
 /// block header.
 // TODO: Make this survive restarts without loosing state
 #[derive(Debug)]
-pub(super) struct Archiver {
+pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
@@ -101,7 +99,7 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(record_size: usize, witness_size: usize, segment_size: usize) -> Self {
+    pub fn new(record_size: usize, witness_size: usize, segment_size: usize) -> Self {
         let empty_segment = Segment::V0 { items: Vec::new() };
         assert!(
             record_size > empty_segment.encoded_size(),
@@ -133,7 +131,7 @@ impl Archiver {
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub(super) fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
+    pub fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block(block.encode()));
 

@@ -44,11 +44,8 @@ rand = "0.8.4"
 derive_more = "0.99.16"
 async-trait = "0.1.51"
 lru = { version = "0.6.6", default-features = false }
-merkletree = "0.21.0"
-reed-solomon-erasure = { version = "4.0.2", features = ["simd-accel"] }
 ring = "0.16"
-thiserror = "1.0.29"
-typenum = "1.14.0"
+subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 
 [dev-dependencies]
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
