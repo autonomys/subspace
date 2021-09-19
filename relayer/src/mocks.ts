@@ -1,12 +1,42 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { Block } from "@polkadot/types/interfaces";
+import { of } from "rxjs";
+
+const block = {
+  block: {
+    header: {
+      hash: "random hash",
+    },
+    extrinsics: [],
+  },
+};
 
 export const apiMock = {
   rx: {
     rpc: {
       chain: {
-        subscribeFinalizedHeads: jest.fn(),
+        subscribeFinalizedHeads() {
+          return of({
+            hash: "random hash",
+          });
+        },
+      },
+    },
+  },
+  rpc: {
+    chain: {
+      getBlock() {
+        return block;
+      },
+    },
+  },
+  query: {
+    system: {
+      events: {
+        at() {
+          return [];
+        },
       },
     },
   },
