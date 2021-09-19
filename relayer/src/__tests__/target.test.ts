@@ -39,4 +39,6 @@ describe("Target class", () => {
       done();
     });
   });
+
+  it.todo("should return error if transaction submission fails");
 });

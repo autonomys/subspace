@@ -41,4 +41,12 @@ describe("Source class", () => {
   it.todo(
     "subscribeBlocks should return an Observable with an array of multiple blocks (relay chain block and parablocks)"
   );
+
+  it.todo("should return error if fails to fetch parablock");
+
+  it.todo("should return error if API fails to get relay block");
+
+  it.todo("should return error if API fails to get block event records");
+
+  it.todo("should return error if paraId is uknown");
 });
