@@ -16,17 +16,14 @@
 //! This module includes Merkle Tree implementation used in Subspace
 
 use sha2::{Digest, Sha256};
-use sp_consensus_spartan::spartan::Piece;
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::hash::Hasher;
 use std::iter;
 use std::ops::Deref;
+use subspace_core_primitives::{crypto, Piece, Sha256Hash, SHA256_HASH_SIZE};
 use thiserror::Error;
 use typenum::{U0, U2};
-
-pub const HASH_SIZE: usize = 32;
-pub type Sha256Hash = [u8; HASH_SIZE];
 
 #[derive(Default, Clone)]
 struct Sha256Algorithm(Sha256);
@@ -74,12 +71,12 @@ impl<'a> Witness<'a> {
     /// Create witness from vector of bytes, will return bytes back as error in case length is
     /// incorrect
     pub fn new(witness: Cow<'a, [u8]>) -> Result<Self, Cow<'a, [u8]>> {
-        if witness.len() % HASH_SIZE != 0 {
+        if witness.len() % SHA256_HASH_SIZE != 0 {
             return Err(witness);
         }
 
         Ok(Self {
-            merkle_num_leaves: 2_usize.pow((witness.len() / HASH_SIZE) as u32),
+            merkle_num_leaves: 2_usize.pow((witness.len() / SHA256_HASH_SIZE) as u32),
             witness,
         })
     }
@@ -95,7 +92,7 @@ impl<'a> Witness<'a> {
         let lemma = iter::once(root)
             .chain(
                 self.witness
-                    .chunks_exact(HASH_SIZE)
+                    .chunks_exact(SHA256_HASH_SIZE)
                     .map(|hash| -> Sha256Hash {
                         hash.try_into()
                             .expect("Hash is always of correct length with above constant; qed")
@@ -138,7 +135,7 @@ impl<'a> Witness<'a> {
             merkle_num_leaves,
             witness: Cow::Borrowed(&piece[record_size..]),
         };
-        let leaf_hash = sha256_hash(&piece[..record_size]);
+        let leaf_hash = crypto::sha256_hash(&piece[..record_size]);
 
         witness.is_valid(root, index, leaf_hash)
     }
@@ -190,7 +187,7 @@ impl MerkleTree {
         T: AsRef<[u8]>,
         I: IntoIterator<Item = T>,
     {
-        Self::new(data.into_iter().map(|d| sha256_hash(d.as_ref())))
+        Self::new(data.into_iter().map(|d| crypto::sha256_hash(d.as_ref())))
     }
 
     /// Get Merkle Root
@@ -212,7 +209,7 @@ impl MerkleTree {
 
         // The first lemma element is root and the last is the item itself, we skip both here
         let lemma = proof.lemma().iter().skip(1).rev().skip(1).rev();
-        let mut witness = Vec::with_capacity(lemma.len() * HASH_SIZE);
+        let mut witness = Vec::with_capacity(lemma.len() * SHA256_HASH_SIZE);
 
         for l in lemma {
             witness.extend_from_slice(l);
@@ -221,12 +218,4 @@ impl MerkleTree {
         Ok(Witness::new(witness.into())
             .expect("Witness is never expected to have incorrect length"))
     }
-}
-
-fn sha256_hash(data: &[u8]) -> Sha256Hash {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    hasher.finalize()[..]
-        .try_into()
-        .expect("Sha256 output is always 32 bytes; qed")
 }

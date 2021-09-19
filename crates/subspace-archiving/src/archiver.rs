@@ -16,14 +16,11 @@
 use crate::merkle_tree::MerkleTree;
 use parity_scale_codec::Encode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
-use sp_consensus_spartan::RootBlock;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
 use std::iter;
-
-type Sha256Hash = [u8; 32];
+use subspace_core_primitives::{Piece, RootBlock, Sha256Hash, PIECE_SIZE};
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Encode)]

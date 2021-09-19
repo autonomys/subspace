@@ -14,6 +14,7 @@
 // limitations under the License.
 
 //! Collection of modules used for dealing with archived state of Subspace Network.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![feature(int_log)]
 
 #[cfg(feature = "std")]

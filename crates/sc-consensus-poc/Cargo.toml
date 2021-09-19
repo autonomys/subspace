@@ -46,6 +46,7 @@ async-trait = "0.1.51"
 lru = { version = "0.6.6", default-features = false }
 ring = "0.16"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [dev-dependencies]
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }

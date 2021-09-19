@@ -99,8 +99,7 @@ pub use sp_consensus_poc::{
     POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
-use sp_consensus_spartan::RootBlock;
+use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -116,6 +115,7 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE};
 
 pub mod aux_schema;
 pub mod notification;

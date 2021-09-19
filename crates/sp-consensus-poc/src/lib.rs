@@ -31,9 +31,10 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-pub use sp_consensus_spartan::{Randomness, RootBlock, RANDOMNESS_LENGTH};
+pub use sp_consensus_spartan::{Randomness, RANDOMNESS_LENGTH};
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
+use subspace_core_primitives::RootBlock;
 
 /// Key type for PoC module.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");

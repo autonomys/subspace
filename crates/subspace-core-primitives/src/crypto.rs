@@ -13,14 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Primitives for Spartan-based PoR.
-#![cfg_attr(not(feature = "std"), no_std)]
+//! Various cryptographic utilities used across Subspace Network implementation.
 
-#[cfg(feature = "std")]
-pub mod spartan;
+use crate::Sha256Hash;
+use core::convert::TryInto;
+use sha2::{Digest, Sha256};
 
-/// The length of the Randomness.
-pub const RANDOMNESS_LENGTH: usize = 32;
-
-/// Randomness value.
-pub type Randomness = [u8; RANDOMNESS_LENGTH];
+/// Simple Sha2-256 hashing.
+pub fn sha256_hash(data: &[u8]) -> Sha256Hash {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize()[..]
+        .try_into()
+        .expect("Sha256 output is always 32 bytes; qed")
+}

@@ -3912,6 +3912,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "substrate-wasm-builder",
 ]
 
@@ -4232,6 +4233,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "spartan-codec",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -5613,6 +5615,7 @@ dependencies = [
  "sp-version",
  "spartan-codec",
  "subspace-archiving",
+ "subspace-core-primitives",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -6789,6 +6792,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-timestamp",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -6806,11 +6810,7 @@ dependencies = [
 name = "sp-consensus-spartan"
 version = "0.1.0"
 dependencies = [
- "parity-scale-codec",
  "ring",
- "scale-info",
- "sha2 0.9.8",
- "sp-debug-derive",
  "spartan-codec",
 ]
 
@@ -7306,6 +7306,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spartan-codec",
+ "subspace-core-primitives",
  "thiserror",
  "tokio",
 ]
@@ -7406,9 +7407,18 @@ dependencies = [
  "parity-scale-codec",
  "reed-solomon-erasure",
  "sha2 0.9.8",
- "sp-consensus-spartan",
+ "subspace-core-primitives",
  "thiserror",
  "typenum",
+]
+
+[[package]]
+name = "subspace-core-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sha2 0.9.8",
 ]
 
 [[package]]
@@ -7538,6 +7548,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "sp-version",
+ "subspace-core-primitives",
  "substrate-test-runtime-client",
  "substrate-wasm-builder",
  "trie-db",
