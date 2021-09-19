@@ -901,7 +901,8 @@ where
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
                 target: "runtime::poc",
-                "Submitted Subspace root block.",
+                "📦 Submitted Subspace root block with segment index {}.",
+                root_block.segment_index(),
             ),
             Err(e) => log::error!(
                 target: "runtime::poc",
@@ -968,17 +969,9 @@ fn check_root_block_for_segment_index<T: Config>(
         return Err(InvalidTransaction::Stale.into());
     }
 
-    // TODO: Check if order can be guaranteed for transactions with the same weight and type though,
-    //  that is in case we have a blockchain block that causes two root blocks to be created and
-    //  submitted for inclusion in the same blockchain block
-    // Check if the root block for previous segment is already added, it must be at this point.
-    //
-    // NOTE: The very first segment will not have predecessor, we check for that as well.
-    if segment_index == 0 || MerkleRootsBySegmentIndex::<T>::contains_key(segment_index - 1) {
-        Ok(())
-    } else {
-        Err(InvalidTransaction::Stale.into())
-    }
+    // There is no guarantee on the order of transactions even on the same node unfortunately, so we
+    // can't do other validations like monotonically increasing `segment_index`
+    Ok(())
 }
 
 impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
@@ -992,9 +985,10 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
         let timestamp_slot = moment / slot_duration;
         let timestamp_slot = Slot::from(timestamp_slot.saturated_into::<u64>());
 
-        assert!(
-            CurrentSlot::<T>::get() == timestamp_slot,
-            "Timestamp slot must match `CurrentSlot`"
+        assert_eq!(
+            CurrentSlot::<T>::get(),
+            timestamp_slot,
+            "Timestamp slot must match `CurrentSlot`",
         );
     }
 }
