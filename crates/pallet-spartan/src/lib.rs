@@ -941,9 +941,8 @@ impl<T: Config> Pallet<T> {
                 .priority(TransactionPriority::MAX)
                 // Only one root block for every segment index.
                 .and_provides(root_block.segment_index())
-                // TODO: Should this be `0` or `1`?
-                // Should be included immediately with no exceptions
-                .longevity(1)
+                // Should be included immediately into the upcoming block with no exceptions.
+                .longevity(0)
                 // We don't propagate this. This can never be included on a remote node.
                 .propagate(false)
                 .build()

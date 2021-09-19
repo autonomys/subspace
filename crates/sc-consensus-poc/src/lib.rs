@@ -111,6 +111,7 @@ use sp_runtime::{
     traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
 };
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
@@ -1570,8 +1571,7 @@ where
         }
 
         let pre_digest = find_pre_digest::<Block>(&block.header).expect(
-            "valid PoC headers must contain a predigest; \
-					 header has been already verified; qed",
+            "valid PoC headers must contain a predigest; header has been already verified; qed",
         );
         let slot = pre_digest.slot;
 
@@ -1589,8 +1589,8 @@ where
         let parent_slot = find_pre_digest::<Block>(&parent_header)
             .map(|d| d.slot)
             .expect(
-                "parent is non-genesis; valid PoC headers contain a pre-digest; \
-					header has already been verified; qed",
+                "parent is non-genesis; valid PoC headers contain a pre-digest; header has \
+                already been verified; qed",
             );
 
         // make sure that slot number is strictly increasing
@@ -1783,6 +1783,53 @@ where
             epoch_changes.release_mutex()
         };
 
+        {
+            let root_blocks = self.root_blocks.lock();
+            // If there are root blocks expected to be included in this block, check them
+            if let Some(mut root_blocks_set) = root_blocks
+                .peek(&block_number)
+                .map(|v| v.iter().copied().collect::<HashSet<_>>())
+            {
+                // TODO: Why there could be no body? Light client?
+                for extrinsic in block.body.as_ref().unwrap() {
+                    /// This enum mimics minimal version of what is generated in runtime
+                    #[derive(Decode)]
+                    enum RuntimeCall {
+                        #[codec(index = 3)]
+                        Subspace(SubspaceCall),
+                    }
+
+                    /// This enum mimics minimal version of what is generated in pallet-spartan
+                    #[derive(Decode)]
+                    enum SubspaceCall {
+                        #[codec(index = 2)]
+                        StoreRootBlock { root_block: RootBlock },
+                    }
+
+                    // TODO: There must be a better way to decode an extrinsic, maybe through runtime API
+                    // `3..` removes unnecessary prefix from `OpaqueExtrinsic`'s inner vector and
+                    // probably something else
+                    if let Ok(RuntimeCall::Subspace(SubspaceCall::StoreRootBlock { root_block })) =
+                        RuntimeCall::decode(&mut &extrinsic.encode()[3..])
+                    {
+                        if !root_blocks_set.remove(&root_block) {
+                            return Err(ConsensusError::ClientImport(format!(
+                                "Found root block that should not have been present: {:?}",
+                                root_block,
+                            )));
+                        }
+                    }
+                }
+
+                if !root_blocks_set.is_empty() {
+                    return Err(ConsensusError::ClientImport(format!(
+                        "Some required store root block extrinsics were not found: {:?}",
+                        root_blocks_set,
+                    )));
+                }
+            }
+        }
+
         let import_result = self.inner.import_block(block, new_cache).await;
         let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
 
@@ -1802,7 +1849,6 @@ where
                         }
                     }
 
-                    // TODO: Validate this extrinsic against the cache of root blocks above
                     // Submit store root block extrinsic at the current block.
                     self.client
                         .runtime_api()
