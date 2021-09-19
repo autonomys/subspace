@@ -1,10 +1,11 @@
-use super::core::{create_swarm, ComposedEvent};
+use super::core::{create_swarm, ComposedBehaviour, ComposedEvent};
 use super::eventloop::EventLoop;
 use super::*;
 
 #[derive(Debug)]
 pub enum ClientEvent {
     Listen { addr: Multiaddr },
+    ReturnListen { addr: Multiaddr },
     Dial,
     Bootstrap,
     Provide,
@@ -12,12 +13,12 @@ pub enum ClientEvent {
 }
 
 pub struct Client {
-    network_rx: Receiver<ComposedEvent>,
+    network_rx: Receiver<ClientEvent>,
     client_tx: Sender<ClientEvent>,
 }
 
 impl Client {
-    pub fn new(network_rx: Receiver<ComposedEvent>, client_tx: Sender<ClientEvent>) -> Self {
+    pub fn new(network_rx: Receiver<ClientEvent>, client_tx: Sender<ClientEvent>) -> Self {
         Client {
             network_rx,
             client_tx,
@@ -48,3 +49,12 @@ pub async fn dht_listener(config: ClientConfig) -> (Client, EventLoop) {
     );
 }
 
+pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {
+    match event {
+        ClientEvent::Listen { addr } => match swarm.listen_on(addr) {
+            Ok(_) => {}
+            Err(e) => info!("{:?}", e),
+        },
+        _ => {}
+    }
+}

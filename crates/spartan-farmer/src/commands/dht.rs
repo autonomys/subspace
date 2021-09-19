@@ -9,7 +9,7 @@ use libp2p::core::{upgrade, Transport};
 use libp2p::identity;
 use libp2p::mplex;
 use libp2p::noise::{Keypair, NoiseConfig, X25519Spec};
-use libp2p::swarm::SwarmBuilder;
+use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::{Multiaddr, PeerId, Swarm};
 
@@ -17,6 +17,8 @@ use libp2p::{Multiaddr, PeerId, Swarm};
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::prelude::*;
 use futures::StreamExt;
+
+use log::info;
 
 // The Client API which the end-user is supposed to interact with.
 pub mod client;
