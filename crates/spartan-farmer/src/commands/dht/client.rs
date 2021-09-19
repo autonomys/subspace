@@ -1,4 +1,4 @@
-use super::core::{create_swarm, ComposedBehaviour, ComposedEvent};
+use super::core::{create_swarm, ComposedBehaviour};
 use super::eventloop::EventLoop;
 use super::*;
 
@@ -7,7 +7,6 @@ pub enum ClientEvent {
     Listen { addr: Multiaddr },
     ReturnListen { addr: Multiaddr },
     Dial,
-    Bootstrap,
     Provide,
     Find,
 }
@@ -43,10 +42,10 @@ pub async fn dht_listener(config: ClientConfig) -> (Client, EventLoop) {
     let (network_tx, network_rx) = channel(10);
     let (client_tx, client_rx) = channel(10);
 
-    return (
-        Client::new(network_rx, client_tx),
-        EventLoop::new(create_swarm(config.bootstrap).await, client_rx, network_tx),
-    );
+    let client = Client::new(network_rx, client_tx);
+    let eventloop = EventLoop::new(create_swarm(config.bootstrap).await, client_rx, network_tx);
+
+    return (client, eventloop);
 }
 
 pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {

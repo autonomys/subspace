@@ -17,9 +17,9 @@
 //! Common traits and types that are useful for describing offences for usage in environments
 //! that use staking.
 
-use sp_std::vec::Vec;
-
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
+use sp_std::vec::Vec;
 
 /// The kind of an offence, is a byte string representing some kind identifier
 /// e.g. `b"poc:equivocation"`
@@ -122,7 +122,7 @@ impl<Offender> OnOffenceHandler<Offender> for () {
 }
 
 /// A details about an offending authority for a particular kind of offence.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug, TypeInfo)]
 pub struct OffenceDetails<Offender> {
     /// The offending authority id
     pub offender: Offender,

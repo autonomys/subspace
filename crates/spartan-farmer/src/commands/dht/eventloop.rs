@@ -56,7 +56,6 @@ impl EventLoop {
                     })
                     .await
                     .unwrap();
-                info!("Farmer is listening to K-DHT on: {:?}", address)
             }
             SwarmEvent::UnreachableAddr { .. } => todo!(),
             SwarmEvent::Dialing(_) => todo!(),

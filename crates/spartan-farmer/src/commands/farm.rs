@@ -61,15 +61,18 @@ pub(crate) async fn farm(
     ws_server: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Connecting to RPC server");
-    let client = WsClientBuilder::default().build(ws_server).await?;
+    let client = WsClientBuilder::default()
+        .build(ws_server)
+        .await
+        .expect("Failed to connect to RPC web-socket");
 
     let identity_file = path.join("identity.bin");
     if !identity_file.exists() {
         panic!("Identity not found, please create it first using plot command");
     }
 
-    // When a farmer starts, I want to start a libp2p peer, as well.
-    // The peer will connect to a given a bootstrap node and seek other peers.
+    // When a farmer starts, it should start a libp2p peer, as well.
+    // The peer will connect to a given bootstrap nodes and seek other peers.
     // 1. Create the swarm with the peer in it.
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
@@ -77,13 +80,22 @@ pub(crate) async fn farm(
 
     let (mut dht_client, dht_eventloop) = dht::dht_listener(config).await;
 
-    tokio::spawn(async move { dht_eventloop.run().await });
+    if bootstrap {
+        dht_eventloop.run().await
+    } else {
+        tokio::spawn(async move { dht_eventloop.run().await });
+    }
 
     info!("Connecting to DHT");
-    // For now, I just want to listen to a random port the OS assigns to me.
-    dht_client
-        .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
-        .await;
+    // If, I'm a bootstrap node, the lower-level `dht-core` code will take care of which address
+    // I'm supposed to listen on.
+    // If, I'm not a bootstrap node, I can listen on any random address/port.
+    if !bootstrap {
+        dht_client
+            .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
+            .await;
+    } else {
+    }
 
     info!("Opening existing keypair");
     let keypair =
