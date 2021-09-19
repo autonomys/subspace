@@ -14,14 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 parity-scale-codec = { version = "2.0.0", default-features = false }
+scale-info = { version = "1.0", default-features = false, features = ["derive"] }
 ring = { version = "0.16.20", optional = true }
 sha2 = { version = "0.9.8", default-features = false }
-sp-debug-derive = { version = "3.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-debug-derive = { version = "3.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 spartan-codec = { version = "0.1.0", default-features = false, optional = true }
 
 [features]
 std = [
     "parity-scale-codec/std",
+    "scale-info/std",
     "ring",
     "sha2/std",
     "sp-debug-derive/std",

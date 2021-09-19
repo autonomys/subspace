@@ -435,16 +435,18 @@ pub mod pallet {
         type Call = Call<T>;
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::report_equivocation(_) => Self::validate_equivocation_report(source, call),
-                Call::store_root_block(_) => Self::validate_root_block(source, call),
+                Call::report_equivocation { .. } => {
+                    Self::validate_equivocation_report(source, call)
+                }
+                Call::store_root_block { .. } => Self::validate_root_block(source, call),
                 _ => InvalidTransaction::Call.into(),
             }
         }
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::report_equivocation(_) => Self::pre_dispatch_equivocation_report(call),
-                Call::store_root_block(_) => Self::pre_dispatch_root_block(call),
+                Call::report_equivocation { .. } => Self::pre_dispatch_equivocation_report(call),
+                Call::store_root_block { .. } => Self::pre_dispatch_root_block(call),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -894,7 +896,7 @@ where
     pub fn submit_store_root_block(root_block: RootBlock) {
         use frame_system::offchain::SubmitTransaction;
 
-        let call = Call::store_root_block(root_block);
+        let call = Call::store_root_block { root_block };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
@@ -917,7 +919,7 @@ where
 /// blocks.
 impl<T: Config> Pallet<T> {
     pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::store_root_block(root_block) = call {
+        if let Call::store_root_block { root_block } = call {
             // Discard root block not coming from the local node
             if !matches!(
                 source,
@@ -951,7 +953,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::store_root_block(root_block) = call {
+        if let Call::store_root_block { root_block } = call {
             check_root_block_for_segment_index::<T>(root_block.segment_index())
         } else {
             Err(InvalidTransaction::Call.into())

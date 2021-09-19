@@ -456,7 +456,9 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
-        let inner = Call::report_equivocation(Box::new(equivocation_proof.clone()));
+        let inner = Call::report_equivocation {
+            equivocation_proof: Box::new(equivocation_proof.clone()),
+        };
 
         // only local/inblock reports are allowed
         assert_eq!(
@@ -527,8 +529,10 @@ fn valid_equivocation_reports_dont_pay_fees() {
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
         // check the dispatch info for the call.
-        let info = Call::<Test>::report_equivocation(Box::new(equivocation_proof.clone()))
-            .get_dispatch_info();
+        let info = Call::<Test>::report_equivocation {
+            equivocation_proof: Box::new(equivocation_proof.clone()),
+        }
+        .get_dispatch_info();
 
         // it should have non-zero weight and the fee has to be paid.
         assert!(info.weight > 0);

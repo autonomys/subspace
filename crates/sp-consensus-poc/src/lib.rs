@@ -23,18 +23,17 @@ pub mod digests;
 pub mod inherents;
 pub mod offence;
 
-pub use sp_consensus_spartan::{Randomness, RootBlock, RANDOMNESS_LENGTH};
-
-use codec::{Decode, Encode};
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
-use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
-use sp_std::vec::Vec;
-
 use crate::digests::{
     NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
     SaltDescriptor, SolutionRangeDescriptor,
 };
+use codec::{Decode, Encode};
+use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+pub use sp_consensus_spartan::{Randomness, RootBlock, RANDOMNESS_LENGTH};
+use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
+use sp_std::vec::Vec;
 
 /// Key type for PoC module.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");
@@ -133,7 +132,7 @@ impl sp_consensus::SlotData for PoCGenesisConfiguration {
 }
 
 /// Configuration data used by the PoC consensus engine.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PoCEpochConfiguration {
     /// A constant value that is used in the threshold calculation formula.
