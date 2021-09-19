@@ -3,7 +3,7 @@ import Source from "../source";
 import { apiMock, loggerMock, fetchParaBlockMock } from "../mocks";
 
 describe("Source class", () => {
-  it("should create instance", () => {
+  it("should create an instance", () => {
     const params = {
       api: apiMock,
       chain: "Random relay chain name",
