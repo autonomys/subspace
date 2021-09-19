@@ -896,9 +896,7 @@ dependencies = [
  "encode_unicode",
  "lazy_static",
  "libc",
- "regex",
  "terminal_size",
- "unicode-width",
  "winapi 0.3.9",
 ]
 
@@ -1277,9 +1275,9 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "3.0.2"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30baa043103c9d0c2a57cf537cc2f35623889dc0d405e6c3cccfadbc81c71309"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
 dependencies = [
  "dirs-sys",
 ]
@@ -1466,12 +1464,13 @@ checksum = "f7531096570974c3a9dcf9e4b8e1cede1ec26cf5046219fb3b9d897503b9be59"
 
 [[package]]
 name = "event-listener-primitives"
-version = "0.2.2"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d52be4f709a6aa430dd348dcddc47e7436cdf707a1be252ed88a0c353526a58"
+checksum = "5384093b4255393cc8c42f0fc3dd4f19977ad3b1025f968257854895a993028c"
 dependencies = [
+ "nohash-hasher",
  "parking_lot 0.11.2",
- "tinyvec",
+ "smallvec",
 ]
 
 [[package]]
@@ -2405,9 +2404,9 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.15.0"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7baab56125e25686df467fe470785512329883aab42696d661247aca2a2896e4"
+checksum = "2d207dc617c7a380ab07ff572a6e52fa202a2a8f355860ac9c38e23f8196be1b"
 dependencies = [
  "console",
  "lazy_static",
@@ -4008,9 +4007,9 @@ dependencies = [
 
 [[package]]
 name = "number_prefix"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17b02fc0ff9a9e4b35b3342880f48e896ebf69f2967921fe8646bf5b7125956a"
+checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "object"
@@ -4147,7 +4146,7 @@ dependencies = [
  "frame-system",
  "log",
  "parity-scale-codec",
- "schnorrkel 0.9.1",
+ "schnorrkel 0.10.1",
  "sp-consensus-poc",
  "sp-core",
  "sp-io",
@@ -5578,7 +5577,7 @@ dependencies = [
  "merkletree",
  "parity-scale-codec",
  "parking_lot 0.11.2",
- "rand 0.7.3",
+ "rand 0.8.4",
  "reed-solomon-erasure",
  "ring",
  "sc-block-builder",
