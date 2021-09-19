@@ -5,6 +5,7 @@ import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 import fetch from "node-fetch";
+import { Logger } from "pino";
 
 import { TxData } from "./types";
 
@@ -33,11 +34,12 @@ const isRelevantRecord =
     );
   };
 
-type SourceParams = {
+type SourceConstructorParams = {
   api: ApiPromise;
   chain: Text;
   chainId: U32;
   parachains: Record<string, string>;
+  logger: Logger;
 };
 
 type ParaHeadAndId = {
@@ -50,12 +52,20 @@ class Source {
   private chain: Text;
   private chainId: U32;
   private parachains: Record<string, string>;
+  private logger: Logger;
 
-  constructor({ api, chain, chainId, parachains }: SourceParams) {
+  constructor({
+    api,
+    chain,
+    chainId,
+    parachains,
+    logger,
+  }: SourceConstructorParams) {
     this.api = api;
     this.chain = chain;
     this.chainId = chainId;
     this.parachains = parachains;
+    this.logger = logger;
     this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
@@ -135,9 +145,11 @@ class Source {
     // const size = Buffer.byteLength(block.toString());
     // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    console.log(`Relay chain ${this.chain} - finalized block hash: ${hash}`);
-    console.log(`Associated parablocks: ${parablocks.length}`);
-    console.log(parablocks);
+    this.logger.info(
+      `Relay chain ${this.chain} - finalized block hash: ${hash}`
+    );
+    this.logger.info(`Associated parablocks: ${parablocks.length}`);
+    // this.logger.info(parablocks);
 
     // TODO: return parablocks
     return [{ block: block.toString(), chainId: this.chainId }];

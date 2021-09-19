@@ -4,18 +4,28 @@ import { Hash } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
 import { merge } from "rxjs";
 import { concatMap, map } from "rxjs/operators";
+import { Logger } from "pino";
 
 import { TxData } from "./types";
+
+type TargetConstructorParams = {
+  api: ApiPromise;
+  signer: AddressOrPair;
+  logger: Logger;
+};
 
 class Target {
   private api: ApiPromise;
   private signer: AddressOrPair;
+  private logger: Logger;
 
-  constructor({ api, signer }: { api: ApiPromise; signer: AddressOrPair }) {
+  constructor({ api, signer, logger }: TargetConstructorParams) {
     this.api = api;
     this.signer = signer;
+    this.logger = logger;
     this.processBlocks = this.processBlocks.bind(this);
     this.sendBlockTx = this.sendBlockTx.bind(this);
+    this.logTransactions = this.logTransactions.bind(this);
   }
 
   private sendBlockTx({ block, chainId }: TxData): Promise<Hash> {
@@ -33,9 +43,11 @@ class Target {
     return Promise.all(blocks.map(this.sendBlockTx));
   }
 
-  private logTxs(txHashs: Hash[]) {
+  private logTransactions(txHashs: Hash[]) {
     // TODO: clarify if we need to know which tx corresponds to which chain
-    txHashs.forEach((txHash) => console.log(`Transaction sent: ${txHash}`));
+    txHashs.forEach((txHash) =>
+      this.logger.info(`Transaction sent: ${txHash}`)
+    );
   }
 
   processSubscriptions(
@@ -44,7 +56,7 @@ class Target {
     return merge(...subscriptions).pipe(
       // subscriptions emit array of blocks - relay block and parablocks
       concatMap(this.processBlocks),
-      map(this.logTxs)
+      map(this.logTransactions)
     );
   }
 }

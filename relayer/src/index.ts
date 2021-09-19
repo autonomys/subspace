@@ -1,10 +1,10 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { RegistryTypes } from "@polkadot/types/types";
-
 import { getAccount } from "./account";
 import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
+import logger from "./logger";
 
 const config = loadConfig();
 
@@ -30,7 +30,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   // use getAccount func because we cannot create keyring instance before API is instanciated
   const signer = getAccount(config.accountSeed);
 
-  const target = new Target({ api: targetApi, signer });
+  const target = new Target({ api: targetApi, signer, logger });
 
   const sources = await Promise.all(
     config.sourceChainUrls.map(async ({ url, chainId, parachains }) => {
@@ -42,6 +42,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
         chain,
         chainId: api.createType("u32", chainId),
         parachains,
+        logger,
       });
     })
   );
