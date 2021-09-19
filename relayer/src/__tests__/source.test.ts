@@ -18,5 +18,6 @@ describe("Source class", () => {
     const source = new Source(params);
 
     expect(source).toBeInstanceOf(Source);
+    expect(source).toHaveProperty("subscribeBlocks");
   });
 });

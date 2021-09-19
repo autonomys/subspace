@@ -9,8 +9,9 @@ describe("Target class", () => {
       logger: loggerMock,
     };
 
-    const source = new Target(params);
+    const target = new Target(params);
 
-    expect(source).toBeInstanceOf(Target);
+    expect(target).toBeInstanceOf(Target);
+    expect(target).toHaveProperty("processSubscriptions");
   });
 });
