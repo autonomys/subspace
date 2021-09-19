@@ -40,5 +40,7 @@ describe("Target class", () => {
     });
   });
 
-  it.todo("should return error if transaction submission fails");
+  it.todo(
+    "processSubscriptions should return error if transaction submission fails"
+  );
 });
