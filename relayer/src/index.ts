@@ -40,7 +40,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
 
       return new Source({
         api,
-        chain,
+        chain: chain.toString(),
         chainId: api.createType("u32", chainId),
         parachains,
         logger,

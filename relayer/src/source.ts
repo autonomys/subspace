@@ -4,7 +4,7 @@ import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { EventRecord } from "@polkadot/types/interfaces/system";
 import { Observable } from "@polkadot/types/types";
-import { Text, U32 } from "@polkadot/types/primitive";
+import { U32 } from "@polkadot/types/primitive";
 
 import { TxData } from "./types";
 import { FetchParaBlockFunc } from "./rpc";
@@ -36,7 +36,7 @@ const isRelevantRecord =
 
 type SourceConstructorParams = {
   api: ApiPromise;
-  chain: Text;
+  chain: string;
   chainId: U32;
   parachains: Record<string, string>;
   logger: Logger;
@@ -50,7 +50,7 @@ type ParaHeadAndId = {
 
 class Source {
   private api: ApiPromise;
-  private chain: Text;
+  private chain: string;
   private chainId: U32;
   private parachains: Record<string, string>;
   private logger: Logger;
