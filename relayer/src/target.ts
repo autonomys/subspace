@@ -1,10 +1,10 @@
 import { ApiPromise } from "@polkadot/api";
-import { AddressOrPair } from "@polkadot/api/submittable/types";
-import { Hash } from "@polkadot/types/interfaces";
-import { Observable } from "@polkadot/types/types";
 import { merge } from "rxjs";
 import { concatMap, map } from "rxjs/operators";
 import { Logger } from "pino";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
+import { Hash } from "@polkadot/types/interfaces";
+import { Observable } from "@polkadot/types/types";
 
 import { TxData } from "./types";
 

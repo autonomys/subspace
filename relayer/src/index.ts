@@ -1,10 +1,10 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { RegistryTypes } from "@polkadot/types/types";
 import { getAccount } from "./account";
 import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
+import { RegistryTypes } from "@polkadot/types/types";
 
 const config = loadConfig();
 

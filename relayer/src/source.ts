@@ -1,11 +1,11 @@
 import { ApiPromise } from "@polkadot/api";
+import { concatMap } from "rxjs/operators";
+import fetch from "node-fetch";
+import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { EventRecord } from "@polkadot/types/interfaces/system";
 import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
-import { concatMap } from "rxjs/operators";
-import fetch from "node-fetch";
-import { Logger } from "pino";
 
 import { TxData } from "./types";
 
