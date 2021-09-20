@@ -124,7 +124,7 @@ class Source {
     this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
 
-    const relayBlock = { block: block.toString(), chainId: this.chainId };
+    const relayBlock = { block: block.toHex(), chainId: this.chainId };
 
     return [relayBlock, ...parablocks];
   }
