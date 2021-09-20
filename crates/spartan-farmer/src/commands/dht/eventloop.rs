@@ -21,7 +21,7 @@ impl EventLoop {
                 client_event = self.client_rx.next() => self.handle_event(client_event.unwrap()),
                 network_event = self.swarm.next() => match network_event {
                     Some(event) => self.handle_network_event(event).await,
-                    None => {},
+                    None => break,
                 }
             }
         }
@@ -51,6 +51,12 @@ impl EventLoop {
                             },
                             _ => {}
                         }
+                    }
+                    KademliaEvent::RoutablePeer { peer, address } => {
+                        self.swarm
+                            .behaviour_mut()
+                            .kademlia
+                            .add_address(&peer, address);
                     }
                     _ => {}
                 },
