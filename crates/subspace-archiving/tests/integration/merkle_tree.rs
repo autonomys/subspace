@@ -1,5 +1,5 @@
 use std::iter;
-use subspace_archiving::merkle_tree::MerkleTree;
+use subspace_archiving::merkle_tree::{MerkleTree, MerkleTreeWitnessError};
 use subspace_core_primitives::{crypto, Piece, Sha256Hash};
 
 #[test]
@@ -29,4 +29,9 @@ fn merkle_tree() {
         assert!(!witness.is_valid(root, index, rand::random()));
         assert!(!witness.is_valid(root, rand::random(), *hashes.get(index).unwrap()));
     }
+
+    assert_eq!(
+        merkle_tree_data.get_witness(number_of_pieces),
+        Err(MerkleTreeWitnessError::WrongIndex(number_of_pieces)),
+    );
 }

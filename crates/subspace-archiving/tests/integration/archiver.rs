@@ -1,5 +1,6 @@
+use std::assert_matches::assert_matches;
 use subspace_archiving::archiver;
-use subspace_archiving::archiver::Archiver;
+use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
@@ -63,4 +64,31 @@ fn archiver() {
         expected_segment_index += 1;
         previous_root_block_hash = archived_segment.root_block.hash();
     }
+}
+
+#[test]
+fn archiver_invalid_usage() {
+    assert_matches!(
+        Archiver::new(5, SEGMENT_SIZE),
+        Err(ArchiverInstantiationError::RecordSizeTooSmall),
+    );
+
+    assert_matches!(
+        Archiver::new(10, 9),
+        Err(ArchiverInstantiationError::SegmentSizeTooSmall),
+    );
+    assert_matches!(
+        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
+        Err(ArchiverInstantiationError::SegmentSizeTooSmall),
+    );
+
+    assert_matches!(
+        Archiver::new(17, SEGMENT_SIZE),
+        Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
+    );
+
+    assert_matches!(
+        Archiver::new(17, 34),
+        Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
+    );
 }

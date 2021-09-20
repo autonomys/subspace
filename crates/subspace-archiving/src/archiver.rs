@@ -113,12 +113,15 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
+    /// * segment size and record size do not make sense together
     pub fn new(
         record_size: usize,
         segment_size: usize,
     ) -> Result<Self, ArchiverInstantiationError> {
-        let empty_segment = Segment::V0 { items: Vec::new() };
-        if record_size <= empty_segment.encoded_size() {
+        let tiny_segment = Segment::V0 {
+            items: vec![SegmentItem::Block(vec![0u8])],
+        };
+        if record_size <= tiny_segment.encoded_size() {
             return Err(ArchiverInstantiationError::RecordSizeTooSmall);
         }
         if segment_size <= record_size {
