@@ -53,7 +53,7 @@ version = "0.1.0"
 path = "../subspace-core-primitives"
 
 [dev-dependencies]
-rand = "0.8.3"
+rand = "0.8.4"
 
 [dev-dependencies.async-std]
 features = ["attributes"]

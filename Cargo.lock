@@ -5869,7 +5869,7 @@ dependencies = [
  "libp2p",
  "log",
  "parking_lot 0.11.2",
- "rand 0.7.3",
+ "rand 0.8.4",
  "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
@@ -7405,6 +7405,7 @@ version = "0.1.0"
 dependencies = [
  "merkletree",
  "parity-scale-codec",
+ "rand 0.8.4",
  "reed-solomon-erasure",
  "sha2 0.9.8",
  "subspace-core-primitives",

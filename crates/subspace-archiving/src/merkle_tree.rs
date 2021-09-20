@@ -61,7 +61,7 @@ type InternalMerkleTree = merkletree::merkle::MerkleTree<
 >;
 
 /// Merkle Proof-based witness
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Witness<'a> {
     merkle_num_leaves: usize,
     witness: Cow<'a, [u8]>,
@@ -88,8 +88,19 @@ impl<'a> Witness<'a> {
             return false;
         }
 
+        // Hash one more time as Merkle Tree implementation does
+        let leaf_hash = {
+            let mut hasher = Sha256::new();
+            // Merkle Tree leaf hash prefix
+            hasher.update(&[0x00]);
+            hasher.update(leaf_hash);
+            hasher.finalize()[..]
+                .try_into()
+                .expect("Sha256 output is always 32 bytes; qed")
+        };
+
         // Reconstruct lemma for verification
-        let lemma = iter::once(root)
+        let lemma = iter::once(leaf_hash)
             .chain(
                 self.witness
                     .chunks_exact(SHA256_HASH_SIZE)
@@ -98,22 +109,20 @@ impl<'a> Witness<'a> {
                             .expect("Hash is always of correct length with above constant; qed")
                     }),
             )
-            .chain(iter::once(leaf_hash))
+            .chain(iter::once(root))
             .collect();
 
         // There is no path inside of witness, but by knowing index and number of leaves we can
         // recover it
         let path = {
             let mut path = Vec::with_capacity(self.merkle_num_leaves);
-            let mut mid_point = self.merkle_num_leaves;
+            let mut local_index = index;
 
             for _ in 0..self.merkle_num_leaves.log2() {
-                mid_point /= 2;
-                path.push(if index < mid_point { 0 } else { 1 });
+                path.push(if local_index % 2 == 0 { 0 } else { 1 });
+                local_index /= 2;
             }
 
-            // Path should go from leaves to the root, so let's reverse it
-            path.reverse();
             path
         };
 
@@ -123,7 +132,8 @@ impl<'a> Witness<'a> {
         proof.validate::<Sha256Algorithm>().unwrap_or_default()
     }
 
-    /// validate witness embedded within a piece
+    // TODO: Move this to archiver module, it doesn't belong here
+    /// Validate witness embedded within a piece
     pub fn is_piece_valid(
         piece: &Piece,
         root: Sha256Hash,
@@ -171,12 +181,12 @@ pub struct MerkleTree {
 
 impl MerkleTree {
     /// Creates new merkle tree from a list of hashes
-    pub fn new<T>(data: T) -> Self
+    pub fn new<I>(hashes: I) -> Self
     where
-        T: IntoIterator<Item = Sha256Hash>,
+        I: IntoIterator<Item = Sha256Hash>,
     {
         Self {
-            merkle_tree: InternalMerkleTree::new(data)
+            merkle_tree: InternalMerkleTree::new(hashes.into_iter())
                 .expect("This version of the tree from the library never returns error; qed"),
         }
     }
