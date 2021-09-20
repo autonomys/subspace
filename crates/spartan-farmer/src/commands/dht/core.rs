@@ -1,11 +1,6 @@
 // Pull imports from the parent module
+use super::client::ClientConfig;
 use super::*;
-
-const BOOTNODES: [&str; 3] = [
-    "/ip4/192.186.0.0/tcp/9997",
-    "/ip4/192.186.0.0/tcp/9998",
-    "/ip4/192.186.0.0/tcp/9999",
-];
 
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = false, out_event = "ComposedEvent")]
@@ -23,7 +18,16 @@ impl From<KademliaEvent> for ComposedEvent {
     }
 }
 
-pub async fn create_swarm(bootstrap: bool) -> Swarm<ComposedBehaviour> {
+pub async fn create_bootstrap(config: ClientConfig) -> Swarm<ComposedBehaviour> {
+    // TODO: Don't do this, here. Move this to a seperate method. That can be called by
+    // dht::client::dht_listener.
+    //
+    // Read a RSA private key from disk, to create a bootstrap node's PeerID.
+    // let key = identity::Keypair::rsa_from_pkcs8().unwrap();
+    todo!()
+}
+
+pub async fn create_node(config: ClientConfig) -> Swarm<ComposedBehaviour> {
     // Generate IDs.
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());
@@ -48,34 +52,11 @@ pub async fn create_swarm(bootstrap: bool) -> Swarm<ComposedBehaviour> {
         }))
         .build();
 
-    if bootstrap {
-        set_bootstrap(&mut swarm);
-    } else {
-        dial_bootstrap(&mut swarm);
-    }
+    dial_bootstrap(&mut swarm, config.bootstrap_nodes);
 
     swarm
 }
 
-fn set_bootstrap(swarm: &mut Swarm<ComposedBehaviour>) {
-    info!("I'm a bootstrap node.\n");
-    for node in &BOOTNODES {
-        let addr: Multiaddr = node.clone().parse().unwrap();
-        match swarm.dial_addr(addr.clone()) {
-            Err(_) => {
-                swarm.listen_on(addr.clone()).unwrap();
-                info!("My Peer ID is: {:?}\n", swarm.local_peer_id());
-                info!("My address is: {:?}\n", addr);
-                break;
-            }
-            _ => continue,
-        }
-    }
-}
-
-fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>) {
-    for node in BOOTNODES {
-        let addr: Multiaddr = node.clone().parse().unwrap();
-        // swarm.behaviour_mut().kademlia.add_address(addr);
-    }
+fn dial_bootstrap(_swarm: &mut Swarm<ComposedBehaviour>, nodes: Vec<String>) {
+    todo!()
 }

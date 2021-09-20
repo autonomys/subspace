@@ -5,21 +5,12 @@ use super::*;
 pub struct EventLoop {
     swarm: Swarm<ComposedBehaviour>,
     client_rx: Receiver<ClientEvent>,
-    network_tx: Sender<ClientEvent>,
 }
 
 impl EventLoop {
     /// Create new event loop
-    pub fn new(
-        swarm: Swarm<ComposedBehaviour>,
-        client_rx: Receiver<ClientEvent>,
-        network_tx: Sender<ClientEvent>,
-    ) -> Self {
-        EventLoop {
-            swarm,
-            client_rx,
-            network_tx,
-        }
+    pub fn new(swarm: Swarm<ComposedBehaviour>, client_rx: Receiver<ClientEvent>) -> Self {
+        EventLoop { swarm, client_rx }
     }
 
     /// Run event loop. We will use this method to spawn the event loop in a background task.
@@ -35,9 +26,8 @@ impl EventLoop {
         }
     }
 
-    // NOTE: This method is just a wrapper around the actual method that will handle client events.
-    // We have to put the handle client event method in the EventLoop impl because it needs access
-    // to the swarm.
+    // NOTE: We have to put the handle client event method in the EventLoop impl because it
+    // needs access to the swarm.
     fn handle_event(&mut self, event: ClientEvent) {
         handle_client_event(&mut self.swarm, event)
     }
@@ -50,15 +40,8 @@ impl EventLoop {
                 },
             },
             SwarmEvent::NewListenAddr { address, .. } => {
-                self.network_tx
-                    .send(ClientEvent::ReturnListen {
-                        addr: address.clone(),
-                    })
-                    .await
-                    .unwrap();
+                info!("Farmer is listening to K-DHT on: {:?}", address)
             }
-            SwarmEvent::UnreachableAddr { .. } => todo!(),
-            SwarmEvent::Dialing(_) => todo!(),
             _ => {}
         }
     }

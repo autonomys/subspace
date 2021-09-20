@@ -14,11 +14,17 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::{Multiaddr, PeerId, Swarm};
 
 // Stuff needed to set up channels between Client API task and EventLoop task.
-use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::channel::{
+    mpsc::{channel, Receiver, Sender},
+    oneshot,
+};
 use futures::prelude::*;
 use futures::StreamExt;
 
 use log::info;
+
+type OneshotError = Box<dyn std::error::Error + Send>;
+type OneshotType = Result<(), OneshotError>;
 
 // The Client API which the end-user is supposed to interact with.
 pub mod client;

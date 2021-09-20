@@ -14,7 +14,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use super::dht::{client as dht, client::ClientConfig};
+use super::dht::{
+    client as dht,
+    client::{ClientConfig, ClientType},
+};
 
 type SlotNumber = u64;
 
@@ -76,26 +79,20 @@ pub(crate) async fn farm(
     // 1. Create the swarm with the peer in it.
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
-    let config = ClientConfig { bootstrap };
+    let config = ClientConfig {
+        bootstrap,
+        bootstrap_nodes: Vec::default(),
+        client_type: ClientType::Normal,
+    };
 
-    let (mut dht_client, dht_eventloop) = dht::dht_listener(config).await;
+    let (mut dht_client, dht_eventloop) = dht::create_connection(config).await;
 
-    if bootstrap {
-        dht_eventloop.run().await
-    } else {
-        tokio::spawn(async move { dht_eventloop.run().await });
-    }
+    tokio::spawn(async move { dht_eventloop.run().await });
 
     info!("Connecting to DHT");
-    // If, I'm a bootstrap node, the lower-level `dht-core` code will take care of which address
-    // I'm supposed to listen on.
-    // If, I'm not a bootstrap node, I can listen on any random address/port.
-    if !bootstrap {
-        dht_client
-            .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
-            .await;
-    } else {
-    }
+    dht_client
+        .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
+        .await;
 
     info!("Opening existing keypair");
     let keypair =
