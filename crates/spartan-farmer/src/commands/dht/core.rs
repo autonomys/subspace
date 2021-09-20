@@ -19,11 +19,16 @@ impl From<KademliaEvent> for ComposedEvent {
 }
 
 pub async fn create_bootstrap(config: ClientConfig) -> Swarm<ComposedBehaviour> {
-    // TODO: Don't do this, here. Move this to a seperate method. That can be called by
-    // dht::client::dht_listener.
-    //
     // Read a RSA private key from disk, to create a bootstrap node's PeerID.
     // let key = identity::Keypair::rsa_from_pkcs8().unwrap();
+    //
+    // - We can read the ClientConfig file, in that method itself.
+    // - We can even it spawn another task for it.
+
+    if let Some(_addr) = config.listen_addr {
+        // swarm.listen_on(addr).unwrap();
+    }
+
     todo!()
 }
 
@@ -52,11 +57,14 @@ pub async fn create_node(config: ClientConfig) -> Swarm<ComposedBehaviour> {
         }))
         .build();
 
+    // Connect to bootstrap nodes.
     dial_bootstrap(&mut swarm, config.bootstrap_nodes);
 
     swarm
 }
 
-fn dial_bootstrap(_swarm: &mut Swarm<ComposedBehaviour>, nodes: Vec<String>) {
-    todo!()
+fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: Vec<(Multiaddr, PeerId)>) {
+    for node in nodes {
+        swarm.behaviour_mut().kademlia.add_address(&node.1, node.0);
+    }
 }

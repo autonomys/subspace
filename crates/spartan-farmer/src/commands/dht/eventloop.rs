@@ -4,6 +4,7 @@ use super::*;
 
 pub struct EventLoop {
     swarm: Swarm<ComposedBehaviour>,
+    // Channel to receive events from Client.
     client_rx: Receiver<ClientEvent>,
 }
 
