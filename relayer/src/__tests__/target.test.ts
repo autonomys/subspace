@@ -1,8 +1,6 @@
 import Target from "../target";
-import { apiMock, loggerMock, txHashMock } from "../mocks";
-import { Observable, of } from "rxjs";
-import { TxData } from "../types";
-import { U32 } from "@polkadot/types/primitive";
+import { apiMock, loggerMock, txHashMock, txDataMock } from "../mocks";
+import { of } from "rxjs";
 
 describe("Target class", () => {
   const params = {
@@ -11,9 +9,7 @@ describe("Target class", () => {
     logger: loggerMock,
   };
 
-  const blockSubscriptions: Observable<TxData[]>[] = [
-    of([{ chainId: 1 as unknown as U32, block: "stringified block" }]),
-  ];
+  const blockSubscriptions = [of([txDataMock])];
 
   it("should create an instance", () => {
     const target = new Target(params);
@@ -27,6 +23,11 @@ describe("Target class", () => {
     const stream = target.processSubscriptions(blockSubscriptions);
 
     stream.subscribe(() => {
+      expect(params.api.tx.feeds.put).toHaveBeenCalledWith(
+        txDataMock.block,
+        txDataMock.chainId
+      );
+
       expect(params.api.tx.feeds.put().signAndSend).toHaveBeenCalledWith(
         params.signer,
         { nonce: -1 }
