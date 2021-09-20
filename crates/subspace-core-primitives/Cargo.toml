@@ -8,8 +8,7 @@ edition = "2018"
 include = [
     "/src",
     "/Cargo.toml",
-    "/LICENSE-APACHE",
-    "/LICENSE-MIT",
+    "/LICENSE",
     "/README.md"
 ]
 
