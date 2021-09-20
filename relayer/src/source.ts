@@ -123,7 +123,9 @@ class Source {
     this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
 
-    return [{ block: block.toString(), chainId: this.chainId }, ...parablocks];
+    const relayBlock = { block: block.toString(), chainId: this.chainId };
+
+    return [relayBlock, ...parablocks];
   }
 
   subscribeBlocks(): Observable<TxData[]> {
