@@ -58,34 +58,19 @@ impl Spartan {
         // should consume [u8; 32 * piece_amount] space.
         let piece_amount = pieces.len() / PIECE_SIZE;
         let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_amount * HASH_SIZE);
-        let mut nonce_iter = nonce_array.iter();
         let mut expanded_iv;
-        for _ in 0..piece_amount {
+        for nonce in nonce_array {
             // same encoding_key_hash will be used for each expanded_iv
             expanded_iv = encoding_key_hash;
 
             // select the nonce from nonce_array, xor it with the encoding_key_hash
-            for (i, &byte) in nonce_iter
-                .next()
-                .unwrap()
+            nonce
                 .to_le_bytes()
                 .iter()
                 .rev()
-                .enumerate()
-            {
-                expanded_iv[HASH_SIZE - i - 1] ^= byte;
-            }
-
-            /* can replace the upper for loop
-            nonce_iter
-                .next()
-                .unwrap()
-                .to_le_bytes()
-                .iter()
-                .rev()
-                .enumerate()
-                .map(|(i, &byte)| expanded_iv[32 - i - 1] ^= byte);
-            */
+                .zip(expanded_iv.iter_mut().rev())
+                .for_each(|(nonce_byte, expanded_iv_byte)| *expanded_iv_byte ^= nonce_byte);
+            //*/
             expanded_iv_vector.extend(expanded_iv);
         }
 

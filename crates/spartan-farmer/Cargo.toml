@@ -27,7 +27,7 @@ log = "0.4.14"
 rayon = "1.5.0"
 ring = "0.16.20"
 serde_json = "1.0.64"
-sloth256-189 = { git = "https://github.com/subspace/sloth256-189", branch = "unresolved_symbol_test", features = ["cuda"]}
+#sloth256-189 = { git = "https://github.com/subspace/sloth256-189", features = ["cuda"]}
 schnorrkel = "0.10.1"
 thiserror = "1.0.24"
 tokio = "1.11.0"
@@ -36,9 +36,9 @@ tokio = "1.11.0"
 features = ["client"]
 version = "0.2.0"
 
-#[dependencies.sloth256-189]
-#features = ["cuda"]
-#version = "0.2.0"
+[dependencies.sloth256-189]
+features = ["cuda"]
+version = "0.2.2"
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to
