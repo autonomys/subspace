@@ -114,6 +114,7 @@ class Source {
 
   private async getBlocksByHeader({ hash }: Header): Promise<TxData[]> {
     const block = await this.getBlock(hash);
+    // TODO: fetch parablocks only if source chain has parachains
     const parablocks = await this.getParablocks(block);
 
     // TODO: check relay block and parablocks size
