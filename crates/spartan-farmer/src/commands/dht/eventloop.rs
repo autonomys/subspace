@@ -49,25 +49,10 @@ impl EventLoop {
                                 }
                                 Err(e) => info!("{:?}", e),
                             },
-                            libp2p::kad::QueryResult::GetClosestPeers(_) => todo!(),
-                            libp2p::kad::QueryResult::GetProviders(_) => todo!(),
-                            libp2p::kad::QueryResult::StartProviding(_) => todo!(),
-                            libp2p::kad::QueryResult::RepublishProvider(_) => todo!(),
-                            libp2p::kad::QueryResult::GetRecord(_) => todo!(),
-                            libp2p::kad::QueryResult::PutRecord(_) => todo!(),
-                            libp2p::kad::QueryResult::RepublishRecord(_) => todo!(),
+                            _ => {}
                         }
                     }
-                    KademliaEvent::InboundRequestServed { request: _ } => todo!(),
-                    KademliaEvent::UnroutablePeer { peer: _ } => todo!(),
-                    KademliaEvent::RoutablePeer {
-                        peer: _,
-                        address: _,
-                    } => todo!(),
-                    KademliaEvent::PendingRoutablePeer {
-                        peer: _,
-                        address: _,
-                    } => todo!(),
+                    _ => {}
                 },
             },
             SwarmEvent::NewListenAddr { address, .. } => {
@@ -78,49 +63,7 @@ impl EventLoop {
                 endpoint: _,
                 num_established: _,
             } => info!("Connected to new peer: {:?}", peer_id),
-            SwarmEvent::ConnectionClosed {
-                peer_id: _,
-                endpoint: _,
-                num_established: _,
-                cause: _,
-            } => todo!(),
-            SwarmEvent::IncomingConnection {
-                local_addr: _,
-                send_back_addr: _,
-            } => todo!(),
-            SwarmEvent::IncomingConnectionError {
-                local_addr: _,
-                send_back_addr: _,
-                error: _,
-            } => todo!(),
-            SwarmEvent::BannedPeer {
-                peer_id: _,
-                endpoint: _,
-            } => todo!(),
-            SwarmEvent::UnreachableAddr {
-                peer_id: _,
-                address: _,
-                error: _,
-                attempts_remaining: _,
-            } => todo!(),
-            SwarmEvent::UnknownPeerUnreachableAddr {
-                address: _,
-                error: _,
-            } => todo!(),
-            SwarmEvent::ExpiredListenAddr {
-                listener_id: _,
-                address: _,
-            } => todo!(),
-            SwarmEvent::ListenerClosed {
-                listener_id: _,
-                addresses: _,
-                reason: _,
-            } => todo!(),
-            SwarmEvent::ListenerError {
-                listener_id: _,
-                error: _,
-            } => todo!(),
-            SwarmEvent::Dialing(_) => todo!(),
+            _ => {}
         }
     }
 }
