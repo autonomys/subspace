@@ -34,7 +34,7 @@ pub type Randomness = [u8; RANDOMNESS_LENGTH];
 pub type Sha256Hash = [u8; 32];
 
 /// Root block for a specific segment
-#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum RootBlock {
     // V0 of the root block data structure
     #[codec(index = 0)]
