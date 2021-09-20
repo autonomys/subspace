@@ -53,4 +53,8 @@ describe("Source class", () => {
   );
 
   it.todo("subscribeBlocks should return error if paraId is uknown");
+
+  it.todo("getParaHeadAndIdFromRecord");
+
+  it.todo("isRelevantRecord");
 });
