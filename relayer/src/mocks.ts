@@ -18,6 +18,9 @@ const block = {
     },
     extrinsics: [],
   },
+  toHex() {
+    return "block hex";
+  },
 };
 
 export const apiMock = {
