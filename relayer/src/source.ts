@@ -99,11 +99,14 @@ class Source {
   private async getParablocks({ block }: SignedBlock) {
     const paraItems = await this.getParaHeadsAndIds(block);
 
-    const parablockRequests = paraItems.map(({ paraHead, paraId }) => {
+    const parablockRequests = paraItems.map(async ({ paraHead, paraId }) => {
       const paraUrl = this.parachains[paraId];
       if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
-      // TODO: return { block, chainId }
-      return this.fetchParaBlock(paraUrl, paraHead);
+
+      const block = await this.fetchParaBlock(paraUrl, paraHead);
+      const hex = this.api.createType("Block", block).toHex();
+
+      return { block: hex, chainId: this.api.createType("U32", paraId) };
     });
 
     return Promise.all(parablockRequests);
@@ -119,10 +122,8 @@ class Source {
 
     this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
-    // this.logger.info(parablocks);
 
-    // TODO: return parablocks
-    return [{ block: block.toString(), chainId: this.chainId }];
+    return [{ block: block.toString(), chainId: this.chainId }, ...parablocks];
   }
 
   subscribeBlocks(): Observable<TxData[]> {

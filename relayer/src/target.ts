@@ -1,6 +1,6 @@
 import { ApiPromise } from "@polkadot/api";
 import { merge } from "rxjs";
-import { concatMap, map } from "rxjs/operators";
+import { concatMap } from "rxjs/operators";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { Hash } from "@polkadot/types/interfaces";
@@ -25,7 +25,6 @@ class Target {
     this.logger = logger;
     this.processBlocks = this.processBlocks.bind(this);
     this.sendBlockTx = this.sendBlockTx.bind(this);
-    this.logTransactions = this.logTransactions.bind(this);
   }
 
   private sendBlockTx({ block, chainId }: TxData): Promise<Hash> {
@@ -39,15 +38,11 @@ class Target {
     );
   }
 
-  private processBlocks(blocks: TxData[]): Promise<Hash[]> {
-    return Promise.all(blocks.map(this.sendBlockTx));
-  }
-
-  private logTransactions(txHashs: Hash[]) {
-    // TODO: clarify if we need to know which tx corresponds to which chain
-    txHashs.forEach((txHash) =>
-      this.logger.info(`Transaction sent: ${txHash}`)
-    );
+  private async processBlocks(blocks: TxData[]) {
+    for await (const block of blocks) {
+      const txHash = await this.sendBlockTx(block);
+      this.logger.info(`Transaction sent: ${txHash}`);
+    }
   }
 
   processSubscriptions(
@@ -55,8 +50,7 @@ class Target {
   ): Observable<void> {
     return merge(...subscriptions).pipe(
       // subscriptions emit array of blocks - relay block and parablocks
-      concatMap(this.processBlocks),
-      map(this.logTransactions)
+      concatMap(this.processBlocks)
     );
   }
 }
