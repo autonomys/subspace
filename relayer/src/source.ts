@@ -1,5 +1,5 @@
 import { ApiPromise } from "@polkadot/api";
-import { Header, Hash } from "@polkadot/types/interfaces";
+import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
 import { Text, U32 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
@@ -27,17 +27,18 @@ class Source {
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
   // TODO: should return Uint8Array instead of string
-  private getBlock = (hash: Hash): Promise<string> =>
-    this.api.rpc.chain.getBlock(hash).then((block) => block.toString());
+  private getBlock = (hash: Hash): Promise<SignedBlock> =>
+    this.api.rpc.chain.getBlock(hash);
 
   private getBlockByHeader = async ({ hash }: Header): Promise<TxData> => {
     const block = await this.getBlock(hash);
-    const size = Buffer.byteLength(block);
+    const hex = block.toHex();
+    const size = Buffer.byteLength(hex);
 
     console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
     console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    return { block, chainId: this.chainId };
+    return { block: hex, chainId: this.chainId };
   };
 
   subscribeBlocks = (): Observable<TxData> =>
