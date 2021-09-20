@@ -1,4 +1,4 @@
-use super::client::{handle_client_event, ClientEvent};
+use super::client::{Client, ClientEvent};
 use super::core::{ComposedBehaviour, ComposedEvent};
 use super::*;
 
@@ -30,7 +30,7 @@ impl EventLoop {
     // NOTE: We have to put the handle client event method in the EventLoop impl because it
     // needs access to the swarm.
     fn handle_event(&mut self, event: ClientEvent) {
-        handle_client_event(&mut self.swarm, event)
+        Client::handle_client_event(&mut self.swarm, event)
     }
 
     async fn handle_network_event(&mut self, event: SwarmEvent<ComposedEvent, std::io::Error>) {

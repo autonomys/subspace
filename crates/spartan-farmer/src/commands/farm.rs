@@ -74,6 +74,12 @@ pub(crate) async fn farm(
         panic!("Identity not found, please create it first using plot command");
     }
 
+    info!("Opening existing keypair");
+    let keypair =
+        Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
+    let public_key_hash = crypto::hash_public_key(&keypair.public);
+    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+
     // When a farmer starts, it should start a libp2p peer, as well.
     // The peer will connect to a given bootstrap nodes and seek other peers.
     // 1. Create the swarm with the peer in it.
@@ -103,12 +109,6 @@ pub(crate) async fn farm(
             .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
             .await;
     }
-
-    info!("Opening existing keypair");
-    let keypair =
-        Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
     info!("Opening plot");
     let plot = Plot::open_or_create(&path.into()).await?;

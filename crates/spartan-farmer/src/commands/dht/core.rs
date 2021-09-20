@@ -18,25 +18,36 @@ impl From<KademliaEvent> for ComposedEvent {
     }
 }
 
-pub async fn create_bootstrap(config: ClientConfig) -> Swarm<ComposedBehaviour> {
-    // Read a RSA private key from disk, to create a bootstrap node's PeerID.
-    // let key = identity::Keypair::rsa_from_pkcs8().unwrap();
-    //
-    // - We can read the ClientConfig file, in that method itself.
-    // - We can even it spawn another task for it.
+pub async fn create_bootstrap(config: ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
+    // Generate IDs.
+    // TODO: Read a RSA private key from disk, to create a bootstrap node's PeerID.
+    let private_key: &mut [u8] = &mut config.bootstrap_keys.clone()[0];
+    let key = identity::Keypair::rsa_from_pkcs8(private_key).unwrap();
+    let peerid = PeerId::from_public_key(key.public());
 
-    if let Some(_addr) = config.listen_addr {
-        // swarm.listen_on(addr).unwrap();
+    let mut swarm = create_swarm(peerid.clone(), key);
+
+    if let Some(addr) = config.listen_addr {
+        swarm.listen_on(addr).unwrap();
     }
 
-    todo!()
+    (peerid, swarm)
 }
 
-pub async fn create_node(config: ClientConfig) -> Swarm<ComposedBehaviour> {
+pub async fn create_node(config: ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
     // Generate IDs.
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());
 
+    let mut swarm = create_swarm(peerid.clone(), key);
+
+    // Connect to bootstrap nodes.
+    dial_bootstrap(&mut swarm, config.bootstrap_nodes);
+
+    (peerid, swarm)
+}
+
+fn create_swarm(peerid: PeerId, key: identity::Keypair) -> Swarm<ComposedBehaviour> {
     // Generate NOISE authentication keys.
     let auth_keys = Keypair::<X25519Spec>::new().into_authentic(&key).unwrap();
 
@@ -48,19 +59,14 @@ pub async fn create_node(config: ClientConfig) -> Swarm<ComposedBehaviour> {
         .boxed();
 
     let behaviour = ComposedBehaviour {
-        kademlia: Kademlia::new(peerid.clone(), MemoryStore::new(peerid.clone())),
+        kademlia: Kademlia::new(peerid, MemoryStore::new(peerid)),
     };
 
-    let mut swarm = SwarmBuilder::new(transport, behaviour, peerid.clone())
+    SwarmBuilder::new(transport, behaviour, peerid)
         .executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
-        .build();
-
-    // Connect to bootstrap nodes.
-    dial_bootstrap(&mut swarm, config.bootstrap_nodes);
-
-    swarm
+        .build()
 }
 
 fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: Vec<(Multiaddr, PeerId)>) {

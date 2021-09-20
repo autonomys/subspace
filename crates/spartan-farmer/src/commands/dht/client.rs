@@ -3,13 +3,6 @@ use super::eventloop::EventLoop;
 use super::*;
 
 #[derive(Debug)]
-pub enum ClientEvent {
-    // Event for adding a listening address.
-    Listen {
-        addr: Multiaddr,
-        sender: oneshot::Sender<OneshotType>,
-    },
-}
 
 pub enum ClientType {
     // Bootstrap node. It uses the following fields from `ClientConfig`:
@@ -22,60 +15,70 @@ pub enum ClientType {
     Normal,
 }
 
-pub struct Client {
-    // This channel sends events from Client to EventLoop.
-    client_tx: Sender<ClientEvent>,
-}
-
-impl Client {
-    pub fn new(client_tx: Sender<ClientEvent>) -> Self {
-        Client { client_tx }
-    }
-
-    // Set listening address for a particular Normal node.
-    pub async fn start_listening(&mut self, addr: Multiaddr) {
-        let (sender, recv) = oneshot::channel();
-
-        let listen = ClientEvent::Listen { addr, sender };
-
-        self.client_tx.send(listen).await.unwrap();
-
-        // Check if the ListenEvent was processed, properly.
-        let _ = recv.await.expect("Failed to start listening.");
-    }
+pub enum ClientEvent {
+    // Event for adding a listening address.
+    Listen {
+        addr: Multiaddr,
+        sender: oneshot::Sender<OneshotType>,
+    },
 }
 
 pub struct ClientConfig {
-    // This will be true, if we are running a bootstrap node.
     pub bootstrap_nodes: Vec<(Multiaddr, PeerId)>,
     pub bootstrap_keys: Vec<Vec<u8>>,
     pub client_type: ClientType,
     pub listen_addr: Option<Multiaddr>,
 }
 
+pub struct Client {
+    pub peerid: PeerId,
+    // This channel sends events from Client to EventLoop.
+    client_tx: Sender<ClientEvent>,
+}
+
+impl Client {
+    pub fn new(peerid: PeerId, client_tx: Sender<ClientEvent>) -> Self {
+        Client { peerid, client_tx }
+    }
+
+    // Set listening address for a particular Normal node.
+    pub async fn start_listening(&mut self, addr: Multiaddr) {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::Listen { addr, sender })
+            .await
+            .unwrap();
+
+        // Check if the ListenEvent was processed, properly.
+        let _ = recv.await.expect("Failed to start listening.");
+    }
+
+    pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {
+        match event {
+            ClientEvent::Listen { addr, sender } => match swarm.listen_on(addr) {
+                Ok(_) => {
+                    sender.send(Ok(())).unwrap();
+                }
+                Err(e) => {
+                    sender.send(Err(Box::new(e))).unwrap();
+                }
+            },
+        }
+    }
+}
+
 // This method will construct a new Swarm and EventLoop object.
 pub async fn create_connection(config: ClientConfig) -> (Client, EventLoop) {
     let (client_tx, client_rx) = channel(10);
 
-    let client = Client::new(client_tx);
-
-    let eventloop = match config.client_type {
-        ClientType::Bootstrap => EventLoop::new(create_bootstrap(config).await, client_rx),
-        ClientType::Normal => EventLoop::new(create_node(config).await, client_rx),
+    let (peerid, swarm) = match config.client_type {
+        ClientType::Bootstrap => create_bootstrap(config).await,
+        ClientType::Normal => create_node(config).await,
     };
 
-    return (client, eventloop);
-}
+    let eventloop = EventLoop::new(swarm, client_rx);
+    let client = Client::new(peerid, client_tx);
 
-pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {
-    match event {
-        ClientEvent::Listen { addr, sender } => match swarm.listen_on(addr) {
-            Ok(_) => {
-                sender.send(Ok(())).unwrap();
-            }
-            Err(e) => {
-                sender.send(Err(Box::new(e))).unwrap();
-            }
-        },
-    }
+    (client, eventloop)
 }
