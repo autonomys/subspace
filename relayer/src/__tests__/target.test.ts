@@ -1,9 +1,10 @@
 import Target from "../target";
 import { apiMock, loggerMock, txHashMock, txDataMock } from "../mocks";
+import { ApiPromise } from "@polkadot/api";
 import { of } from "rxjs";
 
 describe("Target class", () => {
-  const params = {
+  const defaultParams = {
     api: apiMock,
     signer: "random signer address",
     logger: loggerMock,
@@ -12,28 +13,28 @@ describe("Target class", () => {
   const blockSubscriptions = [of([txDataMock])];
 
   it("should create an instance", () => {
-    const target = new Target(params);
+    const target = new Target(defaultParams);
 
     expect(target).toBeInstanceOf(Target);
     expect(target).toHaveProperty("processSubscriptions");
   });
 
   it("processSubscriptions should send transactions per block per subscription", (done) => {
-    const target = new Target(params);
+    const target = new Target(defaultParams);
     const stream = target.processSubscriptions(blockSubscriptions);
 
     stream.subscribe(() => {
-      expect(params.api.tx.feeds.put).toHaveBeenCalledWith(
+      expect(defaultParams.api.tx.feeds.put).toHaveBeenCalledWith(
         txDataMock.block,
         txDataMock.chainId
       );
 
-      expect(params.api.tx.feeds.put().signAndSend).toHaveBeenCalledWith(
-        params.signer,
+      expect(defaultParams.api.tx.feeds.put().signAndSend).toHaveBeenCalledWith(
+        defaultParams.signer,
         { nonce: -1 }
       );
 
-      expect(params.logger.info).toHaveBeenCalledWith(
+      expect(defaultParams.logger.info).toHaveBeenCalledWith(
         `Transaction sent: ${txHashMock}`
       );
 
@@ -41,7 +42,28 @@ describe("Target class", () => {
     });
   });
 
-  it.todo(
-    "processSubscriptions should return error if transaction submission fails"
-  );
+  it("processSubscriptions should return error if transaction submission fails", (done) => {
+    const errorMessage = "Transaction submission failed";
+    const params = {
+      ...defaultParams,
+      api: {
+        tx: {
+          feeds: {
+            put: jest.fn().mockReturnValue({
+              signAndSend: jest.fn().mockRejectedValue(errorMessage),
+            }),
+          },
+        },
+      } as unknown as ApiPromise,
+    };
+
+    const target = new Target(params);
+
+    target.processSubscriptions(blockSubscriptions).subscribe({
+      error: (error) => {
+        expect(error).toBe(errorMessage);
+        done();
+      },
+    });
+  });
 });

@@ -57,6 +57,7 @@ export const apiMock = {
 
 export const loggerMock = {
   info: jest.fn(),
+  error: jest.fn(),
 } as unknown as Logger;
 
 export const fetchParaBlockMock = jest.fn().mockResolvedValue({} as Block);
