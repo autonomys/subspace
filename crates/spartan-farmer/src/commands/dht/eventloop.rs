@@ -37,6 +37,21 @@ impl EventLoop {
         match event {
             SwarmEvent::Behaviour(event) => match event {
                 ComposedEvent::Kademlia(event) => match event {
+                    KademliaEvent::RoutingUpdated { peer, .. } => {
+                        info!("Added new peer to routing table: {:?}", peer)
+                    }
+                    KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
+                        info!("Query ID: {:?}", id);
+                        match result {
+                            libp2p::kad::QueryResult::Bootstrap(result) => match result {
+                                Ok(res) => {
+                                    info!("Bootstrapping finished successfully: {:?}", res.peer)
+                                }
+                                Err(e) => info!("{:?}", e),
+                            },
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 },
             },

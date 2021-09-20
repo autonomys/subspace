@@ -2,8 +2,7 @@ use super::core::{create_bootstrap, create_node, ComposedBehaviour};
 use super::eventloop::EventLoop;
 use super::*;
 
-#[derive(Debug)]
-
+#[derive(Copy, Clone, Debug)]
 pub enum ClientType {
     // Bootstrap node. It uses the following fields from `ClientConfig`:
     // 1. `bootstrap_keys`: Private keys/private key location to create bootstrap node peerId.
@@ -21,10 +20,14 @@ pub enum ClientEvent {
         addr: Multiaddr,
         sender: oneshot::Sender<OneshotType>,
     },
+    // Bootstrap, look for the closest peers.
+    Bootstrap {
+        sender: oneshot::Sender<OneshotType>,
+    },
 }
 
 pub struct ClientConfig {
-    pub bootstrap_nodes: Vec<(Multiaddr, PeerId)>,
+    pub bootstrap_nodes: Vec<String>, // Vec<(Multiaddr, PeerId)>,
     pub bootstrap_keys: Vec<Vec<u8>>,
     pub client_type: ClientType,
     pub listen_addr: Option<Multiaddr>,
@@ -54,9 +57,29 @@ impl Client {
         let _ = recv.await.expect("Failed to start listening.");
     }
 
+    pub async fn bootstrap(&mut self) {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::Bootstrap { sender })
+            .await
+            .unwrap();
+
+        // Check if the Bootstrap was processed, properly.
+        let _ = recv.await.expect("Failed to bootstrap.");
+    }
+
     pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {
         match event {
             ClientEvent::Listen { addr, sender } => match swarm.listen_on(addr) {
+                Ok(_) => {
+                    sender.send(Ok(())).unwrap();
+                }
+                Err(e) => {
+                    sender.send(Err(Box::new(e))).unwrap();
+                }
+            },
+            ClientEvent::Bootstrap { sender } => match swarm.behaviour_mut().kademlia.bootstrap() {
                 Ok(_) => {
                     sender.send(Ok(())).unwrap();
                 }
