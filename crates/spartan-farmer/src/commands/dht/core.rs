@@ -27,7 +27,7 @@ pub async fn create_bootstrap(config: ClientConfig) -> (PeerId, Swarm<ComposedBe
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());
 
-    let mut swarm = create_swarm(peerid.clone(), key);
+    let mut swarm = create_swarm(peerid, key);
 
     match config.listen_addr {
         Some(addr) => swarm.listen_on(addr).unwrap(),
@@ -44,7 +44,7 @@ pub async fn create_node(config: ClientConfig) -> (PeerId, Swarm<ComposedBehavio
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());
 
-    let mut swarm = create_swarm(peerid.clone(), key);
+    let mut swarm = create_swarm(peerid, key);
 
     // Connect to bootstrap nodes.
     dial_bootstrap(&mut swarm, config.bootstrap_nodes);

@@ -42,14 +42,13 @@ impl EventLoop {
                     }
                     KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
                         info!("Query ID: {:?}", id);
-                        match result {
-                            libp2p::kad::QueryResult::Bootstrap(result) => match result {
+                        if let libp2p::kad::QueryResult::Bootstrap(result) = result {
+                            match result {
                                 Ok(res) => {
                                     info!("Bootstrapping finished successfully: {:?}", res.peer)
                                 }
                                 Err(e) => info!("{:?}", e),
-                            },
-                            _ => {}
+                            }
                         }
                     }
                     KademliaEvent::RoutablePeer { peer, address } => {
