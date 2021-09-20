@@ -27,8 +27,8 @@ use subspace_core_primitives::{
 use thiserror::Error;
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
-#[derive(Debug, Encode, Decode)]
-enum Segment {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+pub enum Segment {
     // V0 of the segment data structure
     #[codec(index = 0)]
     V0 {
@@ -38,8 +38,8 @@ enum Segment {
 }
 
 /// Kinds of items that are contained within a segment
-#[derive(Debug, Encode, Decode)]
-enum SegmentItem {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+pub enum SegmentItem {
     /// Contains full block inside
     #[codec(index = 0)]
     Block(Vec<u8>),

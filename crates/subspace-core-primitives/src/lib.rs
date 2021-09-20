@@ -34,7 +34,7 @@ pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 pub type Piece = [u8; PIECE_SIZE];
 
 /// Root block for a specific segment
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Encode, Decode, TypeInfo)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub enum RootBlock {
     /// V0 of the root block data structure
