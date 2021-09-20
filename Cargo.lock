@@ -4380,9 +4380,9 @@ dependencies = [
 
 [[package]]
 name = "parity-util-mem"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ad6f1acec69b95caf435bbd158d486e5a0a44fcf51531e84922c59ff09e8457"
+checksum = "9f7adaf50e545c285006d384d50588e98c405c49b55c0aa05660aca081f6ee5e"
 dependencies = [
  "cfg-if 1.0.0",
  "hashbrown",
@@ -6538,8 +6538,9 @@ dependencies = [
 
 [[package]]
 name = "sloth256-189"
-version = "0.2.0"
-source = "git+https://github.com/subspace/sloth256-189?branch=unresolved_symbol_test#ed2032734db71044bf7a1ed037fd2041d794ce21"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6743712655581c231c30fe94e554b8a3f3c4bb7b845289eab22f89315fa5b736"
 dependencies = [
  "cc",
  "glob",
@@ -7953,9 +7954,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.2.23"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56c42e73a9d277d4d2b6a88389a137ccf3c58599660b17e8f5fc39305e490669"
+checksum = "fdd0568dbfe3baf7048b7908d2b32bca0d81cd56bec6d2a8f894b01d74f86be3"
 dependencies = [
  "ansi_term 0.12.1",
  "chrono",
