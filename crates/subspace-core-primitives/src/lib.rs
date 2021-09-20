@@ -70,4 +70,14 @@ impl RootBlock {
             } => *merkle_tree_root,
         }
     }
+
+    /// Hash of the root block of the previous segment
+    pub fn prev_root_block_hash(&self) -> Sha256Hash {
+        match self {
+            RootBlock::V0 {
+                prev_root_block_hash,
+                ..
+            } => *prev_root_block_hash,
+        }
+    }
 }

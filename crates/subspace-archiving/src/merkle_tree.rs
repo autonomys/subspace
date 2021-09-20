@@ -21,7 +21,7 @@ use std::convert::TryInto;
 use std::hash::Hasher;
 use std::iter;
 use std::ops::Deref;
-use subspace_core_primitives::{crypto, Piece, Sha256Hash, SHA256_HASH_SIZE};
+use subspace_core_primitives::{crypto, Sha256Hash, SHA256_HASH_SIZE};
 use thiserror::Error;
 use typenum::{U0, U2};
 
@@ -63,7 +63,9 @@ type InternalMerkleTree = merkletree::merkle::MerkleTree<
 /// Merkle Proof-based witness
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Witness<'a> {
+    /// Number of leaves in the Merkle Tree that corresponds to this witness
     merkle_num_leaves: usize,
+    /// The witness itself
     witness: Cow<'a, [u8]>,
 }
 
@@ -131,24 +133,6 @@ impl<'a> Witness<'a> {
 
         proof.validate::<Sha256Algorithm>().unwrap_or_default()
     }
-
-    // TODO: Move this to archiver module, it doesn't belong here
-    /// Validate witness embedded within a piece
-    pub fn is_piece_valid(
-        piece: &Piece,
-        root: Sha256Hash,
-        index: usize,
-        merkle_num_leaves: usize,
-        record_size: usize,
-    ) -> bool {
-        let witness = Witness {
-            merkle_num_leaves,
-            witness: Cow::Borrowed(&piece[record_size..]),
-        };
-        let leaf_hash = crypto::sha256_hash(&piece[..record_size]);
-
-        witness.is_valid(root, index, leaf_hash)
-    }
 }
 
 impl<'a> Deref for Witness<'a> {
@@ -166,7 +150,7 @@ impl<'a> From<Witness<'a>> for Cow<'a, [u8]> {
 }
 
 /// Errors that can happen when creating a witness
-#[derive(Debug, Error, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum MerkleTreeWitnessError {
     /// Wrong index
     #[error("Wrong index, there is just {0} leaves available")]

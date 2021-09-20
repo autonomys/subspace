@@ -115,7 +115,7 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE};
+use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
 pub mod notification;
@@ -125,10 +125,9 @@ mod verification;
 
 // TODO: Move these constants somewhere more appropriate and adjust if necessary
 const CONFIRMATION_DEPTH_K: u32 = 10;
-const HASH_OUTPUT_BYTES: usize = 32;
 // This is a nice power of 2 for Merkle Tree
 const MERKLE_NUM_LEAVES: usize = 256;
-const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2() as usize;
+const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
@@ -2024,8 +2023,8 @@ where
 
             async move {
                 let mut last_archived_block = None;
-                let mut archiver =
-                    Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
+                let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+                    .expect("Incorrect parameters for archiver");
 
                 while let Some((block_number, mut root_block_sender)) =
                     imported_block_notification_stream.next().await
@@ -2054,8 +2053,8 @@ where
                     let id = BlockId::number(block_to_archive);
                     let block = client
                         .block(&id)
-                        .expect("Older block by number should always exist; qed")
-                        .expect("Older block by number should always exist; qed");
+                        .expect("Older block by number should always exist")
+                        .expect("Older block by number should always exist");
 
                     for archived_segment in archiver.add_block(block) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;

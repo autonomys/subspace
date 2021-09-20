@@ -36,8 +36,9 @@ default-features = false
 version = "0.1.0"
 path = "../subspace-core-primitives"
 
-[dev-dependencies]
-rand = "0.8.4"
+[dev-dependencies.rand]
+features = ["min_const_gen"]
+version = "0.8.4"
 
 # TODO: Nothing is exposed in no-std environment at the moment :(
 [features]
