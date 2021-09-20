@@ -51,5 +51,10 @@ const createApi = async (url: string, types?: RegistryTypes) => {
 
   const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
 
-  target.processSubscriptions(blockSubscriptions).subscribe();
+  target.processSubscriptions(blockSubscriptions).subscribe({
+    // TODO: handle errors
+    error(error) {
+      logger.error(error);
+    },
+  });
 })();
