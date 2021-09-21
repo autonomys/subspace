@@ -33,7 +33,7 @@ pub mod pallet {
     pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, (H256, u32), OptionQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn last_feed_id)]
+    #[pallet::getter(fn current_feed_id)]
     pub type CurrentFeedId<T: Config> = StorageValue<_, FeedId, ValueQuery>;
 
     #[pallet::event]
@@ -88,7 +88,7 @@ pub mod pallet {
 
             // TODO: check if this account already has a feed_id created
 
-            let feed_id = Self::last_feed_id();
+            let feed_id = Self::current_feed_id();
 
             Feeds::<T>::insert(feed_id, (H256::default(), u32::default()));
 
