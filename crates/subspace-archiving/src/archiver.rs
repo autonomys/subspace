@@ -22,10 +22,16 @@ use std::collections::VecDeque;
 use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
+use std::num::NonZeroU32;
 use subspace_core_primitives::{
     crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 use thiserror::Error;
+
+const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
+    number: 0,
+    bytes: Some(NonZeroU32::new(1).unwrap()),
+};
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
@@ -88,14 +94,14 @@ pub enum ArchiverInstantiationError {
     WrongRecordAndSegmentCombination,
     /// Invalid last archived block, its size is the same as encoded block
     #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
-    InvalidLastArchivedBlock(u32),
+    InvalidLastArchivedBlock(NonZeroU32),
     /// Invalid block, its size is smaller than already archived number of bytes
     #[error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")]
     InvalidBlockSmallSize {
         /// Full block size
-        block_bytes: u32,
+        block_bytes: NonZeroU32,
         /// Already archived portion of the block
-        archived_block_bytes: u32,
+        archived_block_bytes: NonZeroU32,
     },
 }
 
@@ -170,7 +176,7 @@ impl Archiver {
             reed_solomon,
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
-            last_archived_block: LastArchivedBlock::initial(),
+            last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
     }
 
@@ -197,8 +203,11 @@ impl Archiver {
         if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
             let encoded_block = block.encode();
 
-            let encoded_block_bytes = u32::try_from(encoded_block.len())
-                .expect("Blocks length is never bigger than u32; qed");
+            let encoded_block_bytes = NonZeroU32::new(
+                u32::try_from(encoded_block.len())
+                    .expect("Blocks length is never bigger than u32; qed"),
+            )
+            .expect("Encoded block length is never zero; qed");
 
             match encoded_block_bytes.cmp(&archived_block_bytes) {
                 Ordering::Less => {
@@ -216,7 +225,7 @@ impl Archiver {
                     // Take part of the encoded block that wasn't archived yet and push to the
                     // buffer and block continuation
                     archiver.buffer.push_back(SegmentItem::BlockContinuation(
-                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                        encoded_block[(archived_block_bytes.get() as usize)..].to_vec(),
                     ));
                 }
             }
@@ -254,7 +263,7 @@ impl Archiver {
                     match &segment_item {
                         SegmentItem::Block(_) => {
                             // Skip block number increase in case of the very first block
-                            if last_archived_block != LastArchivedBlock::initial() {
+                            if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
                                 // Increase archived block number and assume the whole block was
                                 // archived
                                 last_archived_block.number += 1;
@@ -264,7 +273,7 @@ impl Archiver {
                         SegmentItem::BlockStart(_) => {
                             unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                         }
-                        SegmentItem::BlockContinuation(continuation_bytes) => {
+                        SegmentItem::BlockContinuation(bytes) => {
                             // Same block, but assume for now that the whole block was archived, but
                             // also store the number of bytes as opposed to `None`, we'll transform
                             // it into `None` if needed later
@@ -274,8 +283,11 @@ impl Archiver {
                             );
                             last_archived_block.bytes.replace(
                                 archived_bytes
-                                    + u32::try_from(continuation_bytes.len())
-                                        .expect("Blocks length is never bigger than u32; qed"),
+                                    .checked_add(
+                                        u32::try_from(bytes.len())
+                                            .expect("Blocks length is never bigger than u32; qed"),
+                                    )
+                                    .expect("Archived block bytes will never exceed u32; qed"),
                             );
                         }
                         SegmentItem::RootBlock(_) => {
@@ -316,8 +328,11 @@ impl Archiver {
 
                     // Update last archived block to include partial archiving info
                     last_archived_block.bytes.replace(
-                        u32::try_from(bytes.len())
-                            .expect("Blocks length is never bigger than u32; qed"),
+                        NonZeroU32::new(
+                            u32::try_from(bytes.len())
+                                .expect("Blocks length is never bigger than u32; qed"),
+                        )
+                        .expect("Encoded block length is never zero; qed"),
                     );
 
                     (SegmentItem::BlockStart(bytes), block_continuation_bytes)
@@ -338,9 +353,12 @@ impl Archiver {
                         already; qed",
                     );
                     last_archived_block.bytes.replace(
-                        archived_bytes
-                            - u32::try_from(spill_over)
-                                .expect("Blocks length is never bigger than u32; qed"),
+                        NonZeroU32::new(
+                            archived_bytes.get()
+                                - u32::try_from(spill_over)
+                                    .expect("Blocks length is never bigger than u32; qed"),
+                        )
+                        .expect("Spill over is never bigger than archived bytes; qed"),
                     );
 
                     (
