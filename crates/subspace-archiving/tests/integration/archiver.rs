@@ -14,11 +14,13 @@ const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 fn archiver() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
-    assert!(archiver
-        .add_block(rand::random::<[u8; SEGMENT_SIZE / 2]>())
-        .is_empty());
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>();
+    // There is not enough data to produce archived segment yet
+    assert!(archiver.add_block(block_0).is_empty());
 
-    let archived_segments = archiver.add_block(rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>());
+    let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>();
+    // This should produce 1 archived segment
+    let archived_segments = archiver.add_block(block_1);
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
@@ -28,10 +30,13 @@ fn archiver() {
         first_archived_segment.root_block.prev_root_block_hash(),
         [0u8; SHA256_HASH_SIZE]
     );
-    let last_archived_block = first_archived_segment.root_block.last_archived_block();
-    assert_eq!(last_archived_block.number, 1);
-    assert_eq!(last_archived_block.bytes, Some(7992));
+    {
+        let last_archived_block = first_archived_segment.root_block.last_archived_block();
+        assert_eq!(last_archived_block.number, 1);
+        assert_eq!(last_archived_block.bytes, Some(7992));
+    }
 
+    // Check that all pieces are valid
     for (index, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             piece,
@@ -41,23 +46,46 @@ fn archiver() {
         ));
     }
 
-    let archived_segments = archiver.add_block(rand::random::<[u8; SEGMENT_SIZE * 2]>());
+    let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>();
+    // This should be big enough to produce two archived segments in one go
+    let archived_segments = archiver.add_block(block_2);
     assert_eq!(archived_segments.len(), 2);
+
+    // Check that initializing archiver with initial state before last block results in the same
+    // archived segments once last block is added
+    {
+        let mut archiver_with_initial_state = Archiver::with_initial_state(
+            RECORD_SIZE,
+            SEGMENT_SIZE,
+            first_archived_segment.root_block,
+            block_1,
+        )
+        .unwrap();
+
+        assert_eq!(
+            archiver_with_initial_state.add_block(block_2),
+            archived_segments,
+        );
+    }
+
+    // Check archived bytes for block with index `2` in each archived segment
     {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(13229));
+        assert_eq!(last_archived_block.bytes, Some(13233));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(29135));
+        assert_eq!(last_archived_block.bytes, Some(29143));
     }
 
+    // Check that both archived segments have expected content and valid pieces in them
     let mut expected_segment_index = 1_u64;
     let mut previous_root_block_hash = first_archived_segment.root_block.hash();
+    let last_root_block = archived_segments.iter().last().unwrap().root_block;
     for archived_segment in archived_segments {
         assert_eq!(archived_segment.pieces.len(), MERKLE_NUM_LEAVES);
         assert_eq!(
@@ -83,16 +111,39 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let archived_segments = archiver.add_block(rand::random::<[u8; SEGMENT_SIZE - 2960]>());
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>();
+    let archived_segments = archiver.add_block(block_3);
     assert_eq!(archived_segments.len(), 1);
+
+    // Check that initializing archiver with initial state before last block results in the same
+    // archived segments once last block is added
+    {
+        let mut archiver_with_initial_state =
+            Archiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, block_2)
+                .unwrap();
+
+        assert_eq!(
+            archiver_with_initial_state.add_block(block_3),
+            archived_segments,
+        );
+    }
+
+    // Archived segment should fit exactly into the last archived segment (rare case)
     {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.bytes, None);
-    }
 
-    // TODO: Tests for initial state
+        for (index, piece) in archived_segment.pieces.iter().enumerate() {
+            assert!(archiver::is_piece_valid(
+                piece,
+                archived_segment.root_block.merkle_tree_root(),
+                index,
+                RECORD_SIZE,
+            ));
+        }
+    }
 }
 
 #[test]

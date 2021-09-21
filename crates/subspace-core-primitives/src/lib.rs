@@ -38,7 +38,7 @@ pub type Piece = [u8; PIECE_SIZE];
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct LastArchivedBlock {
     /// Block number
-    pub number: u64,
+    pub number: u32,
     /// `None` if the block was archived fully or number of bytes otherwise
     pub bytes: Option<u32>,
 }

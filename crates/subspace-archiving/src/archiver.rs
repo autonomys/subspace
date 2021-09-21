@@ -62,7 +62,7 @@ pub enum SegmentItem {
     RootBlock(RootBlock),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 pub struct ArchivedSegment {
     /// Root block of the segment
@@ -185,8 +185,8 @@ impl Archiver {
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(record_size, segment_size)?;
 
-        archiver.segment_index = root_block.segment_index();
-        archiver.prev_root_block_hash = root_block.prev_root_block_hash();
+        archiver.segment_index = root_block.segment_index() + 1;
+        archiver.prev_root_block_hash = root_block.hash();
         archiver.last_archived_block = root_block.last_archived_block();
 
         // The first thing in the buffer should be root block
