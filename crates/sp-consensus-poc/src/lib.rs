@@ -284,5 +284,8 @@ sp_api::decl_runtime_apis! {
 
         /// Check if `farmer_id` is in block list (due to equivocation)
         fn is_in_block_list(farmer_id: &FarmerId) -> bool;
+
+        /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
+        fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;
     }
 }

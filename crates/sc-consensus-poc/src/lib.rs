@@ -1788,31 +1788,24 @@ where
             {
                 // TODO: Why there could be no body? Light client?
                 for extrinsic in block.body.as_ref().unwrap() {
-                    /// This enum mimics minimal version of what is generated in runtime
-                    #[derive(Decode)]
-                    enum RuntimeCall {
-                        #[codec(index = 3)]
-                        Subspace(SubspaceCall),
-                    }
-
-                    /// This enum mimics minimal version of what is generated in pallet-spartan
-                    #[derive(Decode)]
-                    enum SubspaceCall {
-                        #[codec(index = 2)]
-                        StoreRootBlock { root_block: RootBlock },
-                    }
-
-                    // TODO: There must be a better way to decode an extrinsic, maybe through runtime API
-                    // `3..` removes unnecessary prefix from `OpaqueExtrinsic`'s inner vector and
-                    // probably something else
-                    if let Ok(RuntimeCall::Subspace(SubspaceCall::StoreRootBlock { root_block })) =
-                        RuntimeCall::decode(&mut &extrinsic.encode()[3..])
+                    match self
+                        .client
+                        .runtime_api()
+                        .extract_root_block(&BlockId::Hash(parent_hash), extrinsic.encode())
                     {
-                        if !root_blocks_set.remove(&root_block) {
-                            return Err(ConsensusError::ClientImport(format!(
-                                "Found root block that should not have been present: {:?}",
-                                root_block,
-                            )));
+                        Ok(Some(root_block)) => {
+                            if !root_blocks_set.remove(&root_block) {
+                                return Err(ConsensusError::ClientImport(format!(
+                                    "Found root block that should not have been present: {:?}",
+                                    root_block,
+                                )));
+                            }
+                        }
+                        Ok(None) => {
+                            // Some other extrinsic, ignore
+                        }
+                        Err(error) => {
+                            warn!(target: "poc", "Failed to make runtime API call: {:?}", error);
                         }
                     }
                 }

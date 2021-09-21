@@ -906,6 +906,12 @@ cfg_if! {
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
 				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
+				}
 			}
 
 			impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
@@ -1207,6 +1213,12 @@ cfg_if! {
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
 				}
 			}
 
