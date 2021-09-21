@@ -12,7 +12,6 @@ use libp2p::noise::{Keypair, NoiseConfig, X25519Spec};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::{Multiaddr, PeerId, Swarm};
-use std::str::FromStr;
 
 // Stuff needed to set up channels between Client API task and EventLoop task.
 use futures::channel::{

@@ -1,5 +1,6 @@
 use super::*;
 use super::{core::create_node, eventloop::EventLoop};
+use libp2p::multiaddr::Protocol;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ClientType {
@@ -27,6 +28,12 @@ pub enum ClientEvent {
     KnownPeers {
         sender: oneshot::Sender<Vec<PeerId>>,
     },
+    // Dial another peer.
+    Dial {
+        addr: Multiaddr,
+        peer: PeerId,
+        sender: oneshot::Sender<OneshotType>,
+    },
 }
 
 pub struct ClientConfig {
@@ -46,13 +53,25 @@ impl Client {
         Client { peerid, client_tx }
     }
 
+    pub async fn dial(&mut self, peer: PeerId, addr: Multiaddr) {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::Dial { addr, peer, sender })
+            .await
+            .unwrap();
+
+        let _ = recv.await;
+    }
+
     // Returns the list of all the peers the client has in its Routing table.
     pub async fn known_peers(&mut self) -> Vec<PeerId> {
         let (sender, recv) = oneshot::channel();
 
         self.client_tx
             .send(ClientEvent::KnownPeers { sender })
-            .await;
+            .await
+            .unwrap();
 
         let peers = recv
             .await
@@ -112,7 +131,21 @@ impl Client {
                     }
                 }
 
-                sender.send(result);
+                sender.send(result).unwrap();
+            }
+            ClientEvent::Dial { addr, peer, sender } => {
+                eventloop
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .add_address(&peer, addr.clone());
+
+                eventloop
+                    .swarm
+                    .dial_addr(addr.with(Protocol::P2p(peer.into())))
+                    .unwrap();
+
+                sender.send(Ok(())).unwrap();
             }
         }
     }
