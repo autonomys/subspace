@@ -39,41 +39,38 @@ impl EventLoop {
         }
     }
 
+    // Handle network events.
     async fn handle_network_event(&mut self, event: SwarmEvent<ComposedEvent, std::io::Error>) {
         match event {
-            SwarmEvent::Behaviour(event) => match event {
-                ComposedEvent::Kademlia(event) => match event {
-                    KademliaEvent::RoutingUpdated { peer, .. } => {
-                        info!("Added new peer to routing table: {:?}", peer)
-                    }
-                    KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
-                        info!("Query ID: {:?}", id);
-                        if let libp2p::kad::QueryResult::Bootstrap(result) = result {
-                            match result {
-                                Ok(res) => {
-                                    info!("Bootstrapping finished successfully: {:?}", res.peer)
-                                }
-                                Err(e) => info!("{:?}", e),
+            SwarmEvent::Behaviour(ComposedEvent::Kademlia(event)) => match event {
+                KademliaEvent::RoutingUpdated { peer, .. } => {
+                    info!("Added new peer to routing table: {:?}", peer)
+                }
+                KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
+                    info!("Query ID: {:?}", id);
+                    if let libp2p::kad::QueryResult::Bootstrap(result) = result {
+                        match result {
+                            Ok(res) => {
+                                info!("Bootstrapping finished successfully: {:?}", res.peer)
                             }
+                            Err(e) => info!("{:?}", e),
                         }
                     }
-                    KademliaEvent::RoutablePeer { peer, address } => {
-                        self.swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .add_address(&peer, address);
-                    }
-                    _ => {}
-                },
+                }
+                KademliaEvent::RoutablePeer { peer, address } => {
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer, address);
+                }
+                _ => {}
             },
             SwarmEvent::NewListenAddr { address, .. } => {
                 info!("Farmer is listening to K-DHT on: {:?}", address)
             }
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint: _,
-                num_established: _,
-            } => info!("Connected to new peer: {:?}", peer_id),
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                info!("Connected to new peer: {:?}", peer_id)
+            }
             _ => {}
         }
     }

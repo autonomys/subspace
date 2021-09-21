@@ -79,7 +79,7 @@ impl Client {
             },
             ClientEvent::Bootstrap { sender } => {
                 match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
-                    Ok(_) => sender.send(Ok(())),
+                    Ok(_qid) => sender.send(Ok(())),
                     Err(e) => sender.send(Err(Box::new(e))),
                 }
             }
