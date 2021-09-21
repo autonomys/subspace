@@ -1,3 +1,7 @@
+use super::dht::{
+    client as dht,
+    client::{ClientConfig, ClientType},
+};
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, PRIME_SIZE_BYTES, SIGNING_CONTEXT};
 use async_std::task;
@@ -5,6 +9,7 @@ use futures::channel::oneshot;
 use jsonrpsee::ws_client::traits::{Client, SubscriptionClient};
 use jsonrpsee::ws_client::v2::params::JsonRpcParams;
 use jsonrpsee::ws_client::{Subscription, WsClientBuilder};
+use libp2p::Multiaddr;
 use log::{debug, error, info, trace, warn};
 use ring::digest;
 use schnorrkel::Keypair;
@@ -12,12 +17,8 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Instant;
-
-use super::dht::{
-    client as dht,
-    client::{ClientConfig, ClientType},
-};
 
 type SlotNumber = u64;
 
@@ -59,8 +60,9 @@ struct SlotInfo {
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(
+    listen_addr: String,
     bootstrap: bool,
-    bootstrap_node: Vec<String>,
+    bootstrap_nodes: Vec<String>,
     path: PathBuf,
     ws_server: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -87,16 +89,24 @@ pub(crate) async fn farm(
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
 
+    let client_type = if bootstrap {
+        info!("I'm a bootstrap node.");
+        ClientType::Bootstrap
+    } else {
+        ClientType::Normal
+    };
+
+    let listen_addr = if listen_addr.is_empty() {
+        None
+    } else {
+        Some(Multiaddr::from_str(&listen_addr)?)
+    };
+
     let config = ClientConfig {
-        bootstrap_nodes: bootstrap_node,
+        bootstrap_nodes,
         bootstrap_keys: Vec::default(),
-        client_type: if bootstrap {
-            info!("I'm a bootstrap node.");
-            ClientType::Bootstrap
-        } else {
-            ClientType::Normal
-        },
-        listen_addr: None,
+        client_type,
+        listen_addr,
     };
 
     info!("Connecting to DHT");
@@ -105,7 +115,6 @@ pub(crate) async fn farm(
     tokio::spawn(async move { dht_eventloop.run().await });
     info!("My Peer ID is: {:?}", dht_client.peerid);
 
-    // For bootstrap nodes, we set the listening address through the `ClientConfig`.
     if config.listen_addr.is_none() {
         dht_client
             .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)

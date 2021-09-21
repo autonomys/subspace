@@ -66,10 +66,13 @@ enum Command {
         ws_server: String,
         /// List of bootstrap nodes to connect to with.
         #[clap(long)]
-        bootstrap_node: Vec<String>,
-        /// Am I a bootstrap node?
-        #[clap(long)]
+        bootstrap_nodes: Vec<String>,
+        /// Set this peer as bootstrap node.
+        #[clap(long, short)]
         bootstrap: bool,
+        /// Listening address for P2P peer.
+        #[clap(long)]
+        listen_addr: String,
     },
 }
 
@@ -106,12 +109,19 @@ fn main() {
             custom_path,
             ws_server,
             bootstrap,
-            bootstrap_node,
+            bootstrap_nodes,
+            listen_addr,
         } => {
             let path = utils::get_path(custom_path);
             let runtime = Runtime::new().unwrap();
             runtime
-                .block_on(commands::farm(bootstrap, bootstrap_node, path, &ws_server))
+                .block_on(commands::farm(
+                    listen_addr,
+                    bootstrap,
+                    bootstrap_nodes,
+                    path,
+                    &ws_server,
+                ))
                 .unwrap();
         }
     }

@@ -26,12 +26,9 @@ pub async fn create_node(config: &ClientConfig) -> (PeerId, Swarm<ComposedBehavi
 
     let mut swarm = create_swarm(peerid, key);
 
-    match &config.listen_addr {
-        Some(addr) => swarm.listen_on(addr.clone()).unwrap(),
-        None => swarm
-            .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
-            .unwrap(),
-    };
+    if let Some(addr) = &config.listen_addr {
+        swarm.listen_on(addr.clone()).unwrap();
+    }
 
     // Connect to bootstrap nodes.
     dial_bootstrap(&mut swarm, &config.bootstrap_nodes);
