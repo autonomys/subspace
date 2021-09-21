@@ -1,4 +1,4 @@
-use super::core::{create_node, ComposedBehaviour};
+use super::core::create_node;
 use super::eventloop::EventLoop;
 use super::*;
 
@@ -70,24 +70,21 @@ impl Client {
         let _ = recv.await.expect("Failed to bootstrap.");
     }
 
-    pub fn handle_client_event(swarm: &mut Swarm<ComposedBehaviour>, event: ClientEvent) {
+    pub fn handle_client_event(
+        eventloop: &mut EventLoop,
+        event: ClientEvent,
+    ) -> Result<(), OneshotType> {
         match event {
-            ClientEvent::Listen { addr, sender } => match swarm.listen_on(addr) {
-                Ok(_) => {
-                    sender.send(Ok(())).unwrap();
-                }
-                Err(e) => {
-                    sender.send(Err(Box::new(e))).unwrap();
-                }
+            ClientEvent::Listen { addr, sender } => match eventloop.swarm.listen_on(addr) {
+                Ok(_) => sender.send(Ok(())),
+                Err(e) => sender.send(Err(Box::new(e))),
             },
-            ClientEvent::Bootstrap { sender } => match swarm.behaviour_mut().kademlia.bootstrap() {
-                Ok(_) => {
-                    sender.send(Ok(())).unwrap();
+            ClientEvent::Bootstrap { sender } => {
+                match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
+                    Ok(_) => sender.send(Ok(())),
+                    Err(e) => sender.send(Err(Box::new(e))),
                 }
-                Err(e) => {
-                    sender.send(Err(Box::new(e))).unwrap();
-                }
-            },
+            }
         }
     }
 }

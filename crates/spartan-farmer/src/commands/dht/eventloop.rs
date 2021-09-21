@@ -3,7 +3,7 @@ use super::core::{ComposedBehaviour, ComposedEvent};
 use super::*;
 
 pub struct EventLoop {
-    swarm: Swarm<ComposedBehaviour>,
+    pub swarm: Swarm<ComposedBehaviour>,
     // Channel to receive events from Client.
     client_rx: Receiver<ClientEvent>,
 }
@@ -18,7 +18,10 @@ impl EventLoop {
     pub async fn run(mut self) {
         loop {
             futures::select! {
-                client_event = self.client_rx.next() => self.handle_event(client_event.unwrap()),
+                client_event = self.client_rx.next() => match client_event {
+                    Some(event) => self.handle_event(event),
+                    None => {},
+                },
                 network_event = self.swarm.next() => match network_event {
                     Some(event) => self.handle_network_event(event).await,
                     None => break,
@@ -29,7 +32,9 @@ impl EventLoop {
 
     // The Client will send events to EventLoop using this method.
     fn handle_event(&mut self, event: ClientEvent) {
-        Client::handle_client_event(&mut self.swarm, event)
+        if let Err(e) = Client::handle_client_event(self, event) {
+            info!("{:?}", e)
+        }
     }
 
     async fn handle_network_event(&mut self, event: SwarmEvent<ComposedEvent, std::io::Error>) {
