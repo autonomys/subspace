@@ -33,9 +33,7 @@ impl EventLoop {
 
     // The Client will send events to EventLoop using this method.
     fn handle_event(&mut self, event: ClientEvent) {
-        if let Err(e) = Client::handle_client_event(self, event) {
-            info!("{:?}", e)
-        }
+        Client::handle_client_event(self, event)
     }
 
     // Handle network events.

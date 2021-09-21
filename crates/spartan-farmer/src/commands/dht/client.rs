@@ -23,6 +23,10 @@ pub enum ClientEvent {
     Bootstrap {
         sender: oneshot::Sender<OneshotType>,
     },
+    // List all known peers.
+    KnownPeers {
+        sender: oneshot::Sender<Vec<PeerId>>,
+    },
 }
 
 pub struct ClientConfig {
@@ -40,6 +44,21 @@ pub struct Client {
 impl Client {
     pub fn new(peerid: PeerId, client_tx: Sender<ClientEvent>) -> Self {
         Client { peerid, client_tx }
+    }
+
+    // Returns the list of all the peers the client has in its Routing table.
+    pub async fn known_peers(&mut self) -> Vec<PeerId> {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::KnownPeers { sender })
+            .await;
+
+        let peers = recv
+            .await
+            .expect("Failed to retrieve the list of all known peers.");
+
+        peers
     }
 
     // Set listening address for a particular Normal node.
@@ -70,20 +89,30 @@ impl Client {
         let _ = recv.await.expect("Failed to bootstrap.");
     }
 
-    pub fn handle_client_event(
-        eventloop: &mut EventLoop,
-        event: ClientEvent,
-    ) -> Result<(), OneshotType> {
+    pub fn handle_client_event(eventloop: &mut EventLoop, event: ClientEvent) {
         match event {
             ClientEvent::Listen { addr, sender } => match eventloop.swarm.listen_on(addr) {
-                Ok(_) => sender.send(Ok(())),
-                Err(e) => sender.send(Err(Box::new(e))),
+                Ok(_) => sender.send(Ok(())).unwrap(),
+                Err(e) => sender.send(Err(Box::new(e))).unwrap(),
             },
             ClientEvent::Bootstrap { sender } => {
                 match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
-                    Ok(_qid) => sender.send(Ok(())),
-                    Err(e) => sender.send(Err(Box::new(e))),
+                    Ok(_qid) => sender.send(Ok(())).unwrap(),
+                    Err(e) => sender.send(Err(Box::new(e))).unwrap(),
                 }
+            }
+            ClientEvent::KnownPeers { sender } => {
+                let mut result = Vec::new();
+
+                for bucket in eventloop.swarm.behaviour_mut().kademlia.kbuckets() {
+                    if !bucket.is_empty() {
+                        for record in bucket.iter() {
+                            result.push(*record.node.key.preimage());
+                        }
+                    }
+                }
+
+                sender.send(result);
             }
         }
     }
