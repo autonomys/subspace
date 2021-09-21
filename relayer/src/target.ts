@@ -6,6 +6,9 @@ import { concatMap } from "rxjs/operators";
 
 import { TxData } from "./types";
 
+const polkadotJsUrl =
+  "https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/";
+
 class Target {
   private api: ApiPromise;
   private signer: AddressOrPair;
@@ -21,16 +24,26 @@ class Target {
       // it is required to specify nonce, otherwise transaction within same block will be rejected
       // if nonce is -1 API will do the lookup for the right value
       // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-      .signAndSend(this.signer, { nonce: -1 }, (result) => {
-        if (result.status.type === "InBlock") {
-          // TODO: show module dispatch error
-          const message = result.dispatchError
-            ? "Transaction failed"
-            : "Transaction successful";
-
-          console.log(
-            `${message}: https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/${result.status.asInBlock}`
-          );
+      .signAndSend(this.signer, { nonce: -1 }, ({ status, dispatchError }) => {
+        if (status.type === "InBlock") {
+          if (dispatchError) {
+            if (dispatchError.isModule) {
+              // for module errors, we have the section indexed, lookup
+              const decoded = this.api.registry.findMetaError(
+                dispatchError.asModule
+              );
+              console.log(
+                `Transaction failed: ${decoded.section}.${decoded.method}`
+              );
+            } else {
+              // Other, CannotLookup, BadOrigin, no extra info
+              console.log(`Transaction failed: ${dispatchError.toString()}`);
+            }
+          } else {
+            console.log(
+              `Transaction successful: ${polkadotJsUrl}${status.asInBlock}`
+            );
+          }
 
           unsub();
         }
