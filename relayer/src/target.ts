@@ -6,7 +6,7 @@ import { concatMap } from "rxjs/operators";
 
 import { TxData } from "./types";
 
-const polkadotJsUrl =
+const polkadotAppsUrl =
   "https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/";
 
 class Target {
@@ -18,6 +18,7 @@ class Target {
     this.signer = signer;
   }
 
+  // TODO: signer should be proxy account per feed
   private async sendBlockTx({ block, metadata }: TxData): Promise<void> {
     const unsub = await this.api.tx.feeds
       .put(block, metadata)
@@ -40,7 +41,7 @@ class Target {
             }
           } else {
             console.log(
-              `Transaction successful: ${polkadotJsUrl}${status.asInBlock}`
+              `Transaction successful: ${polkadotAppsUrl}${status.asInBlock}`
             );
           }
 
@@ -49,12 +50,14 @@ class Target {
       });
   }
 
-  async createFeed(): Promise<void> {
+  // TODO: signer should be proxy account per feed
+  async createFeed(feedIds: number[]): Promise<void> {
+    console.log("Creating feed for signer X");
     const unsub = await this.api.tx.feeds
       .createFeed()
-      .signAndSend(this.signer, (result) => {
-        if (result.status.type === "InBlock") {
-          const feedCreatedEvent = result.events.find(
+      .signAndSend(this.signer, { nonce: -1 }, ({ status, events }) => {
+        if (status.type === "InBlock") {
+          const feedCreatedEvent = events.find(
             ({ event }) => event.method === "FeedCreated"
           );
 
@@ -62,8 +65,8 @@ class Target {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const feedId = (feedCreatedEvent.toJSON().event as any).data[0];
 
-            // TODO: use feedId when create instances of Source
             console.log("New feed created: ", feedId);
+            feedIds.push(feedId);
           }
 
           unsub();

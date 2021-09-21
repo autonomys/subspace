@@ -29,6 +29,26 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   return api;
 };
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const createFeeds = async (target: Target): Promise<number[]> => {
+  const feedIds: number[] = [];
+
+  for await (const _ of config.sourceChainUrls) {
+    await target.createFeed(feedIds);
+  }
+
+  await sleep(5000);
+
+  // TODO: should include parachains
+  if (config.sourceChainUrls.length !== feedIds.length) {
+    await sleep(5000);
+  }
+
+  return feedIds;
+};
+
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
   const targetApi = await createApi(config.targetChainUrl, types);
@@ -37,15 +57,18 @@ const createApi = async (url: string, types?: RegistryTypes) => {
 
   const target = new Target({ api: targetApi, signer });
 
+  const feedIds = await createFeeds(target);
+
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, feedId }) => {
+    config.sourceChainUrls.map(async ({ url }, index) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
+      const feedId = api.createType("u64", feedIds[index]);
 
       return new Source({
         api,
         chain,
-        feedId: api.createType("u64", feedId),
+        feedId,
       });
     })
   );
