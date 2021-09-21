@@ -1,6 +1,8 @@
-use super::client::{Client, ClientEvent};
-use super::core::{ComposedBehaviour, ComposedEvent};
 use super::*;
+use super::{
+    client::{Client, ClientEvent},
+    core::{ComposedBehaviour, ComposedEvent},
+};
 
 pub struct EventLoop {
     pub swarm: Swarm<ComposedBehaviour>,
