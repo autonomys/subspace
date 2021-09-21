@@ -179,16 +179,8 @@ impl Client {
                 if let Ok(qid) = eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
                     sender.send(qid).unwrap();
                 }
-                // match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
-                //     Ok(_qid) => sender.send(Ok(())).unwrap(),
-                //     Err(e) => sender.send(Err(Box::new(e))).unwrap(),
-                // }
             }
             ClientEvent::RandomWalk { sender, key } => {
-                // NOTE: An interesting fact, that I have noticed is that Kademlia is not
-                // bidirectional. For example, if Peer 1 adds Peer 2 to its routing table, Peer 2
-                // will not add Peer 1 to its routing table.
-
                 let key = match key {
                     Some(peerid) => peerid,
                     None => PeerId::random(),
@@ -219,11 +211,6 @@ impl Client {
                     .behaviour_mut()
                     .kademlia
                     .add_address(&peer, addr.clone());
-
-                // eventloop
-                //     .swarm
-                //     .dial_addr(addr.with(Protocol::P2p(peer.into())))
-                //     .unwrap();
 
                 sender.send(Ok(())).unwrap();
             }
