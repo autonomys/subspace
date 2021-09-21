@@ -102,7 +102,7 @@ pub(crate) async fn farm(
     };
 
     info!("Connecting to DHT");
-    let (mut dht_client, dht_eventloop) = dht::create_connection(&config).await;
+    let (mut dht_client, dht_eventloop) = dht::create_connection(&config);
 
     tokio::spawn(async move { dht_eventloop.run().await });
     info!("My Peer ID is: {:?}", dht_client.peerid);
