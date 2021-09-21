@@ -1,6 +1,5 @@
 use super::*;
 use super::{core::create_node, eventloop::EventLoop};
-use libp2p::multiaddr::Protocol;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ClientType {
