@@ -30,7 +30,7 @@ serde_json = "1.0.64"
 schnorrkel = "0.10.1"
 spartan-codec = "0.1.0"
 thiserror = "1.0.24"
-tokio = "1.11.0"
+tokio = { version = "1.11.0", features = [ "rt", "macros", "fs" ] }
 
 [dependencies.jsonrpsee]
 features = ["client"]

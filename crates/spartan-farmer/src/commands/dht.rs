@@ -1,5 +1,5 @@
 // Stuff for Kademlia
-use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaEvent};
+use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaEvent, QueryId, QueryResult};
 
 // Stuff for defining composed behaviour
 use libp2p::NetworkBehaviour;

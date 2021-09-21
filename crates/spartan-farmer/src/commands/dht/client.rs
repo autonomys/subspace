@@ -20,9 +20,10 @@ pub enum ClientEvent {
         addr: Multiaddr,
         sender: oneshot::Sender<OneshotType>,
     },
-    // Bootstrap, look for the closest peers.
-    Bootstrap {
-        sender: oneshot::Sender<OneshotType>,
+    // Kademlia Random Walk for Peer Discovery. (GetClosestPeer)
+    RandomWalk {
+        key: Option<PeerId>,
+        sender: oneshot::Sender<QueryId>,
     },
     // List all known peers.
     KnownPeers {
@@ -34,11 +35,20 @@ pub enum ClientEvent {
         peer: PeerId,
         sender: oneshot::Sender<OneshotType>,
     },
-    // NOTE: I'm not sure if this will work without a Provider.
-    // Get a particular record.
-    GetRecord {
-        key: Key,
+    // Bootstrap during the initial connection to the DHT.
+    // NOTE: All the bootstrap nodes must already be connected to the swarm before we can start the
+    // bootstrap process.
+    Bootstrap {
         sender: oneshot::Sender<QueryId>,
+    },
+    // Get all listening addresses.
+    Listeners {
+        sender: oneshot::Sender<Vec<Multiaddr>>,
+    },
+    // Read Kademlia Query Result.
+    QueryResult {
+        qid: QueryId,
+        sender: oneshot::Sender<QueryResult>,
     },
 }
 
@@ -59,16 +69,36 @@ impl Client {
         Client { peerid, client_tx }
     }
 
-    // Get a particular record from K-DHT.
-    pub async fn get_record(&mut self, key: Key) {
+    // Read the Query Result for a specific Kademlia query.
+    async fn query_result(&mut self, qid: QueryId) -> QueryResult {
         let (sender, recv) = oneshot::channel();
 
         self.client_tx
-            .send(ClientEvent::GetRecord { key, sender })
+            .send(ClientEvent::QueryResult { qid, sender })
             .await
             .unwrap();
 
-        let _query_id = recv.await;
+        let result = recv
+            .await
+            .expect("Failed to retrieve the list of all known peers.");
+
+        result
+    }
+
+    // Get the list of all addresses we are listening on.
+    pub async fn listeners(&mut self) -> Vec<Multiaddr> {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::Listeners { sender })
+            .await
+            .unwrap();
+
+        let addrs = recv
+            .await
+            .expect("Failed to retrieve the list of all known peers.");
+
+        addrs
     }
 
     // Dial another node using Peer Id and Address.
@@ -114,7 +144,20 @@ impl Client {
         let _ = recv.await.expect("Failed to start listening.");
     }
 
-    // Sync with other peers on the DHT.
+    // Sync with other peers on the DHT. (GetClosestPeer)
+    pub async fn random_walk(&mut self, key: Option<PeerId>) {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::RandomWalk { key, sender })
+            .await
+            .unwrap();
+
+        // Check if the Bootstrap was processed, properly.
+        let _ = recv.await.expect("Failed to Random Walk.");
+    }
+
+    // Bootstrap
     pub async fn bootstrap(&mut self) {
         let (sender, recv) = oneshot::channel();
 
@@ -124,7 +167,7 @@ impl Client {
             .unwrap();
 
         // Check if the Bootstrap was processed, properly.
-        let _ = recv.await.expect("Failed to bootstrap.");
+        let _qid = recv.await.expect("Failed to bootstrap.");
     }
 
     pub fn handle_client_event(eventloop: &mut EventLoop, event: ClientEvent) {
@@ -134,19 +177,38 @@ impl Client {
                 Err(e) => sender.send(Err(Box::new(e))).unwrap(),
             },
             ClientEvent::Bootstrap { sender } => {
-                match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
-                    Ok(_qid) => sender.send(Ok(())).unwrap(),
-                    Err(e) => sender.send(Err(Box::new(e))).unwrap(),
+                if let Ok(qid) = eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
+                    sender.send(qid).unwrap();
                 }
+                // match eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
+                //     Ok(_qid) => sender.send(Ok(())).unwrap(),
+                //     Err(e) => sender.send(Err(Box::new(e))).unwrap(),
+                // }
+            }
+            ClientEvent::RandomWalk { sender, key } => {
+                // NOTE: An interesting fact, that I have noticed is that Kademlia is not
+                // bidirectional. For example, if Peer 1 adds Peer 2 to its routing table, Peer 2
+                // will not add Peer 1 to its routing table.
+
+                let key = match key {
+                    Some(peerid) => peerid,
+                    None => PeerId::random(),
+                };
+
+                let qid = eventloop
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_peers(key);
+
+                sender.send(qid).unwrap();
             }
             ClientEvent::KnownPeers { sender } => {
                 let mut result = Vec::new();
 
                 for bucket in eventloop.swarm.behaviour_mut().kademlia.kbuckets() {
-                    if !bucket.is_empty() {
-                        for record in bucket.iter() {
-                            result.push(*record.node.key.preimage());
-                        }
+                    for record in bucket.iter() {
+                        result.push(record.node.key.preimage().clone());
                     }
                 }
 
@@ -159,21 +221,28 @@ impl Client {
                     .kademlia
                     .add_address(&peer, addr.clone());
 
-                eventloop
-                    .swarm
-                    .dial_addr(addr.with(Protocol::P2p(peer.into())))
-                    .unwrap();
+                // eventloop
+                //     .swarm
+                //     .dial_addr(addr.with(Protocol::P2p(peer.into())))
+                //     .unwrap();
 
                 sender.send(Ok(())).unwrap();
             }
-            ClientEvent::GetRecord { key, sender } => {
-                let qid = eventloop
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_record(&key, Quorum::One);
-
-                sender.send(qid).unwrap();
+            ClientEvent::Listeners { sender } => {
+                sender
+                    .send(
+                        eventloop
+                            .swarm
+                            .listeners()
+                            .map(|addr| addr.clone())
+                            .collect(),
+                    )
+                    .unwrap();
+            }
+            ClientEvent::QueryResult { qid, sender } => {
+                sender
+                    .send(eventloop.query_result.remove(&qid).unwrap())
+                    .unwrap();
             }
         }
     }
