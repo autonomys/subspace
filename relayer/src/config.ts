@@ -4,7 +4,7 @@ dotenv.config();
 
 type SourceChain = {
   url: string;
-  chainId: number;
+  feedId: number;
   parachains: string[];
 };
 
@@ -33,7 +33,8 @@ export const loadConfig = (): Config => {
     sourceChainUrls: [
       {
         url: "wss://kusama-rpc.polkadot.io",
-        chainId: 0,
+        // TODO: remove from config after implementing createFeed fn for Target
+        feedId: 0,
         parachains: [
           // TODO: add parachains
           // "wss://kusama-statemine-rpc.paritytech.net",

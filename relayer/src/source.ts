@@ -1,7 +1,7 @@
 import { ApiPromise } from "@polkadot/api";
 import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
-import { Text, U32 } from "@polkadot/types/primitive";
+import { Text, U64 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 
 import { TxData } from "./types";
@@ -9,28 +9,30 @@ import { TxData } from "./types";
 type SourceParams = {
   api: ApiPromise;
   chain: Text;
-  chainId: U32;
+  feedId: U64;
 };
 
 class Source {
   private api: ApiPromise;
   private chain: Text;
-  private chainId: U32;
+  private feedId: U64;
 
-  constructor({ api, chain, chainId }: SourceParams) {
+  constructor({ api, chain, feedId }: SourceParams) {
     this.api = api;
     this.chain = chain;
-    this.chainId = chainId;
+    this.feedId = feedId;
   }
 
   private subscribeHeads = (): Observable<Header> =>
     this.api.rx.rpc.chain.subscribeFinalizedHeads();
 
-  // TODO: should return Uint8Array instead of string
   private getBlock = (hash: Hash): Promise<SignedBlock> =>
     this.api.rpc.chain.getBlock(hash);
 
-  private getBlockByHeader = async ({ hash }: Header): Promise<TxData> => {
+  private getBlockByHeader = async ({
+    hash,
+    number,
+  }: Header): Promise<TxData> => {
     const block = await this.getBlock(hash);
     const hex = block.toHex();
     const size = Buffer.byteLength(hex);
@@ -38,7 +40,14 @@ class Source {
     console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
     console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    return { block: hex, chainId: this.chainId };
+    const metadata = {
+      feedId: this.feedId,
+      hash,
+      // TODO: probably there is a better way - investigate
+      number: this.api.createType("U32", number.toNumber()),
+    };
+
+    return { block: hex, metadata };
   };
 
   subscribeBlocks = (): Observable<TxData> =>

@@ -2,6 +2,7 @@
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use sp_core::H256;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
@@ -17,32 +18,83 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     pub type PutDataObject = Vec<u8>;
-    // TODO: clarify if it should be u32
-    pub type ChainId = u32;
+
+    // TODO: make it more generic
+    #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+    pub struct ObjectMetadata {
+        pub feed_id: u64,
+        pub hash: H256,
+        pub number: u32,
+    }
+
+    pub type FeedId = u64;
+
+    #[pallet::storage]
+    pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, (H256, u32), OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn last_feed_id)]
+    pub type CurrentFeedId<T: Config> = StorageValue<_, FeedId, ValueQuery>;
 
     #[pallet::event]
     #[pallet::metadata(T::AccountId = "AccountId")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        DataSubmitted(PutDataObject, T::AccountId),
+        DataSubmitted(ObjectMetadata, T::AccountId),
+        FeedCreated(FeedId, T::AccountId),
     }
 
     #[pallet::error]
-    pub enum Error<T> {}
+    pub enum Error<T> {
+        UknownFeedId,
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
         #[pallet::weight(10_000)]
-        pub fn put(origin: OriginFor<T>, data: PutDataObject, chain_id: ChainId) -> DispatchResult {
+        pub fn put(
+            origin: OriginFor<T>,
+            data: PutDataObject,
+            metadata: ObjectMetadata,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: add data handling
-            log::info!("CHAIN ID: {:?}", chain_id);
-            log::info!("NEW DATA OBJECT: {:?}", data.len());
+            log::info!("metadata: {:?}", metadata);
 
-            // TODO: Consider removing in the future
-            Self::deposit_event(Event::DataSubmitted(data, who));
+            let ObjectMetadata {
+                feed_id,
+                hash,
+                number,
+            } = metadata;
+
+            ensure!(Feeds::<T>::contains_key(feed_id), Error::<T>::UknownFeedId);
+
+            Feeds::<T>::mutate_exists(feed_id, |values| *values = Some((hash, number)));
+
+            // TODO: add data handling
+            log::info!("data.len: {:?}", data.len());
+
+            // TODO: change to metadata
+            Self::deposit_event(Event::DataSubmitted(metadata, who));
+
+            Ok(())
+        }
+
+        // TODO: add proper weights
+        #[pallet::weight(10_000)]
+        pub fn create_feed(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // TODO: check if this account already has a feed_id created
+
+            let feed_id = Self::last_feed_id();
+
+            Feeds::<T>::insert(feed_id, (H256::default(), u32::default()));
+
+            CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
+
+            Self::deposit_event(Event::FeedCreated(feed_id, who));
 
             Ok(())
         }

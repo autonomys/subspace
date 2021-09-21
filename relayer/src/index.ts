@@ -11,7 +11,12 @@ const config = loadConfig();
 // TODO: use typedefs from subspace.js
 const types = {
   PutDataObject: "Vec<u8>",
-  ChainId: "u32",
+  ObjectMetadata: {
+    feedId: "FeedId",
+    hash: "H256",
+    number: "u32",
+  },
+  FeedId: "u64",
 };
 
 const createApi = async (url: string, types?: RegistryTypes) => {
@@ -33,14 +38,14 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   const target = new Target({ api: targetApi, signer });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, chainId }) => {
+    config.sourceChainUrls.map(async ({ url, feedId }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
 
       return new Source({
         api,
         chain,
-        chainId: api.createType("u32", chainId),
+        feedId: api.createType("u64", feedId),
       });
     })
   );

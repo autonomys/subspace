@@ -1,6 +1,13 @@
-import { U32 } from "@polkadot/types/primitive";
+import { U64, U32 } from "@polkadot/types/primitive";
+import { Hash } from "@polkadot/types/interfaces";
 
 export type TxData = {
   block: string;
-  chainId: U32;
+  metadata: Metadata;
+};
+
+type Metadata = {
+  feedId: U64;
+  hash: Hash;
+  number: U32;
 };
