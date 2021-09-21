@@ -28,7 +28,6 @@ class Target {
         if (status.type === "InBlock") {
           if (dispatchError) {
             if (dispatchError.isModule) {
-              // for module errors, we have the section indexed, lookup
               const decoded = this.api.registry.findMetaError(
                 dispatchError.asModule
               );
