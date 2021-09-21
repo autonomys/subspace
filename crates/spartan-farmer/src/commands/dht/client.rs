@@ -44,6 +44,8 @@ impl Client {
 
     // Set listening address for a particular Normal node.
     pub async fn start_listening(&mut self, addr: Multiaddr) {
+        // The oneshot channel helps us to pass error messages related to
+        // SwarmEvent/KademliaEvent.
         let (sender, recv) = oneshot::channel();
 
         self.client_tx

@@ -34,3 +34,7 @@ mod core;
 // EventLoop which actually processes libp2p SwarmEvents. The Client API interacts with the
 // EventLoop to transfer and receieve data.
 mod eventloop;
+
+// DHT related tests.
+#[cfg(test)]
+mod test;

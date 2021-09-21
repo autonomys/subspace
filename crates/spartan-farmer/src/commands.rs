@@ -1,4 +1,4 @@
-pub mod dht;
+mod dht;
 mod farm;
 mod plot;
 
