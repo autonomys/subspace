@@ -20,9 +20,8 @@ impl EventLoop {
     pub async fn run(mut self) {
         loop {
             futures::select! {
-                client_event = self.client_rx.next() => match client_event {
-                    Some(event) => self.handle_event(event),
-                    None => {},
+                client_event = self.client_rx.next() => if let Some(event) = client_event {
+                    self.handle_event(event)
                 },
                 network_event = self.swarm.next() => match network_event {
                     Some(event) => self.handle_network_event(event).await,
