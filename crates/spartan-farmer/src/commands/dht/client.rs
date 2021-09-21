@@ -57,6 +57,7 @@ impl Client {
         let _ = recv.await.expect("Failed to start listening.");
     }
 
+    // Sync with other peers on the DHT.
     pub async fn bootstrap(&mut self) {
         let (sender, recv) = oneshot::channel();
 

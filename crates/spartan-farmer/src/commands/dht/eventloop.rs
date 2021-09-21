@@ -9,12 +9,12 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-    /// Create new event loop
+    // Create new event loop
     pub fn new(swarm: Swarm<ComposedBehaviour>, client_rx: Receiver<ClientEvent>) -> Self {
         EventLoop { swarm, client_rx }
     }
 
-    /// Run event loop. We will use this method to spawn the event loop in a background task.
+    // Run event loop. We will use this method to spawn the event loop in a background task.
     pub async fn run(mut self) {
         loop {
             futures::select! {
@@ -27,8 +27,7 @@ impl EventLoop {
         }
     }
 
-    // NOTE: We have to put the handle client event method in the EventLoop impl because it
-    // needs access to the swarm.
+    // The Client will send events to EventLoop using this method.
     fn handle_event(&mut self, event: ClientEvent) {
         Client::handle_client_event(&mut self.swarm, event)
     }
