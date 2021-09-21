@@ -19,35 +19,22 @@ impl From<KademliaEvent> for ComposedEvent {
     }
 }
 
-pub async fn create_bootstrap(config: ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
+pub async fn create_node(config: &ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
     // Generate IDs.
-    // TODO: Read a Ed25519 private key from disk, to create a bootstrap node's PeerID.
-    // let private_key: &mut [u8] = &mut config.bootstrap_keys.clone()[0];
-
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());
 
     let mut swarm = create_swarm(peerid, key);
 
-    match config.listen_addr {
-        Some(addr) => swarm.listen_on(addr).unwrap(),
+    match &config.listen_addr {
+        Some(addr) => swarm.listen_on(addr.clone()).unwrap(),
         None => swarm
             .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .unwrap(),
     };
 
-    (peerid, swarm)
-}
-
-pub async fn create_node(config: ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
-    // Generate IDs.
-    let key = identity::Keypair::generate_ed25519();
-    let peerid = PeerId::from_public_key(key.public());
-
-    let mut swarm = create_swarm(peerid, key);
-
     // Connect to bootstrap nodes.
-    dial_bootstrap(&mut swarm, config.bootstrap_nodes);
+    dial_bootstrap(&mut swarm, &config.bootstrap_nodes);
 
     (peerid, swarm)
 }
@@ -74,7 +61,7 @@ fn create_swarm(peerid: PeerId, key: identity::Keypair) -> Swarm<ComposedBehavio
         .build()
 }
 
-fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: Vec<String>) {
+fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: &Vec<String>) {
     for node in nodes {
         let parts: Vec<&str> = node.split("/p2p/").collect();
         let addr = Multiaddr::from_str(parts[0]).unwrap();

@@ -1,4 +1,4 @@
-use super::core::{create_bootstrap, create_node, ComposedBehaviour};
+use super::core::{create_node, ComposedBehaviour};
 use super::eventloop::EventLoop;
 use super::*;
 
@@ -92,11 +92,11 @@ impl Client {
 }
 
 // This method will construct a new Swarm and EventLoop object.
-pub async fn create_connection(config: ClientConfig) -> (Client, EventLoop) {
+pub async fn create_connection(config: &ClientConfig) -> (Client, EventLoop) {
     let (client_tx, client_rx) = channel(10);
 
     let (peerid, swarm) = match config.client_type {
-        ClientType::Bootstrap => create_bootstrap(config).await,
+        ClientType::Bootstrap => create_node(config).await,
         ClientType::Normal => create_node(config).await,
     };
 

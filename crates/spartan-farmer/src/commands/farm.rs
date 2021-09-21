@@ -86,28 +86,27 @@ pub(crate) async fn farm(
     // 1. Create the swarm with the peer in it.
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
-    let node_type = if bootstrap {
-        info!("I'm a bootstrap node.");
-        ClientType::Bootstrap
-    } else {
-        ClientType::Normal
-    };
 
     let config = ClientConfig {
         bootstrap_nodes: bootstrap_node,
         bootstrap_keys: Vec::default(),
-        client_type: node_type,
+        client_type: if bootstrap {
+            info!("I'm a bootstrap node.");
+            ClientType::Bootstrap
+        } else {
+            ClientType::Normal
+        },
         listen_addr: None,
     };
 
     info!("Connecting to DHT");
-    let (mut dht_client, dht_eventloop) = dht::create_connection(config).await;
+    let (mut dht_client, dht_eventloop) = dht::create_connection(&config).await;
 
     tokio::spawn(async move { dht_eventloop.run().await });
     info!("My Peer ID is: {:?}", dht_client.peerid);
 
     // For bootstrap nodes, we set the listening address through the `ClientConfig`.
-    if !bootstrap {
+    if config.listen_addr.is_none() {
         dht_client
             .start_listening("/ip4/0.0.0.0/tcp/0".parse()?)
             .await;
