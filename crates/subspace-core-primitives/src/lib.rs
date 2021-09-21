@@ -33,6 +33,16 @@ pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 /// Piece size in Subspace Network
 pub type Piece = [u8; PIECE_SIZE];
 
+/// Last archived block
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct LastArchivedBlock {
+    /// Block number
+    pub number: u64,
+    /// `None` if the block was archived fully or number of bytes otherwise
+    pub bytes: Option<u32>,
+}
+
 /// Root block for a specific segment
 #[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -46,6 +56,8 @@ pub enum RootBlock {
         merkle_tree_root: Sha256Hash,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Sha256Hash,
+        /// Last archived block
+        last_archived_block: LastArchivedBlock,
     },
 }
 
@@ -78,6 +90,16 @@ impl RootBlock {
                 prev_root_block_hash,
                 ..
             } => *prev_root_block_hash,
+        }
+    }
+
+    /// Last archived block
+    pub fn last_archived_block(&self) -> LastArchivedBlock {
+        match self {
+            RootBlock::V0 {
+                last_archived_block,
+                ..
+            } => *last_archived_block,
         }
     }
 }

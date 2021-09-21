@@ -26,6 +26,9 @@ fn archiver() {
         first_archived_segment.root_block.prev_root_block_hash(),
         [0u8; SHA256_HASH_SIZE]
     );
+    let last_archived_block = first_archived_segment.root_block.last_archived_block();
+    assert_eq!(last_archived_block.number, 1);
+    assert_eq!(last_archived_block.bytes, Some(7992));
 
     for (index, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
@@ -38,6 +41,18 @@ fn archiver() {
 
     let archived_segments = archiver.add_block(rand::random::<[u8; SEGMENT_SIZE * 2]>());
     assert_eq!(archived_segments.len(), 2);
+    {
+        let archived_segment = archived_segments.get(0).unwrap();
+        let last_archived_block = archived_segment.root_block.last_archived_block();
+        assert_eq!(last_archived_block.number, 2);
+        assert_eq!(last_archived_block.bytes, Some(13229));
+    }
+    {
+        let archived_segment = archived_segments.get(1).unwrap();
+        let last_archived_block = archived_segment.root_block.last_archived_block();
+        assert_eq!(last_archived_block.number, 2);
+        assert_eq!(last_archived_block.bytes, Some(29135));
+    }
 
     let mut expected_segment_index = 1_u64;
     let mut previous_root_block_hash = first_archived_segment.root_block.hash();
@@ -63,6 +78,16 @@ fn archiver() {
 
         expected_segment_index += 1;
         previous_root_block_hash = archived_segment.root_block.hash();
+    }
+
+    // Add a block such that it fits in the next segment exactly
+    let archived_segments = archiver.add_block(rand::random::<[u8; SEGMENT_SIZE - 2960]>());
+    assert_eq!(archived_segments.len(), 1);
+    {
+        let archived_segment = archived_segments.get(0).unwrap();
+        let last_archived_block = archived_segment.root_block.last_archived_block();
+        assert_eq!(last_archived_block.number, 3);
+        assert_eq!(last_archived_block.bytes, None);
     }
 }
 
