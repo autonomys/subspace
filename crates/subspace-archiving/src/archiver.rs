@@ -17,6 +17,7 @@ use crate::merkle_tree::{MerkleTree, Witness};
 use parity_scale_codec::{Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::convert::{TryFrom, TryInto};
 use std::io::Write;
@@ -85,6 +86,17 @@ pub enum ArchiverInstantiationError {
     /// Wrong record and segment size, it will not be possible to produce pieces
     #[error("Wrong record and segment size, it will not be possible to produce pieces")]
     WrongRecordAndSegmentCombination,
+    /// Invalid last archived block, its size is the same as encoded block
+    #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
+    InvalidLastArchivedBlock(u32),
+    /// Invalid block, its size is smaller than already archived number of bytes
+    #[error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")]
+    InvalidBlockSmallSize {
+        /// Full block size
+        block_bytes: u32,
+        /// Already archived portion of the block
+        archived_block_bytes: u32,
+    },
 }
 
 /// Archiver for Subspace blockchain.
@@ -158,11 +170,59 @@ impl Archiver {
             reed_solomon,
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
-            last_archived_block: LastArchivedBlock {
-                number: 0,
-                bytes: Some(0),
-            },
+            last_archived_block: LastArchivedBlock::initial(),
         })
+    }
+
+    /// Create a new instance with initial state in case of restart.
+    ///
+    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    pub fn with_initial_state<B: Encode>(
+        record_size: usize,
+        segment_size: usize,
+        root_block: RootBlock,
+        block: B,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        let mut archiver = Self::new(record_size, segment_size)?;
+
+        archiver.segment_index = root_block.segment_index();
+        archiver.prev_root_block_hash = root_block.prev_root_block_hash();
+        archiver.last_archived_block = root_block.last_archived_block();
+
+        // The first thing in the buffer should be root block
+        archiver
+            .buffer
+            .push_back(SegmentItem::RootBlock(root_block));
+
+        if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
+            let encoded_block = block.encode();
+
+            let encoded_block_bytes = u32::try_from(encoded_block.len())
+                .expect("Blocks length is never bigger than u32; qed");
+
+            match encoded_block_bytes.cmp(&archived_block_bytes) {
+                Ordering::Less => {
+                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                        block_bytes: encoded_block_bytes,
+                        archived_block_bytes,
+                    });
+                }
+                Ordering::Equal => {
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
+                        encoded_block_bytes,
+                    ));
+                }
+                Ordering::Greater => {
+                    // Take part of the encoded block that wasn't archived yet and push to the
+                    // buffer and block continuation
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation(
+                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                    ));
+                }
+            }
+        }
+
+        Ok(archiver)
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
@@ -194,12 +254,7 @@ impl Archiver {
                     match &segment_item {
                         SegmentItem::Block(_) => {
                             // Skip block number increase in case of the very first block
-                            if last_archived_block
-                                != (LastArchivedBlock {
-                                    number: 0,
-                                    bytes: Some(0),
-                                })
-                            {
+                            if last_archived_block != LastArchivedBlock::initial() {
                                 // Increase archived block number and assume the whole block was
                                 // archived
                                 last_archived_block.number += 1;

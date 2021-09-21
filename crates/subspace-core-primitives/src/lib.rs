@@ -43,6 +43,16 @@ pub struct LastArchivedBlock {
     pub bytes: Option<u32>,
 }
 
+impl LastArchivedBlock {
+    /// Initial state at genesis before block `0`
+    pub fn initial() -> Self {
+        Self {
+            number: 0,
+            bytes: Some(0),
+        }
+    }
+}
+
 /// Root block for a specific segment
 #[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]

@@ -1,7 +1,9 @@
 use std::assert_matches::assert_matches;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
-use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{
+    LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+};
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
@@ -89,6 +91,8 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.bytes, None);
     }
+
+    // TODO: Tests for initial state
 }
 
 #[test]
@@ -115,5 +119,44 @@ fn archiver_invalid_usage() {
     assert_matches!(
         Archiver::new(17, 34),
         Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
+    );
+
+    assert_matches!(
+        Archiver::with_initial_state(
+            RECORD_SIZE,
+            SEGMENT_SIZE,
+            RootBlock::V0 {
+                segment_index: 0,
+                merkle_tree_root: Sha256Hash::default(),
+                prev_root_block_hash: Sha256Hash::default(),
+                last_archived_block: LastArchivedBlock {
+                    number: 0,
+                    bytes: Some(10),
+                },
+            },
+            vec![0u8; 9]
+        ),
+        Err(ArchiverInstantiationError::InvalidLastArchivedBlock(10)),
+    );
+
+    assert_matches!(
+        Archiver::with_initial_state(
+            RECORD_SIZE,
+            SEGMENT_SIZE,
+            RootBlock::V0 {
+                segment_index: 0,
+                merkle_tree_root: Sha256Hash::default(),
+                prev_root_block_hash: Sha256Hash::default(),
+                last_archived_block: LastArchivedBlock {
+                    number: 0,
+                    bytes: Some(10),
+                },
+            },
+            vec![0u8; 5]
+        ),
+        Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+            block_bytes: 6,
+            archived_block_bytes: 10
+        }),
     );
 }
