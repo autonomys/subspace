@@ -243,77 +243,74 @@ impl Archiver {
             segment.push_item(segment_item);
         }
 
-        // We may have gotten more data than needed, check and move the excess into the next
-        // segment
-        {
-            let spill_over = segment.encoded_size() - self.segment_size;
+        // We may have gotten more data than needed, check and move the excess into the next segment
+        let spill_over = segment.encoded_size() - self.segment_size;
 
-            if spill_over > 0 {
-                let Segment::V0 { items } = &mut segment;
-                let segment_item = items
-                    .pop()
-                    .expect("Segment over segment size always has at least one item; qed");
+        if spill_over > 0 {
+            let Segment::V0 { items } = &mut segment;
+            let segment_item = items
+                .pop()
+                .expect("Segment over segment size always has at least one item; qed");
 
-                let (segment_item, continuation_segment_item_bytes) = match segment_item {
-                    SegmentItem::Block(mut bytes) => {
-                        let split_point = bytes.len() - spill_over;
-                        let block_continuation_bytes = bytes[split_point..].to_vec();
+            let (segment_item, continuation_segment_item_bytes) = match segment_item {
+                SegmentItem::Block(mut bytes) => {
+                    let split_point = bytes.len() - spill_over;
+                    let block_continuation_bytes = bytes[split_point..].to_vec();
 
-                        bytes.truncate(split_point);
+                    bytes.truncate(split_point);
 
-                        // Update last archived block to include partial archiving info
-                        last_archived_block.bytes.replace(
-                            u32::try_from(bytes.len())
+                    // Update last archived block to include partial archiving info
+                    last_archived_block.bytes.replace(
+                        u32::try_from(bytes.len())
+                            .expect("Blocks length is never bigger than u32; qed"),
+                    );
+
+                    (SegmentItem::BlockStart(bytes), block_continuation_bytes)
+                }
+                SegmentItem::BlockStart(_) => {
+                    unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
+                }
+                SegmentItem::BlockContinuation(mut block_bytes) => {
+                    let split_point = block_bytes.len() - spill_over;
+                    let block_continuation_bytes = block_bytes[split_point..].to_vec();
+
+                    block_bytes.truncate(split_point);
+
+                    // Above code assumed that block was archived fully, now remove spilled-over
+                    // bytes from the size
+                    let archived_bytes = last_archived_block.bytes.expect(
+                        "Block continuation implies that there are some bytes archived \
+                        already; qed",
+                    );
+                    last_archived_block.bytes.replace(
+                        archived_bytes
+                            - u32::try_from(spill_over)
                                 .expect("Blocks length is never bigger than u32; qed"),
-                        );
+                    );
 
-                        (SegmentItem::BlockStart(bytes), block_continuation_bytes)
-                    }
-                    SegmentItem::BlockStart(_) => {
-                        unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
-                    }
-                    SegmentItem::BlockContinuation(mut block_bytes) => {
-                        let split_point = block_bytes.len() - spill_over;
-                        let block_continuation_bytes = block_bytes[split_point..].to_vec();
+                    (
+                        SegmentItem::BlockContinuation(block_bytes),
+                        block_continuation_bytes,
+                    )
+                }
+                SegmentItem::RootBlock(_) => {
+                    unreachable!(
+                        "SegmentItem::RootBlock is always the first element in the buffer and \
+                        fits into the segment; qed",
+                    );
+                }
+            };
 
-                        block_bytes.truncate(split_point);
-
-                        // Above code assumed that block was archived fully, now remove spilled-over
-                        // bytes from the size
-                        let archived_bytes = last_archived_block.bytes.expect(
-                            "Block continuation implies that there are some bytes \
-                            archived already; qed",
-                        );
-                        last_archived_block.bytes.replace(
-                            archived_bytes
-                                - u32::try_from(spill_over)
-                                    .expect("Blocks length is never bigger than u32; qed"),
-                        );
-
-                        (
-                            SegmentItem::BlockContinuation(block_bytes),
-                            block_continuation_bytes,
-                        )
-                    }
-                    SegmentItem::RootBlock(_) => {
-                        unreachable!(
-                            "SegmentItem::RootBlock is always the first element in the buffer and \
-                            fits into the segment; qed",
-                        );
-                    }
-                };
-
-                // Push back shortened segment item
-                items.push(segment_item);
-                // Push continuation element back into the buffer where removed segment item was
-                self.buffer.push_front(SegmentItem::BlockContinuation(
-                    continuation_segment_item_bytes,
-                ));
-            } else {
-                // Above code added bytes length even though it was assumed that all continuation
-                // bytes fit into the segment, now we need to tweak that
-                last_archived_block.bytes.take();
-            }
+            // Push back shortened segment item
+            items.push(segment_item);
+            // Push continuation element back into the buffer where removed segment item was
+            self.buffer.push_front(SegmentItem::BlockContinuation(
+                continuation_segment_item_bytes,
+            ));
+        } else {
+            // Above code added bytes length even though it was assumed that all continuation bytes
+            // fit into the segment, now we need to tweak that
+            last_archived_block.bytes.take();
         }
 
         self.last_archived_block = last_archived_block;
