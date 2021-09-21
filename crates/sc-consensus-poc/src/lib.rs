@@ -1977,7 +1977,8 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
     client: Arc<Client>,
     select_chain: SelectChain,
     create_inherent_data_providers: CIDP,
-    spawner: &impl sp_core::traits::SpawnEssentialNamed,
+    essential_spawner: &impl sp_core::traits::SpawnEssentialNamed,
+    spawner: &impl sp_core::traits::SpawnNamed,
     registry: Option<&Registry>,
     can_author_with: CAW,
     telemetry: Option<TelemetryHandle>,
@@ -2005,7 +2006,8 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
 {
-    spawner.spawn_essential_blocking(
+    // TODO: This task should probably be in a separate function altogether
+    spawner.spawn_blocking(
         "poc-archiver",
         Box::pin({
             let mut imported_block_notification_stream =
@@ -2083,7 +2085,7 @@ where
         verifier,
         Box::new(block_import),
         justification_import,
-        spawner,
+        essential_spawner,
         registry,
     ))
 }
