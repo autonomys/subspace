@@ -465,7 +465,7 @@ impl_runtime_apis! {
             PoC::submit_equivocation_report(equivocation_proof)
         }
 
-        fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+        fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
             PoC::submit_store_root_block(root_block)
         }
 

@@ -1,35 +1,34 @@
 // Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+// SPDX-License-Identifier: Apache-2.0
 
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-//! Utility module for handling Subspace client notifications.
-
-use crate::merkle_tree::MerkleTree;
-use codec::Encode;
+use crate::merkle_tree::{MerkleTree, Witness};
+use parity_scale_codec::{Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use sp_consensus_spartan::spartan::{Piece, PIECE_SIZE};
-use sp_consensus_spartan::RootBlock;
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
 use std::iter;
-
-type Sha256Hash = [u8; 32];
+use subspace_core_primitives::{
+    crypto, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+};
+use thiserror::Error;
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
-#[derive(Debug, Encode)]
-enum Segment {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+pub enum Segment {
     // V0 of the segment data structure
     #[codec(index = 0)]
     V0 {
@@ -39,8 +38,8 @@ enum Segment {
 }
 
 /// Kinds of items that are contained within a segment
-#[derive(Debug, Encode)]
-enum SegmentItem {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+pub enum SegmentItem {
     /// Contains full block inside
     #[codec(index = 0)]
     Block(Vec<u8>),
@@ -55,13 +54,30 @@ enum SegmentItem {
     RootBlock(RootBlock),
 }
 
-#[derive(Debug, Encode, Clone)]
+#[derive(Debug, Clone)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
-pub(super) struct ArchivedSegment {
+pub struct ArchivedSegment {
     /// Root block of the segment
-    pub(super) root_block: RootBlock,
+    pub root_block: RootBlock,
     /// Pieces that correspond to this segment
-    pub(super) pieces: Vec<Piece>,
+    pub pieces: Vec<Piece>,
+}
+
+/// Archiver instantiation error
+#[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum ArchiverInstantiationError {
+    /// Record size it smaller that needed to hold any information
+    #[error("Record size it smaller that needed to hold any information")]
+    RecordSizeTooSmall,
+    /// Segment size is not bigger than record size
+    #[error("Segment size is not bigger than record size")]
+    SegmentSizeTooSmall,
+    /// Segment size is not a multiple of record size
+    #[error("Segment size is not a multiple of record size")]
+    SegmentSizesNotMultipleOfRecordSize,
+    /// Wrong record and segment size, it will not be possible to produce pieces
+    #[error("Wrong record and segment size, it will not be possible to produce pieces")]
+    WrongRecordAndSegmentCombination,
 }
 
 /// Archiver for Subspace blockchain.
@@ -73,17 +89,13 @@ pub(super) struct ArchivedSegment {
 /// block header.
 // TODO: Make this survive restarts without loosing state
 #[derive(Debug)]
-pub(super) struct Archiver {
+pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: usize,
-    /// Size of the witness for every record
-    // TODO: Use this in combination with merkle tree instead of using constants there
-    #[allow(dead_code)]
-    witness_size: usize,
     /// Configuration parameter defining the size of one recorded history segment
     segment_size: usize,
     /// Erasure coding data structure
@@ -101,39 +113,47 @@ impl Archiver {
     /// * record size it smaller that needed to hold any information
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
-    pub(super) fn new(record_size: usize, witness_size: usize, segment_size: usize) -> Self {
-        let empty_segment = Segment::V0 { items: Vec::new() };
-        assert!(
-            record_size > empty_segment.encoded_size(),
-            "Record size it smaller that needed to hold any information",
-        );
-        assert!(
-            segment_size > record_size,
-            "Segment size is not bigger than record size",
-        );
-        assert_eq!(
-            segment_size % record_size,
-            0,
-            "Segment size is not a multiple of record size",
-        );
+    /// * segment size and record size do not make sense together
+    pub fn new(
+        record_size: usize,
+        segment_size: usize,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        let tiny_segment = Segment::V0 {
+            items: vec![SegmentItem::Block(vec![0u8])],
+        };
+        if record_size <= tiny_segment.encoded_size() {
+            return Err(ArchiverInstantiationError::RecordSizeTooSmall);
+        }
+        if segment_size <= record_size {
+            return Err(ArchiverInstantiationError::SegmentSizeTooSmall);
+        }
+        if segment_size % record_size != 0 {
+            return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
+        }
+
+        // We take N data records and will creates the same number of parity records, hence `*2`
+        let merkle_num_leaves = segment_size / record_size * 2;
+        let witness_size = SHA256_HASH_SIZE * merkle_num_leaves.log2() as usize;
+        if record_size + witness_size != PIECE_SIZE {
+            return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
+        }
 
         let shards = segment_size / record_size;
         let reed_solomon = ReedSolomon::new(shards, shards)
             .expect("ReedSolomon should always be correctly instantiated");
 
-        Self {
+        Ok(Self {
             buffer: VecDeque::default(),
             record_size,
-            witness_size,
             segment_size,
             reed_solomon,
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
-        }
+        })
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub(super) fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
+    pub fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block(block.encode()));
 
@@ -226,12 +246,13 @@ impl Archiver {
 
     // Take segment as an input, apply necessary transformations and produce archived segment
     fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
-        let segment = segment.encode();
-        assert_eq!(
-            segment.len(),
-            self.segment_size,
-            "Segment must always be of correct size",
-        );
+        let segment = {
+            let mut segment = segment.encode();
+            // Add a few bytes of padding if needed to get constant size (caused by compact length
+            // encoding of scale codec)
+            segment.resize(self.segment_size, 0u8);
+            segment
+        };
 
         fn slice_to_arrays(slice: &[u8]) -> Vec<[u8; 2]> {
             slice
@@ -293,8 +314,8 @@ impl Archiver {
                 drop(record);
 
                 (&mut piece[self.record_size..]).write_all(&witness).expect(
-                    "With correct archiver parameters there should be just enough space to write \
-                    a witness; qed",
+                    "Parameters are verified in the archiver constructor to make sure this \
+                    never happens; qed",
                 );
 
                 piece
@@ -325,4 +346,15 @@ impl Archiver {
     }
 }
 
-// TODO: Tests
+/// Validate witness embedded within a piece produced by archiver
+pub fn is_piece_valid(piece: &Piece, root: Sha256Hash, index: usize, record_size: usize) -> bool {
+    let witness = match Witness::new(Cow::Borrowed(&piece[record_size..])) {
+        Ok(witness) => witness,
+        Err(_) => {
+            return false;
+        }
+    };
+    let leaf_hash = crypto::sha256_hash(&piece[..record_size]);
+
+    witness.is_valid(root, index, leaf_hash)
+}

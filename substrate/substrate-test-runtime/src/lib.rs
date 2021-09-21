@@ -899,7 +899,7 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
@@ -1201,7 +1201,7 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 

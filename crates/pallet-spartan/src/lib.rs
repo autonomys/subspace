@@ -48,7 +48,6 @@ use sp_consensus_poc::{
     ConsensusLog, Epoch, EquivocationProof, PoCEpochConfiguration, Slot, POC_ENGINE_ID,
 };
 pub use sp_consensus_poc::{FarmerId, RANDOMNESS_LENGTH};
-use sp_consensus_spartan::{RootBlock, Sha256Hash};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -58,6 +57,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
+use subspace_core_primitives::{RootBlock, Sha256Hash};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
