@@ -34,6 +34,12 @@ pub enum ClientEvent {
         peer: PeerId,
         sender: oneshot::Sender<OneshotType>,
     },
+    // NOTE: I'm not sure if this will work without a Provider.
+    // Get a particular record.
+    GetRecord {
+        key: Key,
+        sender: oneshot::Sender<QueryId>,
+    },
 }
 
 pub struct ClientConfig {
@@ -53,6 +59,19 @@ impl Client {
         Client { peerid, client_tx }
     }
 
+    // Get a particular record from K-DHT.
+    pub async fn get_record(&mut self, key: Key) {
+        let (sender, recv) = oneshot::channel();
+
+        self.client_tx
+            .send(ClientEvent::GetRecord { key, sender })
+            .await
+            .unwrap();
+
+        let _query_id = recv.await;
+    }
+
+    // Dial another node using Peer Id and Address.
     pub async fn dial(&mut self, peer: PeerId, addr: Multiaddr) {
         let (sender, recv) = oneshot::channel();
 
@@ -146,6 +165,15 @@ impl Client {
                     .unwrap();
 
                 sender.send(Ok(())).unwrap();
+            }
+            ClientEvent::GetRecord { key, sender } => {
+                let qid = eventloop
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_record(&key, Quorum::One);
+
+                sender.send(qid).unwrap();
             }
         }
     }
