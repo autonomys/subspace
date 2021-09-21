@@ -48,9 +48,9 @@ class Target {
 
           if (feedCreatedEvent) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const feedId = (feedCreatedEvent?.toJSON()?.event as any).data[0];
+            const feedId = (feedCreatedEvent.toJSON().event as any).data[0];
 
-            // TODO: use feeId when create instances of Source
+            // TODO: use feedId when create instances of Source
             console.log("New feed created: ", feedId);
           }
 
