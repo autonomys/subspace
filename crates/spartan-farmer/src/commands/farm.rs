@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Instant;
 
 type SlotNumber = u64;
@@ -60,7 +59,7 @@ struct SlotInfo {
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(
-    listen_addr: String,
+    listen_addr: Option<Multiaddr>,
     bootstrap: bool,
     bootstrap_nodes: Vec<String>,
     path: PathBuf,
@@ -84,7 +83,7 @@ pub(crate) async fn farm(
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
     // When a farmer starts, it should start a libp2p peer, as well.
-    // The peer will connect to a given bootstrap nodes and seek other peers.
+    // The peer will connect to given bootstrap nodes and seek other peers.
     // 1. Create the swarm with the peer in it.
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
@@ -96,15 +95,8 @@ pub(crate) async fn farm(
         ClientType::Normal
     };
 
-    let listen_addr = if listen_addr.is_empty() {
-        None
-    } else {
-        Some(Multiaddr::from_str(&listen_addr)?)
-    };
-
     let config = ClientConfig {
         bootstrap_nodes,
-        bootstrap_keys: Vec::default(),
         client_type,
         listen_addr,
     };

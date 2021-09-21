@@ -28,7 +28,6 @@ pub enum ClientEvent {
 
 pub struct ClientConfig {
     pub bootstrap_nodes: Vec<String>, // Vec<(Multiaddr, PeerId)>,
-    pub bootstrap_keys: Vec<Vec<u8>>,
     pub client_type: ClientType,
     pub listen_addr: Option<Multiaddr>,
 }

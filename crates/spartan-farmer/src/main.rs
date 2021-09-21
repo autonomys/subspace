@@ -23,6 +23,7 @@ mod utils;
 use async_std::task;
 use clap::{Clap, ValueHint};
 use env_logger::Env;
+use libp2p::Multiaddr;
 use log::info;
 use std::fs;
 use std::path::PathBuf;
@@ -72,7 +73,7 @@ enum Command {
         bootstrap: bool,
         /// Listening address for P2P peer.
         #[clap(long)]
-        listen_addr: String,
+        listen_addr: Option<Multiaddr>,
     },
 }
 
