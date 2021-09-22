@@ -1,4 +1,4 @@
-name: CI
+name: Rust
 
 on: [push, pull_request]
 
@@ -111,18 +111,3 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-
-  lint:
-    runs-on: ubuntu-20.04
-    name: Run eslint and check typescript
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: "16.x"
-      - run: npm ci
-        working-directory: relayer
-      - run: npm run lint
-        working-directory: relayer
-      - run: npm run build
-        working-directory: relayer

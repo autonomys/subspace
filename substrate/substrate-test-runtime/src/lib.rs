@@ -24,6 +24,7 @@ pub mod genesismap;
 pub mod system;
 
 use codec::{Decode, Encode, Error, Input};
+use scale_info::TypeInfo;
 use sp_std::{marker::PhantomData, prelude::*};
 
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
@@ -395,7 +396,7 @@ cfg_if! {
 	}
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, TypeInfo)]
 pub struct Runtime;
 
 impl GetNodeBlockType for Runtime {
@@ -463,7 +464,7 @@ impl frame_support::traits::OriginTrait for Origin {
 	}
 }
 
-#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
 pub struct Event;
 
 impl From<frame_system::Event<Runtime>> for Event {
@@ -898,12 +899,18 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
 				}
 			}
 
@@ -1200,12 +1207,18 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
 				}
 			}
 

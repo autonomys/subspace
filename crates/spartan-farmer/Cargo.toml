@@ -16,13 +16,13 @@ include = [
 [dependencies]
 async-global-executor = "2.0.2"
 async-std = "1.9.0"
-clap = "3.0.0-beta.2"
-dirs = "3.0.1"
+clap = "3.0.0-beta.4"
+dirs = "4.0.0"
 env_logger = "0.9.0"
-event-listener-primitives = "0.2.2"
+event-listener-primitives = "2.0.1"
 futures = "0.3.13"
 hex = "0.4.3"
-indicatif = "0.15.0"
+indicatif = "0.16.2"
 log = "0.4.14"
 rayon = "1.5.0"
 ring = "0.16.20"
@@ -40,16 +40,20 @@ version = "0.2.0"
 # This disables compression algorithms that cause issues during linking due to
 # https://github.com/rust-rocksdb/rust-rocksdb/issues/514
 default-features = false
-# Re-enable all compression algorithms except `zstd`, which is the only one causing issues so far
-features = ["snappy", "lz4", "zlib", "bzip2"]
-version = "0.16.0"
+# `zstd` causes compilation errors, others are unnecessary for now
+features = ["snappy"]
+version = "0.17.0"
 
 [dependencies.serde]
 features = ["derive"]
 version = "1.0.125"
 
+[dependencies.subspace-core-primitives]
+version = "0.1.0"
+path = "../subspace-core-primitives"
+
 [dev-dependencies]
-rand = "0.8.3"
+rand = "0.8.4"
 
 [dev-dependencies.async-std]
 features = ["attributes"]

@@ -1,0 +1,37 @@
+[package]
+name = "subspace-core-primitives"
+description = "Core primitives for Subspace Network"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2018"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md"
+]
+
+[dependencies.parity-scale-codec]
+default-features = false
+features = ["derive"]
+version = "2.3.0"
+
+[dependencies.scale-info]
+default-features = false
+features = ["derive"]
+version = "1.0"
+
+[dependencies.sha2]
+default-features = false
+version = "0.9.8"
+
+[features]
+default = ["std"]
+std = [
+    "parity-scale-codec/std",
+    "scale-info/std",
+    # Can't enable this in platform-specific way, see https://github.com/rust-lang/cargo/issues/1197
+    "sha2/asm",
+    "sha2/std",
+]
