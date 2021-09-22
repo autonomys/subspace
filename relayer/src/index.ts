@@ -29,6 +29,7 @@ const createApi = async (url: string, types?: RegistryTypes) => {
   return api;
 };
 
+// TODO: consider moving to utils
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -39,12 +40,7 @@ const createFeeds = async (target: Target): Promise<number[]> => {
     await target.createFeed(feedIds);
   }
 
-  await sleep(5000);
-
-  // TODO: should include parachains
-  if (config.sourceChainUrls.length !== feedIds.length) {
-    await sleep(5000);
-  }
+  await sleep(15000);
 
   return feedIds;
 };

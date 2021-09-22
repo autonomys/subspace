@@ -18,16 +18,15 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     pub type PutDataObject = Vec<u8>;
+    pub type FeedId = u64;
 
     // TODO: make it more generic
     #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
     pub struct ObjectMetadata {
-        pub feed_id: u64,
+        pub feed_id: FeedId,
         pub hash: H256,
         pub number: u32,
     }
-
-    pub type FeedId = u64;
 
     #[pallet::storage]
     pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, (H256, u32), OptionQuery>;
@@ -75,7 +74,6 @@ pub mod pallet {
             // TODO: add data handling
             log::info!("data.len: {:?}", data.len());
 
-            // TODO: change to metadata
             Self::deposit_event(Event::DataSubmitted(metadata, who));
 
             Ok(())
@@ -85,8 +83,6 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn create_feed(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
-            // TODO: check if this account already has a feed_id created
 
             let feed_id = Self::current_feed_id();
 

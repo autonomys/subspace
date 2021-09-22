@@ -19,6 +19,7 @@ class Target {
   }
 
   // TODO: signer should be proxy account per feed
+  // TODO: refactor using rxjs api - this.api.rx.tx...
   private async sendBlockTx({ block, metadata }: TxData): Promise<void> {
     const unsub = await this.api.tx.feeds
       .put(block, metadata)
@@ -51,6 +52,7 @@ class Target {
   }
 
   // TODO: signer should be proxy account per feed
+  // TODO: refactor using rxjs api - this.api.rx.tx...
   async createFeed(feedIds: number[]): Promise<void> {
     console.log("Creating feed for signer X");
     const unsub = await this.api.tx.feeds
