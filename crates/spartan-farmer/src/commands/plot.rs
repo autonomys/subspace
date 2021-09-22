@@ -43,26 +43,43 @@ pub(crate) async fn plot(
                 std::thread::spawn(move || {
                     let bar = ProgressBar::new(piece_count);
 
-                    for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
-                        let batch_end = (batch_start + BATCH_SIZE).min(piece_count);
-                        let encoded_batch: Vec<Piece> = (batch_start..batch_end)
-                            .into_par_iter()
-                            .map(|index| {
-                                let encoding =
-                                    spartan.encode(public_key_hash, index, ENCODE_ROUNDS);
+                    if spartan.is_cuda_available() {
+                        info!("Using the GPU for plotting!");
+                        let mut piece_array: Vec<u8> =
+                            Vec::with_capacity(PIECE_SIZE * piece_count as usize);
+                        for _ in 0..piece_count {
+                            piece_array.extend_from_slice(&genesis_piece);
+                        }
+                        let nonce_array: Vec<u64> = (0..piece_count).collect();
+                        spartan.cuda_batch_encode(
+                            &mut piece_array,
+                            public_key_hash,
+                            nonce_array.as_slice(),
+                            1,
+                        );
+                    } else {
+                        info!("Using only CPU for plotting!");
+                        for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
+                            let batch_end = (batch_start + BATCH_SIZE).min(piece_count);
+                            let encoded_batch: Vec<Piece> = (batch_start..batch_end)
+                                .into_par_iter()
+                                .map(|index| {
+                                    let encoding =
+                                        spartan.encode(public_key_hash, index, ENCODE_ROUNDS);
 
-                                bar.inc(1);
+                                    bar.inc(1);
 
-                                encoding
-                            })
-                            .collect();
+                                    encoding
+                                })
+                                .collect();
 
-                        if futures::executor::block_on(
-                            batch_sender.send((batch_start, encoded_batch)),
-                        )
-                        .is_err()
-                        {
-                            return;
+                            if futures::executor::block_on(
+                                batch_sender.send((batch_start, encoded_batch)),
+                            )
+                            .is_err()
+                            {
+                                return;
+                            }
                         }
                     }
 

@@ -27,6 +27,11 @@ impl Spartan {
 }
 
 impl Spartan {
+    /// returns true if CUDA is available
+    pub fn is_cuda_available(&self) -> bool {
+        self.cuda_available
+    }
+
     /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
     /// desired number of rounds
     pub fn encode(
@@ -46,8 +51,8 @@ impl Spartan {
 
         encoding
     }
-    /// encodes given batch of pieces using GPU (if available) and CPU
-    pub fn batch_encode(
+    /// encodes given batch of pieces using GPU, and CPU for the leftovers
+    pub fn cuda_batch_encode(
         &self,
         pieces: &mut [u8],
         encoding_key_hash: [u8; HASH_SIZE],
@@ -74,39 +79,26 @@ impl Spartan {
             expanded_iv_vector.extend(expanded_iv);
         }
 
-        // if we have access to CUDA, we will utilize GPU and CPU together
-        if self.cuda_available {
-            // If there any leftovers from 1024x pieces, cpu will handle them
-            let cpu_encode_end_index = piece_amount % GPU_PIECE_BLOCK;
+        // If there any leftovers from 1024x pieces, cpu will handle them
+        let cpu_encode_end_index = piece_amount % GPU_PIECE_BLOCK;
 
-            // CPU encoding:
-            for x in 0..cpu_encode_end_index {
-                cpu::encode(
-                    &mut pieces[x * PIECE_SIZE..(x + 1) * PIECE_SIZE],
-                    &expanded_iv_vector[x * HASH_SIZE..(x + 1) * HASH_SIZE],
-                    rounds,
-                )
-                .unwrap();
-            }
-
-            // GPU encoding:
-            cuda::encode(
-                &mut pieces[cpu_encode_end_index * PIECE_SIZE..],
-                &expanded_iv_vector[cpu_encode_end_index * HASH_SIZE..],
+        // CPU encoding:
+        for x in 0..cpu_encode_end_index {
+            cpu::encode(
+                &mut pieces[x * PIECE_SIZE..(x + 1) * PIECE_SIZE],
+                &expanded_iv_vector[x * HASH_SIZE..(x + 1) * HASH_SIZE],
                 rounds,
             )
             .unwrap();
-        } else {
-            // do all the pieces in CPU
-            for x in 0..piece_amount {
-                cpu::encode(
-                    &mut pieces[x * PIECE_SIZE..(x + 1) * PIECE_SIZE],
-                    &expanded_iv_vector[x * HASH_SIZE..(x + 1) * HASH_SIZE],
-                    rounds,
-                )
-                .unwrap();
-            }
         }
+
+        // GPU encoding:
+        cuda::encode(
+            &mut pieces[cpu_encode_end_index * PIECE_SIZE..],
+            &expanded_iv_vector[cpu_encode_end_index * HASH_SIZE..],
+            rounds,
+        )
+        .unwrap();
     }
 
     /// Check if previously created encoding is valid
@@ -152,6 +144,8 @@ mod tests {
     }
 
     #[test]
+    // CUDA accepts multiples of 1024 pieces, and any remainder piece will be handled on CPU
+    // this test aims to process 1024 pieces in GPU, and 2 pieces in CPU, hence 1026 pieces.
     fn test_1026_piece() {
         let genesis_piece = random_bytes();
         let mut piece_array: Vec<u8> = Vec::with_capacity(PIECE_SIZE * 1026);
@@ -165,7 +159,7 @@ mod tests {
             piece_array.extend_from_slice(&genesis_piece);
         }
 
-        spartan.batch_encode(
+        spartan.cuda_batch_encode(
             &mut piece_array,
             encoding_key_hash,
             nonce_array.as_slice(),
