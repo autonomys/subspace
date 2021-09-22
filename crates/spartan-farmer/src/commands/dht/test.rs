@@ -39,17 +39,16 @@ async fn bootstrap_working() {
 
     // Connect A --> B, B --> C.
     for i in 1..3 {
-        let peerid = peeraddr[i - 1].0.clone();
-        let addr = peeraddr[i - 1].1.clone();
-        clients[i].dial(peerid, addr).await;
-        println!("{}", i);
+        let peerid = peeraddr[i].0.clone();
+        let addr = peeraddr[i].1.clone();
+        clients[i - 1].dial(peerid, addr).await;
     }
 
     // Connect D --> E.
-    for i in 3..5 {
-        let peerid = peeraddr[i - 1].0.clone();
-        let addr = peeraddr[i - 1].1.clone();
-        clients[i].dial(peerid, addr).await;
+    for i in 4..5 {
+        let peerid = peeraddr[i].0.clone();
+        let addr = peeraddr[i].1.clone();
+        clients[i - 1].dial(peerid, addr).await;
     }
 
     // Connect A --> D.
@@ -57,9 +56,11 @@ async fn bootstrap_working() {
     let addr = peeraddr[3].1.clone();
     clients[0].dial(peerid, addr).await;
 
+    // A should find E.
     clients[0].bootstrap().await;
 
     let known_peers = clients[0].known_peers().await;
+    let peerid = peeraddr[4].0.clone();
 
     assert!(known_peers.contains(&peerid));
 }

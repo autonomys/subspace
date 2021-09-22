@@ -1,5 +1,6 @@
 use super::*;
 use super::{core::create_node, eventloop::EventLoop};
+use libp2p::multiaddr::Protocol;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ClientType {
@@ -211,6 +212,8 @@ impl Client {
                     .behaviour_mut()
                     .kademlia
                     .add_address(&peer, addr.clone());
+
+                eventloop.swarm.dial_addr(addr).unwrap();
 
                 sender.send(Ok(())).unwrap();
             }
