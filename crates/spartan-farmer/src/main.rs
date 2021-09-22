@@ -39,6 +39,7 @@ const PIECE_SIZE: usize = 4096;
 const ENCODE_ROUNDS: usize = 1;
 const SIGNING_CONTEXT: &[u8] = b"FARMER";
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
+const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
 
 #[derive(Debug, Clap)]
 #[clap(about, version)]

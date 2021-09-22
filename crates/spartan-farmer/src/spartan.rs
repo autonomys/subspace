@@ -61,8 +61,8 @@ impl Spartan {
     ) {
         // each expanded_iv will be in format [u8; 32], so `piece_amount` expanded_iv's
         // should consume [u8; 32 * piece_amount] space.
-        let piece_amount = pieces.len() / PIECE_SIZE;
-        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_amount * HASH_SIZE);
+        let piece_count = pieces.len() / PIECE_SIZE;
+        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * HASH_SIZE);
         let mut expanded_iv;
         for nonce in nonce_array {
             // same encoding_key_hash will be used for each expanded_iv
@@ -80,7 +80,7 @@ impl Spartan {
         }
 
         // If there any leftovers from 1024x pieces, cpu will handle them
-        let cpu_encode_end_index = piece_amount % GPU_PIECE_BLOCK;
+        let cpu_encode_end_index = piece_count % GPU_PIECE_BLOCK;
 
         // CPU encoding:
         for x in 0..cpu_encode_end_index {

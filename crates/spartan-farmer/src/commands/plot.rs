@@ -1,6 +1,6 @@
 use crate::plot::Plot;
 use crate::spartan::Spartan;
-use crate::{crypto, Piece, BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE};
+use crate::{crypto, Piece, BATCH_SIZE, CUDA_BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
@@ -45,18 +45,26 @@ pub(crate) async fn plot(
 
                     if spartan.is_cuda_available() {
                         info!("Using the GPU for plotting!");
+
                         let mut piece_array: Vec<u8> =
                             Vec::with_capacity(PIECE_SIZE * piece_count as usize);
                         for _ in 0..piece_count {
                             piece_array.extend_from_slice(&genesis_piece);
                         }
                         let nonce_array: Vec<u64> = (0..piece_count).collect();
-                        spartan.cuda_batch_encode(
-                            &mut piece_array,
-                            public_key_hash,
-                            nonce_array.as_slice(),
-                            1,
-                        );
+                        for batch_start in (0..piece_count).step_by(CUDA_BATCH_SIZE as usize) {
+                            let batch_end =
+                                (batch_start + CUDA_BATCH_SIZE).min(piece_count) as usize;
+
+                            spartan.cuda_batch_encode(
+                                &mut piece_array
+                                    [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
+                                public_key_hash,
+                                &nonce_array[(batch_start as usize)..batch_end],
+                                1,
+                            );
+                            bar.inc(1 * CUDA_BATCH_SIZE);
+                        }
                     } else {
                         info!("Using only CPU for plotting!");
                         for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
