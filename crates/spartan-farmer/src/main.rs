@@ -27,14 +27,13 @@ use libp2p::Multiaddr;
 use log::info;
 use std::fs;
 use std::path::PathBuf;
+use subspace_core_primitives::{Piece, PIECE_SIZE};
 use tokio::runtime::Runtime;
 
-type Piece = [u8; PIECE_SIZE];
 type Tag = [u8; PRIME_SIZE_BYTES];
 type Salt = [u8; PRIME_SIZE_BYTES];
 
 const PRIME_SIZE_BYTES: usize = 8;
-const PIECE_SIZE: usize = 4096;
 const ENCODE_ROUNDS: usize = 1;
 const SIGNING_CONTEXT: &[u8] = b"FARMER";
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;

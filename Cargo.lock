@@ -3914,6 +3914,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "substrate-wasm-builder",
 ]
 
@@ -4234,6 +4235,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "spartan-codec",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -5584,11 +5586,9 @@ dependencies = [
  "futures 0.3.17",
  "log",
  "lru",
- "merkletree",
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.8.4",
- "reed-solomon-erasure",
  "ring",
  "sc-block-builder",
  "sc-client-api",
@@ -5616,11 +5616,11 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "spartan-codec",
+ "subspace-archiving",
+ "subspace-core-primitives",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
- "thiserror",
- "typenum",
 ]
 
 [[package]]
@@ -5871,7 +5871,7 @@ dependencies = [
  "libp2p",
  "log",
  "parking_lot 0.11.2",
- "rand 0.7.3",
+ "rand 0.8.4",
  "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
@@ -6444,6 +6444,16 @@ dependencies = [
  "cpufeatures 0.2.1",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
+ "sha2-asm",
+]
+
+[[package]]
+name = "sha2-asm"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf27176fb5d15398e3a479c652c20459d9dac830dedd1fa55b42a77dbcdbfcea"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -6784,6 +6794,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-timestamp",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -6801,11 +6812,7 @@ dependencies = [
 name = "sp-consensus-spartan"
 version = "0.1.0"
 dependencies = [
- "parity-scale-codec",
  "ring",
- "scale-info",
- "sha2 0.9.8",
- "sp-debug-derive",
  "spartan-codec",
 ]
 
@@ -7302,6 +7309,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spartan-codec",
+ "subspace-core-primitives",
  "thiserror",
  "tokio",
 ]
@@ -7392,6 +7400,29 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "subspace-archiving"
+version = "0.1.0"
+dependencies = [
+ "merkletree",
+ "parity-scale-codec",
+ "rand 0.8.4",
+ "reed-solomon-erasure",
+ "sha2 0.9.8",
+ "subspace-core-primitives",
+ "thiserror",
+ "typenum",
+]
+
+[[package]]
+name = "subspace-core-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sha2 0.9.8",
 ]
 
 [[package]]
@@ -7521,6 +7552,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "sp-version",
+ "subspace-core-primitives",
  "substrate-test-runtime-client",
  "substrate-wasm-builder",
  "trie-db",

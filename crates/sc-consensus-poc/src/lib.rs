@@ -49,7 +49,6 @@
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-use crate::archiver::{ArchivedSegment, Archiver};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
@@ -100,8 +99,7 @@ pub use sp_consensus_poc::{
     POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Piece, Salt, Spartan, PIECE_SIZE, SIGNING_CONTEXT};
-use sp_consensus_spartan::RootBlock;
+use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -116,11 +114,10 @@ use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
-mod archiver;
 pub mod aux_schema;
-// TODO: Move this into separate crate
-pub mod merkle_tree;
 pub mod notification;
 #[cfg(test)]
 mod tests;
@@ -128,10 +125,9 @@ mod verification;
 
 // TODO: Move these constants somewhere more appropriate and adjust if necessary
 const CONFIRMATION_DEPTH_K: u32 = 10;
-const HASH_OUTPUT_BYTES: usize = 32;
 // This is a nice power of 2 for Merkle Tree
 const MERKLE_NUM_LEAVES: usize = 256;
-const WITNESS_SIZE: usize = HASH_OUTPUT_BYTES * MERKLE_NUM_LEAVES.log2() as usize;
+const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
@@ -1792,31 +1788,24 @@ where
             {
                 // TODO: Why there could be no body? Light client?
                 for extrinsic in block.body.as_ref().unwrap() {
-                    /// This enum mimics minimal version of what is generated in runtime
-                    #[derive(Decode)]
-                    enum RuntimeCall {
-                        #[codec(index = 3)]
-                        Subspace(SubspaceCall),
-                    }
-
-                    /// This enum mimics minimal version of what is generated in pallet-spartan
-                    #[derive(Decode)]
-                    enum SubspaceCall {
-                        #[codec(index = 2)]
-                        StoreRootBlock { root_block: RootBlock },
-                    }
-
-                    // TODO: There must be a better way to decode an extrinsic, maybe through runtime API
-                    // `3..` removes unnecessary prefix from `OpaqueExtrinsic`'s inner vector and
-                    // probably something else
-                    if let Ok(RuntimeCall::Subspace(SubspaceCall::StoreRootBlock { root_block })) =
-                        RuntimeCall::decode(&mut &extrinsic.encode()[3..])
+                    match self
+                        .client
+                        .runtime_api()
+                        .extract_root_block(&BlockId::Hash(parent_hash), extrinsic.encode())
                     {
-                        if !root_blocks_set.remove(&root_block) {
-                            return Err(ConsensusError::ClientImport(format!(
-                                "Found root block that should not have been present: {:?}",
-                                root_block,
-                            )));
+                        Ok(Some(root_block)) => {
+                            if !root_blocks_set.remove(&root_block) {
+                                return Err(ConsensusError::ClientImport(format!(
+                                    "Found root block that should not have been present: {:?}",
+                                    root_block,
+                                )));
+                            }
+                        }
+                        Ok(None) => {
+                            // Some other extrinsic, ignore
+                        }
+                        Err(error) => {
+                            warn!(target: "poc", "Failed to make runtime API call: {:?}", error);
                         }
                     }
                 }
@@ -2027,8 +2016,8 @@ where
 
             async move {
                 let mut last_archived_block = None;
-                let mut archiver =
-                    Archiver::new(RECORD_SIZE, WITNESS_SIZE, RECORDED_HISTORY_SEGMENT_SIZE);
+                let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+                    .expect("Incorrect parameters for archiver");
 
                 while let Some((block_number, mut root_block_sender)) =
                     imported_block_notification_stream.next().await
@@ -2057,8 +2046,8 @@ where
                     let id = BlockId::number(block_to_archive);
                     let block = client
                         .block(&id)
-                        .expect("Older block by number should always exist; qed")
-                        .expect("Older block by number should always exist; qed");
+                        .expect("Older block by number should always exist")
+                        .expect("Older block by number should always exist");
 
                     for archived_segment in archiver.add_block(block) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;

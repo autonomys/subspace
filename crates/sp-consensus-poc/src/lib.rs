@@ -31,9 +31,10 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-pub use sp_consensus_spartan::{Randomness, RootBlock, RANDOMNESS_LENGTH};
+pub use sp_consensus_spartan::{Randomness, RANDOMNESS_LENGTH};
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
+use subspace_core_primitives::RootBlock;
 
 /// Key type for PoC module.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");
@@ -283,5 +284,8 @@ sp_api::decl_runtime_apis! {
 
         /// Check if `farmer_id` is in block list (due to equivocation)
         fn is_in_block_list(farmer_id: &FarmerId) -> bool;
+
+        /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
+        fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;
     }
 }

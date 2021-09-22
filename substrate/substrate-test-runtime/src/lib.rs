@@ -899,12 +899,18 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
 				}
 			}
 
@@ -1201,12 +1207,18 @@ cfg_if! {
 					)
 				}
 
-				fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn extract_root_block(
+					_encoded_extrinsic: Vec<u8>,
+				) -> Option<subspace_core_primitives::RootBlock> {
+					panic!("Not needed in tests")
 				}
 			}
 

@@ -46,6 +46,7 @@ parity-util-mem = { version = "0.10.0", default-features = false, features = ["p
 sc-service = { version = "0.10.0-dev", default-features = false, optional = true, features = ["test-helpers"], git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-state-machine = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-externalities = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-core-primitives" }
 
 # 3rd party
 cfg-if = "1.0"
@@ -102,6 +103,7 @@ std = [
 	"sp-trie/std",
 	"sp-transaction-pool/std",
 	"trie-db/std",
+	"subspace-core-primitives/std",
 ]
 # Special feature to disable logging
 disable-logging = [ "sp-api/disable-logging" ]
