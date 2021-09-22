@@ -47,13 +47,13 @@ impl EventLoop {
                 }
                 KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
                     match &result {
-                        QueryResult::GetClosestPeers(result) => match result {
+                        QueryResult::GetClosestPeers(rnd_walk_result) => match rnd_walk_result {
                             Ok(res) => {
                                 info!("GetClosestPeers finished successfully: {:?}", res.peers);
                             }
                             Err(e) => info!("{:?}", e),
                         },
-                        QueryResult::Bootstrap(result) => match result {
+                        QueryResult::Bootstrap(bootstrap_result) => match bootstrap_result {
                             Ok(res) => {
                                 info!("Bootstrapping finished successfully: {:?}", res.peer)
                             }

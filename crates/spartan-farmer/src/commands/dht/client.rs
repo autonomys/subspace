@@ -1,6 +1,6 @@
 use super::*;
 use super::{core::create_node, eventloop::EventLoop};
-use libp2p::multiaddr::Protocol;
+use libp2p::kad::QueryInfo;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ClientType {
@@ -48,7 +48,7 @@ pub enum ClientEvent {
     // Read Kademlia Query Result.
     QueryResult {
         qid: QueryId,
-        sender: oneshot::Sender<QueryResult>,
+        sender: oneshot::Sender<String>,
     },
 }
 
@@ -70,7 +70,7 @@ impl Client {
     }
 
     // Read the Query Result for a specific Kademlia query.
-    async fn query_result(&mut self, qid: QueryId) -> QueryResult {
+    pub async fn query_result(&mut self, qid: QueryId) -> String {
         let (sender, recv) = oneshot::channel();
 
         self.client_tx
@@ -145,7 +145,7 @@ impl Client {
     }
 
     // Sync with other peers on the DHT. (GetClosestPeer)
-    pub async fn random_walk(&mut self, key: Option<PeerId>) {
+    pub async fn random_walk(&mut self, key: Option<PeerId>) -> QueryId {
         let (sender, recv) = oneshot::channel();
 
         self.client_tx
@@ -154,11 +154,11 @@ impl Client {
             .unwrap();
 
         // Check if the Bootstrap was processed, properly.
-        let _ = recv.await.expect("Failed to Random Walk.");
+        recv.await.expect("Failed to Random Walk.")
     }
 
     // Bootstrap
-    pub async fn bootstrap(&mut self) {
+    pub async fn bootstrap(&mut self) -> QueryId {
         let (sender, recv) = oneshot::channel();
 
         self.client_tx
@@ -167,7 +167,7 @@ impl Client {
             .unwrap();
 
         // Check if the Bootstrap was processed, properly.
-        let _qid = recv.await.expect("Failed to bootstrap.");
+        recv.await.expect("Failed to bootstrap.")
     }
 
     pub fn handle_client_event(eventloop: &mut EventLoop, event: ClientEvent) {
@@ -229,9 +229,55 @@ impl Client {
                     .unwrap();
             }
             ClientEvent::QueryResult { qid, sender } => {
-                sender
-                    .send(eventloop.query_result.remove(&qid).unwrap())
-                    .unwrap();
+                let mut result = String::new();
+
+                if eventloop.query_result.contains_key(&qid) {
+                    result = match eventloop.query_result.remove(&qid).unwrap() {
+                        QueryResult::Bootstrap(result) => match result {
+                            Ok(result) => format!(
+                                "[RESULT] This query still has {:?} peers remaining.",
+                                result.num_remaining
+                            ),
+                            Err(e) => format!("{:?}", e),
+                        },
+                        QueryResult::GetClosestPeers(result) => match result {
+                            Ok(result) => {
+                                format!("This query produced {:?} peers.", result.peers.len())
+                            }
+                            Err(e) => format!("{:?}", e),
+                        },
+                        _ => "Unknown QueryResult Type".to_string(),
+                    };
+                } else {
+                    let query = eventloop
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .query(&qid)
+                        .unwrap();
+
+                    let stats = format!(
+                        "Total Requests: {}\nFailed: {}\nSucceded: {}\nPending: {}\n",
+                        query.stats().num_requests(),
+                        query.stats().num_failures(),
+                        query.stats().num_successes(),
+                        query.stats().num_pending()
+                    );
+
+                    let info = match query.info() {
+                        QueryInfo::Bootstrap { remaining, .. } => {
+                            format!(
+                                "[INFO] This query still has {:?} peers remaining.",
+                                remaining
+                            )
+                        }
+                        _ => "Unknown QueryInfo Type".to_string(),
+                    };
+
+                    result = stats.clone() + &info;
+                }
+
+                sender.send(result).unwrap();
             }
         }
     }
