@@ -49,14 +49,15 @@ impl EventLoop {
                     match &result {
                         QueryResult::GetClosestPeers(rnd_walk_result) => match rnd_walk_result {
                             Ok(res) => {
-                                info!("GetClosestPeers finished successfully: {:?}", res.peers);
+                                info!(
+                                    "Kademlia Random Walk finished successfully: {:?}",
+                                    res.peers
+                                );
                             }
                             Err(e) => info!("{:?}", e),
                         },
                         QueryResult::Bootstrap(bootstrap_result) => match bootstrap_result {
-                            Ok(res) => {
-                                info!("Bootstrapping finished successfully: {:?}", res.peer)
-                            }
+                            Ok(_res) => info!("Bootstrapping finished successfully."),
                             Err(e) => info!("{:?}", e),
                         },
                         _ => {}

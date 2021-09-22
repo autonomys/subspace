@@ -21,15 +21,18 @@ pub enum ClientEvent {
         sender: oneshot::Sender<OneshotType>,
     },
     // Kademlia Random Walk for Peer Discovery. (GetClosestPeer)
+    #[allow(dead_code)]
     RandomWalk {
         key: Option<PeerId>,
         sender: oneshot::Sender<QueryId>,
     },
     // List all known peers.
+    #[allow(dead_code)]
     KnownPeers {
         sender: oneshot::Sender<Vec<PeerId>>,
     },
     // Dial another peer.
+    #[allow(dead_code)]
     Dial {
         addr: Multiaddr,
         peer: PeerId,
@@ -42,10 +45,12 @@ pub enum ClientEvent {
         sender: oneshot::Sender<QueryId>,
     },
     // Get all listening addresses.
+    #[allow(dead_code)]
     Listeners {
         sender: oneshot::Sender<Vec<Multiaddr>>,
     },
     // Read Kademlia Query Result.
+    #[allow(dead_code)]
     QueryResult {
         qid: QueryId,
         sender: oneshot::Sender<String>,
@@ -70,6 +75,8 @@ impl Client {
     }
 
     // Read the Query Result for a specific Kademlia query.
+    // This method returns information about pending as well as finsihed queries.
+    #[allow(dead_code)]
     pub async fn query_result(&mut self, qid: QueryId) -> String {
         let (sender, recv) = oneshot::channel();
 
@@ -86,6 +93,7 @@ impl Client {
     }
 
     // Get the list of all addresses we are listening on.
+    #[allow(dead_code)]
     pub async fn listeners(&mut self) -> Vec<Multiaddr> {
         let (sender, recv) = oneshot::channel();
 
@@ -102,6 +110,7 @@ impl Client {
     }
 
     // Dial another node using Peer Id and Address.
+    #[allow(dead_code)]
     pub async fn dial(&mut self, peer: PeerId, addr: Multiaddr) {
         let (sender, recv) = oneshot::channel();
 
@@ -114,6 +123,7 @@ impl Client {
     }
 
     // Returns the list of all the peers the client has in its Routing table.
+    #[allow(dead_code)]
     pub async fn known_peers(&mut self) -> Vec<PeerId> {
         let (sender, recv) = oneshot::channel();
 
@@ -145,6 +155,7 @@ impl Client {
     }
 
     // Sync with other peers on the DHT. (GetClosestPeer)
+    #[allow(dead_code)]
     pub async fn random_walk(&mut self, key: Option<PeerId>) -> QueryId {
         let (sender, recv) = oneshot::channel();
 
@@ -229,10 +240,8 @@ impl Client {
                     .unwrap();
             }
             ClientEvent::QueryResult { qid, sender } => {
-                let mut result = String::new();
-
                 if eventloop.query_result.contains_key(&qid) {
-                    result = match eventloop.query_result.remove(&qid).unwrap() {
+                    let result = match eventloop.query_result.remove(&qid).unwrap() {
                         QueryResult::Bootstrap(result) => match result {
                             Ok(result) => format!(
                                 "[RESULT] This query still has {:?} peers remaining.",
@@ -248,6 +257,8 @@ impl Client {
                         },
                         _ => "Unknown QueryResult Type".to_string(),
                     };
+
+                    sender.send(result).unwrap();
                 } else {
                     let query = eventloop
                         .swarm
@@ -274,10 +285,8 @@ impl Client {
                         _ => "Unknown QueryInfo Type".to_string(),
                     };
 
-                    result = stats.clone() + &info;
+                    sender.send(stats.clone() + &info).unwrap();
                 }
-
-                sender.send(result).unwrap();
             }
         }
     }

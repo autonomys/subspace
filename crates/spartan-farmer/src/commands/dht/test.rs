@@ -59,15 +59,13 @@ async fn bootstrap_working() {
     // A should find E.
     let qid = clients[0].bootstrap().await;
 
-    let mut result = String::default();
     // Keep qeurying the result until we get the event we are looking for.
     loop {
-        result = clients[0].query_result(qid).await;
+        let result = clients[0].query_result(qid).await;
         if result.contains("[RESULT] This query still has 0 peers remaining.") {
             break;
         }
     }
-    println!("{:?}", result);
 
     let known_peers = clients[0].known_peers().await;
     let peerid = peeraddr[4].0.clone();

@@ -113,9 +113,6 @@ pub(crate) async fn farm(
             .await;
     };
 
-    // TODO: Ideally, this should be performed periodically after a fixed time interval.
-    // Peer Discovery needs to be a repetitive process, to make sure no peers carry stale
-    // information.
     dht_client.bootstrap().await;
 
     info!("Opening plot");
