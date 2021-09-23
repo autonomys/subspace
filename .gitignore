@@ -1,5 +1,4 @@
 .gitignore
 /.idea
 /target
-**/rustfmt.toml
 .vscode/
