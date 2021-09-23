@@ -17,6 +17,7 @@
 
 mod commands;
 mod crypto;
+mod dht;
 mod plot;
 mod utils;
 

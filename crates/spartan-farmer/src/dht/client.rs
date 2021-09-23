@@ -1,4 +1,19 @@
-use super::*;
+// Stuff for Kademlia
+use libp2p::kad::{QueryId, QueryResult};
+
+// Stuff needed to create the swarm
+use libp2p::{Multiaddr, PeerId};
+
+// Stuff needed to set up channels between Client API task and EventLoop task.
+use futures::channel::{
+    mpsc::{channel, Sender},
+    oneshot,
+};
+use futures::prelude::*;
+
+type OneshotError = Box<dyn std::error::Error + Send>;
+type OneshotType = Result<(), OneshotError>;
+
 use super::{core::create_node, eventloop::EventLoop};
 use libp2p::kad::QueryInfo;
 

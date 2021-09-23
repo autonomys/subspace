@@ -1,4 +1,17 @@
-use super::*;
+// Stuff for Kademlia
+use libp2p::kad::{KademliaEvent, QueryId, QueryResult};
+
+use libp2p::{swarm::SwarmEvent, Swarm};
+
+// Stuff needed to set up channels between Client API task and EventLoop task.
+use futures::channel::mpsc::Receiver;
+use futures::StreamExt;
+
+use log::info;
+
+type OneshotError = Box<dyn std::error::Error + Send>;
+type OneshotType = Result<(), OneshotError>;
+
 use super::{
     client::{Client, ClientEvent},
     core::{ComposedBehaviour, ComposedEvent},
