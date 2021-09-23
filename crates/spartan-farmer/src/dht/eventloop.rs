@@ -57,15 +57,6 @@ impl EventLoop {
                 }
                 KademliaEvent::OutboundQueryCompleted { id, result, .. } => {
                     match &result {
-                        QueryResult::GetClosestPeers(rnd_walk_result) => match rnd_walk_result {
-                            Ok(res) => {
-                                info!(
-                                    "Kademlia Random Walk finished successfully: {:?}",
-                                    res.peers
-                                );
-                            }
-                            Err(e) => info!("{:?}", e),
-                        },
                         QueryResult::Bootstrap(bootstrap_result) => match bootstrap_result {
                             Ok(_res) => info!("Bootstrapping finished successfully."),
                             Err(e) => info!("{:?}", e),
