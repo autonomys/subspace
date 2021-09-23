@@ -64,6 +64,18 @@ pub(crate) async fn plot(
                                 1,
                             );
                             bar.inc(1 * CUDA_BATCH_SIZE);
+
+                            /*
+                            if futures::executor::block_on(batch_sender.send((
+                                batch_start,
+                                piece_array
+                                    [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
+                            )))
+                            .is_err()
+                            {
+                                return;
+                            }
+                            */
                         }
                     } else {
                         info!("Using only CPU for plotting!");
