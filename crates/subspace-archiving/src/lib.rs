@@ -15,7 +15,9 @@
 
 //! Collection of modules used for dealing with archived state of Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(const_option)]
 #![feature(int_log)]
+#![feature(nonzero_ops)]
 
 #[cfg(feature = "std")]
 pub mod archiver;

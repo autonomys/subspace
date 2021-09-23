@@ -115,6 +115,7 @@ pub fn new_partial(
             Ok((timestamp, slot, uncles))
         },
         &task_manager.spawn_essential_handle(),
+        &task_manager.spawn_handle(),
         config.prometheus_registry(),
         sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone()),
         telemetry.as_ref().map(|x| x.handle()),
@@ -338,6 +339,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
             Ok((timestamp, slot, uncles))
         },
         &task_manager.spawn_essential_handle(),
+        &task_manager.spawn_handle(),
         config.prometheus_registry(),
         sp_consensus::NeverCanAuthor,
         telemetry.as_ref().map(|x| x.handle()),
