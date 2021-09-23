@@ -83,7 +83,7 @@ pub mod pallet {
 
         // TODO: add proper weights
         #[pallet::weight(10_000)]
-        pub fn create_feed(origin: OriginFor<T>) -> DispatchResult {
+        pub fn create(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let feed_id = Self::current_feed_id();

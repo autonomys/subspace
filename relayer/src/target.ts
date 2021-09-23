@@ -56,7 +56,7 @@ class Target {
   async createFeed(feedIds: number[]): Promise<void> {
     console.log("Creating feed for signer X");
     const unsub = await this.api.tx.feeds
-      .createFeed()
+      .create()
       .signAndSend(this.signer, { nonce: -1 }, ({ status, events }) => {
         if (status.type === "InBlock") {
           const feedCreatedEvent = events.find(
