@@ -31,6 +31,7 @@ pub mod pallet {
         pub number: u32,
     }
 
+    // TODO: probably change (H256, u32) to Vec<u8>
     #[pallet::storage]
     pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, (H256, u32), OptionQuery>;
 
@@ -50,6 +51,7 @@ pub mod pallet {
         UknownFeedId,
     }
 
+    // TODO: consider extracting feed_id from metadata as separate argument
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
