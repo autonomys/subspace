@@ -1,16 +1,26 @@
 import { ApiPromise } from "@polkadot/api";
 import { Header, Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { Observable } from "@polkadot/types/types";
-import { Text } from "@polkadot/types/primitive";
+import { Text, U64 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
+
+import { TxData } from "./types";
+
+type SourceParams = {
+  api: ApiPromise;
+  chain: Text;
+  feedId: U64;
+};
 
 class Source {
   private api: ApiPromise;
   private chain: Text;
+  private feedId: U64;
 
-  constructor({ api, chain }: { api: ApiPromise; chain: Text }) {
+  constructor({ api, chain, feedId }: SourceParams) {
     this.api = api;
     this.chain = chain;
+    this.feedId = feedId;
   }
 
   private subscribeHeads = (): Observable<Header> =>
@@ -19,21 +29,28 @@ class Source {
   private getBlock = (hash: Hash): Promise<SignedBlock> =>
     this.api.rpc.chain.getBlock(hash);
 
-  private getBlockByHeader = async ({ hash }: Header): Promise<string> => {
+  private getBlockByHeader = async ({
+    hash,
+    number,
+  }: Header): Promise<TxData> => {
     const block = await this.getBlock(hash);
-    // TODO: should include size of headers?
-    // TODO: what is the size limit?
-    // TODO: check size - if too big reject
-    const size = Buffer.byteLength(JSON.stringify(block));
+    const hex = block.toHex();
+    const size = Buffer.byteLength(hex);
 
     console.log(`Chain ${this.chain}: Finalized block hash: ${hash}`);
     console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    // TODO: clarify how we identify chains
-    return JSON.stringify({ ...block.toJSON(), chain: this.chain });
+    const metadata = {
+      feedId: this.feedId,
+      hash,
+      // TODO: probably there is a better way - investigate
+      number: this.api.createType("U32", number.toNumber()),
+    };
+
+    return { block: hex, metadata };
   };
 
-  subscribeBlocks = (): Observable<string> =>
+  subscribeBlocks = (): Observable<TxData> =>
     this.subscribeHeads().pipe(concatMap(this.getBlockByHeader));
 }
 
