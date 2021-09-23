@@ -7,6 +7,7 @@ use indicatif::ProgressBar;
 use log::{info, warn};
 use rayon::prelude::*;
 use schnorrkel::Keypair;
+use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -65,17 +66,22 @@ pub(crate) async fn plot(
                             );
                             bar.inc(1 * CUDA_BATCH_SIZE);
 
-                            /*
-                            if futures::executor::block_on(batch_sender.send((
-                                batch_start,
-                                piece_array
-                                    [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
-                            )))
+                            let encoded_piece = piece_array
+                                [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE]
+                                .to_vec();
+
+                            let piece_vec = encoded_piece
+                                .chunks_exact(PIECE_SIZE)
+                                .map(|x| x.try_into().unwrap())
+                                .collect::<Vec<Piece>>();
+
+                            if futures::executor::block_on(
+                                batch_sender.send((batch_start, piece_vec)),
+                            )
                             .is_err()
                             {
                                 return;
                             }
-                            */
                         }
                     } else {
                         info!("Using only CPU for plotting!");

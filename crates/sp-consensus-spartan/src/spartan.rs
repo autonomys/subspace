@@ -16,38 +16,63 @@
 //! Spartan-based PoR.
 
 use ring::{digest, hmac};
+use sloth256_189::cpu;
 use std::convert::TryInto;
 use std::io::Write;
+use subspace_core_primitives::{Piece, PIECE_SIZE};
 
-pub const PRIME_SIZE_BYTES: usize = 8;
-pub const PIECE_SIZE: usize = 4096;
+pub const PRIME_SIZE_BYTES: usize = 32;
 pub const GENESIS_PIECE_SEED: &str = "spartan";
 pub const ENCODE_ROUNDS: usize = 1;
 pub const SIGNING_CONTEXT: &[u8] = b"FARMER";
+const HASH_SIZE: usize = 32; // length of public_key_hash
 
-pub type Piece = [u8; PIECE_SIZE];
-pub type Tag = [u8; PRIME_SIZE_BYTES];
+pub type Tag = [u8; 8];
 pub type Salt = [u8; 8];
 
 #[derive(Clone)]
 pub struct Spartan {
-    instance: spartan_codec::Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>,
+    genesis_piece: [u8; PIECE_SIZE],
+}
+
+impl Spartan {
+    /// New instance with 256-bit prime and 4096-byte genesis piece size
+    pub fn new(genesis_piece: [u8; PIECE_SIZE]) -> Self {
+        Spartan { genesis_piece }
+    }
+}
+
+impl Spartan {
+    /// Check if previously created encoding is valid
+    pub fn is_valid(
+        &self,
+        encoding: &mut [u8],
+        encoding_key_hash: [u8; HASH_SIZE],
+        nonce: u64,
+        rounds: usize,
+    ) -> bool {
+        let mut expanded_iv = encoding_key_hash;
+        for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
+            expanded_iv[HASH_SIZE - i - 1] ^= byte;
+        }
+
+        cpu::decode(encoding, &expanded_iv, rounds).unwrap();
+
+        encoding == self.genesis_piece
+    }
 }
 
 impl Default for Spartan {
     fn default() -> Self {
         Self {
-            instance: spartan_codec::Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(
-                genesis_piece_from_seed(GENESIS_PIECE_SEED),
-            ),
+            genesis_piece: genesis_piece_from_seed(GENESIS_PIECE_SEED),
         }
     }
 }
 
 impl Spartan {
-    pub fn is_encoding_valid(&self, encoding: Piece, public_key: &[u8], nonce: u64) -> bool {
-        self.instance
-            .is_valid(encoding, hash_public_key(public_key), nonce, ENCODE_ROUNDS)
+    pub fn is_encoding_valid(&self, encoding: &mut [u8], public_key: &[u8], nonce: u64) -> bool {
+        self.is_valid(encoding, hash_public_key(public_key), nonce, ENCODE_ROUNDS)
     }
 }
 
