@@ -58,12 +58,12 @@ fn create_swarm(peerid: PeerId, key: identity::Keypair) -> Swarm<ComposedBehavio
         .build()
 }
 
-fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: &Vec<String>) {
+fn dial_bootstrap(swarm: &mut Swarm<ComposedBehaviour>, nodes: &[String]) {
     for node in nodes {
         let parts: Vec<&str> = node.split("/p2p/").collect();
         let addr = Multiaddr::from_str(parts[0]).unwrap();
         let peer = PeerId::from_str(parts[1]).unwrap();
         swarm.behaviour_mut().kademlia.add_address(&peer, addr);
-        swarm.dial_addr(Multiaddr::from_str(node).unwrap()).unwrap();
+        // swarm.dial_addr(Multiaddr::from_str(node).unwrap()).unwrap();
     }
 }

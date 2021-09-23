@@ -211,7 +211,7 @@ impl Client {
 
                 for bucket in eventloop.swarm.behaviour_mut().kademlia.kbuckets() {
                     for record in bucket.iter() {
-                        result.push(record.node.key.preimage().clone());
+                        result.push(*record.node.key.preimage());
                     }
                 }
 
@@ -230,13 +230,7 @@ impl Client {
             }
             ClientEvent::Listeners { sender } => {
                 sender
-                    .send(
-                        eventloop
-                            .swarm
-                            .listeners()
-                            .map(|addr| addr.clone())
-                            .collect(),
-                    )
+                    .send(eventloop.swarm.listeners().cloned().collect::<Vec<_>>())
                     .unwrap();
             }
             ClientEvent::QueryResult { qid, sender } => {
@@ -285,7 +279,7 @@ impl Client {
                         _ => "Unknown QueryInfo Type".to_string(),
                     };
 
-                    sender.send(stats.clone() + &info).unwrap();
+                    sender.send(stats + &info).unwrap();
                 }
             }
         }
