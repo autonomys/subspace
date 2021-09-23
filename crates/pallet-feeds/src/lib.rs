@@ -25,7 +25,9 @@ pub mod pallet {
     #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq, TypeInfo)]
     pub struct ObjectMetadata {
         pub feed_id: FeedId,
+        // last block hash
         pub hash: H256,
+        // last block number
         pub number: u32,
     }
 
