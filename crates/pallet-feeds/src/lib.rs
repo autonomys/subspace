@@ -2,6 +2,7 @@
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_std::vec::Vec;
 
@@ -21,7 +22,7 @@ pub mod pallet {
     pub type FeedId = u64;
 
     // TODO: make it more generic
-    #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+    #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq, TypeInfo)]
     pub struct ObjectMetadata {
         pub feed_id: FeedId,
         pub hash: H256,
