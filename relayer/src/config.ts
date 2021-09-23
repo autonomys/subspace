@@ -43,6 +43,7 @@ export const loadConfig = (): Config => {
           [2023]: "https://moonriver.api.onfinality.io/public",
           [2084]: "https://calamari.api.onfinality.io/public",
           [2086]: "https://spiritnet.api.onfinality.io/public",
+          [2090]: "https://basilisk.api.onfinality.io/public",
         },
       },
     ],
