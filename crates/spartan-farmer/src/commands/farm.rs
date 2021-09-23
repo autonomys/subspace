@@ -1,7 +1,4 @@
-use super::dht::{
-    client as dht,
-    client::{ClientConfig, ClientType},
-};
+use crate::dht::{create_connection, ClientConfig, ClientType};
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, PRIME_SIZE_BYTES, SIGNING_CONTEXT};
 use async_std::task;
@@ -102,7 +99,7 @@ pub(crate) async fn farm(
     };
 
     info!("Connecting to DHT");
-    let (mut dht_client, dht_eventloop) = dht::create_connection(&config);
+    let (mut dht_client, dht_eventloop) = create_connection(&config);
 
     tokio::spawn(async move { dht_eventloop.run().await });
     info!("My Peer ID is: {:?}", dht_client.peerid);

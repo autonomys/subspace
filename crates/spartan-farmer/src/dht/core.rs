@@ -19,11 +19,11 @@ use std::str::FromStr;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = false, out_event = "ComposedEvent")]
-pub struct ComposedBehaviour {
+pub(super) struct ComposedBehaviour {
     pub kademlia: Kademlia<MemoryStore>,
 }
 
-pub enum ComposedEvent {
+pub(super) enum ComposedEvent {
     Kademlia(KademliaEvent),
 }
 
@@ -33,7 +33,7 @@ impl From<KademliaEvent> for ComposedEvent {
     }
 }
 
-pub fn create_node(config: &ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
+pub(super) fn create_node(config: &ClientConfig) -> (PeerId, Swarm<ComposedBehaviour>) {
     // Generate IDs.
     let key = identity::Keypair::generate_ed25519();
     let peerid = PeerId::from_public_key(key.public());

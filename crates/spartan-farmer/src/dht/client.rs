@@ -29,7 +29,7 @@ pub enum ClientType {
     Normal,
 }
 
-pub enum ClientEvent {
+pub(super) enum ClientEvent {
     // Event for adding a listening address.
     Listen {
         addr: Multiaddr,
@@ -59,11 +59,6 @@ pub enum ClientEvent {
     Bootstrap {
         sender: oneshot::Sender<QueryId>,
     },
-    // Get all listening addresses.
-    #[allow(dead_code)]
-    Listeners {
-        sender: oneshot::Sender<Vec<Multiaddr>>,
-    },
     // Read Kademlia Query Result.
     #[allow(dead_code)]
     QueryResult {
@@ -85,7 +80,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(peerid: PeerId, client_tx: Sender<ClientEvent>) -> Self {
+    fn new(peerid: PeerId, client_tx: Sender<ClientEvent>) -> Self {
         Client { peerid, client_tx }
     }
 
@@ -195,107 +190,107 @@ impl Client {
         // Check if the Bootstrap was processed, properly.
         recv.await.expect("Failed to bootstrap.")
     }
+}
 
-    pub fn handle_client_event(eventloop: &mut EventLoop, event: ClientEvent) {
-        match event {
-            ClientEvent::Listen { addr, sender } => match eventloop.swarm.listen_on(addr) {
-                Ok(_) => sender.send(Ok(())).unwrap(),
-                Err(e) => sender.send(Err(Box::new(e))).unwrap(),
-            },
-            ClientEvent::Bootstrap { sender } => {
-                if let Ok(qid) = eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
-                    sender.send(qid).unwrap();
-                }
-            }
-            ClientEvent::RandomWalk { sender, key } => {
-                let key = match key {
-                    Some(peerid) => peerid,
-                    None => PeerId::random(),
-                };
-
-                let qid = eventloop
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_closest_peers(key);
-
+pub(super) fn handle_client_event(eventloop: &mut EventLoop, event: ClientEvent) {
+    match event {
+        ClientEvent::Listen { addr, sender } => match eventloop.swarm.listen_on(addr) {
+            Ok(_) => sender.send(Ok(())).unwrap(),
+            Err(e) => sender.send(Err(Box::new(e))).unwrap(),
+        },
+        ClientEvent::Bootstrap { sender } => {
+            if let Ok(qid) = eventloop.swarm.behaviour_mut().kademlia.bootstrap() {
                 sender.send(qid).unwrap();
             }
-            ClientEvent::KnownPeers { sender } => {
-                let mut result = Vec::new();
+        }
+        ClientEvent::RandomWalk { sender, key } => {
+            let key = match key {
+                Some(peerid) => peerid,
+                None => PeerId::random(),
+            };
 
-                for bucket in eventloop.swarm.behaviour_mut().kademlia.kbuckets() {
-                    for record in bucket.iter() {
-                        result.push(*record.node.key.preimage());
-                    }
+            let qid = eventloop
+                .swarm
+                .behaviour_mut()
+                .kademlia
+                .get_closest_peers(key);
+
+            sender.send(qid).unwrap();
+        }
+        ClientEvent::KnownPeers { sender } => {
+            let mut result = Vec::new();
+
+            for bucket in eventloop.swarm.behaviour_mut().kademlia.kbuckets() {
+                for record in bucket.iter() {
+                    result.push(*record.node.key.preimage());
                 }
+            }
+
+            sender.send(result).unwrap();
+        }
+        ClientEvent::Dial { addr, peer, sender } => {
+            eventloop
+                .swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer, addr.clone());
+
+            eventloop.swarm.dial_addr(addr).unwrap();
+
+            sender.send(Ok(())).unwrap();
+        }
+        ClientEvent::Listeners { sender } => {
+            sender
+                .send(eventloop.swarm.listeners().cloned().collect::<Vec<_>>())
+                .unwrap();
+        }
+        ClientEvent::QueryResult { qid, sender } => {
+            if eventloop.query_result.contains_key(&qid) {
+                let result = match eventloop.query_result.remove(&qid).unwrap() {
+                    QueryResult::Bootstrap(result) => match result {
+                        Ok(result) => format!(
+                            "[RESULT] This query still has {:?} peers remaining.",
+                            result.num_remaining
+                        ),
+                        Err(e) => format!("{:?}", e),
+                    },
+                    QueryResult::GetClosestPeers(result) => match result {
+                        Ok(result) => {
+                            format!("This query produced {:?} peers.", result.peers.len())
+                        }
+                        Err(e) => format!("{:?}", e),
+                    },
+                    _ => "Unknown QueryResult Type".to_string(),
+                };
 
                 sender.send(result).unwrap();
-            }
-            ClientEvent::Dial { addr, peer, sender } => {
-                eventloop
+            } else {
+                let query = eventloop
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .add_address(&peer, addr.clone());
-
-                eventloop.swarm.dial_addr(addr).unwrap();
-
-                sender.send(Ok(())).unwrap();
-            }
-            ClientEvent::Listeners { sender } => {
-                sender
-                    .send(eventloop.swarm.listeners().cloned().collect::<Vec<_>>())
+                    .query(&qid)
                     .unwrap();
-            }
-            ClientEvent::QueryResult { qid, sender } => {
-                if eventloop.query_result.contains_key(&qid) {
-                    let result = match eventloop.query_result.remove(&qid).unwrap() {
-                        QueryResult::Bootstrap(result) => match result {
-                            Ok(result) => format!(
-                                "[RESULT] This query still has {:?} peers remaining.",
-                                result.num_remaining
-                            ),
-                            Err(e) => format!("{:?}", e),
-                        },
-                        QueryResult::GetClosestPeers(result) => match result {
-                            Ok(result) => {
-                                format!("This query produced {:?} peers.", result.peers.len())
-                            }
-                            Err(e) => format!("{:?}", e),
-                        },
-                        _ => "Unknown QueryResult Type".to_string(),
-                    };
 
-                    sender.send(result).unwrap();
-                } else {
-                    let query = eventloop
-                        .swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .query(&qid)
-                        .unwrap();
+                let stats = format!(
+                    "Total Requests: {}\nFailed: {}\nSucceded: {}\nPending: {}\n",
+                    query.stats().num_requests(),
+                    query.stats().num_failures(),
+                    query.stats().num_successes(),
+                    query.stats().num_pending()
+                );
 
-                    let stats = format!(
-                        "Total Requests: {}\nFailed: {}\nSucceded: {}\nPending: {}\n",
-                        query.stats().num_requests(),
-                        query.stats().num_failures(),
-                        query.stats().num_successes(),
-                        query.stats().num_pending()
-                    );
+                let info = match query.info() {
+                    QueryInfo::Bootstrap { remaining, .. } => {
+                        format!(
+                            "[INFO] This query still has {:?} peers remaining.",
+                            remaining
+                        )
+                    }
+                    _ => "Unknown QueryInfo Type".to_string(),
+                };
 
-                    let info = match query.info() {
-                        QueryInfo::Bootstrap { remaining, .. } => {
-                            format!(
-                                "[INFO] This query still has {:?} peers remaining.",
-                                remaining
-                            )
-                        }
-                        _ => "Unknown QueryInfo Type".to_string(),
-                    };
-
-                    sender.send(stats + &info).unwrap();
-                }
+                sender.send(stats + &info).unwrap();
             }
         }
     }

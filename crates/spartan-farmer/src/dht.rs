@@ -1,5 +1,5 @@
 // The Client API which the end-user is supposed to interact with.
-pub(crate) mod client;
+mod client;
 // Core libp2p activities like defining network behaviour and events, bootstrap-ing,
 // creating of swarm and such...
 mod core;
@@ -10,3 +10,5 @@ mod eventloop;
 // DHT related tests.
 #[cfg(test)]
 mod test;
+
+pub(crate) use client::{create_connection, ClientConfig, ClientType};
