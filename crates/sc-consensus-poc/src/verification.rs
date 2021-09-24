@@ -24,7 +24,7 @@ use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_poc::Randomness;
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan};
+use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan, PRIME_SIZE_BYTES};
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
@@ -150,7 +150,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::OutsideOfSolutionRange(slot));
     }
 
-    let piece: Piece = solution
+    let mut piece: Piece = solution
         .encoding
         .as_slice()
         .try_into()
@@ -164,7 +164,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    if !spartan.is_encoding_valid(piece, solution.public_key.as_ref(), solution.nonce) {
+    if !spartan.is_encoding_valid(&mut piece, solution.public_key.as_ref(), solution.nonce) {
         return Err(Error::InvalidEncoding(slot));
     }
 
@@ -221,9 +221,9 @@ pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) 
         .unwrap()
 }
 
-pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; 8] {
-    let mut array = [0u8; 8];
+pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; PRIME_SIZE_BYTES] {
+    let mut array = [0u8; PRIME_SIZE_BYTES];
     let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..8]);
+    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE_BYTES]);
     array
 }

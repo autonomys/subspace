@@ -1,11 +1,11 @@
 #![warn(missing_debug_implementations, missing_docs)]
 //! This is an adaptation of [SLOTH](https://eprint.iacr.org/2015/366) (slow-timed hash function) into a time-asymmetric permutation using a standard CBC block cipher. This code is largely based on the C implementation used in [PySloth](https://github.com/randomchain/pysloth/blob/master/sloth.c) which is the same as used in the paper.
 
-use ::sloth256_189::cpu;
-use ::sloth256_189::cuda;
+use crate::PRIME_SIZE_BYTES;
+use sloth256_189::cpu;
+use sloth256_189::cuda;
 
 const PIECE_SIZE: usize = 4096; // length of a single piece
-const HASH_SIZE: usize = 32; // length of public_key_hash
 const GPU_PIECE_BLOCK: usize = 1024; // piece amount should be multiples of 1024 for GPU
 
 /// Spartan struct used to encode and validate
@@ -36,13 +36,13 @@ impl Spartan {
     /// desired number of rounds
     pub fn encode(
         &self,
-        encoding_key_hash: [u8; HASH_SIZE],
+        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
         nonce: u64,
         rounds: usize,
     ) -> [u8; PIECE_SIZE] {
         let mut expanded_iv = encoding_key_hash;
         for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
-            expanded_iv[HASH_SIZE - i - 1] ^= byte;
+            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
         }
 
         let mut encoding = self.genesis_piece;
@@ -55,14 +55,14 @@ impl Spartan {
     pub fn cuda_batch_encode(
         &self,
         pieces: &mut [u8],
-        encoding_key_hash: [u8; HASH_SIZE],
+        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
         nonce_array: &[u64],
         rounds: usize,
     ) {
         // each expanded_iv will be in format [u8; 32], so `piece_amount` expanded_iv's
         // should consume [u8; 32 * piece_amount] space.
         let piece_count = pieces.len() / PIECE_SIZE;
-        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * HASH_SIZE);
+        let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * PRIME_SIZE_BYTES);
         let mut expanded_iv;
         for nonce in nonce_array {
             // same encoding_key_hash will be used for each expanded_iv
@@ -86,7 +86,7 @@ impl Spartan {
         for x in 0..cpu_encode_end_index {
             cpu::encode(
                 &mut pieces[x * PIECE_SIZE..(x + 1) * PIECE_SIZE],
-                &expanded_iv_vector[x * HASH_SIZE..(x + 1) * HASH_SIZE],
+                &expanded_iv_vector[x * PRIME_SIZE_BYTES..(x + 1) * PRIME_SIZE_BYTES],
                 rounds,
             )
             .unwrap();
@@ -95,23 +95,24 @@ impl Spartan {
         // GPU encoding:
         cuda::encode(
             &mut pieces[cpu_encode_end_index * PIECE_SIZE..],
-            &expanded_iv_vector[cpu_encode_end_index * HASH_SIZE..],
+            &expanded_iv_vector[cpu_encode_end_index * PRIME_SIZE_BYTES..],
             rounds,
         )
         .unwrap();
     }
 
     /// Check if previously created encoding is valid
+    #[cfg(test)]
     pub fn is_valid(
         &self,
         encoding: &mut [u8],
-        encoding_key_hash: [u8; HASH_SIZE],
+        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
         nonce: u64,
         rounds: usize,
     ) -> bool {
         let mut expanded_iv = encoding_key_hash;
         for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
-            expanded_iv[HASH_SIZE - i - 1] ^= byte;
+            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
         }
 
         cpu::decode(encoding, &expanded_iv, rounds).unwrap();

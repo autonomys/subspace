@@ -19,13 +19,12 @@ use ring::{digest, hmac};
 use sloth256_189::cpu;
 use std::convert::TryInto;
 use std::io::Write;
-use subspace_core_primitives::{Piece, PIECE_SIZE};
+pub use subspace_core_primitives::{Piece, PIECE_SIZE};
 
 pub const PRIME_SIZE_BYTES: usize = 32;
 pub const GENESIS_PIECE_SEED: &str = "spartan";
 pub const ENCODE_ROUNDS: usize = 1;
 pub const SIGNING_CONTEXT: &[u8] = b"FARMER";
-const HASH_SIZE: usize = 32; // length of public_key_hash
 
 pub type Tag = [u8; 8];
 pub type Salt = [u8; 8];
@@ -47,13 +46,13 @@ impl Spartan {
     pub fn is_valid(
         &self,
         encoding: &mut [u8],
-        encoding_key_hash: [u8; HASH_SIZE],
+        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
         nonce: u64,
         rounds: usize,
     ) -> bool {
         let mut expanded_iv = encoding_key_hash;
         for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
-            expanded_iv[HASH_SIZE - i - 1] ^= byte;
+            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
         }
 
         cpu::decode(encoding, &expanded_iv, rounds).unwrap();
@@ -71,7 +70,7 @@ impl Default for Spartan {
 }
 
 impl Spartan {
-    pub fn is_encoding_valid(&self, encoding: &mut [u8], public_key: &[u8], nonce: u64) -> bool {
+    pub fn is_encoding_valid(&self, encoding: &mut Piece, public_key: &[u8], nonce: u64) -> bool {
         self.is_valid(encoding, hash_public_key(public_key), nonce, ENCODE_ROUNDS)
     }
 }

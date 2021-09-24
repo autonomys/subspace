@@ -64,7 +64,7 @@ pub(crate) async fn plot(
                                 &nonce_array[(batch_start as usize)..batch_end],
                                 1,
                             );
-                            bar.inc(1 * CUDA_BATCH_SIZE);
+                            bar.inc(CUDA_BATCH_SIZE);
 
                             let encoded_piece = piece_array
                                 [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE]
