@@ -14,8 +14,9 @@
   "author": "",
   "license": "Apache 2.0",
   "dependencies": {
-    "@polkadot/api": "^5.8.1",
-    "@polkadot/keyring": "^7.3.1",
+    "@polkadot/api": "^6.0.5",
+    "@polkadot/keyring": "^7.4.1",
+    "@polkadot/util": "^7.4.1",
     "dotenv": "^10.0.0",
     "rxjs": "^7.3.0"
   },
