@@ -61,7 +61,7 @@ pub mod pallet {
 
             ensure!(current_feed_id >= feed_id, Error::<T>::UknownFeedId);
 
-            Feeds::<T>::mutate_exists(feed_id, |values| values.replace(metadata.clone()));
+            Feeds::<T>::insert(feed_id, metadata.clone());
 
             Self::deposit_event(Event::DataSubmitted(metadata, who));
 
