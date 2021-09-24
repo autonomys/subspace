@@ -2,6 +2,7 @@ import { ApiPromise } from "@polkadot/api";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
+import { U64 } from "@polkadot/types/primitive";
 import { merge, Subscription } from "rxjs";
 import { concatMap, take } from "rxjs/operators";
 
@@ -52,7 +53,8 @@ class Target {
   }
 
   // TODO: signer should be proxy account per feed
-  private async sendCreateFeedTx(): Promise<number> {
+  // TODO: think about re-using existing feedIds instead of creating
+  async sendCreateFeedTx(): Promise<U64> {
     console.log("Creating feed for signer X");
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
@@ -73,26 +75,12 @@ class Target {
             const feedId = (event as any).asFeeds.asFeedCreated.toJSON()[0];
 
             console.log("New feed created: ", feedId);
-            resolve(feedId as number);
+            const feedIdAsU64 = this.api.createType('u64', feedId);
+            resolve(feedIdAsU64);
           }
         });
     });
   }
-
-  // TODO: think about re-using existing feedIds instead of creating
-  // TODO: replace unknown[] with smth else after integrating parachains
-  createFeeds = async (items: unknown[]): Promise<number[]> => {
-    const feedIds = [];
-
-    // TODO: make parallel with proxy accounts
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of items) {
-      const feedId = await this.sendCreateFeedTx();
-      feedIds.push(feedId as number);
-    }
-
-    return feedIds;
-  };
 
   processBlocks = (
     subscriptions: Observable<TxData>[]

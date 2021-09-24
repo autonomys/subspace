@@ -24,14 +24,12 @@ const createApi = async (url: string) => {
 
   const target = new Target({ api: targetApi, signer });
 
-  const feedIds = await target.createFeeds(config.sourceChainUrls);
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url }, index) => {
+    config.sourceChainUrls.map(async ({ url }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
-      // TODO: implement better way to assign feedId
-      const feedId = api.createType("u64", feedIds[index]);
+      const feedId = await target.sendCreateFeedTx();
 
       return new Source({
         api,
