@@ -41,13 +41,12 @@ class Source {
     console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
     const metadata = {
-      feedId: this.feedId,
       hash,
       // TODO: probably there is a better way - investigate
       number: this.api.createType("U32", number.toNumber()),
     };
 
-    return { block: hex, metadata };
+    return { feedId: this.feedId, block: hex, metadata };
   };
 
   subscribeBlocks = (): Observable<TxData> =>
