@@ -1,4 +1,4 @@
-use crate::dht::{create_connection, ClientConfig, ClientType};
+use crate::dht::{create_connection, ClientConfig};
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, PRIME_SIZE_BYTES, SIGNING_CONTEXT};
 use async_std::task;
@@ -57,7 +57,6 @@ struct SlotInfo {
 /// address.
 pub(crate) async fn farm(
     listen_addr: Option<Multiaddr>,
-    bootstrap: bool,
     bootstrap_nodes: Vec<String>,
     path: PathBuf,
     ws_server: &str,
@@ -85,16 +84,8 @@ pub(crate) async fn farm(
     // 2. Put the swarm in its own task.
     // 3. The task will run an eventloop and keep discovering new peers.
 
-    let client_type = if bootstrap {
-        info!("I'm a bootstrap node.");
-        ClientType::Bootstrap
-    } else {
-        ClientType::Normal
-    };
-
     let config = ClientConfig {
         bootstrap_nodes,
-        client_type,
         listen_addr,
     };
 

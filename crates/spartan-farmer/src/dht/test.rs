@@ -1,6 +1,6 @@
 use super::*;
 use client as dht;
-use client::{ClientConfig, ClientType};
+use client::ClientConfig;
 
 #[tokio::test]
 async fn bootstrap_working() {
@@ -14,7 +14,6 @@ async fn bootstrap_working() {
     while clients.len() < 5 {
         let config = ClientConfig {
             bootstrap_nodes: Default::default(),
-            client_type: ClientType::Normal,
             listen_addr: None,
         };
 

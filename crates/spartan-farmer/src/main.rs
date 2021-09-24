@@ -68,9 +68,6 @@ enum Command {
         /// List of bootstrap nodes to connect to with.
         #[clap(long)]
         bootstrap_nodes: Vec<String>,
-        /// Set this peer as bootstrap node.
-        #[clap(long, short)]
-        bootstrap: bool,
         /// Listening address for P2P peer.
         #[clap(long)]
         listen_addr: Option<Multiaddr>,
@@ -109,7 +106,6 @@ fn main() {
         Command::Farm {
             custom_path,
             ws_server,
-            bootstrap,
             bootstrap_nodes,
             listen_addr,
         } => {
@@ -118,7 +114,6 @@ fn main() {
             runtime
                 .block_on(commands::farm(
                     listen_addr,
-                    bootstrap,
                     bootstrap_nodes,
                     path,
                     &ws_server,

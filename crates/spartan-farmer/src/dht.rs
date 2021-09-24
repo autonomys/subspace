@@ -11,4 +11,4 @@ mod eventloop;
 #[cfg(test)]
 mod test;
 
-pub(crate) use client::{create_connection, ClientConfig, ClientType};
+pub(crate) use client::{create_connection, ClientConfig};

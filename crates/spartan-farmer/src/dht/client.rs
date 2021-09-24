@@ -14,24 +14,13 @@ use futures::prelude::*;
 type OneshotError = Box<dyn std::error::Error + Send>;
 type OneshotType = Result<(), OneshotError>;
 
-use super::{core::create_node, eventloop::EventLoop};
-use libp2p::kad::QueryInfo;
-
-#[derive(Copy, Clone, Debug)]
-pub enum ClientType {
-    // Bootstrap node. It uses the following fields from `ClientConfig`:
-    // 1. `bootstrap_keys`: Private keys/private key location to create bootstrap node peerId.
-    // 2. `listen_addr`: Listening address for Bootstrap node.
-    Bootstrap,
-    // Normal node. It uses the following fields from `ClientConfig`:
-    // 1. `bootstrap_nodes`: Bootstrap nodes addresses that the normal node must connect to.
-    // For setting listening address, use client.start_listening.
-    Normal,
-}
+use super::{
+    core::create_node,
+    eventloop::{ClientEvent, EventLoop},
+};
 
 pub struct ClientConfig {
     pub bootstrap_nodes: Vec<String>, // Vec<(Multiaddr, PeerId)>,
-    pub client_type: ClientType,
     pub listen_addr: Option<Multiaddr>,
 }
 
