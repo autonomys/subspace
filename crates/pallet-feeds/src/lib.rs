@@ -21,7 +21,8 @@ pub mod pallet {
     pub type ObjectMetadata = Vec<u8>;
 
     #[pallet::storage]
-    pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
+    pub type Feeds<T: Config> =
+        StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn current_feed_id)]
