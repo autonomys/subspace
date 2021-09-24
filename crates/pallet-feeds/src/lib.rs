@@ -2,8 +2,6 @@
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
-use scale_info::TypeInfo;
-use sp_core::H256;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
@@ -20,20 +18,10 @@ pub mod pallet {
 
     pub type PutDataObject = Vec<u8>;
     pub type FeedId = u64;
+    pub type ObjectMetadata = Vec<u8>;
 
-    // TODO: make it more generic
-    #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq, TypeInfo)]
-    pub struct ObjectMetadata {
-        pub feed_id: FeedId,
-        // last block hash
-        pub hash: H256,
-        // last block number
-        pub number: u32,
-    }
-
-    // TODO: probably change (H256, u32) to Vec<u8>
     #[pallet::storage]
-    pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, (H256, u32), OptionQuery>;
+    pub type Feeds<T: Config> = StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn current_feed_id)]
@@ -58,25 +46,19 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn put(
             origin: OriginFor<T>,
+            feed_id: FeedId,
             data: PutDataObject,
             metadata: ObjectMetadata,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
+            // TODO: add data handling
             log::info!("metadata: {:?}", metadata);
-
-            let ObjectMetadata {
-                feed_id,
-                hash,
-                number,
-            } = metadata;
+            log::info!("data.len: {:?}", data.len());
 
             ensure!(Feeds::<T>::contains_key(feed_id), Error::<T>::UknownFeedId);
 
-            Feeds::<T>::mutate_exists(feed_id, |values| *values = Some((hash, number)));
-
-            // TODO: add data handling
-            log::info!("data.len: {:?}", data.len());
+            Feeds::<T>::mutate_exists(feed_id, |values| *values = Some(metadata.clone()));
 
             Self::deposit_event(Event::DataSubmitted(metadata, who));
 
@@ -90,7 +72,7 @@ pub mod pallet {
 
             let feed_id = Self::current_feed_id();
 
-            Feeds::<T>::insert(feed_id, (H256::default(), u32::default()));
+            Feeds::<T>::insert(feed_id, Vec::<u8>::new());
 
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
 
