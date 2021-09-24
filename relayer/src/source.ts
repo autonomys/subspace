@@ -23,16 +23,16 @@ const getParaHeadAndIdFromRecord = ({ event }: EventRecord) => {
 // TODO: more explicit function name
 const isRelevantRecord =
   (index: number) =>
-  ({ phase, event }: EventRecord) => {
-    return (
-      // filter the specific events based on the phase and then the
-      // index of our extrinsic in the block
-      phase.isApplyExtrinsic &&
-      phase.asApplyExtrinsic.eq(index) &&
-      event.section == "paraInclusion" &&
-      event.method == "CandidateIncluded"
-    );
-  };
+    ({ phase, event }: EventRecord) => {
+      return (
+        // filter the specific events based on the phase and then the
+        // index of our extrinsic in the block
+        phase.isApplyExtrinsic &&
+        phase.asApplyExtrinsic.eq(index) &&
+        event.section == "paraInclusion" &&
+        event.method == "CandidateIncluded"
+      );
+    };
 
 type SourceConstructorParams = {
   api: ApiPromise;
@@ -104,7 +104,18 @@ class Source {
       if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
 
       const block = await this.fetchParaBlock(paraUrl, paraHead);
-      const hex = this.api.createType("Block", block).toHex();
+      const header = this.api.createType("Header", block.block.header);
+
+      const blockAsSignedBlock = this.api.createType("SignedBlock", {
+        block: {
+          // TODO: include extrinsics
+          extrinsics: [],
+          header,
+        },
+        justifications: block.justifications,
+      });
+
+      const hex = blockAsSignedBlock.toHex();
 
       return { block: hex, chainId: this.api.createType("U32", paraId) };
     });
