@@ -54,12 +54,14 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // TODO: add data handling
-            log::info!("metadata: {:?}", metadata);
-            log::info!("data.len: {:?}", data.len());
+            log::debug!("metadata: {:?}", metadata);
+            log::debug!("data.len: {:?}", data.len());
 
-            ensure!(Feeds::<T>::contains_key(feed_id), Error::<T>::UknownFeedId);
+            let current_feed_id = Self::current_feed_id();
 
-            Feeds::<T>::mutate_exists(feed_id, |values| *values = Some(metadata.clone()));
+            ensure!(current_feed_id >= feed_id, Error::<T>::UknownFeedId);
+
+            Feeds::<T>::mutate_exists(feed_id, |values| values.replace(metadata.clone()));
 
             Self::deposit_event(Event::DataSubmitted(metadata, who));
 
@@ -72,8 +74,6 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             let feed_id = Self::current_feed_id();
-
-            Feeds::<T>::insert(feed_id, Vec::<u8>::new());
 
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
 
