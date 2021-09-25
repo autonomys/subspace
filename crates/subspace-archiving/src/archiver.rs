@@ -112,7 +112,6 @@ pub enum ArchiverInstantiationError {
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
-// TODO: Make this survive restarts without loosing state
 #[derive(Debug)]
 pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
