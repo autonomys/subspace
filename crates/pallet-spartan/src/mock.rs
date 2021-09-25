@@ -52,7 +52,7 @@ frame_support::construct_runtime!(
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        Spartan: pallet_spartan::{Pallet, Call, Storage, Config, ValidateUnsigned},
+        Spartan: pallet_spartan::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
         OffencesPoC: pallet_offences_poc::{Pallet, Storage, Event},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
     }
@@ -152,6 +152,7 @@ parameter_types! {
 }
 
 impl Config for Test {
+    type Event = Event;
     type EpochDuration = EpochDuration;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
