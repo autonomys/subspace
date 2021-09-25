@@ -34,6 +34,7 @@ use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
     TestClientBuilderExt, TestNetFactory,
 };
+// use sc_service::TaskManager;
 use schnorrkel::{Keypair, PublicKey};
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
 use sp_consensus_poc::{inherents::InherentDataProvider, Slot};
@@ -47,6 +48,7 @@ use sp_runtime::{
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::io::Write;
+// use std::sync::mpsc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -1026,3 +1028,73 @@ fn verify_slots_are_strictly_increasing() {
         &mut block_import,
     );
 }
+
+// TODO: Runtime at the moment doesn't implement transactions support, so root block extrinsic
+//  verification fails in tests (`submit_test_store_root_block()` doesn't submit extrinsic as such).
+// // Check that block import results in archiving working.
+// #[test]
+// fn archiving_works() {
+//     let mut net = PoCTestNet::new(1);
+//
+//     let peer = net.peer(0);
+//     let data = peer
+//         .data
+//         .as_ref()
+//         .expect("poc link set up during initialization");
+//     let client = peer
+//         .client()
+//         .as_full()
+//         .expect("Only full clients are used in tests")
+//         .clone();
+//
+//     let mut proposer_factory = DummyFactory {
+//         client: client.clone(),
+//         config: data.link.config.clone(),
+//         epoch_changes: data.link.epoch_changes.clone(),
+//         mutator: Arc::new(|_, _| ()),
+//     };
+//
+//     let mut block_import = data
+//         .block_import
+//         .lock()
+//         .take()
+//         .expect("import set up during init");
+//
+//     let tokio_runtime = sc_cli::build_runtime().unwrap();
+//     let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
+//
+//     super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_handle());
+//
+//     let mut archived_segment_notification_stream =
+//         data.link.archived_segment_notification_stream.subscribe();
+//
+//     let (archived_segment_sender, archived_segment_receiver) = mpsc::channel();
+//
+//     std::thread::spawn(move || {
+//         tokio_runtime.block_on(async move {
+//             while let Some(archived_segment_notification) =
+//                 archived_segment_notification_stream.next().await
+//             {
+//                 archived_segment_sender
+//                     .send(archived_segment_notification)
+//                     .unwrap();
+//             }
+//         })
+//     });
+//
+//     {
+//         let mut parent_header = client.header(&BlockId::Number(0)).unwrap().unwrap();
+//         for slot_number in 1..250 {
+//             let block_hash = propose_and_import_block(
+//                 &parent_header,
+//                 Some(slot_number.into()),
+//                 &mut proposer_factory,
+//                 &mut block_import,
+//             );
+//
+//             parent_header = client.header(&BlockId::Hash(block_hash)).unwrap().unwrap();
+//         }
+//     }
+//
+//     archived_segment_receiver.recv().unwrap();
+// }
