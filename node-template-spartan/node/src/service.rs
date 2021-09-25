@@ -94,6 +94,11 @@ pub fn new_partial(
     )?;
 
     let slot_duration = poc_link.config().slot_duration();
+    sc_consensus_poc::start_subspace_archiver(
+        &poc_link,
+        client.clone(),
+        &task_manager.spawn_handle(),
+    );
     let import_queue = sc_consensus_poc::import_queue(
         poc_link.clone(),
         block_import.clone(),
@@ -115,7 +120,6 @@ pub fn new_partial(
             Ok((timestamp, slot, uncles))
         },
         &task_manager.spawn_essential_handle(),
-        &task_manager.spawn_handle(),
         config.prometheus_registry(),
         sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone()),
         telemetry.as_ref().map(|x| x.handle()),
@@ -318,6 +322,11 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
     )?;
 
     let slot_duration = poc_link.config().slot_duration();
+    sc_consensus_poc::start_subspace_archiver(
+        &poc_link,
+        client.clone(),
+        &task_manager.spawn_handle(),
+    );
     let import_queue = sc_consensus_poc::import_queue(
         poc_link,
         poc_block_import,
@@ -339,7 +348,6 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
             Ok((timestamp, slot, uncles))
         },
         &task_manager.spawn_essential_handle(),
-        &task_manager.spawn_handle(),
         config.prometheus_registry(),
         sp_consensus::NeverCanAuthor,
         telemetry.as_ref().map(|x| x.handle()),
