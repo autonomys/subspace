@@ -21,7 +21,8 @@ use frame_support::storage::migration::{get_storage_value, put_storage_value};
 use frame_support::{
     assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
 };
-use mock::*;
+use frame_system::{EventRecord, Phase};
+use mock::{Event, *};
 use schnorrkel::Keypair;
 use sp_consensus_poc::{digests::Solution, PoCEpochConfiguration, Slot};
 use sp_core::Public;
@@ -567,6 +568,15 @@ fn store_root_block_works() {
 
         // Root blocks don't require fee
         assert_eq!(post_info.pays_fee, Pays::No);
+
+        assert_eq!(
+            System::events(),
+            vec![EventRecord {
+                phase: Phase::Initialization,
+                event: Event::Spartan(crate::Event::RootBlockStored(root_block)),
+                topics: vec![],
+            }]
+        );
     });
 }
 
