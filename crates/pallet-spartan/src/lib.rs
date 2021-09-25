@@ -137,6 +137,9 @@ pub mod pallet {
     #[pallet::config]
     #[pallet::disable_frame_system_supertrait_check]
     pub trait Config: pallet_timestamp::Config {
+        /// The overarching event type.
+        type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+
         /// The amount of time, in slots, that each epoch should last.
         /// NOTE: Currently it is not possible to change the epoch duration after
         /// the chain has started. Attempting to do so will brick block production.
@@ -200,6 +203,15 @@ pub mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+    }
+
+    /// Events type.
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event {
+        /// Root block was stored in blockchain history.
+        /// \[root_block\].
+        RootBlockStored(RootBlock),
     }
 
     #[pallet::error]
@@ -850,6 +862,8 @@ impl<T: Config> Pallet<T> {
             root_block.segment_index(),
             root_block.merkle_tree_root(),
         );
+
+        Self::deposit_event(Event::RootBlockStored(root_block));
 
         // Waive the fee since the root block is required by the protocol and beneficial
         Ok(Pays::No.into())

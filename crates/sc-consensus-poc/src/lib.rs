@@ -1959,62 +1959,29 @@ where
     Ok((import, link))
 }
 
-/// Start an import queue for the PoC consensus algorithm.
-///
-/// This method returns the import queue, some data that needs to be passed to the block authoring
-/// logic (`PocLink`), and a future that must be run to
-/// completion and is responsible for listening to finality notifications and
-/// pruning the epoch changes tree.
-///
-/// The block import object provided must be the `PocBlockImport` or a wrapper
-/// of it, otherwise crucial import logic will be omitted.
-// TODO: Create a struct for these parameters
-#[allow(clippy::too_many_arguments)]
-pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
-    poc_link: PoCLink<Block>,
-    block_import: Inner,
-    justification_import: Option<BoxJustificationImport<Block>>,
+/// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
+/// producing pieces and root blocks (root blocks are then added back to the blockchain as
+/// `store_root_block` extrinsic).
+pub fn start_subspace_archiver<Block: BlockT, Client>(
+    poc_link: &PoCLink<Block>,
     client: Arc<Client>,
-    select_chain: SelectChain,
-    create_inherent_data_providers: CIDP,
-    essential_spawner: &impl sp_core::traits::SpawnEssentialNamed,
     spawner: &impl sp_core::traits::SpawnNamed,
-    registry: Option<&Registry>,
-    can_author_with: CAW,
-    telemetry: Option<TelemetryHandle>,
-) -> ClientResult<DefaultImportQueue<Block, Client>>
-where
-    Inner: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-        > + Send
-        + Sync
-        + 'static,
+) where
     Client: ProvideRuntimeApi<Block>
-        + ProvideCache<Block>
-        + HeaderBackend<Block>
         + BlockBackend<Block>
-        + HeaderMetadata<Block, Error = sp_blockchain::Error>
-        + AuxStore
+        + HeaderBackend<Block>
         + Send
         + Sync
         + 'static,
-    Client::Api: BlockBuilderApi<Block> + PoCApi<Block> + ApiExt<Block>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+    Client::Api: PoCApi<Block>,
 {
-    // TODO: This task should probably be in a separate function altogether
     spawner.spawn_blocking(
-        "poc-archiver",
+        "subspace-archiver",
         Box::pin({
             let mut imported_block_notification_stream =
                 poc_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =
                 poc_link.archived_segment_notification_sender.clone();
-            let client = Arc::clone(&client);
 
             async move {
                 let latest_root_block: Option<RootBlock> = {
@@ -2135,6 +2102,54 @@ where
             }
         }),
     );
+}
+
+/// Start an import queue for the PoC consensus algorithm.
+///
+/// This method returns the import queue, some data that needs to be passed to the block authoring
+/// logic (`PocLink`), and a future that must be run to
+/// completion and is responsible for listening to finality notifications and
+/// pruning the epoch changes tree.
+///
+/// The block import object provided must be the `PocBlockImport` or a wrapper
+/// of it, otherwise crucial import logic will be omitted.
+// TODO: Create a struct for these parameters
+#[allow(clippy::too_many_arguments)]
+pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
+    poc_link: PoCLink<Block>,
+    block_import: Inner,
+    justification_import: Option<BoxJustificationImport<Block>>,
+    client: Arc<Client>,
+    select_chain: SelectChain,
+    create_inherent_data_providers: CIDP,
+    spawner: &impl sp_core::traits::SpawnEssentialNamed,
+    registry: Option<&Registry>,
+    can_author_with: CAW,
+    telemetry: Option<TelemetryHandle>,
+) -> ClientResult<DefaultImportQueue<Block, Client>>
+where
+    Inner: BlockImport<
+            Block,
+            Error = ConsensusError,
+            Transaction = sp_api::TransactionFor<Client, Block>,
+        > + Send
+        + Sync
+        + 'static,
+    Client: ProvideRuntimeApi<Block>
+        + ProvideCache<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + AuxStore
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: BlockBuilderApi<Block> + PoCApi<Block> + ApiExt<Block>,
+    SelectChain: sp_consensus::SelectChain<Block> + 'static,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
+    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+{
+    // TODO: This task should probably be in a separate function altogether
 
     let verifier = PoCVerifier {
         select_chain,
@@ -2153,7 +2168,7 @@ where
         verifier,
         Box::new(block_import),
         justification_import,
-        essential_spawner,
+        spawner,
         registry,
     ))
 }
