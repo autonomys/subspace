@@ -17,9 +17,6 @@
 
 //! PoC testsuite
 
-// FIXME #2532: need to allow deprecated until refactor is done
-// https://github.com/paritytech/substrate/issues/2532
-#![allow(deprecated)]
 use super::*;
 use futures::executor::block_on;
 use log::debug;
