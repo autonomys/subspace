@@ -40,6 +40,7 @@ use sp_runtime::{
 };
 use std::convert::TryInto;
 use std::io::Write;
+use subspace_core_primitives::{LastArchivedBlock, RootBlock, Sha256Hash};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -310,5 +311,17 @@ pub fn generate_equivocation_proof(
         offender: public_key,
         first_header: h1,
         second_header: h2,
+    }
+}
+
+pub fn create_root_block(segment_index: u64) -> RootBlock {
+    RootBlock::V0 {
+        segment_index,
+        merkle_tree_root: Sha256Hash::default(),
+        prev_root_block_hash: Sha256Hash::default(),
+        last_archived_block: LastArchivedBlock {
+            number: 0,
+            bytes: None,
+        },
     }
 }
