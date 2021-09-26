@@ -1138,6 +1138,9 @@ pub struct PoCLink<Block: BlockT> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// validation
+    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1514,6 +1517,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             NumberFor<Block>,
             mpsc::Sender<RootBlock>,
         )>,
+        root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     ) -> Self {
         PoCBlockImport {
             client,
@@ -1521,7 +1525,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             epoch_changes,
             config,
             imported_block_notification_sender,
-            root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
+            root_blocks,
         }
     }
 }
@@ -1944,6 +1948,7 @@ where
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
+        root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
     };
 
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
@@ -1957,6 +1962,7 @@ where
         wrapped_block_import,
         config,
         imported_block_notification_sender,
+        Arc::clone(&link.root_blocks),
     );
 
     Ok((import, link))
@@ -2031,6 +2037,51 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + 'static,
     Client::Api: PoCApi<Block>,
 {
+    let mut archiver = if let Some(latest_root_block) = find_last_root_block(client.as_ref()) {
+        // Continuing from existing initial state
+        BlockArchiver::with_initial_state(
+            RECORD_SIZE,
+            RECORDED_HISTORY_SEGMENT_SIZE,
+            latest_root_block,
+            client
+                .block(&BlockId::Number(
+                    latest_root_block.last_archived_block().number.into(),
+                ))
+                .expect("Older blocks should always exist")
+                .expect("Older blocks should always exist"),
+        )
+        .expect("Incorrect parameters for archiver")
+    } else {
+        // Starting from genesis
+        let mut object_archiver = ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+            .expect("Incorrect parameters for archiver");
+
+        // These archived segments are a part of the public parameters of network setup, thus
+        // do not need to be sent to farmers
+        let new_root_blocks: Vec<RootBlock> = object_archiver
+            .add_object(&pre_genesis_data::from_seed(
+                BLOCKCHAIN_SEED,
+                PRE_GENESIS_OBJECT_SIZE,
+            ))
+            .into_iter()
+            .map(|archived_segment| archived_segment.root_block)
+            .collect();
+
+        // Submit store root block extrinsic at genesis block.
+        for root_block in new_root_blocks.iter().copied() {
+            client
+                .runtime_api()
+                .submit_store_root_block_extrinsic(&BlockId::Number(Zero::zero()), root_block)
+                .expect("Failed to submit `store_root_block` extrinsic at genesis block");
+        }
+
+        // Set list of expected root blocks for the next block after genesis (we can't have
+        // extrinsics in genesis block, at least not right now)
+        poc_link.root_blocks.lock().put(One::one(), new_root_blocks);
+
+        object_archiver.into_block_archiver()
+    };
+
     spawner.spawn_blocking(
         "subspace-archiver",
         Box::pin({
@@ -2040,35 +2091,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 poc_link.archived_segment_notification_sender.clone();
 
             async move {
-                let latest_root_block = find_last_root_block(client.as_ref());
                 let mut last_archived_block_number = None;
-                let mut archiver = match latest_root_block {
-                    Some(latest_root_block) => BlockArchiver::with_initial_state(
-                        RECORD_SIZE,
-                        RECORDED_HISTORY_SEGMENT_SIZE,
-                        latest_root_block,
-                        client
-                            .block(&BlockId::Number(
-                                latest_root_block.last_archived_block().number.into(),
-                            ))
-                            .expect("Older blocks should always exist")
-                            .expect("Older blocks should always exist"),
-                    )
-                    .expect("Incorrect parameters for archiver"),
-                    None => {
-                        let mut object_archiver =
-                            ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-                                .expect("Incorrect parameters for archiver");
-
-                        let archived_segments = object_archiver.add_object(
-                            &pre_genesis_data::from_seed(BLOCKCHAIN_SEED, PRE_GENESIS_OBJECT_SIZE),
-                        );
-
-                        // TODO: Add archived segments to transaction pool
-
-                        object_archiver.into_block_archiver()
-                    }
-                };
 
                 while let Some((block_number, mut root_block_sender)) =
                     imported_block_notification_stream.next().await
