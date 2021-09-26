@@ -19,7 +19,6 @@
 
 pub mod crypto;
 
-use core::num::NonZeroU32;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 
@@ -41,7 +40,7 @@ pub struct LastArchivedBlock {
     /// Block number
     pub number: u32,
     /// `None` if the block was archived fully or number of bytes otherwise
-    pub bytes: Option<NonZeroU32>,
+    pub bytes: Option<u32>,
 }
 
 /// Root block for a specific segment

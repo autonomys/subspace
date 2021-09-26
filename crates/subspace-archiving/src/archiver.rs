@@ -22,7 +22,6 @@ use std::collections::VecDeque;
 use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
-use std::num::NonZeroU32;
 use subspace_core_primitives::{
     crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
@@ -30,7 +29,7 @@ use thiserror::Error;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
-    bytes: Some(NonZeroU32::new(1).unwrap()),
+    bytes: Some(0),
 };
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
@@ -94,14 +93,14 @@ pub enum ArchiverInstantiationError {
     WrongRecordAndSegmentCombination,
     /// Invalid last archived block, its size is the same as encoded block
     #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
-    InvalidLastArchivedBlock(NonZeroU32),
+    InvalidLastArchivedBlock(u32),
     /// Invalid block, its size is smaller than already archived number of bytes
     #[error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")]
     InvalidBlockSmallSize {
         /// Full block size
-        block_bytes: NonZeroU32,
+        block_bytes: u32,
         /// Already archived portion of the block
-        archived_block_bytes: NonZeroU32,
+        archived_block_bytes: u32,
     },
 }
 
@@ -202,11 +201,8 @@ impl Archiver {
         if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
             let encoded_block = block.encode();
 
-            let encoded_block_bytes = NonZeroU32::new(
-                u32::try_from(encoded_block.len())
-                    .expect("Blocks length is never bigger than u32; qed"),
-            )
-            .expect("Encoded block length is never zero; qed");
+            let encoded_block_bytes = u32::try_from(encoded_block.len())
+                .expect("Blocks length is never bigger than u32; qed");
 
             match encoded_block_bytes.cmp(&archived_block_bytes) {
                 Ordering::Less => {
@@ -224,7 +220,7 @@ impl Archiver {
                     // Take part of the encoded block that wasn't archived yet and push to the
                     // buffer and block continuation
                     archiver.buffer.push_back(SegmentItem::BlockContinuation(
-                        encoded_block[(archived_block_bytes.get() as usize)..].to_vec(),
+                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
                     ));
                 }
             }
@@ -327,11 +323,8 @@ impl Archiver {
 
                     // Update last archived block to include partial archiving info
                     last_archived_block.bytes.replace(
-                        NonZeroU32::new(
-                            u32::try_from(bytes.len())
-                                .expect("Blocks length is never bigger than u32; qed"),
-                        )
-                        .expect("Encoded block length is never zero; qed"),
+                        u32::try_from(bytes.len())
+                            .expect("Blocks length is never bigger than u32; qed"),
                     );
 
                     (SegmentItem::BlockStart(bytes), block_continuation_bytes)
@@ -352,12 +345,9 @@ impl Archiver {
                         already; qed",
                     );
                     last_archived_block.bytes.replace(
-                        NonZeroU32::new(
-                            archived_bytes.get()
-                                - u32::try_from(spill_over)
-                                    .expect("Blocks length is never bigger than u32; qed"),
-                        )
-                        .expect("Spill over is never bigger than archived bytes; qed"),
+                        archived_bytes
+                            - u32::try_from(spill_over)
+                                .expect("Blocks length is never bigger than u32; qed"),
                     );
 
                     (

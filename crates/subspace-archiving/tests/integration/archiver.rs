@@ -1,5 +1,4 @@
 use std::assert_matches::assert_matches;
-use std::num::NonZeroU32;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
 use subspace_core_primitives::{
@@ -34,10 +33,7 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(
-            last_archived_block.bytes,
-            Some(NonZeroU32::new(7992).unwrap()),
-        );
+        assert_eq!(last_archived_block.bytes, Some(7992),);
     }
 
     // Check that all pieces are valid
@@ -77,19 +73,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(
-            last_archived_block.bytes,
-            Some(NonZeroU32::new(13233).unwrap()),
-        );
+        assert_eq!(last_archived_block.bytes, Some(13233),);
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(
-            last_archived_block.bytes,
-            Some(NonZeroU32::new(29143).unwrap()),
-        );
+        assert_eq!(last_archived_block.bytes, Some(29143),);
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -192,7 +182,7 @@ fn archiver_invalid_usage() {
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
-                    bytes: Some(NonZeroU32::new(10).unwrap()),
+                    bytes: Some(10),
                 },
             },
             vec![0u8; 9],
@@ -204,7 +194,7 @@ fn archiver_invalid_usage() {
         );
 
         if let Err(ArchiverInstantiationError::InvalidLastArchivedBlock(size)) = result {
-            assert_eq!(size, NonZeroU32::new(10).unwrap());
+            assert_eq!(size, 10);
         }
     }
 
@@ -218,7 +208,7 @@ fn archiver_invalid_usage() {
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
-                    bytes: Some(NonZeroU32::new(10).unwrap()),
+                    bytes: Some(10),
                 },
             },
             vec![0u8; 5],
@@ -234,8 +224,8 @@ fn archiver_invalid_usage() {
             archived_block_bytes,
         }) = result
         {
-            assert_eq!(block_bytes, NonZeroU32::new(6).unwrap());
-            assert_eq!(archived_block_bytes, NonZeroU32::new(10).unwrap());
+            assert_eq!(block_bytes, 6);
+            assert_eq!(archived_block_bytes, 10);
         }
     }
 }
