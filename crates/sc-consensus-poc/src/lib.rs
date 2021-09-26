@@ -1962,6 +1962,59 @@ where
     Ok((import, link))
 }
 
+fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
+where
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
+    Client::Api: PoCApi<Block>,
+{
+    let mut block_to_check = BlockId::Hash(client.info().best_hash);
+    loop {
+        let block = client
+            .block(&block_to_check)
+            .expect("Older blocks should always exist")
+            .expect("Older blocks should always exist");
+        let mut latest_root_block: Option<RootBlock> = None;
+
+        for extrinsic in block.block.extrinsics() {
+            match client
+                .runtime_api()
+                .extract_root_block(&block_to_check, extrinsic.encode())
+            {
+                Ok(Some(root_block)) => match &mut latest_root_block {
+                    Some(latest_root_block) => {
+                        if latest_root_block.segment_index() < root_block.segment_index() {
+                            *latest_root_block = root_block;
+                        }
+                    }
+                    None => {
+                        latest_root_block.replace(root_block);
+                    }
+                },
+                Ok(None) => {
+                    // Some other extrinsic, ignore
+                }
+                Err(error) => {
+                    // TODO: Probably light client, can this even happen?
+                    error!(target: "poc", "Failed to make runtime API call: {:?}", error);
+                }
+            }
+        }
+
+        if latest_root_block.is_some() {
+            break latest_root_block;
+        }
+
+        let parent_block_hash = *block.block.header().parent_hash();
+
+        if parent_block_hash == Block::Hash::default() {
+            // Genesis block, nothing else to check
+            break None;
+        }
+
+        block_to_check = BlockId::Hash(parent_block_hash);
+    }
+}
+
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
 /// producing pieces and root blocks (root blocks are then added back to the blockchain as
 /// `store_root_block` extrinsic).
@@ -1987,60 +2040,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 poc_link.archived_segment_notification_sender.clone();
 
             async move {
-                let latest_root_block: Option<RootBlock> = {
-                    let mut block_to_check = BlockId::Hash(client.info().best_hash);
-                    loop {
-                        let block = client
-                            .block(&block_to_check)
-                            .expect("Older blocks should always exist")
-                            .expect("Older blocks should always exist");
-                        let mut latest_root_block: Option<RootBlock> = None;
-
-                        for extrinsic in block.block.extrinsics() {
-                            match client
-                                .runtime_api()
-                                .extract_root_block(&block_to_check, extrinsic.encode())
-                            {
-                                Ok(Some(root_block)) => match &mut latest_root_block {
-                                    Some(latest_root_block) => {
-                                        if latest_root_block.segment_index()
-                                            < root_block.segment_index()
-                                        {
-                                            *latest_root_block = root_block;
-                                        }
-                                    }
-                                    None => {
-                                        latest_root_block.replace(root_block);
-                                    }
-                                },
-                                Ok(None) => {
-                                    // Some other extrinsic, ignore
-                                }
-                                Err(error) => {
-                                    // TODO: Probably light client, can this even happen?
-                                    error!(
-                                        target: "poc",
-                                        "Failed to make runtime API call: {:?}",
-                                        error,
-                                    );
-                                }
-                            }
-                        }
-
-                        if latest_root_block.is_some() {
-                            break latest_root_block;
-                        }
-
-                        let parent_block_hash = *block.block.header().parent_hash();
-
-                        if parent_block_hash == Block::Hash::default() {
-                            // Genesis block, nothig else to check
-                            break None;
-                        }
-
-                        block_to_check = BlockId::Hash(parent_block_hash);
-                    }
-                };
+                let latest_root_block = find_last_root_block(client.as_ref());
                 let mut last_archived_block_number = None;
                 let mut archiver = match latest_root_block {
                     Some(latest_root_block) => BlockArchiver::with_initial_state(
