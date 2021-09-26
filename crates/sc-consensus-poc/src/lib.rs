@@ -115,6 +115,7 @@ use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
@@ -130,6 +131,8 @@ const MERKLE_NUM_LEAVES: usize = 256;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const PRE_GENESIS_OBJECT_SIZE: usize = RECORDED_HISTORY_SEGMENT_SIZE * 10;
+const BLOCKCHAIN_SEED: &[u8] = b"subspace";
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -2053,11 +2056,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     )
                     .expect("Incorrect parameters for archiver"),
                     None => {
-                        let object_archiver =
+                        let mut object_archiver =
                             ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
                                 .expect("Incorrect parameters for archiver");
 
-                        // TODO: Add objects with initial seed data
+                        let archived_segments = object_archiver.add_object(
+                            &pre_genesis_data::from_seed(BLOCKCHAIN_SEED, PRE_GENESIS_OBJECT_SIZE),
+                        );
+
+                        // TODO: Add archived segments to transaction pool
 
                         object_archiver.into_block_archiver()
                     }

@@ -21,3 +21,5 @@
 pub mod archiver;
 #[cfg(feature = "std")]
 pub mod merkle_tree;
+#[cfg(feature = "std")]
+pub mod pre_genesis_data;
