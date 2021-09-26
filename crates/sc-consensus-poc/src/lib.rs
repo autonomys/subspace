@@ -53,7 +53,7 @@ use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
 use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
-use log::{debug, info, log, trace, warn};
+use log::{debug, error, info, log, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
@@ -1959,6 +1959,151 @@ where
     Ok((import, link))
 }
 
+/// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
+/// producing pieces and root blocks (root blocks are then added back to the blockchain as
+/// `store_root_block` extrinsic).
+pub fn start_subspace_archiver<Block: BlockT, Client>(
+    poc_link: &PoCLink<Block>,
+    client: Arc<Client>,
+    spawner: &impl sp_core::traits::SpawnNamed,
+) where
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: PoCApi<Block>,
+{
+    spawner.spawn_blocking(
+        "subspace-archiver",
+        Box::pin({
+            let mut imported_block_notification_stream =
+                poc_link.imported_block_notification_stream.subscribe();
+            let archived_segment_notification_sender =
+                poc_link.archived_segment_notification_sender.clone();
+
+            async move {
+                let latest_root_block: Option<RootBlock> = {
+                    let mut block_to_check = BlockId::Hash(client.info().best_hash);
+                    loop {
+                        let block = client
+                            .block(&block_to_check)
+                            .expect("Older blocks should always exist")
+                            .expect("Older blocks should always exist");
+                        let mut latest_root_block: Option<RootBlock> = None;
+
+                        for extrinsic in block.block.extrinsics() {
+                            match client
+                                .runtime_api()
+                                .extract_root_block(&block_to_check, extrinsic.encode())
+                            {
+                                Ok(Some(root_block)) => match &mut latest_root_block {
+                                    Some(latest_root_block) => {
+                                        if latest_root_block.segment_index()
+                                            < root_block.segment_index()
+                                        {
+                                            *latest_root_block = root_block;
+                                        }
+                                    }
+                                    None => {
+                                        latest_root_block.replace(root_block);
+                                    }
+                                },
+                                Ok(None) => {
+                                    // Some other extrinsic, ignore
+                                }
+                                Err(error) => {
+                                    // TODO: Probably light client, can this even happen?
+                                    error!(
+                                        target: "poc",
+                                        "Failed to make runtime API call: {:?}",
+                                        error,
+                                    );
+                                }
+                            }
+                        }
+
+                        if latest_root_block.is_some() {
+                            break latest_root_block;
+                        }
+
+                        let parent_block_hash = *block.block.header().parent_hash();
+
+                        if parent_block_hash == Block::Hash::default() {
+                            // Genesis block, nothig else to check
+                            break None;
+                        }
+
+                        block_to_check = BlockId::Hash(parent_block_hash);
+                    }
+                };
+                let mut last_archived_block_number = None;
+                let mut archiver = match latest_root_block {
+                    Some(latest_root_block) => Archiver::with_initial_state(
+                        RECORD_SIZE,
+                        RECORDED_HISTORY_SEGMENT_SIZE,
+                        latest_root_block,
+                        client
+                            .block(&BlockId::Number(
+                                latest_root_block.last_archived_block().number.into(),
+                            ))
+                            .expect("Older blocks should always exist")
+                            .expect("Older blocks should always exist"),
+                    )
+                    .expect("Incorrect parameters for archiver"),
+                    None => Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+                        .expect("Incorrect parameters for archiver"),
+                };
+
+                while let Some((block_number, mut root_block_sender)) =
+                    imported_block_notification_stream.next().await
+                {
+                    let block_to_archive =
+                        match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
+                            Some(block_to_archive) => block_to_archive,
+                            None => {
+                                continue;
+                            }
+                        };
+
+                    if let Some(last_archived_block) = &mut last_archived_block_number {
+                        if *last_archived_block >= block_to_archive {
+                            // This block was already archived, skip
+                            continue;
+                        }
+
+                        *last_archived_block = block_to_archive;
+                    } else {
+                        last_archived_block_number.replace(block_to_archive);
+                    }
+
+                    debug!(target: "poc", "Archiving block {:?}", block_to_archive);
+
+                    let id = BlockId::number(block_to_archive);
+                    let block = client
+                        .block(&id)
+                        .expect("Older block by number should always exist")
+                        .expect("Older block by number should always exist");
+
+                    for archived_segment in archiver.add_block(block) {
+                        let ArchivedSegment { root_block, pieces } = archived_segment;
+
+                        archived_segment_notification_sender.notify(move || {
+                            ArchivedSegmentNotification {
+                                segment_index: root_block.segment_index(),
+                                pieces,
+                            }
+                        });
+
+                        let _ = root_block_sender.send(root_block).await;
+                    }
+                }
+            }
+        }),
+    );
+}
+
 /// Start an import queue for the PoC consensus algorithm.
 ///
 /// This method returns the import queue, some data that needs to be passed to the block authoring
@@ -1993,7 +2138,6 @@ where
     Client: ProvideRuntimeApi<Block>
         + ProvideCache<Block>
         + HeaderBackend<Block>
-        + BlockBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore
         + Send
@@ -2005,66 +2149,7 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
 {
-    spawner.spawn_essential_blocking(
-        "poc-archiver",
-        Box::pin({
-            let mut imported_block_notification_stream =
-                poc_link.imported_block_notification_stream.subscribe();
-            let archived_segment_notification_sender =
-                poc_link.archived_segment_notification_sender.clone();
-            let client = Arc::clone(&client);
-
-            async move {
-                let mut last_archived_block = None;
-                let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-                    .expect("Incorrect parameters for archiver");
-
-                while let Some((block_number, mut root_block_sender)) =
-                    imported_block_notification_stream.next().await
-                {
-                    let block_to_archive =
-                        match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
-                            Some(block_to_archive) => block_to_archive,
-                            None => {
-                                continue;
-                            }
-                        };
-
-                    if let Some(last_archived_block) = &mut last_archived_block {
-                        if *last_archived_block >= block_to_archive {
-                            // This block was already archived, skip
-                            continue;
-                        }
-
-                        *last_archived_block = block_to_archive;
-                    } else {
-                        last_archived_block.replace(block_to_archive);
-                    }
-
-                    debug!(target: "poc", "Archiving block {:?}", block_to_archive);
-
-                    let id = BlockId::number(block_to_archive);
-                    let block = client
-                        .block(&id)
-                        .expect("Older block by number should always exist")
-                        .expect("Older block by number should always exist");
-
-                    for archived_segment in archiver.add_block(block) {
-                        let ArchivedSegment { root_block, pieces } = archived_segment;
-
-                        archived_segment_notification_sender.notify(move || {
-                            ArchivedSegmentNotification {
-                                segment_index: root_block.segment_index(),
-                                pieces,
-                            }
-                        });
-
-                        let _ = root_block_sender.send(root_block).await;
-                    }
-                }
-            }
-        }),
-    );
+    // TODO: This task should probably be in a separate function altogether
 
     let verifier = PoCVerifier {
         select_chain,
