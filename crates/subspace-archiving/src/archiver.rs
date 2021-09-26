@@ -17,14 +17,21 @@ use crate::merkle_tree::{MerkleTree, Witness};
 use parity_scale_codec::{Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
+use std::num::NonZeroU32;
 use subspace_core_primitives::{
-    crypto, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 use thiserror::Error;
+
+const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
+    number: 0,
+    bytes: Some(NonZeroU32::new(1).unwrap()),
+};
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
@@ -35,6 +42,13 @@ pub enum Segment {
         /// Segment items
         items: Vec<SegmentItem>,
     },
+}
+
+impl Segment {
+    fn push_item(&mut self, segment_item: SegmentItem) {
+        let Self::V0 { items } = self;
+        items.push(segment_item);
+    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -54,7 +68,7 @@ pub enum SegmentItem {
     RootBlock(RootBlock),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 pub struct ArchivedSegment {
     /// Root block of the segment
@@ -78,6 +92,17 @@ pub enum ArchiverInstantiationError {
     /// Wrong record and segment size, it will not be possible to produce pieces
     #[error("Wrong record and segment size, it will not be possible to produce pieces")]
     WrongRecordAndSegmentCombination,
+    /// Invalid last archived block, its size is the same as encoded block
+    #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
+    InvalidLastArchivedBlock(NonZeroU32),
+    /// Invalid block, its size is smaller than already archived number of bytes
+    #[error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")]
+    InvalidBlockSmallSize {
+        /// Full block size
+        block_bytes: NonZeroU32,
+        /// Already archived portion of the block
+        archived_block_bytes: NonZeroU32,
+    },
 }
 
 /// Archiver for Subspace blockchain.
@@ -87,7 +112,6 @@ pub enum ArchiverInstantiationError {
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
-// TODO: Make this survive restarts without loosing state
 #[derive(Debug)]
 pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
@@ -104,6 +128,8 @@ pub struct Archiver {
     segment_index: u64,
     /// Hash of the root block of the previous segment
     prev_root_block_hash: Sha256Hash,
+    /// Last archived block
+    last_archived_block: LastArchivedBlock,
 }
 
 impl Archiver {
@@ -149,7 +175,62 @@ impl Archiver {
             reed_solomon,
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
+            last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
+    }
+
+    /// Create a new instance with initial state in case of restart.
+    ///
+    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    pub fn with_initial_state<B: Encode>(
+        record_size: usize,
+        segment_size: usize,
+        root_block: RootBlock,
+        block: B,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        let mut archiver = Self::new(record_size, segment_size)?;
+
+        archiver.segment_index = root_block.segment_index() + 1;
+        archiver.prev_root_block_hash = root_block.hash();
+        archiver.last_archived_block = root_block.last_archived_block();
+
+        // The first thing in the buffer should be root block
+        archiver
+            .buffer
+            .push_back(SegmentItem::RootBlock(root_block));
+
+        if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
+            let encoded_block = block.encode();
+
+            let encoded_block_bytes = NonZeroU32::new(
+                u32::try_from(encoded_block.len())
+                    .expect("Blocks length is never bigger than u32; qed"),
+            )
+            .expect("Encoded block length is never zero; qed");
+
+            match encoded_block_bytes.cmp(&archived_block_bytes) {
+                Ordering::Less => {
+                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                        block_bytes: encoded_block_bytes,
+                        archived_block_bytes,
+                    });
+                }
+                Ordering::Equal => {
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
+                        encoded_block_bytes,
+                    ));
+                }
+                Ordering::Greater => {
+                    // Take part of the encoded block that wasn't archived yet and push to the
+                    // buffer and block continuation
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation(
+                        encoded_block[(archived_block_bytes.get() as usize)..].to_vec(),
+                    ));
+                }
+            }
+        }
+
+        Ok(archiver)
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
@@ -173,9 +254,47 @@ impl Archiver {
             items: Vec::with_capacity(self.buffer.len()),
         };
 
+        let mut last_archived_block = self.last_archived_block;
+
         while segment.encoded_size() < self.segment_size {
             let segment_item = match self.buffer.pop_front() {
-                Some(segment_item) => segment_item,
+                Some(segment_item) => {
+                    match &segment_item {
+                        SegmentItem::Block(_) => {
+                            // Skip block number increase in case of the very first block
+                            if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
+                                // Increase archived block number and assume the whole block was
+                                // archived
+                                last_archived_block.number += 1;
+                            }
+                            last_archived_block.bytes = None;
+                        }
+                        SegmentItem::BlockStart(_) => {
+                            unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
+                        }
+                        SegmentItem::BlockContinuation(bytes) => {
+                            // Same block, but assume for now that the whole block was archived, but
+                            // also store the number of bytes as opposed to `None`, we'll transform
+                            // it into `None` if needed later
+                            let archived_bytes = last_archived_block.bytes.expect(
+                                "Block continuation implies that there are some bytes \
+                                archived already; qed",
+                            );
+                            last_archived_block.bytes.replace(
+                                archived_bytes
+                                    .checked_add(
+                                        u32::try_from(bytes.len())
+                                            .expect("Blocks length is never bigger than u32; qed"),
+                                    )
+                                    .expect("Archived block bytes will never exceed u32; qed"),
+                            );
+                        }
+                        SegmentItem::RootBlock(_) => {
+                            // We are not interested in root block here
+                        }
+                    }
+                    segment_item
+                }
                 None => {
                     let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
@@ -186,60 +305,87 @@ impl Archiver {
                     return None;
                 }
             };
+
+            segment.push_item(segment_item);
+        }
+
+        // We may have gotten more data than needed, check and move the excess into the next segment
+        let spill_over = segment.encoded_size() - self.segment_size;
+
+        if spill_over > 0 {
             let Segment::V0 { items } = &mut segment;
-            items.push(segment_item);
-        }
+            let segment_item = items
+                .pop()
+                .expect("Segment over segment size always has at least one item; qed");
 
-        // We may have gotten more data than needed, check and move the excess into the next
-        // segment
-        {
-            let spill_over = segment.encoded_size() - self.segment_size;
+            let (segment_item, continuation_segment_item_bytes) = match segment_item {
+                SegmentItem::Block(mut bytes) => {
+                    let split_point = bytes.len() - spill_over;
+                    let block_continuation_bytes = bytes[split_point..].to_vec();
 
-            if spill_over > 0 {
-                let Segment::V0 { items } = &mut segment;
-                let segment_item = items
-                    .pop()
-                    .expect("Segment over segment size always has at least one item; qed");
+                    bytes.truncate(split_point);
 
-                let (segment_item, continuation_segment_item_bytes) = match segment_item {
-                    SegmentItem::Block(mut bytes) => {
-                        let split_point = bytes.len() - spill_over;
-                        let block_continuation_bytes = bytes[split_point..].to_vec();
-
-                        bytes.truncate(split_point);
-
-                        (SegmentItem::BlockStart(bytes), block_continuation_bytes)
-                    }
-                    SegmentItem::BlockStart(_) => {
-                        unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
-                    }
-                    SegmentItem::BlockContinuation(mut block_bytes) => {
-                        let split_point = block_bytes.len() - spill_over;
-                        let block_continuation_bytes = block_bytes[split_point..].to_vec();
-
-                        block_bytes.truncate(split_point);
-
-                        (
-                            SegmentItem::BlockContinuation(block_bytes),
-                            block_continuation_bytes,
+                    // Update last archived block to include partial archiving info
+                    last_archived_block.bytes.replace(
+                        NonZeroU32::new(
+                            u32::try_from(bytes.len())
+                                .expect("Blocks length is never bigger than u32; qed"),
                         )
-                    }
-                    SegmentItem::RootBlock(_) => {
-                        unreachable!(
-                            "SegmentItem::RootBlock is always the first element in the buffer and \
-                            fits into the segment; qed",
-                        );
-                    }
-                };
+                        .expect("Encoded block length is never zero; qed"),
+                    );
 
-                // Push back shortened segment item
-                items.push(segment_item);
-                // Push continuation element back into the buffer where removed segment item was
-                self.buffer.push_front(SegmentItem::BlockContinuation(
-                    continuation_segment_item_bytes,
-                ));
-            }
+                    (SegmentItem::BlockStart(bytes), block_continuation_bytes)
+                }
+                SegmentItem::BlockStart(_) => {
+                    unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
+                }
+                SegmentItem::BlockContinuation(mut block_bytes) => {
+                    let split_point = block_bytes.len() - spill_over;
+                    let block_continuation_bytes = block_bytes[split_point..].to_vec();
+
+                    block_bytes.truncate(split_point);
+
+                    // Above code assumed that block was archived fully, now remove spilled-over
+                    // bytes from the size
+                    let archived_bytes = last_archived_block.bytes.expect(
+                        "Block continuation implies that there are some bytes archived \
+                        already; qed",
+                    );
+                    last_archived_block.bytes.replace(
+                        NonZeroU32::new(
+                            archived_bytes.get()
+                                - u32::try_from(spill_over)
+                                    .expect("Blocks length is never bigger than u32; qed"),
+                        )
+                        .expect("Spill over is never bigger than archived bytes; qed"),
+                    );
+
+                    (
+                        SegmentItem::BlockContinuation(block_bytes),
+                        block_continuation_bytes,
+                    )
+                }
+                SegmentItem::RootBlock(_) => {
+                    unreachable!(
+                        "SegmentItem::RootBlock is always the first element in the buffer and \
+                        fits into the segment; qed",
+                    );
+                }
+            };
+
+            // Push back shortened segment item
+            items.push(segment_item);
+            // Push continuation element back into the buffer where removed segment item was
+            self.buffer.push_front(SegmentItem::BlockContinuation(
+                continuation_segment_item_bytes,
+            ));
+        } else {
+            // Above code added bytes length even though it was assumed that all continuation bytes
+            // fit into the segment, now we need to tweak that
+            last_archived_block.bytes.take();
         }
+
+        self.last_archived_block = last_archived_block;
 
         Some(segment)
     }
@@ -330,6 +476,7 @@ impl Archiver {
             segment_index,
             merkle_tree_root,
             prev_root_block_hash: self.prev_root_block_hash,
+            last_archived_block: self.last_archived_block,
         };
 
         let root_block_hash = root_block.hash();
