@@ -2043,7 +2043,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             RECORD_SIZE,
             RECORDED_HISTORY_SEGMENT_SIZE,
             latest_root_block,
-            client
+            &client
                 .block(&BlockId::Number(
                     latest_root_block.last_archived_block().number.into(),
                 ))

@@ -549,7 +549,7 @@ impl BlockArchiver {
         record_size: usize,
         segment_size: usize,
         root_block: RootBlock,
-        block: B,
+        block: &B,
     ) -> Result<Self, ArchiverInstantiationError> {
         if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
             return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);

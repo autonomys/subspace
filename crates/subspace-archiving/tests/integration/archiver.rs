@@ -1,6 +1,7 @@
+use rand::Rng;
 use std::assert_matches::assert_matches;
 use subspace_archiving::archiver;
-use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver};
+use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
 use subspace_core_primitives::{
     LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
@@ -58,7 +59,7 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
-            block_1,
+            &block_1,
         )
         .unwrap();
 
@@ -119,7 +120,7 @@ fn archiver() {
     // archived segments once last block is added
     {
         let mut archiver_with_initial_state =
-            BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, block_2)
+            BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, &block_2)
                 .unwrap();
 
         assert_eq!(
@@ -144,6 +145,42 @@ fn archiver() {
             ));
         }
     }
+}
+
+#[test]
+fn object_archiver() {
+    let mut archiver = ObjectArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+
+    let mut rng = rand::thread_rng();
+    {
+        let mut object = vec![0u8; SEGMENT_SIZE];
+
+        for _ in 0..10 {
+            rng.fill(object.as_mut_slice());
+
+            assert_eq!(archiver.add_object(&object).len(), 1);
+        }
+    }
+
+    let mut archiver = archiver.into_block_archiver();
+
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE]>();
+
+    let root_block = archiver
+        .add_block(&block_0)
+        .into_iter()
+        .next()
+        .unwrap()
+        .root_block;
+
+    let mut archiver_with_initial_state =
+        BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, root_block, &block_0).unwrap();
+
+    let block_1 = rand::random::<[u8; SEGMENT_SIZE]>();
+    assert_eq!(
+        archiver.add_block(&block_1),
+        archiver_with_initial_state.add_block(&block_1),
+    );
 }
 
 #[test]
@@ -185,7 +222,7 @@ fn archiver_invalid_usage() {
                     bytes: Some(10),
                 },
             },
-            vec![0u8; 9],
+            &vec![0u8; 9],
         );
 
         assert_matches!(
@@ -211,7 +248,7 @@ fn archiver_invalid_usage() {
                     bytes: Some(10),
                 },
             },
-            vec![0u8; 5],
+            &vec![0u8; 5],
         );
 
         assert_matches!(
@@ -242,7 +279,7 @@ fn archiver_invalid_usage() {
                     bytes: Some(0),
                 },
             },
-            vec![0u8; 5],
+            &vec![0u8; 5],
         );
 
         assert_matches!(
