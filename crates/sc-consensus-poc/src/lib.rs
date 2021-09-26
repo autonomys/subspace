@@ -114,7 +114,7 @@ use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
@@ -158,9 +158,9 @@ pub struct NewSlotNotification {
 /// Archived segments notification with new pieces
 #[derive(Debug, Clone)]
 pub struct ArchivedSegmentNotification {
-    /// Segment index
-    pub segment_index: u64,
-    /// Pieces that correspond to this segment
+    /// Root block
+    pub root_block: RootBlock,
+    /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Piece>,
 }
 
@@ -2040,7 +2040,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 };
                 let mut last_archived_block_number = None;
                 let mut archiver = match latest_root_block {
-                    Some(latest_root_block) => Archiver::with_initial_state(
+                    Some(latest_root_block) => BlockArchiver::with_initial_state(
                         RECORD_SIZE,
                         RECORDED_HISTORY_SEGMENT_SIZE,
                         latest_root_block,
@@ -2052,8 +2052,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                             .expect("Older blocks should always exist"),
                     )
                     .expect("Incorrect parameters for archiver"),
-                    None => Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-                        .expect("Incorrect parameters for archiver"),
+                    None => {
+                        let object_archiver =
+                            ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+                                .expect("Incorrect parameters for archiver");
+
+                        // TODO: Add objects with initial seed data
+
+                        object_archiver.into_block_archiver()
+                    }
                 };
 
                 while let Some((block_number, mut root_block_sender)) =
@@ -2086,15 +2093,11 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .expect("Older block by number should always exist")
                         .expect("Older block by number should always exist");
 
-                    for archived_segment in archiver.add_block(block) {
+                    for archived_segment in archiver.add_block(&block) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;
 
-                        archived_segment_notification_sender.notify(move || {
-                            ArchivedSegmentNotification {
-                                segment_index: root_block.segment_index(),
-                                pieces,
-                            }
-                        });
+                        archived_segment_notification_sender
+                            .notify(move || ArchivedSegmentNotification { root_block, pieces });
 
                         let _ = root_block_sender.send(root_block).await;
                     }

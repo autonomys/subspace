@@ -1,6 +1,6 @@
 use std::assert_matches::assert_matches;
 use subspace_archiving::archiver;
-use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
+use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver};
 use subspace_core_primitives::{
     LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
@@ -12,15 +12,15 @@ const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 #[test]
 fn archiver() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>();
     // There is not enough data to produce archived segment yet
-    assert!(archiver.add_block(block_0).is_empty());
+    assert!(archiver.add_block(&block_0).is_empty());
 
     let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>();
     // This should produce 1 archived segment
-    let archived_segments = archiver.add_block(block_1);
+    let archived_segments = archiver.add_block(&block_1);
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
@@ -48,13 +48,13 @@ fn archiver() {
 
     let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>();
     // This should be big enough to produce two archived segments in one go
-    let archived_segments = archiver.add_block(block_2);
+    let archived_segments = archiver.add_block(&block_2);
     assert_eq!(archived_segments.len(), 2);
 
     // Check that initializing archiver with initial state before last block results in the same
     // archived segments once last block is added
     {
-        let mut archiver_with_initial_state = Archiver::with_initial_state(
+        let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
@@ -63,7 +63,7 @@ fn archiver() {
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_2),
+            archiver_with_initial_state.add_block(&block_2),
             archived_segments,
         );
     }
@@ -112,18 +112,18 @@ fn archiver() {
 
     // Add a block such that it fits in the next segment exactly
     let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>();
-    let archived_segments = archiver.add_block(block_3);
+    let archived_segments = archiver.add_block(&block_3);
     assert_eq!(archived_segments.len(), 1);
 
     // Check that initializing archiver with initial state before last block results in the same
     // archived segments once last block is added
     {
         let mut archiver_with_initial_state =
-            Archiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, block_2)
+            BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, block_2)
                 .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_3),
+            archiver_with_initial_state.add_block(&block_3),
             archived_segments,
         );
     }
@@ -149,31 +149,31 @@ fn archiver() {
 #[test]
 fn archiver_invalid_usage() {
     assert_matches!(
-        Archiver::new(5, SEGMENT_SIZE),
+        BlockArchiver::new(5, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),
     );
 
     assert_matches!(
-        Archiver::new(10, 9),
+        BlockArchiver::new(10, 9),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
     assert_matches!(
-        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
+        BlockArchiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
 
     assert_matches!(
-        Archiver::new(17, SEGMENT_SIZE),
+        BlockArchiver::new(17, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
     assert_matches!(
-        Archiver::new(17, 34),
+        BlockArchiver::new(17, 34),
         Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
     );
 
     {
-        let result = Archiver::with_initial_state(
+        let result = BlockArchiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             RootBlock::V0 {
@@ -199,7 +199,7 @@ fn archiver_invalid_usage() {
     }
 
     {
-        let result = Archiver::with_initial_state(
+        let result = BlockArchiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             RootBlock::V0 {
@@ -227,5 +227,27 @@ fn archiver_invalid_usage() {
             assert_eq!(block_bytes, 6);
             assert_eq!(archived_block_bytes, 10);
         }
+    }
+
+    {
+        let result = BlockArchiver::with_initial_state(
+            RECORD_SIZE,
+            SEGMENT_SIZE,
+            RootBlock::V0 {
+                segment_index: 0,
+                merkle_tree_root: Sha256Hash::default(),
+                prev_root_block_hash: Sha256Hash::default(),
+                last_archived_block: LastArchivedBlock {
+                    number: 0,
+                    bytes: Some(0),
+                },
+            },
+            vec![0u8; 5],
+        );
+
+        assert_matches!(
+            result,
+            Err(ArchiverInstantiationError::NoBlocksInvalidInitialState),
+        );
     }
 }

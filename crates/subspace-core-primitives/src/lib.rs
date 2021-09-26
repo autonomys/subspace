@@ -21,6 +21,7 @@ pub mod crypto;
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use serde::{Deserialize, Serialize};
 
 /// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
@@ -34,7 +35,20 @@ pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 pub type Piece = [u8; PIECE_SIZE];
 
 /// Last archived block
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct LastArchivedBlock {
     /// Block number
@@ -44,7 +58,20 @@ pub struct LastArchivedBlock {
 }
 
 /// Root block for a specific segment
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub enum RootBlock {
     /// V0 of the root block data structure

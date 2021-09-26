@@ -22,6 +22,7 @@ use std::collections::VecDeque;
 use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
+use std::marker::PhantomData;
 use subspace_core_primitives::{
     crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
@@ -111,17 +112,54 @@ pub enum ArchiverInstantiationError {
         /// Already archived portion of the block
         archived_block_bytes: u32,
     },
+    /// No archived blocks, invalid initial state
+    #[error("No archived blocks, invalid initial state")]
+    NoBlocksInvalidInitialState,
 }
 
-/// Archiver for Subspace blockchain.
+mod private {
+    pub trait ArchiverState {}
+
+    /// Marker struct used in archiver to define a state where archiver is used for archiving object
+    /// before genesis block
+    #[derive(Debug)]
+    pub struct ObjectArchiverState;
+
+    impl ArchiverState for ObjectArchiverState {}
+
+    /// Marker struct used in archiver to define a state where archiver is used for archiving blocks
+    /// at or after genesis block
+    #[derive(Debug)]
+    pub struct BlockArchiverState;
+
+    impl ArchiverState for BlockArchiverState {}
+}
+
+/// Object archiver for Subspace blockchain.
+///
+/// It takes pre-genesis objects and concatenates them into a buffer, buffer is
+/// sliced into segments of `RECORDED_HISTORY_SEGMENT_SIZE` size, segments are sliced into source
+/// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
+/// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
+/// block header.
+///
+/// Object archiver is only used pre-genesis and should be turned into block archiver for later use.
+pub type ObjectArchiver = Archiver<private::ObjectArchiverState>;
+
+/// Block archiver for Subspace blockchain.
 ///
 /// It takes new confirmed (at `K` depth) blocks and concatenates them into a buffer, buffer is
 /// sliced into segments of `RECORDED_HISTORY_SEGMENT_SIZE` size, segments are sliced into source
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
+pub type BlockArchiver = Archiver<private::BlockArchiverState>;
+
+/// Generic archiver for Subspace blockchain.
+///
+/// Shouldn't be used directly, but rather through `ObjectArchiver` or `BlockArchiver` type aliases.
 #[derive(Debug)]
-pub struct Archiver {
+pub struct Archiver<State: private::ArchiverState> {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
@@ -138,10 +176,15 @@ pub struct Archiver {
     prev_root_block_hash: Sha256Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
+    /// Just a marker for otherwise unused generic parameter
+    state_marker: PhantomData<State>,
 }
 
-impl Archiver {
+impl<State: private::ArchiverState> Archiver<State> {
     /// Create a new instance with specified record size and recorded history segment size.
+    ///
+    /// Note: this is the only way to instantiate object archiver, while block archiver can be
+    /// instantiated with `BlockArchiver::with_initial_state()` in case of restarts.
     ///
     /// Panics if:
     /// * record size it smaller that needed to hold any information
@@ -184,72 +227,8 @@ impl Archiver {
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
+            state_marker: PhantomData::default(),
         })
-    }
-
-    /// Create a new instance with initial state in case of restart.
-    ///
-    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
-    pub fn with_initial_state<B: Encode>(
-        record_size: usize,
-        segment_size: usize,
-        root_block: RootBlock,
-        block: B,
-    ) -> Result<Self, ArchiverInstantiationError> {
-        let mut archiver = Self::new(record_size, segment_size)?;
-
-        archiver.segment_index = root_block.segment_index() + 1;
-        archiver.prev_root_block_hash = root_block.hash();
-        archiver.last_archived_block = root_block.last_archived_block();
-
-        // The first thing in the buffer should be root block
-        archiver
-            .buffer
-            .push_back(SegmentItem::RootBlock(root_block));
-
-        if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
-            let encoded_block = block.encode();
-
-            let encoded_block_bytes = u32::try_from(encoded_block.len())
-                .expect("Blocks length is never bigger than u32; qed");
-
-            match encoded_block_bytes.cmp(&archived_block_bytes) {
-                Ordering::Less => {
-                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
-                        block_bytes: encoded_block_bytes,
-                        archived_block_bytes,
-                    });
-                }
-                Ordering::Equal => {
-                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
-                        encoded_block_bytes,
-                    ));
-                }
-                Ordering::Greater => {
-                    // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
-                    archiver.buffer.push_back(SegmentItem::BlockContinuation(
-                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                    ));
-                }
-            }
-        }
-
-        Ok(archiver)
-    }
-
-    /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub fn add_block<B: Encode>(&mut self, block: B) -> Vec<ArchivedSegment> {
-        // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Block(block.encode()));
-
-        let mut archived_segments = Vec::new();
-
-        while let Some(segment) = self.produce_segment() {
-            archived_segments.push(self.produce_archived_segment(segment));
-        }
-
-        archived_segments
     }
 
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
@@ -292,11 +271,8 @@ impl Archiver {
                             );
                             last_archived_block.bytes.replace(
                                 archived_bytes
-                                    .checked_add(
-                                        u32::try_from(bytes.len())
-                                            .expect("Blocks length is never bigger than u32; qed"),
-                                    )
-                                    .expect("Archived block bytes will never exceed u32; qed"),
+                                    + u32::try_from(bytes.len())
+                                        .expect("Blocks length is never bigger than u32; qed"),
                             );
                         }
                         SegmentItem::RootBlock(_) => {
@@ -487,7 +463,7 @@ impl Archiver {
 
                 piece.as_mut().write_all(&record).expect(
                     "With correct archiver parameters record is always smaller than \
-                        piece size; qed",
+                    piece size; qed",
                 );
                 drop(record);
 
@@ -522,6 +498,117 @@ impl Archiver {
         self.buffer.push_front(SegmentItem::RootBlock(root_block));
 
         ArchivedSegment { root_block, pieces }
+    }
+}
+
+impl ObjectArchiver {
+    /// Adds new object to internal buffer, potentially producing pieces and root block headers
+    pub fn add_object<O: Encode>(&mut self, object: &O) -> Vec<ArchivedSegment> {
+        // Append new block to the buffer
+        self.buffer.push_back(SegmentItem::Object(object.encode()));
+
+        let mut archived_segments = Vec::new();
+
+        while let Some(segment) = self.produce_segment() {
+            archived_segments.push(self.produce_archived_segment(segment));
+        }
+
+        archived_segments
+    }
+
+    pub fn into_block_archiver(self) -> BlockArchiver {
+        let Self {
+            buffer,
+            record_size,
+            segment_size,
+            reed_solomon,
+            segment_index,
+            prev_root_block_hash,
+            last_archived_block,
+            ..
+        } = self;
+
+        Archiver {
+            buffer,
+            record_size,
+            segment_size,
+            reed_solomon,
+            segment_index,
+            prev_root_block_hash,
+            last_archived_block,
+            state_marker: PhantomData::default(),
+        }
+    }
+}
+
+impl BlockArchiver {
+    /// Create a new instance of block archiver with initial state in case of restart.
+    ///
+    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    pub fn with_initial_state<B: Encode>(
+        record_size: usize,
+        segment_size: usize,
+        root_block: RootBlock,
+        block: B,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
+            return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
+        }
+
+        let mut archiver = Self::new(record_size, segment_size)?;
+
+        archiver.segment_index = root_block.segment_index() + 1;
+        archiver.prev_root_block_hash = root_block.hash();
+        archiver.last_archived_block = root_block.last_archived_block();
+
+        // The first thing in the buffer should be root block
+        archiver
+            .buffer
+            .push_back(SegmentItem::RootBlock(root_block));
+
+        if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
+            let encoded_block = block.encode();
+
+            let encoded_block_bytes = u32::try_from(encoded_block.len())
+                .expect("Blocks length is never bigger than u32; qed");
+
+            match encoded_block_bytes.cmp(&archived_block_bytes) {
+                Ordering::Less => {
+                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                        block_bytes: encoded_block_bytes,
+                        archived_block_bytes,
+                    });
+                }
+                Ordering::Equal => {
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
+                        encoded_block_bytes,
+                    ));
+                }
+                Ordering::Greater => {
+                    // Take part of the encoded block that wasn't archived yet and push to the
+                    // buffer and block continuation
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation(
+                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                    ));
+                }
+            }
+        }
+
+        Ok(archiver)
+    }
+
+    /// Adds new block to internal buffer, potentially producing pieces and root block headers
+    pub fn add_block<B: Encode>(&mut self, block: &B) -> Vec<ArchivedSegment> {
+        // Append new block to the buffer
+        self.buffer.push_back(SegmentItem::Block(block.encode()));
+
+        let mut archived_segments = Vec::new();
+
+        while let Some(segment) = self.produce_segment() {
+            archived_segments.push(self.produce_archived_segment(segment));
+        }
+
+        archived_segments
     }
 }
 

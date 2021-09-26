@@ -32,6 +32,7 @@ use sp_consensus_poc::{FarmerId, Slot};
 use sp_core::crypto::Public;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::RootBlock;
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -56,21 +57,18 @@ pub struct RpcNewSlotInfo {
 /// Information about new slot that just arrived
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcArchivedSegment {
-    /// Segment index
-    pub segment_index: u64,
-    /// Pieces that correspond to this segment
+    /// Root block
+    pub root_block: RootBlock,
+    /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Vec<u8>>,
 }
 
 impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
     fn from(archived_segment_notification: ArchivedSegmentNotification) -> Self {
-        let ArchivedSegmentNotification {
-            segment_index,
-            pieces,
-        } = archived_segment_notification;
+        let ArchivedSegmentNotification { root_block, pieces } = archived_segment_notification;
 
         Self {
-            segment_index,
+            root_block,
             pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
         }
     }
