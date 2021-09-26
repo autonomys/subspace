@@ -53,17 +53,26 @@ impl Segment {
 /// Kinds of items that are contained within a segment
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
 pub enum SegmentItem {
-    /// Contains full block inside
+    /// Contains full object inside
     #[codec(index = 0)]
+    Object(Vec<u8>),
+    /// Contains the beginning of the object inside, remainder will be found in subsequent segments
+    #[codec(index = 1)]
+    ObjectStart(Vec<u8>),
+    /// Continuation of the partial object spilled over into the next segment
+    #[codec(index = 2)]
+    ObjectContinuation(Vec<u8>),
+    /// Contains full block inside
+    #[codec(index = 3)]
     Block(Vec<u8>),
     /// Contains the beginning of the block inside, remainder will be found in subsequent segments
-    #[codec(index = 1)]
+    #[codec(index = 4)]
     BlockStart(Vec<u8>),
     /// Continuation of the partial block spilled over into the next segment
-    #[codec(index = 2)]
+    #[codec(index = 5)]
     BlockContinuation(Vec<u8>),
     /// Root block
-    #[codec(index = 2)]
+    #[codec(index = 6)]
     RootBlock(RootBlock),
 }
 
@@ -256,6 +265,11 @@ impl Archiver {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => {
                     match &segment_item {
+                        SegmentItem::Object(_)
+                        | SegmentItem::ObjectStart(_)
+                        | SegmentItem::ObjectContinuation(_) => {
+                            // We are not interested in object here
+                        }
                         SegmentItem::Block(_) => {
                             // Skip block number increase in case of the very first block
                             if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
@@ -314,10 +328,37 @@ impl Archiver {
                 .pop()
                 .expect("Segment over segment size always has at least one item; qed");
 
-            let (segment_item, continuation_segment_item_bytes) = match segment_item {
+            let segment_item = match segment_item {
+                SegmentItem::Object(mut bytes) => {
+                    let split_point = bytes.len() - spill_over;
+                    let continuation_bytes = bytes[split_point..].to_vec();
+
+                    bytes.truncate(split_point);
+
+                    // Push continuation element back into the buffer where removed segment item was
+                    self.buffer
+                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
+
+                    SegmentItem::ObjectStart(bytes)
+                }
+                SegmentItem::ObjectStart(_) => {
+                    unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
+                }
+                SegmentItem::ObjectContinuation(mut bytes) => {
+                    let split_point = bytes.len() - spill_over;
+                    let continuation_bytes = bytes[split_point..].to_vec();
+
+                    bytes.truncate(split_point);
+
+                    // Push continuation element back into the buffer where removed segment item was
+                    self.buffer
+                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
+
+                    SegmentItem::ObjectContinuation(bytes)
+                }
                 SegmentItem::Block(mut bytes) => {
                     let split_point = bytes.len() - spill_over;
-                    let block_continuation_bytes = bytes[split_point..].to_vec();
+                    let continuation_bytes = bytes[split_point..].to_vec();
 
                     bytes.truncate(split_point);
 
@@ -327,16 +368,20 @@ impl Archiver {
                             .expect("Blocks length is never bigger than u32; qed"),
                     );
 
-                    (SegmentItem::BlockStart(bytes), block_continuation_bytes)
+                    // Push continuation element back into the buffer where removed segment item was
+                    self.buffer
+                        .push_front(SegmentItem::BlockContinuation(continuation_bytes));
+
+                    SegmentItem::BlockStart(bytes)
                 }
                 SegmentItem::BlockStart(_) => {
                     unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                 }
-                SegmentItem::BlockContinuation(mut block_bytes) => {
-                    let split_point = block_bytes.len() - spill_over;
-                    let block_continuation_bytes = block_bytes[split_point..].to_vec();
+                SegmentItem::BlockContinuation(mut bytes) => {
+                    let split_point = bytes.len() - spill_over;
+                    let continuation_bytes = bytes[split_point..].to_vec();
 
-                    block_bytes.truncate(split_point);
+                    bytes.truncate(split_point);
 
                     // Above code assumed that block was archived fully, now remove spilled-over
                     // bytes from the size
@@ -350,10 +395,11 @@ impl Archiver {
                                 .expect("Blocks length is never bigger than u32; qed"),
                     );
 
-                    (
-                        SegmentItem::BlockContinuation(block_bytes),
-                        block_continuation_bytes,
-                    )
+                    // Push continuation element back into the buffer where removed segment item was
+                    self.buffer
+                        .push_front(SegmentItem::BlockContinuation(continuation_bytes));
+
+                    SegmentItem::BlockContinuation(bytes)
                 }
                 SegmentItem::RootBlock(_) => {
                     unreachable!(
@@ -365,10 +411,6 @@ impl Archiver {
 
             // Push back shortened segment item
             items.push(segment_item);
-            // Push continuation element back into the buffer where removed segment item was
-            self.buffer.push_front(SegmentItem::BlockContinuation(
-                continuation_segment_item_bytes,
-            ));
         } else {
             // Above code added bytes length even though it was assumed that all continuation bytes
             // fit into the segment, now we need to tweak that
