@@ -39,10 +39,13 @@ class Target {
   }
 
   // TODO: signer should be proxy account per feed
-  private async sendBlockTx({ block, metadata }: TxData) {
+  private async sendBlockTx({ feedId, block, metadata }: TxData) {
+    // metadata is stored as Vec<u8>
+    // to decode: new TextDecoder().decode(new Uint8Array([...]))
+    const metadataPayload = JSON.stringify(metadata);
     return (
       this.api.rx.tx.feeds
-        .put(block, metadata)
+        .put(feedId, block, metadataPayload)
         // it is required to specify nonce, otherwise transaction within same block will be rejected
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
