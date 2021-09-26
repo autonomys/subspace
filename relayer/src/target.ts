@@ -1,8 +1,10 @@
 import { ApiPromise } from "@polkadot/api";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
-import { Observable } from "@polkadot/types/types";
-import { merge } from "rxjs";
-import { concatMap } from "rxjs/operators";
+import { ISubmittableResult, Observable } from "@polkadot/types/types";
+import { EventRecord } from "@polkadot/types/interfaces";
+import { U64 } from "@polkadot/types/primitive";
+import { merge, Subscription } from "rxjs";
+import { concatMap, take } from "rxjs/operators";
 
 import { TxData } from "./types";
 
@@ -18,65 +20,71 @@ class Target {
     this.signer = signer;
   }
 
-  // TODO: signer should be proxy account per feed
-  // TODO: refactor using rxjs api - this.api.rx.tx...
-  private async sendBlockTx({ block, metadata }: TxData): Promise<void> {
-    const unsub = await this.api.tx.feeds
-      .put(block, metadata)
-      // it is required to specify nonce, otherwise transaction within same block will be rejected
-      // if nonce is -1 API will do the lookup for the right value
-      // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-      .signAndSend(this.signer, { nonce: -1 }, ({ status, dispatchError }) => {
-        if (status.type === "InBlock") {
-          if (dispatchError) {
-            if (dispatchError.isModule) {
-              const decoded = this.api.registry.findMetaError(
-                dispatchError.asModule
-              );
-              console.log(
-                `Transaction failed: ${decoded.section}.${decoded.method}`
-              );
-            } else {
-              // Other, CannotLookup, BadOrigin, no extra info
-              console.log(`Transaction failed: ${dispatchError.toString()}`);
-            }
-          } else {
-            console.log(
-              `Transaction successful: ${polkadotAppsUrl}${status.asInBlock}`
-            );
-          }
+  private logTxResult({ status, events }: ISubmittableResult) {
+    if (status.isInBlock) {
+      const isExtrinsicFailed = events
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter(({ event }) => (event as any).isSystem)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .find(({ event }) => (event as any).asSystem.isExtrinsicFailed);
 
-          unsub();
-        }
-      });
+      if (isExtrinsicFailed) {
+        console.error("Extrinsic failed");
+      }
+
+      console.log(
+        `Transaction included: ${polkadotAppsUrl}${status.asInBlock}`
+      );
+    }
   }
 
   // TODO: signer should be proxy account per feed
-  // TODO: refactor using rxjs api - this.api.rx.tx...
-  async createFeed(feedIds: number[]): Promise<void> {
+  private async sendBlockTx({ block, metadata }: TxData) {
+    return (
+      this.api.rx.tx.feeds
+        .put(block, metadata)
+        // it is required to specify nonce, otherwise transaction within same block will be rejected
+        // if nonce is -1 API will do the lookup for the right value
+        // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
+        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        .subscribe(this.logTxResult)
+    );
+  }
+
+  // TODO: signer should be proxy account per feed
+  // TODO: think about re-using existing feedIds instead of creating
+  async sendCreateFeedTx(): Promise<U64> {
     console.log("Creating feed for signer X");
-    const unsub = await this.api.tx.feeds
-      .create()
-      .signAndSend(this.signer, { nonce: -1 }, ({ status, events }) => {
-        if (status.type === "InBlock") {
-          const feedCreatedEvent = events.find(
-            ({ event }) => event.method === "FeedCreated"
+    return new Promise((resolve) => {
+      this.api.rx.tx.feeds
+        .create()
+        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        .subscribe((result) => {
+          this.logTxResult(result);
+
+          const feedCreatedEvent = result.events.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ({ event }: EventRecord) => (event as any)?.isFeeds
           );
 
           if (feedCreatedEvent) {
+            const { event } = feedCreatedEvent;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const feedId = (feedCreatedEvent.toJSON().event as any).data[0];
+            const feedId = (event as any).asFeeds.asFeedCreated.toJSON()[0];
 
             console.log("New feed created: ", feedId);
-            feedIds.push(feedId);
+            const feedIdAsU64 = this.api.createType('u64', feedId);
+            resolve(feedIdAsU64);
           }
-
-          unsub();
-        }
-      });
+        });
+    });
   }
 
-  processBlocks = (subscriptions: Observable<TxData>[]): Observable<void> => {
+  processBlocks = (
+    subscriptions: Observable<TxData>[]
+  ): Observable<Subscription> => {
     return merge(...subscriptions).pipe(concatMap(this.sendBlockTx.bind(this)));
   };
 }
