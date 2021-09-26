@@ -473,6 +473,12 @@ impl From<frame_system::Event<Runtime>> for Event {
 	}
 }
 
+impl From<pallet_spartan::Event> for Event {
+	fn from(_evt: pallet_spartan::Event) -> Self {
+		unimplemented!("Not required in tests!")
+	}
+}
+
 impl frame_support::traits::PalletInfo for Runtime {
 	fn index<P: 'static>() -> Option<usize> {
 		let type_id = sp_std::any::TypeId::of::<P>();
@@ -591,6 +597,7 @@ parameter_types! {
 }
 
 impl pallet_spartan::Config for Runtime {
+	type Event = Event;
 	type EpochDuration = EpochDuration;
 	type EraDuration = EraDuration;
 	type EonDuration = EonDuration;
