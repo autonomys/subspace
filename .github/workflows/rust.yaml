@@ -62,6 +62,15 @@ jobs:
           override: true
           components: rustfmt, clippy
 
+      - name: CUDA toolchain
+        run: sudo apt-get install --no-install-recommends -y nvidia-cuda-toolkit
+
+      # CUDA toolchain above doesn't like GCC newer than 8
+      - name: Select GCC 8
+        run: |
+          echo "CC=gcc-8" >> $GITHUB_ENV
+          echo "CXX=g++-8" >> $GITHUB_ENV
+
       - name: Configure cache
         uses: actions/cache@v2
         with:
@@ -96,6 +105,15 @@ jobs:
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
+
+      - name: CUDA toolchain
+        run: sudo apt-get install --no-install-recommends -y nvidia-cuda-toolkit
+
+      # CUDA toolchain above doesn't like GCC newer than 8
+      - name: Select GCC 8
+        run: |
+          echo "CC=gcc-8" >> $GITHUB_ENV
+          echo "CXX=g++-8" >> $GITHUB_ENV
 
       - name: Configure cache
         uses: actions/cache@v2

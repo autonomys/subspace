@@ -145,6 +145,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "cuda")]
     // CUDA accepts multiples of 1024 pieces, and any remainder piece will be handled on CPU
     // this test aims to process 1024 pieces in GPU, and 2 pieces in CPU, hence 1026 pieces.
     fn test_1026_piece() {
