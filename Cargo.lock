@@ -5641,6 +5641,7 @@ dependencies = [
  "serde",
  "sp-consensus-poc",
  "sp-core",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -7421,6 +7422,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sha2 0.9.8",
 ]
 

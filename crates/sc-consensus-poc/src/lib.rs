@@ -114,7 +114,8 @@ use std::future::Future;
 use std::{
     borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
 };
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
@@ -130,6 +131,8 @@ const MERKLE_NUM_LEAVES: usize = 256;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const PRE_GENESIS_OBJECT_SIZE: usize = RECORDED_HISTORY_SEGMENT_SIZE * 10;
+const BLOCKCHAIN_SEED: &[u8] = b"subspace";
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -158,9 +161,9 @@ pub struct NewSlotNotification {
 /// Archived segments notification with new pieces
 #[derive(Debug, Clone)]
 pub struct ArchivedSegmentNotification {
-    /// Segment index
-    pub segment_index: u64,
-    /// Pieces that correspond to this segment
+    /// Root block
+    pub root_block: RootBlock,
+    /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Piece>,
 }
 
@@ -1135,6 +1138,9 @@ pub struct PoCLink<Block: BlockT> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// validation
+    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
 impl<Block: BlockT> PoCLink<Block> {
@@ -1511,6 +1517,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             NumberFor<Block>,
             mpsc::Sender<RootBlock>,
         )>,
+        root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     ) -> Self {
         PoCBlockImport {
             client,
@@ -1518,7 +1525,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
             epoch_changes,
             config,
             imported_block_notification_sender,
-            root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
+            root_blocks,
         }
     }
 }
@@ -1941,6 +1948,7 @@ where
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
+        root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
     };
 
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
@@ -1954,9 +1962,63 @@ where
         wrapped_block_import,
         config,
         imported_block_notification_sender,
+        Arc::clone(&link.root_blocks),
     );
 
     Ok((import, link))
+}
+
+fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
+where
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
+    Client::Api: PoCApi<Block>,
+{
+    let mut block_to_check = BlockId::Hash(client.info().best_hash);
+    loop {
+        let block = client
+            .block(&block_to_check)
+            .expect("Older blocks should always exist")
+            .expect("Older blocks should always exist");
+        let mut latest_root_block: Option<RootBlock> = None;
+
+        for extrinsic in block.block.extrinsics() {
+            match client
+                .runtime_api()
+                .extract_root_block(&block_to_check, extrinsic.encode())
+            {
+                Ok(Some(root_block)) => match &mut latest_root_block {
+                    Some(latest_root_block) => {
+                        if latest_root_block.segment_index() < root_block.segment_index() {
+                            *latest_root_block = root_block;
+                        }
+                    }
+                    None => {
+                        latest_root_block.replace(root_block);
+                    }
+                },
+                Ok(None) => {
+                    // Some other extrinsic, ignore
+                }
+                Err(error) => {
+                    // TODO: Probably light client, can this even happen?
+                    error!(target: "poc", "Failed to make runtime API call: {:?}", error);
+                }
+            }
+        }
+
+        if latest_root_block.is_some() {
+            break latest_root_block;
+        }
+
+        let parent_block_hash = *block.block.header().parent_hash();
+
+        if parent_block_hash == Block::Hash::default() {
+            // Genesis block, nothing else to check
+            break None;
+        }
+
+        block_to_check = BlockId::Hash(parent_block_hash);
+    }
 }
 
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
@@ -1975,6 +2037,51 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + 'static,
     Client::Api: PoCApi<Block>,
 {
+    let mut archiver = if let Some(latest_root_block) = find_last_root_block(client.as_ref()) {
+        // Continuing from existing initial state
+        BlockArchiver::with_initial_state(
+            RECORD_SIZE,
+            RECORDED_HISTORY_SEGMENT_SIZE,
+            latest_root_block,
+            &client
+                .block(&BlockId::Number(
+                    latest_root_block.last_archived_block().number.into(),
+                ))
+                .expect("Older blocks should always exist")
+                .expect("Older blocks should always exist"),
+        )
+        .expect("Incorrect parameters for archiver")
+    } else {
+        // Starting from genesis
+        let mut object_archiver = ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+            .expect("Incorrect parameters for archiver");
+
+        // These archived segments are a part of the public parameters of network setup, thus
+        // do not need to be sent to farmers
+        let new_root_blocks: Vec<RootBlock> = object_archiver
+            .add_object(&pre_genesis_data::from_seed(
+                BLOCKCHAIN_SEED,
+                PRE_GENESIS_OBJECT_SIZE,
+            ))
+            .into_iter()
+            .map(|archived_segment| archived_segment.root_block)
+            .collect();
+
+        // Submit store root block extrinsic at genesis block.
+        for root_block in new_root_blocks.iter().copied() {
+            client
+                .runtime_api()
+                .submit_store_root_block_extrinsic(&BlockId::Number(Zero::zero()), root_block)
+                .expect("Failed to submit `store_root_block` extrinsic at genesis block");
+        }
+
+        // Set list of expected root blocks for the next block after genesis (we can't have
+        // extrinsics in genesis block, at least not right now)
+        poc_link.root_blocks.lock().put(One::one(), new_root_blocks);
+
+        object_archiver.into_block_archiver()
+    };
+
     spawner.spawn_blocking(
         "subspace-archiver",
         Box::pin({
@@ -1984,77 +2091,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 poc_link.archived_segment_notification_sender.clone();
 
             async move {
-                let latest_root_block: Option<RootBlock> = {
-                    let mut block_to_check = BlockId::Hash(client.info().best_hash);
-                    loop {
-                        let block = client
-                            .block(&block_to_check)
-                            .expect("Older blocks should always exist")
-                            .expect("Older blocks should always exist");
-                        let mut latest_root_block: Option<RootBlock> = None;
-
-                        for extrinsic in block.block.extrinsics() {
-                            match client
-                                .runtime_api()
-                                .extract_root_block(&block_to_check, extrinsic.encode())
-                            {
-                                Ok(Some(root_block)) => match &mut latest_root_block {
-                                    Some(latest_root_block) => {
-                                        if latest_root_block.segment_index()
-                                            < root_block.segment_index()
-                                        {
-                                            *latest_root_block = root_block;
-                                        }
-                                    }
-                                    None => {
-                                        latest_root_block.replace(root_block);
-                                    }
-                                },
-                                Ok(None) => {
-                                    // Some other extrinsic, ignore
-                                }
-                                Err(error) => {
-                                    // TODO: Probably light client, can this even happen?
-                                    error!(
-                                        target: "poc",
-                                        "Failed to make runtime API call: {:?}",
-                                        error,
-                                    );
-                                }
-                            }
-                        }
-
-                        if latest_root_block.is_some() {
-                            break latest_root_block;
-                        }
-
-                        let parent_block_hash = *block.block.header().parent_hash();
-
-                        if parent_block_hash == Block::Hash::default() {
-                            // Genesis block, nothig else to check
-                            break None;
-                        }
-
-                        block_to_check = BlockId::Hash(parent_block_hash);
-                    }
-                };
                 let mut last_archived_block_number = None;
-                let mut archiver = match latest_root_block {
-                    Some(latest_root_block) => Archiver::with_initial_state(
-                        RECORD_SIZE,
-                        RECORDED_HISTORY_SEGMENT_SIZE,
-                        latest_root_block,
-                        client
-                            .block(&BlockId::Number(
-                                latest_root_block.last_archived_block().number.into(),
-                            ))
-                            .expect("Older blocks should always exist")
-                            .expect("Older blocks should always exist"),
-                    )
-                    .expect("Incorrect parameters for archiver"),
-                    None => Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-                        .expect("Incorrect parameters for archiver"),
-                };
 
                 while let Some((block_number, mut root_block_sender)) =
                     imported_block_notification_stream.next().await
@@ -2086,15 +2123,11 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .expect("Older block by number should always exist")
                         .expect("Older block by number should always exist");
 
-                    for archived_segment in archiver.add_block(block) {
+                    for archived_segment in archiver.add_block(&block) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;
 
-                        archived_segment_notification_sender.notify(move || {
-                            ArchivedSegmentNotification {
-                                segment_index: root_block.segment_index(),
-                                pieces,
-                            }
-                        });
+                        archived_segment_notification_sender
+                            .notify(move || ArchivedSegmentNotification { root_block, pieces });
 
                         let _ = root_block_sender.send(root_block).await;
                     }
