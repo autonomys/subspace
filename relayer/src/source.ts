@@ -1,7 +1,8 @@
 import { ApiPromise } from "@polkadot/api";
 import { Observable } from "@polkadot/types/types";
 import { U64 } from "@polkadot/types/primitive";
-import { concatMap } from "rxjs/operators";
+import { concatMap, mergeMap } from "rxjs/operators";
+import { from } from 'rxjs';
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 
@@ -37,7 +38,6 @@ class Source {
     return this.api.rx.rpc.chain.subscribeFinalizedHeads();
   }
 
-  // TODO: should return Uint8Array instead of string
   private getBlock(hash: Hash): Promise<SignedBlock> {
     return this.api.rpc.chain.getBlock(hash);
   }
@@ -103,7 +103,7 @@ class Source {
   }
 
   // TODO: should return observable instead of array
-  private async getBlocksByHeader({ hash, number }: Header): Promise<TxData[]> {
+  private async getBlocksByHeader({ hash, number }: Header) {
     const block = await this.getBlock(hash);
     // TODO: fetch parablocks only if source chain has parachains
     const parablocks = await this.getParablocks(block);
@@ -118,18 +118,21 @@ class Source {
 
     const metadata = {
       hash: hash,
-      // TODO: probably there is a better way - investigate
       number: this.api.createType("U32", number.toNumber()),
     };
 
     const relayBlock = { feedId: this.feedId, block: hex, metadata };
 
     // TODO: add parablocks
-    return [relayBlock];
+    return from([relayBlock]);
   }
 
-  subscribeBlocks(): Observable<TxData[]> {
-    return this.subscribeHeads().pipe(concatMap(this.getBlocksByHeader));
+  subscribeBlocks(): Observable<TxData> {
+    return this.subscribeHeads()
+      .pipe(
+        concatMap(this.getBlocksByHeader),
+        mergeMap(x => x),
+      );
   }
 }
 

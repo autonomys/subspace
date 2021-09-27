@@ -27,9 +27,8 @@ describe("Source class", () => {
 
         stream.subscribe((data) => {
             expect(params.api.rpc.chain.getBlock).toHaveBeenCalled();
-            expect(data).toHaveLength(1);
-            expect(data[0]).toHaveProperty("feedId");
-            expect(data[0].feedId).toBe(params.feedId);
+            expect(data).toHaveProperty("feedId");
+            expect(data.feedId).toBe(params.feedId);
             // TODO: add check block value
             done();
         });

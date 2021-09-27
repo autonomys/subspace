@@ -1,4 +1,5 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
+import { merge } from "rxjs";
 import { getAccount } from "./account";
 import { loadConfig } from "./config";
 import Source from "./source";
@@ -42,7 +43,7 @@ const createApi = async (url: string) => {
     })
   );
 
-  const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
+  const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
 
   target.processSubscriptions(blockSubscriptions).subscribe()
 })();

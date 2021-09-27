@@ -40,7 +40,6 @@ pub mod pallet {
         UknownFeedId,
     }
 
-    // TODO: consider extracting feed_id from metadata as separate argument
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights

@@ -4,7 +4,7 @@ import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-import { merge } from "rxjs";
+import { Subscription } from "rxjs";
 import { concatMap, take } from "rxjs/operators";
 
 import { TxData } from "./types";
@@ -27,7 +27,6 @@ class Target {
     this.signer = signer;
     this.logger = logger;
     this.sendBlockTx = this.sendBlockTx.bind(this);
-    this.processBlocks = this.processBlocks.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
   }
 
@@ -96,16 +95,10 @@ class Target {
     });
   }
 
-  private async processBlocks(blocks: TxData[]) {
-    for await (const block of blocks) {
-      await this.sendBlockTx(block);
-    }
-  }
-
   processSubscriptions = (
-    subscriptions: Observable<TxData[]>[]
-  ): Observable<void> => {
-    return merge(...subscriptions).pipe(concatMap(this.processBlocks));
+    subscription: Observable<TxData>
+  ): Observable<Subscription> => {
+    return subscription.pipe(concatMap(this.sendBlockTx));
   };
 }
 

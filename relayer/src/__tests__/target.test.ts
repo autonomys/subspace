@@ -12,7 +12,7 @@ describe("Target class", () => {
         logger: loggerMock,
     };
 
-    const blockSubscriptions = [of([txDataMock])];
+    const blockSubscriptions = of(txDataMock);
 
     it("should create an instance", () => {
         const target = new Target(defaultParams);
