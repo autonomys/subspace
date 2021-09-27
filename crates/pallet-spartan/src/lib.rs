@@ -615,7 +615,8 @@ impl<T: Config> Pallet<T> {
         // solution range according to actual and expected number of blocks per era.
         let actual_slots_per_block = era_slot_count as f64 / T::EraDuration::get() as f64;
         let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
-        let adjustment_factor = actual_slots_per_block / expected_slots_per_block;
+        let adjustment_factor =
+            (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
         let solution_range = (previous_solution_range as f64 * adjustment_factor).round() as u64;
 
