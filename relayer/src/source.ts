@@ -4,35 +4,10 @@ import { U64 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
-import { EventRecord } from "@polkadot/types/interfaces/system";
 
-import { TxData } from "./types";
+import { TxData, ParaHeadAndId } from "./types";
 import { FetchParaBlockFunc } from "./rpc";
-
-// TODO: consider moving to a separate utils module
-// TODO: implement tests
-const getParaHeadAndIdFromRecord = ({ event }: EventRecord) => {
-  // use 'any' because this is not typed array - element can be number, string or Record<string, unknown>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { paraHead, paraId } = (event.toJSON().data as Array<any>)[0]
-    .descriptor;
-
-  return { paraHead, paraId };
-};
-
-// TODO: more explicit function name
-const isRelevantRecord =
-  (index: number) =>
-    ({ phase, event }: EventRecord) => {
-      return (
-        // filter the specific events based on the phase and then the
-        // index of our extrinsic in the block
-        phase.isApplyExtrinsic &&
-        phase.asApplyExtrinsic.eq(index) &&
-        event.section == "paraInclusion" &&
-        event.method == "CandidateIncluded"
-      );
-    };
+import { getParaHeadAndIdFromRecord, isRelevantRecord } from './utils'
 
 type SourceConstructorParams = {
   api: ApiPromise;
@@ -41,11 +16,6 @@ type SourceConstructorParams = {
   parachains: Record<string, string>;
   logger: Logger;
   fetchParaBlock: FetchParaBlockFunc;
-};
-
-type ParaHeadAndId = {
-  paraId: string;
-  paraHead: Hash;
 };
 
 class Source {
@@ -122,7 +92,7 @@ class Source {
         number: this.api.createType("U32", header.number.toNumber())
       }
 
-      return { block: hex, metadata, feedId: this.api.createType("U64", 0) };
+      return { block: hex, metadata, feedId: this.api.createType("U64", 2) };
     });
 
     return Promise.all(parablockRequests);
@@ -149,7 +119,7 @@ class Source {
 
     const relayBlock = { feedId: this.feedId, block: hex, metadata };
 
-    return [relayBlock, ...parablocks];
+    return [relayBlock, parablocks[0]];
   }
 
   subscribeBlocks(): Observable<TxData[]> {

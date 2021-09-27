@@ -1,0 +1,27 @@
+import { EventRecord } from "@polkadot/types/interfaces/system";
+import { ParaHeadAndId } from "./types";
+
+// TODO: consider moving to a separate utils module
+// TODO: implement tests
+export const getParaHeadAndIdFromRecord = ({ event }: EventRecord): ParaHeadAndId => {
+    // use 'any' because this is not typed array - element can be number, string or Record<string, unknown>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { paraHead, paraId } = (event.toJSON().data as Array<any>)[0]
+        .descriptor;
+
+    return { paraHead, paraId };
+};
+
+// TODO: more explicit function name
+export const isRelevantRecord =
+    (index: number) =>
+        ({ phase, event }: EventRecord): boolean => {
+            return (
+                // filter the specific events based on the phase and then the
+                // index of our extrinsic in the block
+                phase.isApplyExtrinsic &&
+                phase.asApplyExtrinsic.eq(index) &&
+                event.section == "paraInclusion" &&
+                event.method == "CandidateIncluded"
+            );
+        };

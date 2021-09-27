@@ -11,3 +11,8 @@ type Metadata = {
   hash: Hash;
   number: U32;
 };
+
+export type ParaHeadAndId = {
+  paraId: string;
+  paraHead: Hash;
+};
