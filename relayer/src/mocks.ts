@@ -2,13 +2,17 @@ import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { of } from "rxjs";
 import { Block, Hash, SignedBlock } from "@polkadot/types/interfaces";
-import { U32 } from "@polkadot/types/primitive";
+import { U64 } from "@polkadot/types/primitive";
 
 export const txHashMock = "random hash" as unknown as Hash;
 
 export const txDataMock = {
-  chainId: 1 as unknown as U32,
+  feedId: 1 as unknown as U64,
   block: "block hex",
+  metadata: {
+    hash: "random hash",
+    number: 1
+  }
 };
 
 const block = {

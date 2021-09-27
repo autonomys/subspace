@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 async-oneshot = "0.5.0"
 sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
-sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
@@ -24,8 +24,9 @@ sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 serde = { version = "1.0.127", features = ["derive"] }
 futures = "0.3.17"
 futures-timer = "3.0.2"
-sp-core = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fa635c968e831110b13f7ff997c4cd3f5e9a3798" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 log = "0.4.14"
 parking_lot = "0.11.1"
+subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]

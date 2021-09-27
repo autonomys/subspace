@@ -4,7 +4,6 @@ dotenv.config();
 
 type SourceChain = {
   url: string;
-  chainId: number;
   parachains: Record<string, string>;
 };
 
@@ -33,7 +32,6 @@ export const loadConfig = (): Config => {
     sourceChainUrls: [
       {
         url: "wss://kusama-rpc.polkadot.io",
-        chainId: 0,
         parachains: {
           [1000]: "https://kusama-statemine-rpc.paritytech.net",
           [2000]: "https://karura.api.onfinality.io/public",

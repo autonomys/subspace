@@ -6,6 +6,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use codec::Decode;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
@@ -18,6 +19,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use subspace_core_primitives::RootBlock;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -236,6 +238,7 @@ parameter_types! {
 }
 
 impl pallet_spartan::Config for Runtime {
+    type Event = Event;
     type EpochDuration = EpochDuration;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
@@ -330,7 +333,7 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
-        PoC: pallet_spartan::{Pallet, Call, Storage, Config, ValidateUnsigned},
+        PoC: pallet_spartan::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
@@ -366,6 +369,17 @@ pub type Executive = frame_executive::Executive<
     AllPallets,
 >;
 
+fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
+    if let Ok(extrinsic) = UncheckedExtrinsic::decode(&mut encoded_extrinsic.as_slice()) {
+        if let Call::PoC(pallet_spartan::Call::store_root_block { root_block }) = extrinsic.function
+        {
+            return Some(root_block);
+        }
+    }
+
+    None
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -383,7 +397,7 @@ impl_runtime_apis! {
 
     impl sp_api::Metadata<Block> for Runtime {
         fn metadata() -> OpaqueMetadata {
-            Runtime::metadata().into()
+            OpaqueMetadata::new(Runtime::metadata().into())
         }
     }
 
@@ -465,7 +479,7 @@ impl_runtime_apis! {
             PoC::submit_equivocation_report(equivocation_proof)
         }
 
-        fn submit_store_root_block_extrinsic(root_block: sp_consensus_poc::RootBlock) {
+        fn submit_store_root_block_extrinsic(root_block: RootBlock) {
             PoC::submit_store_root_block(root_block)
         }
 
@@ -473,6 +487,10 @@ impl_runtime_apis! {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             PoC::is_in_block_list(farmer_id)
+        }
+
+        fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
+            extract_root_block(encoded_extrinsic)
         }
     }
 

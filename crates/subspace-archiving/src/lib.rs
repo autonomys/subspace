@@ -13,14 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Primitives for Spartan-based PoR.
+//! Collection of modules used for dealing with archived state of Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(int_log)]
 
 #[cfg(feature = "std")]
-pub mod spartan;
-
-/// The length of the Randomness.
-pub const RANDOMNESS_LENGTH: usize = 32;
-
-/// Randomness value.
-pub type Randomness = [u8; RANDOMNESS_LENGTH];
+pub mod archiver;
+#[cfg(feature = "std")]
+pub mod merkle_tree;
+#[cfg(feature = "std")]
+pub mod pre_genesis_data;

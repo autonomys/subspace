@@ -17,13 +17,21 @@
 //! Consensus extension module tests for Spartan consensus.
 
 use super::{Call, *};
+use frame_support::storage::migration::{get_storage_value, put_storage_value};
 use frame_support::{
     assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
 };
-use mock::*;
+use frame_system::{EventRecord, Phase};
+use mock::{Event, *};
 use schnorrkel::Keypair;
 use sp_consensus_poc::{digests::Solution, PoCEpochConfiguration, Slot};
 use sp_core::Public;
+use sp_runtime::traits::Header;
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+    ValidTransaction,
+};
+use sp_runtime::DispatchError;
 
 const EMPTY_RANDOMNESS: [u8; 32] = [
     74, 25, 49, 128, 53, 97, 244, 49, 222, 202, 176, 2, 231, 66, 95, 10, 133, 49, 213, 228, 86,
@@ -249,8 +257,6 @@ fn can_enact_next_config() {
 
 #[test]
 fn only_root_can_enact_config_change() {
-    use sp_runtime::DispatchError;
-
     new_test_ext().execute_with(|| {
         let next_config = NextConfigDescriptor::V1 { c: (1, 4) };
 
@@ -324,7 +330,6 @@ fn report_equivocation_current_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let keypair = Keypair::generate();
         let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
 
         // generate an equivocation proof. it creates two headers at the given
@@ -350,7 +355,6 @@ fn report_equivocation_old_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let keypair = Keypair::generate();
         let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
 
         // generate an equivocation proof at the current slot
@@ -374,8 +378,6 @@ fn report_equivocation_old_session_works() {
 
 #[test]
 fn report_equivocation_invalid_equivocation_proof() {
-    use sp_runtime::traits::Header;
-
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
@@ -441,24 +443,20 @@ fn report_equivocation_invalid_equivocation_proof() {
 
 #[test]
 fn report_equivocation_validate_unsigned_prevents_duplicates() {
-    use sp_runtime::transaction_validity::{
-        InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
-        ValidTransaction,
-    };
-
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1);
 
-        let keypair = Keypair::generate();
         let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
 
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
-        let inner = Call::report_equivocation(Box::new(equivocation_proof.clone()));
+        let inner = Call::report_equivocation {
+            equivocation_proof: Box::new(equivocation_proof.clone()),
+        };
 
-        // only local/inblock reports are allowed
+        // Only local/in block reports are allowed
         assert_eq!(
             <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
                 TransactionSource::External,
@@ -467,7 +465,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
             InvalidTransaction::Call.into(),
         );
 
-        // the transaction is valid when passed as local
+        // The transaction is valid when passed as local
         let tx_tag = (farmer_id, CurrentSlot::<Test>::get());
         assert_eq!(
             <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
@@ -483,14 +481,14 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
             })
         );
 
-        // the pre dispatch checks should also pass
+        // The pre dispatch checks should also pass
         assert_ok!(<Spartan as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
-        // we submit the report
+        // Submit the report
         Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
 
-        // the report should now be considered stale and the transaction is invalid.
-        // the check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
+        // The report should now be considered stale and the transaction is invalid.
+        // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
         assert_err!(
             <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
                 TransactionSource::Local,
@@ -521,14 +519,14 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
         progress_to_block(&keypair, 1);
 
-        let keypair = Keypair::generate();
-
         // generate an equivocation proof.
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
         // check the dispatch info for the call.
-        let info = Call::<Test>::report_equivocation(Box::new(equivocation_proof.clone()))
-            .get_dispatch_info();
+        let info = Call::<Test>::report_equivocation {
+            equivocation_proof: Box::new(equivocation_proof.clone()),
+        }
+        .get_dispatch_info();
 
         // it should have non-zero weight and the fee has to be paid.
         assert!(info.weight > 0);
@@ -558,9 +556,99 @@ fn valid_equivocation_reports_dont_pay_fees() {
 }
 
 #[test]
-fn add_epoch_configurations_migration_works() {
-    use frame_support::storage::migration::{get_storage_value, put_storage_value};
+fn store_root_block_works() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
 
+        progress_to_block(&keypair, 1);
+
+        let root_block = create_root_block(0);
+
+        let post_info = Spartan::store_root_block(Origin::none(), root_block).unwrap();
+
+        // Root blocks don't require fee
+        assert_eq!(post_info.pays_fee, Pays::No);
+
+        assert_eq!(
+            System::events(),
+            vec![EventRecord {
+                phase: Phase::Initialization,
+                event: Event::Spartan(crate::Event::RootBlockStored(root_block)),
+                topics: vec![],
+            }]
+        );
+    });
+}
+
+#[test]
+fn store_root_block_validate_unsigned_prevents_duplicates() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        progress_to_block(&keypair, 1);
+
+        let segment_index = 0u64;
+        let root_block = create_root_block(segment_index);
+
+        let inner = Call::store_root_block { root_block };
+
+        // Only local/in block reports are allowed
+        assert_eq!(
+            <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
+                TransactionSource::External,
+                &inner,
+            ),
+            InvalidTransaction::Call.into(),
+        );
+
+        // The transaction is valid when passed as local
+        assert_eq!(
+            <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
+                TransactionSource::Local,
+                &inner,
+            ),
+            TransactionValidity::Ok(ValidTransaction {
+                priority: TransactionPriority::MAX,
+                requires: vec![],
+                provides: vec![("SubspaceRootBlock", segment_index).encode()],
+                longevity: 0,
+                propagate: false,
+            })
+        );
+
+        // The pre dispatch checks should also pass
+        assert_ok!(<Spartan as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
+
+        // Submit the report
+        Spartan::store_root_block(Origin::none(), root_block).unwrap();
+
+        // The report should now be considered stale and the transaction is invalid.
+        // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
+        assert_err!(
+            <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
+                TransactionSource::Local,
+                &inner,
+            ),
+            InvalidTransaction::Stale,
+        );
+
+        assert_err!(
+            <Spartan as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner),
+            InvalidTransaction::Stale,
+        );
+    });
+}
+
+#[test]
+fn store_root_block_has_valid_weight() {
+    // the weight is always the same.
+    assert!((1..=1000)
+        .map(|_| { <Test as Config>::WeightInfo::store_root_block() })
+        .all(|w| w == 1));
+}
+
+#[test]
+fn add_epoch_configurations_migration_works() {
     impl crate::migrations::PoCPalletPrefix for Test {
         fn pallet_prefix() -> &'static str {
             "Spartan"

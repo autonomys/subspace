@@ -1,10 +1,10 @@
 import { ApiPromise } from "@polkadot/api";
+import { Observable } from "@polkadot/types/types";
+import { U64 } from "@polkadot/types/primitive";
 import { concatMap } from "rxjs/operators";
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { EventRecord } from "@polkadot/types/interfaces/system";
-import { Observable } from "@polkadot/types/types";
-import { U32 } from "@polkadot/types/primitive";
 
 import { TxData } from "./types";
 import { FetchParaBlockFunc } from "./rpc";
@@ -37,7 +37,7 @@ const isRelevantRecord =
 type SourceConstructorParams = {
   api: ApiPromise;
   chain: string;
-  chainId: U32;
+  feedId: U64;
   parachains: Record<string, string>;
   logger: Logger;
   fetchParaBlock: FetchParaBlockFunc;
@@ -51,7 +51,7 @@ type ParaHeadAndId = {
 class Source {
   private api: ApiPromise;
   private chain: string;
-  private chainId: U32;
+  private feedId: U64;
   private parachains: Record<string, string>;
   private logger: Logger;
   private fetchParaBlock: FetchParaBlockFunc;
@@ -59,7 +59,7 @@ class Source {
   constructor(params: SourceConstructorParams) {
     this.api = params.api;
     this.chain = params.chain;
-    this.chainId = params.chainId;
+    this.feedId = params.feedId;
     this.parachains = params.parachains;
     this.logger = params.logger;
     this.fetchParaBlock = params.fetchParaBlock;
@@ -103,7 +103,7 @@ class Source {
       const paraUrl = this.parachains[paraId];
       if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
 
-      const block = await this.fetchParaBlock(paraUrl, paraHead);
+      const block = await this.fetchParaBlock((paraUrl), paraHead);
       const header = this.api.createType("Header", block.block.header);
 
       const blockAsSignedBlock = this.api.createType("SignedBlock", {
@@ -117,13 +117,18 @@ class Source {
 
       const hex = blockAsSignedBlock.toHex();
 
-      return { block: hex, chainId: this.api.createType("U32", paraId) };
+      const metadata = {
+        hash: paraHead,
+        number: this.api.createType("U32", header.number.toNumber())
+      }
+
+      return { block: hex, metadata, feedId: this.api.createType("U64", 0) };
     });
 
     return Promise.all(parablockRequests);
   }
 
-  private async getBlocksByHeader({ hash }: Header): Promise<TxData[]> {
+  private async getBlocksByHeader({ hash, number }: Header): Promise<TxData[]> {
     const block = await this.getBlock(hash);
     // TODO: fetch parablocks only if source chain has parachains
     const parablocks = await this.getParablocks(block);
@@ -131,11 +136,18 @@ class Source {
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
     // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
+    const hex = block.toHex();
 
     this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
 
-    const relayBlock = { block: block.toHex(), chainId: this.chainId };
+    const metadata = {
+      hash,
+      // TODO: probably there is a better way - investigate
+      number: this.api.createType("U32", number.toNumber()),
+    };
+
+    const relayBlock = { feedId: this.feedId, block: hex, metadata };
 
     return [relayBlock, ...parablocks];
   }

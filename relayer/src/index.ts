@@ -5,21 +5,13 @@ import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
 import { fetchParaBlock } from "./rpc";
-import { RegistryTypes } from "@polkadot/types/types";
 
 const config = loadConfig();
 
-// TODO: use typedefs from subspace.js
-const types = {
-  PutDataObject: "Vec<u8>",
-  ChainId: "u32",
-};
-
-const createApi = async (url: string, types?: RegistryTypes) => {
+const createApi = async (url: string) => {
   const provider = new WsProvider(url);
   const api = await ApiPromise.create({
     provider,
-    types,
   });
 
   return api;
@@ -27,34 +19,31 @@ const createApi = async (url: string, types?: RegistryTypes) => {
 
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
-  const targetApi = await createApi(config.targetChainUrl, types);
+  const targetApi = await createApi(config.targetChainUrl);
   // use getAccount func because we cannot create keyring instance before API is instanciated
   const signer = getAccount(config.accountSeed);
 
   const target = new Target({ api: targetApi, signer, logger });
 
+
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, chainId, parachains }) => {
+    config.sourceChainUrls.map(async ({ url, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
+      const feedId = await target.sendCreateFeedTx();
 
       return new Source({
         api,
         chain: chain.toString(),
-        chainId: api.createType("u32", chainId),
         parachains,
         logger,
         fetchParaBlock,
+        feedId,
       });
     })
   );
 
   const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
 
-  target.processSubscriptions(blockSubscriptions).subscribe({
-    // TODO: handle errors
-    error(error) {
-      logger.error(error);
-    },
-  });
+  target.processSubscriptions(blockSubscriptions).subscribe()
 })();

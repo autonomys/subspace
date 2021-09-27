@@ -48,7 +48,6 @@ use sp_consensus_poc::{
     ConsensusLog, Epoch, EquivocationProof, PoCEpochConfiguration, Slot, POC_ENGINE_ID,
 };
 pub use sp_consensus_poc::{FarmerId, RANDOMNESS_LENGTH};
-use sp_consensus_spartan::{RootBlock, Sha256Hash};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -58,6 +57,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
+use subspace_core_primitives::{RootBlock, Sha256Hash};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
@@ -137,6 +137,9 @@ pub mod pallet {
     #[pallet::config]
     #[pallet::disable_frame_system_supertrait_check]
     pub trait Config: pallet_timestamp::Config {
+        /// The overarching event type.
+        type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+
         /// The amount of time, in slots, that each epoch should last.
         /// NOTE: Currently it is not possible to change the epoch duration after
         /// the chain has started. Attempting to do so will brick block production.
@@ -200,6 +203,15 @@ pub mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+    }
+
+    /// Events type.
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event {
+        /// Root block was stored in blockchain history.
+        /// \[root_block\].
+        RootBlockStored(RootBlock),
     }
 
     #[pallet::error]
@@ -435,16 +447,18 @@ pub mod pallet {
         type Call = Call<T>;
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::report_equivocation(_) => Self::validate_equivocation_report(source, call),
-                Call::store_root_block(_) => Self::validate_root_block(source, call),
+                Call::report_equivocation { .. } => {
+                    Self::validate_equivocation_report(source, call)
+                }
+                Call::store_root_block { .. } => Self::validate_root_block(source, call),
                 _ => InvalidTransaction::Call.into(),
             }
         }
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::report_equivocation(_) => Self::pre_dispatch_equivocation_report(call),
-                Call::store_root_block(_) => Self::pre_dispatch_root_block(call),
+                Call::report_equivocation { .. } => Self::pre_dispatch_equivocation_report(call),
+                Call::store_root_block { .. } => Self::pre_dispatch_root_block(call),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -601,7 +615,8 @@ impl<T: Config> Pallet<T> {
         // solution range according to actual and expected number of blocks per era.
         let actual_slots_per_block = era_slot_count as f64 / T::EraDuration::get() as f64;
         let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
-        let adjustment_factor = actual_slots_per_block / expected_slots_per_block;
+        let adjustment_factor =
+            (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
         let solution_range = (previous_solution_range as f64 * adjustment_factor).round() as u64;
 
@@ -849,6 +864,8 @@ impl<T: Config> Pallet<T> {
             root_block.merkle_tree_root(),
         );
 
+        Self::deposit_event(Event::RootBlockStored(root_block));
+
         // Waive the fee since the root block is required by the protocol and beneficial
         Ok(Pays::No.into())
     }
@@ -894,12 +911,13 @@ where
     pub fn submit_store_root_block(root_block: RootBlock) {
         use frame_system::offchain::SubmitTransaction;
 
-        let call = Call::store_root_block(root_block);
+        let call = Call::store_root_block { root_block };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
                 target: "runtime::poc",
-                "Submitted Subspace root block.",
+                "📦 Submitted Subspace root block with segment index {}.",
+                root_block.segment_index(),
             ),
             Err(e) => log::error!(
                 target: "runtime::poc",
@@ -917,7 +935,7 @@ where
 /// blocks.
 impl<T: Config> Pallet<T> {
     pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::store_root_block(root_block) = call {
+        if let Call::store_root_block { root_block } = call {
             // Discard root block not coming from the local node
             if !matches!(
                 source,
@@ -939,9 +957,8 @@ impl<T: Config> Pallet<T> {
                 .priority(TransactionPriority::MAX)
                 // Only one root block for every segment index.
                 .and_provides(root_block.segment_index())
-                // TODO: Should this be `0` or `1`?
-                // Should be included immediately with no exceptions
-                .longevity(1)
+                // Should be included immediately into the upcoming block with no exceptions.
+                .longevity(0)
                 // We don't propagate this. This can never be included on a remote node.
                 .propagate(false)
                 .build()
@@ -951,7 +968,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::store_root_block(root_block) = call {
+        if let Call::store_root_block { root_block } = call {
             check_root_block_for_segment_index::<T>(root_block.segment_index())
         } else {
             Err(InvalidTransaction::Call.into())
@@ -967,17 +984,9 @@ fn check_root_block_for_segment_index<T: Config>(
         return Err(InvalidTransaction::Stale.into());
     }
 
-    // TODO: Check if order can be guaranteed for transactions with the same weight and type though,
-    //  that is in case we have a blockchain block that causes two root blocks to be created and
-    //  submitted for inclusion in the same blockchain block
-    // Check if the root block for previous segment is already added, it must be at this point.
-    //
-    // NOTE: The very first segment will not have predecessor, we check for that as well.
-    if segment_index == 0 || MerkleRootsBySegmentIndex::<T>::contains_key(segment_index - 1) {
-        Ok(())
-    } else {
-        Err(InvalidTransaction::Stale.into())
-    }
+    // There is no guarantee on the order of transactions even on the same node unfortunately, so we
+    // can't do other validations like monotonically increasing `segment_index`
+    Ok(())
 }
 
 impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
@@ -991,9 +1000,10 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
         let timestamp_slot = moment / slot_duration;
         let timestamp_slot = Slot::from(timestamp_slot.saturated_into::<u64>());
 
-        assert!(
-            CurrentSlot::<T>::get() == timestamp_slot,
-            "Timestamp slot must match `CurrentSlot`"
+        assert_eq!(
+            CurrentSlot::<T>::get(),
+            timestamp_slot,
+            "Timestamp slot must match `CurrentSlot`",
         );
     }
 }
