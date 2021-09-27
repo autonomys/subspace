@@ -2,7 +2,7 @@ import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { of } from "rxjs";
 import { Block, Hash, SignedBlock } from "@polkadot/types/interfaces";
-import { U64 } from "@polkadot/types/primitive";
+import { U64, U32 } from "@polkadot/types/primitive";
 
 export const txHashMock = "random hash" as unknown as Hash;
 
@@ -10,8 +10,8 @@ export const txDataMock = {
   feedId: 1 as unknown as U64,
   block: "block hex",
   metadata: {
-    hash: "random hash",
-    number: 1
+    hash: "random hash" as unknown as Hash,
+    number: 1 as unknown as U32,
   }
 };
 
@@ -29,11 +29,29 @@ const block = {
 
 export const apiMock = {
   rx: {
+    tx: {
+      feeds: {
+        put: jest.fn().mockReturnValue({
+          signAndSend: jest.fn().mockReturnValue({
+            pipe: jest.fn().mockReturnValue({
+              subscribe() {
+                return
+              }
+            })
+          })
+        }),
+      },
+    },
     rpc: {
       chain: {
         subscribeFinalizedHeads() {
           return of({
             hash: "random hash" as unknown as Hash,
+            number: {
+              toNumber() {
+                return 10
+              }
+            },
           });
         },
       },
@@ -53,12 +71,8 @@ export const apiMock = {
       },
     },
   },
-  tx: {
-    feeds: {
-      put: jest.fn().mockReturnValue({
-        signAndSend: jest.fn().mockResolvedValue(txHashMock),
-      }),
-    },
+  createType() {
+    return
   },
 } as unknown as ApiPromise;
 

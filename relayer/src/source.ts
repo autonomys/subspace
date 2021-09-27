@@ -92,12 +92,14 @@ class Source {
         number: this.api.createType("U32", header.number.toNumber())
       }
 
+      // TODO: remove feedId hardcode
       return { block: hex, metadata, feedId: this.api.createType("U64", 2) };
     });
 
     return Promise.all(parablockRequests);
   }
 
+  // TODO: should return observable instead of array
   private async getBlocksByHeader({ hash, number }: Header): Promise<TxData[]> {
     const block = await this.getBlock(hash);
     // TODO: fetch parablocks only if source chain has parachains
@@ -112,14 +114,15 @@ class Source {
     this.logger.info(`Associated parablocks: ${parablocks.length}`);
 
     const metadata = {
-      hash,
+      hash: hash,
       // TODO: probably there is a better way - investigate
       number: this.api.createType("U32", number.toNumber()),
     };
 
     const relayBlock = { feedId: this.feedId, block: hex, metadata };
 
-    return [relayBlock, parablocks[0]];
+    // TODO: add parablocks
+    return [relayBlock];
   }
 
   subscribeBlocks(): Observable<TxData[]> {
