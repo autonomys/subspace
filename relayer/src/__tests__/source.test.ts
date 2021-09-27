@@ -1,18 +1,15 @@
 import { U64 } from "@polkadot/types/primitive";
 import { Observable } from "rxjs";
 import Source from "../source";
-import { apiMock, loggerMock, fetchParaBlockMock } from "../mocks";
+import { apiMock, loggerMock } from "../mocks";
 
 describe("Source class", () => {
     const params = {
         api: apiMock,
         chain: "Random relay chain name",
         feedId: 66 as unknown as U64,
-        parachains: {
-            [45]: "random parachain endpoint url",
-        },
+        parachainsMap: new Map(),
         logger: loggerMock,
-        fetchParaBlock: fetchParaBlockMock,
     };
 
     it("should create an instance", () => {

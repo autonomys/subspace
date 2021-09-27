@@ -6,33 +6,30 @@ import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 
 import { TxData, ParaHeadAndId } from "./types";
-import { FetchParaBlockFunc } from "./rpc";
 import { getParaHeadAndIdFromRecord, isRelevantRecord } from './utils'
+import Parachain from "./parachain";
 
 type SourceConstructorParams = {
   api: ApiPromise;
   chain: string;
   feedId: U64;
-  parachains: Record<string, string>;
+  parachainsMap: Map<string, Parachain>;
   logger: Logger;
-  fetchParaBlock: FetchParaBlockFunc;
 };
 
 class Source {
   private api: ApiPromise;
   private chain: string;
   private feedId: U64;
-  private parachains: Record<string, string>;
+  private parachainsMap: Map<string, Parachain>;
   private logger: Logger;
-  private fetchParaBlock: FetchParaBlockFunc;
 
   constructor(params: SourceConstructorParams) {
     this.api = params.api;
     this.chain = params.chain;
     this.feedId = params.feedId;
-    this.parachains = params.parachains;
+    this.parachainsMap = params.parachainsMap;
     this.logger = params.logger;
-    this.fetchParaBlock = params.fetchParaBlock;
     this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
   }
 
@@ -70,10 +67,16 @@ class Source {
     const paraItems = await this.getParaHeadsAndIds(block);
 
     const parablockRequests = paraItems.map(async ({ paraHead, paraId }) => {
-      const paraUrl = this.parachains[paraId];
-      if (!paraUrl) throw new Error(`Uknown paraId: ${paraId}`);
+      const parachain = this.parachainsMap.get(paraId);
+      if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
 
-      const block = await this.fetchParaBlock((paraUrl), paraHead);
+      const block = await parachain.fetchParaBlock(paraHead);
+
+      // TODO: clarify how to handle this
+      if (!block) {
+        return
+      }
+
       const header = this.api.createType("Header", block.block.header);
 
       const blockAsSignedBlock = this.api.createType("SignedBlock", {

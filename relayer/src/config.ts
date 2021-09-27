@@ -2,9 +2,14 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
+type Parachain = {
+  url: string,
+  paraId: number
+}
+
 type SourceChain = {
   url: string;
-  parachains: Record<string, string>;
+  parachains: Parachain[];
 };
 
 type Config = {
@@ -32,17 +37,44 @@ export const loadConfig = (): Config => {
     sourceChainUrls: [
       {
         url: "wss://kusama-rpc.polkadot.io",
-        parachains: {
-          [1000]: "https://kusama-statemine-rpc.paritytech.net",
-          [2000]: "https://karura.api.onfinality.io/public",
-          [2001]: "https://bifrost-parachain.api.onfinality.io/public",
-          [2004]: "https://khala.api.onfinality.io/public",
-          [2007]: "https://shiden.api.onfinality.io/public",
-          [2023]: "https://moonriver.api.onfinality.io/public",
-          [2084]: "https://calamari.api.onfinality.io/public",
-          [2086]: "https://spiritnet.api.onfinality.io/public",
-          [2090]: "https://basilisk.api.onfinality.io/public",
-        },
+        parachains: [
+          {
+            url: "https://kusama-statemine-rpc.paritytech.net",
+            paraId: 1000
+          },
+          {
+            url: "https://karura.api.onfinality.io/public",
+            paraId: 2000
+          },
+          {
+            url: "https://kusama-statemine-rpc.paritytech.net",
+            paraId: 2001
+          },
+          {
+            url: "https://bifrost-parachain.api.onfinality.io/public",
+            paraId: 2004
+          },
+          {
+            url: "https://shiden.api.onfinality.io/public",
+            paraId: 2007
+          },
+          {
+            url: "https://moonriver.api.onfinality.io/public",
+            paraId: 2023
+          },
+          {
+            url: "https://calamari.api.onfinality.io/public",
+            paraId: 2084
+          },
+          {
+            url: "https://spiritnet.api.onfinality.io/public",
+            paraId: 2086
+          },
+          {
+            url: "https://basilisk.api.onfinality.io/public",
+            paraId: 2090
+          },
+        ]
       },
     ],
   };

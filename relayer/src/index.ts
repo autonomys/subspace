@@ -4,7 +4,7 @@ import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
-import { fetchParaBlock } from "./rpc";
+import { createParachainsMap } from './utils';
 
 const config = loadConfig();
 
@@ -25,19 +25,18 @@ const createApi = async (url: string) => {
 
   const target = new Target({ api: targetApi, signer, logger });
 
-
   const sources = await Promise.all(
     config.sourceChainUrls.map(async ({ url, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
       const feedId = await target.sendCreateFeedTx();
+      const parachainsMap = await createParachainsMap(target, parachains);
 
       return new Source({
         api,
         chain: chain.toString(),
-        parachains,
+        parachainsMap,
         logger,
-        fetchParaBlock,
         feedId,
       });
     })

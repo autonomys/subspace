@@ -1,5 +1,7 @@
 import { EventRecord } from "@polkadot/types/interfaces/system";
-import { ParaHeadAndId } from "./types";
+import { ParaHeadAndId, ParachainsMap } from "./types";
+import Parachain from "./parachain";
+import Target from "./target";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
@@ -25,3 +27,18 @@ export const isRelevantRecord =
                 event.method == "CandidateIncluded"
             );
         };
+
+export const createParachainsMap = async (target: Target, parachains: {
+    url: string,
+    paraId: number
+}[]): Promise<ParachainsMap> => {
+    const map = new Map();
+
+    for await (const parachain of parachains) {
+        const feedId = await target.sendCreateFeedTx();
+        const chain = new Parachain({ feedId, url: parachain.url });
+        map.set(parachain.paraId, chain)
+    }
+
+    return map;
+}
