@@ -6,6 +6,7 @@ export type TxData = {
   feedId: U64;
   block: string;
   metadata: Metadata;
+  chain: string;
 };
 
 type Metadata = {

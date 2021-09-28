@@ -1,9 +1,8 @@
 import { EventRecord } from "@polkadot/types/interfaces/system";
-import { filter } from "rxjs/operators";
-import { Observable, pipe, UnaryFunction, OperatorFunction } from 'rxjs';
 import { ParaHeadAndId, ParachainsMap } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
+import logger from "./logger";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
@@ -30,23 +29,18 @@ export const isRelevantRecord =
             );
         };
 
-export const createParachainsMap = async (target: Target, parachains: {
+export const createParachainsMap = async (target: Target, configParachains: {
     url: string,
-    paraId: number
+    paraId: number,
+    chain: string,
 }[]): Promise<ParachainsMap> => {
     const map = new Map();
 
-    for await (const parachain of parachains) {
+    for await (const { url, chain, paraId } of configParachains) {
         const feedId = await target.sendCreateFeedTx();
-        const chain = new Parachain({ feedId, url: parachain.url });
-        map.set(parachain.paraId, chain)
+        const parachain = new Parachain({ feedId, url: url, chain: chain, logger });
+        map.set(paraId, parachain)
     }
 
     return map;
-}
-
-export function filterNullish<T>(): UnaryFunction<Observable<T | null | undefined>, Observable<T>> {
-    return pipe(
-        filter(x => x != null) as OperatorFunction<T | null | undefined, T>
-    );
 }

@@ -9,6 +9,7 @@ export const txHashMock = "random hash" as unknown as Hash;
 export const txDataMock = {
   feedId: 1 as unknown as U64,
   block: "block hex",
+  chain: "Random chain name",
   metadata: {
     hash: "random hash" as unknown as Hash,
     number: 1,

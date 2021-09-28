@@ -49,8 +49,8 @@ class Target {
   }
 
   // TODO: signer should be proxy account per feed
-  private async sendBlockTx({ feedId, block, metadata }: TxData) {
-    this.logger.info(`Sending block transaction for feed: ${feedId}`);
+  private async sendBlockTx({ feedId, block, metadata, chain }: TxData) {
+    this.logger.info(`Sending ${chain} block to feed: ${feedId}`);
     // metadata is stored as Vec<u8>
     // to decode: new TextDecoder().decode(new Uint8Array([...]))
     const metadataPayload = JSON.stringify(metadata);

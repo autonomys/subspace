@@ -4,7 +4,9 @@ dotenv.config();
 
 type Parachain = {
   url: string,
-  paraId: number
+  paraId: number,
+  // TODO: get chain name from api
+  chain: string,
 }
 
 type SourceChain = {
@@ -40,39 +42,48 @@ export const loadConfig = (): Config => {
         parachains: [
           {
             url: "https://kusama-statemine-rpc.paritytech.net",
-            paraId: 1000
+            paraId: 1000,
+            chain: "Statemine",
           },
           {
             url: "https://karura.api.onfinality.io/public",
-            paraId: 2000
-          },
-          {
-            url: "https://kusama-statemine-rpc.paritytech.net",
-            paraId: 2001
+            paraId: 2000,
+            chain: "Karura",
           },
           {
             url: "https://bifrost-parachain.api.onfinality.io/public",
-            paraId: 2004
+            paraId: 2001,
+            chain: "Bifrost",
+          },
+          {
+            url: "https://khala.api.onfinality.io/public",
+            paraId: 2004,
+            chain: "Khala Network",
           },
           {
             url: "https://shiden.api.onfinality.io/public",
-            paraId: 2007
+            paraId: 2007,
+            chain: "Shiden",
           },
           {
             url: "https://moonriver.api.onfinality.io/public",
-            paraId: 2023
+            paraId: 2023,
+            chain: "Moonriver",
           },
           {
             url: "https://calamari.api.onfinality.io/public",
-            paraId: 2084
+            paraId: 2084,
+            chain: "Calamari",
           },
           {
             url: "https://spiritnet.api.onfinality.io/public",
-            paraId: 2086
+            paraId: 2086,
+            chain: "Kilt Spiritnet",
           },
           {
             url: "https://basilisk.api.onfinality.io/public",
-            paraId: 2090
+            paraId: 2090,
+            chain: "Basilisk",
           },
         ]
       },

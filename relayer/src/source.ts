@@ -7,7 +7,7 @@ import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 
 import { ParaHeadAndId, TxData } from "./types";
-import { getParaHeadAndIdFromRecord, isRelevantRecord, filterNullish } from './utils'
+import { getParaHeadAndIdFromRecord, isRelevantRecord } from './utils'
 import Parachain from "./parachain";
 
 type SourceConstructorParams = {
@@ -68,24 +68,18 @@ class Source {
   }
 
   // TODO: add logging for individual parablocks
-  getParablocks({ block }: SignedBlock): Observable<TxData | undefined> {
+  getParablocks({ block }: SignedBlock): Observable<TxData> {
     return from(this.getParaHeadsAndIds(block))
       .pipe(concatMap(x => x))
       .pipe(concatMap(({ paraId, paraHead }) => {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
-        return parachain.fetchParaBlock(paraHead).then((block) => {
-          if (!block) {
-            console.log("Add retry here");
-            return
-          }
-
-          return this.addBlockMetadata(block, paraHead, parachain.feedId);
-        });
+        return parachain.fetchParaBlock(paraHead)
+          .pipe(map((block) => this.addBlockMetadata({ block, hash: paraHead, feedId: parachain.feedId, chain: parachain.chain })));
       }));
   }
 
-  private addBlockMetadata(block: SignedBlock, hash: Hash, feedId: U64): TxData {
+  private addBlockMetadata({ block, hash, feedId, chain }: { block: SignedBlock, hash: Hash, feedId: U64, chain: string }): TxData {
     const metadata = {
       hash,
       number: block.block.header.number.toString(),
@@ -94,18 +88,16 @@ class Source {
     return {
       feedId,
       block: block.toString(),
-      metadata
+      metadata,
+      chain,
     };
   }
 
   private getBlocksByHeader({ hash }: Header): Observable<TxData> {
     const relayBlock = this.getBlock(hash);
-    const parablocks = relayBlock.pipe(
-      concatMap(this.getParablocks),
-      filterNullish(),
-    );
+    const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
-    const relayBlockWithMetadata = relayBlock.pipe(map(block => this.addBlockMetadata(block, hash, this.feedId)));
+    const relayBlockWithMetadata = relayBlock.pipe(map(block => this.addBlockMetadata({ block, hash, feedId: this.feedId, chain: this.chain })));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
