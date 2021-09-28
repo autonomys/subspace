@@ -99,7 +99,7 @@ pub use sp_consensus_poc::{
     POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, Spartan, SIGNING_CONTEXT};
+use sp_consensus_spartan::spartan::{Salt, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -116,6 +116,7 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
+use subspace_codec::Spartan;
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
@@ -518,7 +519,7 @@ where
         force_authoring,
         backoff_authoring_blocks,
         poc_link: poc_link.clone(),
-        spartan: Spartan::default(),
+        spartan: Spartan::new(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
         block_proposal_slot_portion,
@@ -2242,7 +2243,7 @@ where
         can_author_with,
         telemetry,
         client,
-        spartan: Spartan::default(),
+        spartan: Spartan::new(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
     };

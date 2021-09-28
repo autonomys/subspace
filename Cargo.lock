@@ -4219,6 +4219,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-codec",
  "subspace-core-primitives",
 ]
 
@@ -5591,6 +5592,7 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-core-primitives",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
@@ -6800,7 +6802,6 @@ name = "sp-consensus-spartan"
 version = "0.1.0"
 dependencies = [
  "ring",
- "sloth256-189",
  "subspace-core-primitives",
 ]
 
@@ -7285,7 +7286,7 @@ dependencies = [
  "schnorrkel 0.10.1",
  "serde",
  "serde_json",
- "sloth256-189",
+ "subspace-codec",
  "subspace-core-primitives",
  "tempfile",
  "thiserror",
@@ -7392,6 +7393,16 @@ dependencies = [
  "subspace-core-primitives",
  "thiserror",
  "typenum",
+]
+
+[[package]]
+name = "subspace-codec"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.4",
+ "ring",
+ "sloth256-189",
+ "subspace-core-primitives",
 ]
 
 [[package]]

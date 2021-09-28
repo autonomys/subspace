@@ -1,4 +1,4 @@
-use crate::{Piece, Tag, PIECE_SIZE, PRIME_SIZE_BYTES};
+use crate::{Piece, Tag, PIECE_SIZE, PRIME_SIZE};
 use ring::{digest, hmac};
 use schnorrkel::PublicKey;
 use std::convert::TryInto;
@@ -15,10 +15,10 @@ pub(crate) fn genesis_piece_from_seed(seed: &str) -> Piece {
     piece
 }
 
-pub(crate) fn hash_public_key(public_key: &PublicKey) -> [u8; PRIME_SIZE_BYTES] {
-    let mut array = [0u8; PRIME_SIZE_BYTES];
+pub(crate) fn hash_public_key(public_key: &PublicKey) -> [u8; PRIME_SIZE] {
+    let mut array = [0u8; PRIME_SIZE];
     let hash = digest::digest(&digest::SHA256, public_key.as_ref());
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE_BYTES]);
+    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE]);
     array
 }
 

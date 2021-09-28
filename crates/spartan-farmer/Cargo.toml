@@ -28,7 +28,6 @@ rayon = "1.5.0"
 ring = "0.16.20"
 schnorrkel = "0.10.1"
 serde_json = "1.0.64"
-sloth256-189 = "0.2.2"
 thiserror = "1.0.24"
 tokio = "1.11.0"
 
@@ -48,6 +47,10 @@ version = "0.17.0"
 features = ["derive"]
 version = "1.0.125"
 
+[dependencies.subspace-codec]
+version = "0.1.0"
+path = "../subspace-codec"
+
 [dependencies.subspace-core-primitives]
 version = "0.1.0"
 path = "../subspace-core-primitives"
@@ -64,7 +67,5 @@ version = "1.9.0"
 default = ["cuda"]
 # Compile with CUDA support and use it if compatible GPU is available
 cuda = [
-    "sloth256-189/cuda",
+    "subspace-codec/cuda",
 ]
-# Special feature to test CUDA support
-test-cuda = []
