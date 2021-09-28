@@ -13,7 +13,6 @@ include = [
 ]
 
 [dependencies]
-ring = "0.16.20"
 sloth256-189 = "0.2.2"
 
 [dependencies.subspace-core-primitives]

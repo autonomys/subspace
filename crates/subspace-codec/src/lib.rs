@@ -18,17 +18,18 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
-use ring::digest;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
 use std::io::Write;
-use subspace_core_primitives::{crypto, Piece, Sha256Hash, PIECE_SIZE, PRIME_SIZE};
+use subspace_core_primitives::{
+    crypto, Piece, Sha256Hash, PIECE_SIZE, PRIME_SIZE, SHA256_HASH_SIZE,
+};
 
 #[cfg(feature = "cuda")]
 /// Number of pieces for GPU should be multiples of 1024
 const GPU_PIECE_BLOCK: usize = 1024;
-const GENESIS_PIECE_SEED: &str = "spartan";
+const GENESIS_PIECE_SEED: &[u8] = b"spartan";
 const ENCODE_ROUNDS: usize = 1;
 
 // TODO: Refactor into Subspace
@@ -139,11 +140,11 @@ impl Spartan {
     }
 }
 
-fn genesis_piece_from_seed(seed: &str) -> Piece {
+fn genesis_piece_from_seed(seed: &[u8]) -> Piece {
     let mut piece = [0u8; PIECE_SIZE];
-    let mut input = seed.as_bytes().to_vec();
-    for mut chunk in piece.chunks_mut(digest::SHA256.output_len) {
-        input = digest::digest(&digest::SHA256, &input).as_ref().to_vec();
+    let mut input = seed.to_vec();
+    for mut chunk in piece.chunks_mut(SHA256_HASH_SIZE) {
+        input = crypto::sha256_hash(&input).to_vec();
         chunk.write_all(input.as_ref()).unwrap();
     }
     piece
