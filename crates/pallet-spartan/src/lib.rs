@@ -928,7 +928,6 @@ where
     }
 }
 
-// TODO: Tests for root block
 /// Methods for the `ValidateUnsigned` implementation:
 /// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include root
