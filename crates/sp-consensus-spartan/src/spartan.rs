@@ -41,26 +41,6 @@ impl Spartan {
     }
 }
 
-impl Spartan {
-    /// Check if previously created encoding is valid
-    pub fn is_valid(
-        &self,
-        encoding: &mut [u8],
-        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
-        nonce: u64,
-        rounds: usize,
-    ) -> bool {
-        let mut expanded_iv = encoding_key_hash;
-        for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
-            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
-        }
-
-        cpu::decode(encoding, &expanded_iv, rounds).unwrap();
-
-        encoding == self.genesis_piece
-    }
-}
-
 impl Default for Spartan {
     fn default() -> Self {
         Self {
@@ -70,8 +50,23 @@ impl Default for Spartan {
 }
 
 impl Spartan {
-    pub fn is_encoding_valid(&self, encoding: &mut Piece, public_key: &[u8], nonce: u64) -> bool {
-        self.is_valid(encoding, hash_public_key(public_key), nonce, ENCODE_ROUNDS)
+    /// Check if previously created encoding is valid
+    pub fn is_encoding_valid(
+        &self,
+        mut encoding: Piece,
+        public_key: &[u8],
+        nonce: u64,
+        rounds: usize,
+    ) -> bool {
+        let encoding_key_hash = hash_public_key(public_key);
+        let mut expanded_iv = encoding_key_hash;
+        for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
+            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
+        }
+
+        cpu::decode(&mut encoding, &expanded_iv, rounds).unwrap();
+
+        encoding == self.genesis_piece
     }
 }
 

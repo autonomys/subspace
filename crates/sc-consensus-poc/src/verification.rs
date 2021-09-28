@@ -24,7 +24,7 @@ use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_poc::Randomness;
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan, PRIME_SIZE_BYTES};
+use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan, ENCODE_ROUNDS, PRIME_SIZE_BYTES};
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
@@ -150,7 +150,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::OutsideOfSolutionRange(slot));
     }
 
-    let mut piece: Piece = solution
+    let piece: Piece = solution
         .encoding
         .as_slice()
         .try_into()
@@ -164,7 +164,12 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    if !spartan.is_encoding_valid(&mut piece, solution.public_key.as_ref(), solution.nonce) {
+    if !spartan.is_encoding_valid(
+        piece,
+        solution.public_key.as_ref(),
+        solution.nonce,
+        ENCODE_ROUNDS,
+    ) {
         return Err(Error::InvalidEncoding(slot));
     }
 
