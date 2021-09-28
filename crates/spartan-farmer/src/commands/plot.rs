@@ -1,5 +1,5 @@
 use crate::plot::Plot;
-use crate::{crypto, Piece, BATCH_SIZE, CUDA_BATCH_SIZE, PIECE_SIZE};
+use crate::{Piece, BATCH_SIZE, CUDA_BATCH_SIZE, PIECE_SIZE};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
@@ -30,8 +30,7 @@ pub(crate) async fn plot(
     };
 
     let plot = Plot::open_or_create(&path.into()).await?;
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
-    let spartan = Spartan::new();
+    let spartan = Spartan::new(keypair.public.as_ref());
 
     if plot.is_empty().await {
         let plotting_fut = {
@@ -59,7 +58,6 @@ pub(crate) async fn plot(
                             spartan.cuda_batch_encode(
                                 &mut piece_array
                                     [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
-                                public_key_hash,
                                 &nonce_array[(batch_start as usize)..batch_end],
                             );
                             bar.inc(CUDA_BATCH_SIZE);
@@ -88,7 +86,7 @@ pub(crate) async fn plot(
                             let encoded_batch: Vec<Piece> = (batch_start..batch_end)
                                 .into_par_iter()
                                 .map(|index| {
-                                    let encoding = spartan.encode(public_key_hash, index);
+                                    let encoding = spartan.encode(index);
 
                                     bar.inc(1);
 

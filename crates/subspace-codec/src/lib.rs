@@ -23,7 +23,7 @@ use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
 use std::io::Write;
-use subspace_core_primitives::{Piece, PIECE_SIZE, PRIME_SIZE};
+use subspace_core_primitives::{crypto, Piece, Sha256Hash, PIECE_SIZE, PRIME_SIZE};
 
 #[cfg(feature = "cuda")]
 /// Number of pieces for GPU should be multiples of 1024
@@ -36,20 +36,23 @@ const ENCODE_ROUNDS: usize = 1;
 #[derive(Debug, Clone)]
 pub struct Spartan {
     genesis_piece: Piece,
+    public_key_hash: Sha256Hash,
     cuda_available: bool,
 }
 
 impl Spartan {
-    // TODO: We will make constructor non-trivial soon, so for now we just suppress suggestion
-    #[allow(clippy::new_without_default)]
     /// New instance with 256-bit prime and 4096-byte genesis piece size
-    pub fn new() -> Self {
+    pub fn new(public_key: &[u8]) -> Self {
         #[cfg(feature = "cuda")]
         let cuda_available = cuda::is_cuda_available();
         #[cfg(not(feature = "cuda"))]
         let cuda_available = false;
+
+        let public_key_hash = crypto::sha256_hash(public_key);
+
         Spartan {
             genesis_piece: genesis_piece_from_seed(GENESIS_PIECE_SEED),
+            public_key_hash,
             cuda_available,
         }
     }
@@ -64,8 +67,8 @@ impl Spartan {
 
     /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
     /// desired number of rounds
-    pub fn encode(&self, encoding_key_hash: [u8; PRIME_SIZE], nonce: u64) -> Piece {
-        let mut expanded_iv = encoding_key_hash;
+    pub fn encode(&self, nonce: u64) -> Piece {
+        let mut expanded_iv = self.public_key_hash;
         for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
             expanded_iv[PRIME_SIZE - i - 1] ^= byte;
         }
@@ -80,22 +83,17 @@ impl Spartan {
     // TODO: Refactor from being CUDA-specific to be batch-oriented
     /// Encode given batch of pieces using GPU, and CPU for the leftovers
     #[cfg(feature = "cuda")]
-    pub fn cuda_batch_encode(
-        &self,
-        pieces: &mut [u8],
-        encoding_key_hash: [u8; PRIME_SIZE],
-        nonce_array: &[u64],
-    ) {
+    pub fn cuda_batch_encode(&self, pieces: &mut [u8], nonce_array: &[u64]) {
         // each expanded_iv will be in format [u8; 32], so `piece_amount` expanded_iv's
         // should consume [u8; 32 * piece_amount] space.
         let piece_count = pieces.len() / PIECE_SIZE;
         let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * PRIME_SIZE);
         let mut expanded_iv;
         for nonce in nonce_array {
-            // same encoding_key_hash will be used for each expanded_iv
-            expanded_iv = encoding_key_hash;
+            // same public_key_hash will be used for each expanded_iv
+            expanded_iv = self.public_key_hash;
 
-            // select the nonce from nonce_array, xor it with the encoding_key_hash
+            // select the nonce from nonce_array, xor it with the public_key_hash
             nonce
                 .to_le_bytes()
                 .iter()
@@ -129,13 +127,8 @@ impl Spartan {
     }
 
     /// Check if previously created encoding is valid
-    pub fn is_encoding_valid(
-        &self,
-        mut encoding: Piece,
-        encoding_key_hash: [u8; PRIME_SIZE],
-        nonce: u64,
-    ) -> bool {
-        let mut expanded_iv = encoding_key_hash;
+    pub fn is_encoding_valid(&self, mut encoding: Piece, nonce: u64) -> bool {
+        let mut expanded_iv = self.public_key_hash;
         for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
             expanded_iv[PRIME_SIZE - i - 1] ^= byte;
         }

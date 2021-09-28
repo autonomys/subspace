@@ -116,7 +116,6 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_codec::Spartan;
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 pub mod aux_schema;
@@ -519,7 +518,6 @@ where
         force_authoring,
         backoff_authoring_blocks,
         poc_link: poc_link.clone(),
-        spartan: Spartan::new(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
         block_proposal_slot_portion,
@@ -660,7 +658,6 @@ struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     force_authoring: bool,
     backoff_authoring_blocks: Option<BS>,
     poc_link: PoCLink<B>,
-    spartan: Spartan,
     signing_context: SigningContext,
     block_proposal_slot_portion: SlotProportion,
     max_block_proposal_slot_portion: Option<SlotProportion>,
@@ -795,7 +792,6 @@ where
         };
 
         let client = self.client.clone();
-        let spartan = self.spartan.clone();
         let signing_context = self.signing_context.clone();
 
         let PreparedData {
@@ -832,7 +828,6 @@ where
                 solution_range,
                 slot,
                 salt,
-                &spartan,
                 &signing_context,
             ) {
                 Ok(_) => {
@@ -1177,7 +1172,6 @@ pub struct PoCVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     can_author_with: CAW,
     telemetry: Option<TelemetryHandle>,
-    spartan: Spartan,
     signing_context: SigningContext,
 }
 
@@ -1386,7 +1380,6 @@ where
                 epoch: viable_epoch.as_ref(),
                 solution_range,
                 salt: salt.to_le_bytes(),
-                spartan: &self.spartan,
                 signing_context: &self.signing_context,
             };
 
@@ -2243,7 +2236,6 @@ where
         can_author_with,
         telemetry,
         client,
-        spartan: Spartan::new(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
     };

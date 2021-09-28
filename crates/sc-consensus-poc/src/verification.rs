@@ -47,8 +47,6 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) solution_range: u64,
     /// Salt corresponding to this block.
     pub(super) salt: Salt,
-    /// Spartan instance
-    pub(super) spartan: &'a Spartan,
     /// Signing context for verifying signatures
     pub(super) signing_context: &'a SigningContext,
 }
@@ -74,7 +72,6 @@ where
         epoch,
         solution_range,
         salt,
-        spartan,
         signing_context,
     } = params;
 
@@ -119,7 +116,6 @@ where
         solution_range,
         pre_digest.slot,
         salt,
-        spartan,
         signing_context,
     )?;
 
@@ -141,7 +137,6 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     solution_range: u64,
     slot: Slot,
     salt: Salt,
-    spartan: &Spartan,
     signing_context: &SigningContext,
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
@@ -166,11 +161,8 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    if !spartan.is_encoding_valid(
-        piece,
-        hash_public_key(solution.public_key.as_ref()),
-        solution.nonce,
-    ) {
+    let spartan = Spartan::new(solution.public_key.as_ref());
+    if !spartan.is_encoding_valid(piece, solution.nonce) {
         return Err(Error::InvalidEncoding(slot));
     }
 
@@ -182,8 +174,8 @@ fn is_within_solution_range(
     global_challenge: [u8; 8],
     solution_range: u64,
 ) -> bool {
-    let farmer_id = hash_public_key(solution.public_key.as_ref());
-    let local_challenge = derive_local_challenge(&global_challenge, &farmer_id);
+    let public_key_hash = hash_public_key(solution.public_key.as_ref());
+    let local_challenge = derive_local_challenge(&global_challenge, &public_key_hash);
 
     let target = u64::from_be_bytes(local_challenge);
     let tag = u64::from_be_bytes(solution.tag);
