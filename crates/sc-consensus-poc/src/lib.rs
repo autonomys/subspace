@@ -116,23 +116,13 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{Piece, RootBlock};
 
 pub mod aux_schema;
 pub mod notification;
 #[cfg(test)]
 mod tests;
 mod verification;
-
-// TODO: Move these constants somewhere more appropriate and adjust if necessary
-const CONFIRMATION_DEPTH_K: u32 = 10;
-// This is a nice power of 2 for Merkle Tree
-const MERKLE_NUM_LEAVES: usize = 256;
-const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
-const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
-const RECORDED_HISTORY_SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
-const PRE_GENESIS_OBJECT_SIZE: usize = RECORDED_HISTORY_SEGMENT_SIZE * 10;
-const BLOCKCHAIN_SEED: &[u8] = b"subspace";
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -1923,7 +1913,11 @@ pub fn block_import<Client, Block: BlockT, I>(
     client: Arc<Client>,
 ) -> ClientResult<(PoCBlockImport<Block, Client, I>, PoCLink<Block>)>
 where
-    Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block, Error = sp_blockchain::Error>,
+    Client: ProvideRuntimeApi<Block>
+        + AuxStore
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>,
+    Client::Api: PoCApi<Block>,
 {
     let epoch_changes = aux_schema::load_epoch_changes::<Block, _>(&*client, &config)?;
 
@@ -1934,6 +1928,11 @@ where
     let (imported_block_notification_sender, imported_block_notification_stream) =
         notification::channel("poc_imported_block_notification_stream");
 
+    let confirmation_depth_k = client
+        .runtime_api()
+        .confirmation_depth_k(&BlockId::Number(Zero::zero()))
+        .expect("Failed to get `confirmation_depth_k` from runtime API");
+
     let link = PoCLink {
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
@@ -1942,7 +1941,7 @@ where
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
-        root_blocks: Arc::new(Mutex::new(LruCache::new(CONFIRMATION_DEPTH_K as usize))),
+        root_blocks: Arc::new(Mutex::new(LruCache::new(confirmation_depth_k as usize))),
     };
 
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
@@ -2031,6 +2030,21 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + 'static,
     Client::Api: PoCApi<Block>,
 {
+    let genesis_block_id = BlockId::Number(Zero::zero());
+
+    let confirmation_depth_k = client
+        .runtime_api()
+        .confirmation_depth_k(&BlockId::Number(Zero::zero()))
+        .expect("Failed to get `confirmation_depth_k` from runtime API");
+    let record_size = client
+        .runtime_api()
+        .record_size(&genesis_block_id)
+        .expect("Failed to get `record_size` from runtime API");
+    let recorded_history_segment_size = client
+        .runtime_api()
+        .recorded_history_segment_size(&genesis_block_id)
+        .expect("Failed to get `recorded_history_segment_size` from runtime API");
+
     let mut archiver = if let Some(last_root_block) = find_last_root_block(client.as_ref()) {
         info!(
             target: "poc",
@@ -2039,8 +2053,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         );
         // Continuing from existing initial state
         BlockArchiver::with_initial_state(
-            RECORD_SIZE,
-            RECORDED_HISTORY_SEGMENT_SIZE,
+            record_size as usize,
+            recorded_history_segment_size as usize,
             last_root_block,
             &client
                 .block(&BlockId::Number(
@@ -2051,26 +2065,46 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         )
         .expect("Incorrect parameters for archiver")
     } else {
-        // Starting from genesis
-        let mut object_archiver = ObjectArchiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-            .expect("Incorrect parameters for archiver");
+        let runtime_api = client.runtime_api();
 
-        // These archived segments are a part of the public parameters of network setup, thus
-        // do not need to be sent to farmers
-        let new_root_blocks: Vec<RootBlock> = object_archiver
-            .add_object(&pre_genesis_data::from_seed(
-                BLOCKCHAIN_SEED,
-                PRE_GENESIS_OBJECT_SIZE,
-            ))
-            .into_iter()
+        // Starting from genesis
+        let mut object_archiver =
+            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+                .expect("Incorrect parameters for archiver");
+
+        let pre_genesis_object_size = runtime_api
+            .pre_genesis_object_size(&genesis_block_id)
+            .expect("Failed to get `pre_genesis_object_size` from runtime API");
+        let pre_genesis_object_count = runtime_api
+            .pre_genesis_object_count(&genesis_block_id)
+            .expect("Failed to get `pre_genesis_object_count` from runtime API");
+        let pre_genesis_object_seed = runtime_api
+            .pre_genesis_object_seed(&genesis_block_id)
+            .expect("Failed to get `pre_genesis_object_seed` from runtime API");
+
+        // These archived segments are a part of the public parameters of network setup, thus do not
+        // need to be sent to farmers
+        let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
+            .map(|index| {
+                object_archiver
+                    .add_object(&pre_genesis_data::from_seed(
+                        &pre_genesis_object_seed,
+                        index,
+                        pre_genesis_object_size,
+                    ))
+                    .into_iter()
+            })
+            .flatten()
             .map(|archived_segment| archived_segment.root_block)
             .collect();
 
+        // TODO: Block size will not be enough in case number of root blocks it too large; not a
+        //  problem for now though. Also RAM usage will be very significant with current approach.
         // Submit store root block extrinsic at genesis block.
         for root_block in new_root_blocks.iter().copied() {
             client
                 .runtime_api()
-                .submit_store_root_block_extrinsic(&BlockId::Number(Zero::zero()), root_block)
+                .submit_store_root_block_extrinsic(&genesis_block_id, root_block)
                 .expect("Failed to submit `store_root_block` extrinsic at genesis block");
         }
 
@@ -2095,7 +2129,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     best_number,
                 );
             })
-            .checked_sub(CONFIRMATION_DEPTH_K);
+            .checked_sub(confirmation_depth_k);
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
@@ -2121,7 +2155,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 // Set list of expected root blocks for the block where we expect root block
                 // extrinsic to be included
                 poc_link.root_blocks.lock().put(
-                    (block_to_archive + CONFIRMATION_DEPTH_K + 1).into(),
+                    (block_to_archive + confirmation_depth_k + 1).into(),
                     new_root_blocks,
                 );
             }
@@ -2144,7 +2178,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     imported_block_notification_stream.next().await
                 {
                     let block_to_archive =
-                        match block_number.checked_sub(&CONFIRMATION_DEPTH_K.into()) {
+                        match block_number.checked_sub(&confirmation_depth_k.into()) {
                             Some(block_to_archive) => block_to_archive,
                             None => {
                                 continue;

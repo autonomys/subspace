@@ -20,9 +20,9 @@ use core::convert::TryInto;
 use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.
-pub fn sha256_hash(data: &[u8]) -> Sha256Hash {
+pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {
     let mut hasher = Sha256::new();
-    hasher.update(data);
+    hasher.update(data.as_ref());
     hasher.finalize()[..]
         .try_into()
         .expect("Sha256 output is always 32 bytes; qed")
