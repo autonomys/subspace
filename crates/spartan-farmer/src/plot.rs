@@ -749,39 +749,9 @@ impl Plot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_std::path::PathBuf;
     use rand::prelude::*;
-    use std::fs;
-    use std::ops::Deref;
     use std::time::Duration;
-
-    struct TargetDirectory {
-        path: PathBuf,
-    }
-
-    impl Drop for TargetDirectory {
-        fn drop(&mut self) {
-            drop(fs::remove_dir_all(&self.path));
-        }
-    }
-
-    impl Deref for TargetDirectory {
-        type Target = PathBuf;
-
-        fn deref(&self) -> &Self::Target {
-            &self.path
-        }
-    }
-
-    impl TargetDirectory {
-        fn new(test_name: &str) -> Self {
-            let path = PathBuf::from("target").join(test_name);
-
-            fs::create_dir_all(&path).unwrap();
-
-            Self { path }
-        }
-    }
+    use tempfile::TempDir;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -796,13 +766,15 @@ mod tests {
     #[async_std::test]
     async fn test_read_write() {
         init();
-        let path = TargetDirectory::new("read_write");
+        let path = TempDir::new().unwrap();
 
         let piece = generate_random_piece();
         let salt: Salt = [1u8; 8];
         let index = 0;
 
-        let plot = Plot::open_or_create(&path).await.unwrap();
+        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
+            .await
+            .unwrap();
         assert_eq!(true, plot.is_empty().await);
         plot.write_many(vec![piece], index).await.unwrap();
         plot.create_commitment(salt).await.unwrap();
@@ -816,7 +788,9 @@ mod tests {
         async_std::task::sleep(Duration::from_millis(100)).await;
 
         // Make sure it is still not empty on reopen
-        let plot = Plot::open_or_create(&path).await.unwrap();
+        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
+            .await
+            .unwrap();
         assert_eq!(false, plot.is_empty().await);
         drop(plot);
 
@@ -828,7 +802,7 @@ mod tests {
     #[async_std::test]
     async fn test_commitment() {
         init();
-        let path = TargetDirectory::new("commitment");
+        let path = TempDir::new().unwrap();
 
         let piece: Piece = [9u8; 4096];
         let salt: Salt = [1u8; 8];
@@ -837,7 +811,9 @@ mod tests {
             u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         let index = 0;
 
-        let plot = Plot::open_or_create(&path).await.unwrap();
+        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
+            .await
+            .unwrap();
         plot.write_many(vec![piece], index).await.unwrap();
         plot.create_commitment(salt).await.unwrap();
 
@@ -852,10 +828,12 @@ mod tests {
     #[async_std::test]
     async fn test_find_by_tag() {
         init();
-        let path = TargetDirectory::new("find_by_tag");
+        let path = TempDir::new().unwrap();
         let salt: Salt = [1u8; 8];
 
-        let plot = Plot::open_or_create(&path).await.unwrap();
+        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
+            .await
+            .unwrap();
 
         plot.write_many(
             (0..1024_usize).map(|_| generate_random_piece()).collect(),
