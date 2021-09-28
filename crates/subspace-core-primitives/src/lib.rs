@@ -15,6 +15,7 @@
 
 //! Core primitives for Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
 pub mod crypto;
@@ -27,6 +28,8 @@ use serde::{Deserialize, Serialize};
 pub const SHA256_HASH_SIZE: usize = 32;
 /// Piece size in Subspace Network (in bytes)
 pub const PIECE_SIZE: usize = 4096;
+/// Size of the prime used in Subspace Network (in bytes)
+pub const PRIME_SIZE: usize = 32;
 
 // TODO: Create new types out of these
 /// Sha2-256 hash output

@@ -33,6 +33,7 @@ pallet-offences-poc = { version = "0.1.0", path = "../pallet-offences-poc" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 schnorrkel = { version = "0.9.1" }
 ring = "0.16"
+subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 
 [features]
 default = ["std"]

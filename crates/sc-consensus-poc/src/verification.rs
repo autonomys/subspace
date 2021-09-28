@@ -24,10 +24,12 @@ use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_poc::Randomness;
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{self, Piece, Salt, Spartan, ENCODE_ROUNDS, PRIME_SIZE_BYTES};
+use sp_consensus_spartan::spartan::{self, Salt};
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
+use subspace_codec::Spartan;
+use subspace_core_primitives::{Piece, PRIME_SIZE};
 
 /// PoC verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -166,9 +168,8 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
 
     if !spartan.is_encoding_valid(
         piece,
-        solution.public_key.as_ref(),
+        hash_public_key(solution.public_key.as_ref()),
         solution.nonce,
-        ENCODE_ROUNDS,
     ) {
         return Err(Error::InvalidEncoding(slot));
     }
@@ -226,9 +227,9 @@ pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) 
         .unwrap()
 }
 
-pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; PRIME_SIZE_BYTES] {
-    let mut array = [0u8; PRIME_SIZE_BYTES];
+pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; PRIME_SIZE] {
+    let mut array = [0u8; PRIME_SIZE];
     let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE_BYTES]);
+    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE]);
     array
 }
