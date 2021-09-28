@@ -1,10 +1,9 @@
 mod commitments;
 
 use crate::plot::commitments::Commitments;
-use crate::{crypto, utils, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
+use crate::{crypto, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
 use async_std::fs::OpenOptions;
 use async_std::path::PathBuf;
-use async_std::task;
 use event_listener_primitives::{BagOnce, HandlerId};
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
@@ -140,7 +139,7 @@ impl Plot {
             .map(|&salt| (salt, CommitmentStatus::Created))
             .collect();
 
-        task::spawn({
+        tokio::spawn({
             let handlers = Arc::clone(&handlers);
             let piece_count = Arc::clone(&piece_count);
 
@@ -211,7 +210,7 @@ impl Plot {
                                     }
                                 };
                                 // TODO: Remove unwrap
-                                let solutions = utils::spawn_blocking(move || {
+                                let solutions_fut = tokio::task::spawn_blocking(move || {
                                     let mut iter = tags_db.raw_iterator();
 
                                     let mut solutions: Vec<(Tag, u64)> = Vec::new();
@@ -272,10 +271,13 @@ impl Plot {
                                     }
 
                                     solutions
-                                })
-                                .await;
+                                });
 
-                                let _ = result_sender.send(Ok(solutions.into_iter().next()));
+                                let _ = result_sender.send(Ok(solutions_fut
+                                    .await
+                                    .unwrap()
+                                    .into_iter()
+                                    .next()));
                             }
                         }
                     }
@@ -328,7 +330,7 @@ impl Plot {
                                         }
                                     };
                                     // TODO: remove unwrap
-                                    utils::spawn_blocking(move || {
+                                    tokio::task::spawn_blocking(move || {
                                         for (tag, index) in tags.iter().zip(first_index..) {
                                             tags_db.put(tag, index.to_le_bytes())?;
                                         }
@@ -336,6 +338,7 @@ impl Plot {
                                         Ok::<(), rocksdb::Error>(())
                                     })
                                     .await
+                                    .unwrap()
                                     .unwrap();
                                 },
                             );
@@ -549,13 +552,14 @@ impl Plot {
             let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
             let pieces = self.read_pieces(batch_start, pieces_to_process).await?;
 
-            let tags: Vec<Tag> = utils::spawn_blocking(move || {
+            let tags: Vec<Tag> = tokio::task::spawn_blocking(move || {
                 pieces
                     .par_chunks_exact(PIECE_SIZE)
                     .map(|piece| crypto::create_tag(piece, &salt))
                     .collect()
             })
-            .await;
+            .await
+            .unwrap();
 
             let (result_sender, result_receiver) = oneshot::channel();
 
@@ -763,7 +767,7 @@ mod tests {
         bytes
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_read_write() {
         init();
         let path = TempDir::new().unwrap();
@@ -799,7 +803,7 @@ mod tests {
         async_std::task::sleep(Duration::from_millis(100)).await;
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_commitment() {
         init();
         let path = TempDir::new().unwrap();
@@ -825,7 +829,7 @@ mod tests {
         assert_eq!(correct_tag, tag);
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_find_by_tag() {
         init();
         let path = TempDir::new().unwrap();

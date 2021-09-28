@@ -1,6 +1,5 @@
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
-use async_std::task;
 use futures::channel::oneshot;
 use jsonrpsee::ws_client::traits::{Client, SubscriptionClient};
 use jsonrpsee::ws_client::v2::params::JsonRpcParams;
@@ -110,7 +109,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                         hex::encode(old_salt)
                     );
 
-                    task::spawn({
+                    tokio::spawn({
                         let plot = plot.clone();
 
                         async move {
@@ -123,11 +122,12 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                             }
                         }
                     })
-                    .await;
+                    .await
+                    .unwrap();
                 }
             } else {
                 // `next_salt` is not the same as new salt, need to re-commit
-                task::spawn({
+                tokio::spawn({
                     let salt = slot_info.salt;
                     let plot = plot.clone();
 
@@ -166,7 +166,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                         hex::encode(old_salt)
                     );
 
-                    task::spawn({
+                    tokio::spawn({
                         let plot = plot.clone();
 
                         async move {
@@ -179,7 +179,8 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                             }
                         }
                     })
-                    .await;
+                    .await
+                    .unwrap();
                 }
             }
         }
@@ -195,7 +196,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                             current_salt.map(hex::encode)
                         );
 
-                        task::spawn({
+                        tokio::spawn({
                             let plot = plot.clone();
 
                             async move {
@@ -208,11 +209,12 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
                                 }
                             }
                         })
-                        .await;
+                        .await
+                        .unwrap();
                     }
                 }
 
-                task::spawn({
+                tokio::spawn({
                     let plot = plot.clone();
 
                     async move {
