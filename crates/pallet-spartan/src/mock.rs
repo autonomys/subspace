@@ -23,8 +23,8 @@ use crate::{
 use codec::Encode;
 use frame_support::{parameter_types, traits::OnInitialize};
 use frame_system::InitKind;
-use ring::{digest, hmac};
-use schnorrkel::{Keypair, PublicKey};
+use ring::hmac;
+use schnorrkel::Keypair;
 use sp_consensus_poc::digests::{PreDigest, Solution};
 use sp_consensus_poc::Slot;
 use sp_consensus_spartan::spartan::{Tag, SIGNING_CONTEXT};
@@ -37,7 +37,7 @@ use sp_runtime::{
     Perbill,
 };
 use std::convert::TryInto;
-use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash, PRIME_SIZE};
+use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -178,11 +178,10 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let spartan = subspace_codec::Spartan::new();
-    let public_key_hash = hash_public_key(&keypair.public);
+    let spartan = subspace_codec::Spartan::new(keypair.public.as_ref());
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
     let nonce = 0;
-    let encoding: Piece = spartan.encode(public_key_hash, nonce);
+    let encoding: Piece = spartan.encode(nonce);
     let tag: Tag = create_tag(&encoding, &Spartan::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(
@@ -199,13 +198,6 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     System::initialize(&block, &parent_hash, &pre_digest, InitKind::Full);
 
     Spartan::on_initialize(block);
-}
-
-fn hash_public_key(public_key: &PublicKey) -> [u8; PRIME_SIZE] {
-    let mut array = [0u8; PRIME_SIZE];
-    let hash = digest::digest(&digest::SHA256, public_key.as_ref());
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE]);
-    array
 }
 
 fn create_tag(encoding: &[u8], salt: &[u8]) -> Tag {
