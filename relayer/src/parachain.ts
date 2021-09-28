@@ -4,13 +4,15 @@ import { EMPTY, defer, from, Observable, catchError } from 'rxjs';
 import { retry, shareReplay } from "rxjs/operators";
 import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { Logger } from "pino";
 
 type ParachainConstructorParams = {
-    feedId: U64,
-    url: string,
-    chain: string,
-    logger: Logger
+    feedId: U64;
+    url: string;
+    chain: string;
+    logger: Logger;
+    signer: AddressOrPair;
 }
 
 class Parachain {
@@ -18,12 +20,14 @@ class Parachain {
     private logger: Logger;
     chain: string;
     feedId: U64;
+    signer: AddressOrPair;
 
-    constructor({ feedId, url, chain, logger }: ParachainConstructorParams) {
+    constructor({ feedId, url, chain, logger, signer }: ParachainConstructorParams) {
         this.feedId = feedId;
         this.url = url;
         this.chain = chain;
         this.logger = logger;
+        this.signer = signer;
     }
 
     fetchParaBlock(

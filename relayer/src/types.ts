@@ -1,12 +1,13 @@
 import { U64 } from "@polkadot/types/primitive";
 import { Hash } from "@polkadot/types/interfaces";
-import Parachain from "./parachain";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
 
 export type TxData = {
   feedId: U64;
   block: string;
   metadata: Metadata;
   chain: string;
+  signer: AddressOrPair;
 };
 
 type Metadata = {
@@ -19,4 +20,10 @@ export type ParaHeadAndId = {
   paraHead: Hash;
 };
 
-export type ParachainsMap = Map<string, Parachain>
+export type ParachainConfigType = {
+  url: string,
+  paraId: number,
+  // TODO: get chain name from api
+  chain: string,
+  signerSeed: string,
+}

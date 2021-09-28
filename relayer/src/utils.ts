@@ -1,8 +1,9 @@
 import { EventRecord } from "@polkadot/types/interfaces/system";
-import { ParaHeadAndId, ParachainsMap } from "./types";
+import { ParaHeadAndId, ParachainConfigType } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
 import logger from "./logger";
+import { getAccount } from "./account";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
@@ -29,16 +30,20 @@ export const isRelevantRecord =
             );
         };
 
-export const createParachainsMap = async (target: Target, configParachains: {
-    url: string,
-    paraId: number,
-    chain: string,
-}[]): Promise<ParachainsMap> => {
+
+type ParachainsMap = Map<string, Parachain>;
+
+export const createParachainsMap = async (
+    target: Target,
+    configParachains: ParachainConfigType[]
+): Promise<ParachainsMap> => {
     const map = new Map();
 
-    for await (const { url, chain, paraId } of configParachains) {
-        const feedId = await target.sendCreateFeedTx();
-        const parachain = new Parachain({ feedId, url: url, chain: chain, logger });
+    for (let index = 0; index < configParachains.length; index++) {
+        const { url, chain, paraId, signerSeed } = configParachains[index];
+        const signer = getAccount(signerSeed);
+        const feedId = await target.sendCreateFeedTx(signer);
+        const parachain = new Parachain({ feedId, url, chain, logger, signer });
         map.set(paraId, parachain)
     }
 

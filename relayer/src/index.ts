@@ -1,13 +1,11 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { merge } from "rxjs";
 import { getAccount } from "./account";
-import { loadConfig } from "./config";
+import config from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
 import { createParachainsMap } from './utils';
-
-const config = loadConfig();
 
 const createApi = async (url: string) => {
   const provider = new WsProvider(url);
@@ -21,16 +19,14 @@ const createApi = async (url: string) => {
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
   const targetApi = await createApi(config.targetChainUrl);
-  // use getAccount func because we cannot create keyring instance before API is instanciated
-  const signer = getAccount(config.accountSeed);
-
-  const target = new Target({ api: targetApi, signer, logger });
+  const target = new Target({ api: targetApi, logger });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, parachains }) => {
+    config.sourceChainUrls.map(async ({ url, parachains }, index) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
-      const feedId = await target.sendCreateFeedTx();
+      const signer = getAccount(config.sourceChainUrls[index].signerSeed);
+      const feedId = await target.sendCreateFeedTx(signer);
       const parachainsMap = await createParachainsMap(target, parachains);
 
       return new Source({
@@ -39,6 +35,7 @@ const createApi = async (url: string) => {
         parachainsMap,
         logger,
         feedId,
+        signer,
       });
     })
   );

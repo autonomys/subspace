@@ -8,23 +8,21 @@ import { Subscription } from "rxjs";
 import { concatMap, take } from "rxjs/operators";
 
 import { TxData } from "./types";
+import { KeyringPair } from "@polkadot/keyring/types";
 
 const polkadotAppsUrl =
   "https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/";
 
 type TargetConstructorParams = {
   api: ApiPromise;
-  signer: AddressOrPair;
   logger: Logger;
 };
 class Target {
   private api: ApiPromise;
-  private signer: AddressOrPair;
   private logger: Logger;
 
-  constructor({ api, signer, logger }: TargetConstructorParams) {
+  constructor({ api, logger }: TargetConstructorParams) {
     this.api = api;
-    this.signer = signer;
     this.logger = logger;
     this.sendBlockTx = this.sendBlockTx.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
@@ -48,9 +46,9 @@ class Target {
     }
   }
 
-  // TODO: signer should be proxy account per feed
-  private async sendBlockTx({ feedId, block, metadata, chain }: TxData) {
+  private async sendBlockTx({ feedId, block, metadata, chain, signer }: TxData) {
     this.logger.info(`Sending ${chain} block to feed: ${feedId}`);
+    this.logger.info(`Signer: ${(signer as KeyringPair).address}`);
     // metadata is stored as Vec<u8>
     // to decode: new TextDecoder().decode(new Uint8Array([...]))
     const metadataPayload = JSON.stringify(metadata);
@@ -60,20 +58,19 @@ class Target {
         // it is required to specify nonce, otherwise transaction within same block will be rejected
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
         .subscribe(this.logTxResult)
     );
   }
 
-  // TODO: signer should be proxy account per feed
   // TODO: think about re-using existing feedIds instead of creating
-  async sendCreateFeedTx(): Promise<U64> {
-    this.logger.info("Creating feed for signer X");
+  async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
+    this.logger.info(`Creating feed for signer ${(signer as KeyringPair).address}`);
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
         .create()
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
         .subscribe((result) => {
           this.logTxResult(result);
