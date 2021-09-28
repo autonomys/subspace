@@ -46,6 +46,7 @@ async-trait = "0.1.51"
 lru = { version = "0.6.6", default-features = false }
 ring = "0.16"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [dev-dependencies]

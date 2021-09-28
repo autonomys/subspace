@@ -1,6 +1,5 @@
 use crate::plot::Plot;
-use crate::spartan::Spartan;
-use crate::{crypto, Piece, BATCH_SIZE, CUDA_BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE};
+use crate::{Piece, BATCH_SIZE, CUDA_BATCH_SIZE, PIECE_SIZE};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
@@ -10,8 +9,8 @@ use schnorrkel::Keypair;
 use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
+use subspace_codec::Spartan;
 
 /// Create a new plot with specified genesis piece and piece count.
 pub(crate) async fn plot(
@@ -31,8 +30,7 @@ pub(crate) async fn plot(
     };
 
     let plot = Plot::open_or_create(&path.into()).await?;
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
-    let spartan: Arc<Spartan> = Arc::new(Spartan::new(genesis_piece));
+    let spartan = Spartan::new(keypair.public.as_ref());
 
     if plot.is_empty().await {
         let plotting_fut = {
@@ -60,9 +58,7 @@ pub(crate) async fn plot(
                             spartan.cuda_batch_encode(
                                 &mut piece_array
                                     [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
-                                public_key_hash,
                                 &nonce_array[(batch_start as usize)..batch_end],
-                                1,
                             );
                             bar.inc(CUDA_BATCH_SIZE);
 
@@ -90,8 +86,7 @@ pub(crate) async fn plot(
                             let encoded_batch: Vec<Piece> = (batch_start..batch_end)
                                 .into_par_iter()
                                 .map(|index| {
-                                    let encoding =
-                                        spartan.encode(public_key_hash, index, ENCODE_ROUNDS);
+                                    let encoding = spartan.encode(index);
 
                                     bar.inc(1);
 
