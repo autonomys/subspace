@@ -142,8 +142,6 @@ Use `Ctrl+C` to stop the pair, everything will be stopped and cleaned up automat
 First, complete the [basic Rust setup instructions](docs/rust-setup.md).
 
 #### Install Dependencies
-If you have not previously installed the `gmp_mpfr_sys` crate, follow these [instructions](https://docs.rs/gmp-mpfr-sys/1.3.0/gmp_mpfr_sys/index.html#building-on-gnulinux).
-
 On Linux, RocksDB requires Clang
 
 ```bash

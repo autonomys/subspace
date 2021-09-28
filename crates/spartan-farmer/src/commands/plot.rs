@@ -1,12 +1,13 @@
 use crate::plot::Plot;
-use crate::{crypto, Piece, BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE, PRIME_SIZE_BYTES};
+use crate::spartan::Spartan;
+use crate::{crypto, Piece, BATCH_SIZE, CUDA_BATCH_SIZE, ENCODE_ROUNDS, PIECE_SIZE};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
 use log::{info, warn};
 use rayon::prelude::*;
 use schnorrkel::Keypair;
-use spartan_codec::Spartan;
+use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,8 +32,7 @@ pub(crate) async fn plot(
 
     let plot = Plot::open_or_create(&path.into()).await?;
     let public_key_hash = crypto::hash_public_key(&keypair.public);
-    let spartan: Arc<Spartan<PRIME_SIZE_BYTES, PIECE_SIZE>> =
-        Arc::new(Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(genesis_piece));
+    let spartan: Arc<Spartan> = Arc::new(Spartan::new(genesis_piece));
 
     if plot.is_empty().await {
         let plotting_fut = {
@@ -44,26 +44,68 @@ pub(crate) async fn plot(
                 std::thread::spawn(move || {
                     let bar = ProgressBar::new(piece_count);
 
-                    for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
-                        let batch_end = (batch_start + BATCH_SIZE).min(piece_count);
-                        let encoded_batch: Vec<Piece> = (batch_start..batch_end)
-                            .into_par_iter()
-                            .map(|index| {
-                                let encoding =
-                                    spartan.encode(public_key_hash, index, ENCODE_ROUNDS);
+                    if spartan.is_cuda_available() {
+                        info!("Using the GPU for plotting!");
 
-                                bar.inc(1);
+                        let mut piece_array: Vec<u8> =
+                            Vec::with_capacity(PIECE_SIZE * piece_count as usize);
+                        for _ in 0..piece_count {
+                            piece_array.extend_from_slice(&genesis_piece);
+                        }
+                        let nonce_array: Vec<u64> = (0..piece_count).collect();
+                        for batch_start in (0..piece_count).step_by(CUDA_BATCH_SIZE as usize) {
+                            let batch_end =
+                                (batch_start + CUDA_BATCH_SIZE).min(piece_count) as usize;
 
-                                encoding
-                            })
-                            .collect();
+                            spartan.cuda_batch_encode(
+                                &mut piece_array
+                                    [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE],
+                                public_key_hash,
+                                &nonce_array[(batch_start as usize)..batch_end],
+                                1,
+                            );
+                            bar.inc(CUDA_BATCH_SIZE);
 
-                        if futures::executor::block_on(
-                            batch_sender.send((batch_start, encoded_batch)),
-                        )
-                        .is_err()
-                        {
-                            return;
+                            let encoded_piece = piece_array
+                                [(batch_start as usize) * PIECE_SIZE..batch_end * PIECE_SIZE]
+                                .to_vec();
+
+                            let piece_vec = encoded_piece
+                                .chunks_exact(PIECE_SIZE)
+                                .map(|x| x.try_into().unwrap())
+                                .collect::<Vec<Piece>>();
+
+                            if futures::executor::block_on(
+                                batch_sender.send((batch_start, piece_vec)),
+                            )
+                            .is_err()
+                            {
+                                return;
+                            }
+                        }
+                    } else {
+                        info!("Using only CPU for plotting!");
+                        for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
+                            let batch_end = (batch_start + BATCH_SIZE).min(piece_count);
+                            let encoded_batch: Vec<Piece> = (batch_start..batch_end)
+                                .into_par_iter()
+                                .map(|index| {
+                                    let encoding =
+                                        spartan.encode(public_key_hash, index, ENCODE_ROUNDS);
+
+                                    bar.inc(1);
+
+                                    encoding
+                                })
+                                .collect();
+
+                            if futures::executor::block_on(
+                                batch_sender.send((batch_start, encoded_batch)),
+                            )
+                            .is_err()
+                            {
+                                return;
+                            }
                         }
                     }
 

@@ -38,6 +38,6 @@ std = [
     "scale-info/std",
     "serde/std",
     # Can't enable this in platform-specific way, see https://github.com/rust-lang/cargo/issues/1197
-    "sha2/asm",
+    #"sha2/asm",
     "sha2/std",
 ]

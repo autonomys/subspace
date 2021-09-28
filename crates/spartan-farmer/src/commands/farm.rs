@@ -1,5 +1,5 @@
 use crate::plot::Plot;
-use crate::{crypto, Salt, Tag, PRIME_SIZE_BYTES, SIGNING_CONTEXT};
+use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use async_std::task;
 use futures::channel::oneshot;
 use jsonrpsee::ws_client::traits::{Client, SubscriptionClient};
@@ -42,7 +42,7 @@ struct SlotInfo {
     /// Slot number
     slot_number: SlotNumber,
     /// Slot challenge
-    challenge: [u8; PRIME_SIZE_BYTES],
+    challenge: [u8; 8],
     /// Salt
     salt: Salt,
     /// Salt for the next eon
