@@ -26,7 +26,7 @@ describe("Source class", () => {
         expect(stream).toBeInstanceOf(Observable);
 
         stream.subscribe((data) => {
-            expect(params.api.rpc.chain.getBlock).toHaveBeenCalled();
+            expect(params.api.rx.rpc.chain.getBlock).toHaveBeenCalled();
             expect(data).toHaveProperty("feedId");
             expect(data.feedId).toBe(params.feedId);
             // TODO: add check block value

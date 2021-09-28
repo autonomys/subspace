@@ -50,6 +50,7 @@ class Target {
 
   // TODO: signer should be proxy account per feed
   private async sendBlockTx({ feedId, block, metadata }: TxData) {
+    this.logger.info(`Sending block transaction for feed: ${feedId}`);
     // metadata is stored as Vec<u8>
     // to decode: new TextDecoder().decode(new Uint8Array([...]))
     const metadataPayload = JSON.stringify(metadata);
@@ -82,7 +83,6 @@ class Target {
             ({ event }: EventRecord) => (event as any)?.isFeeds
           );
 
-
           if (feedCreatedEvent) {
             const { event } = feedCreatedEvent;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,11 +95,9 @@ class Target {
     });
   }
 
-  processSubscriptions = (
-    subscription: Observable<TxData>
-  ): Observable<Subscription> => {
+  processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {
     return subscription.pipe(concatMap(this.sendBlockTx));
-  };
+  }
 }
 
 export default Target;

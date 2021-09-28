@@ -1,4 +1,4 @@
-import { U64, U32 } from "@polkadot/types/primitive";
+import { U64 } from "@polkadot/types/primitive";
 import { Hash } from "@polkadot/types/interfaces";
 import Parachain from "./parachain";
 
@@ -10,7 +10,7 @@ export type TxData = {
 
 type Metadata = {
   hash: Hash;
-  number: U32;
+  number: string | number;
 };
 
 export type ParaHeadAndId = {

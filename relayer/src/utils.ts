@@ -1,4 +1,6 @@
 import { EventRecord } from "@polkadot/types/interfaces/system";
+import { filter } from "rxjs/operators";
+import { Observable, pipe, UnaryFunction, OperatorFunction } from 'rxjs';
 import { ParaHeadAndId, ParachainsMap } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
@@ -41,4 +43,10 @@ export const createParachainsMap = async (target: Target, parachains: {
     }
 
     return map;
+}
+
+export function filterNullish<T>(): UnaryFunction<Observable<T | null | undefined>, Observable<T>> {
+    return pipe(
+        filter(x => x != null) as OperatorFunction<T | null | undefined, T>
+    );
 }

@@ -45,5 +45,5 @@ const createApi = async (url: string) => {
 
   const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
 
-  target.processSubscriptions(blockSubscriptions).subscribe()
+  target.processSubscriptions(blockSubscriptions).subscribe();
 })();

@@ -1,8 +1,8 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { of } from "rxjs";
-import { Block, Hash, SignedBlock } from "@polkadot/types/interfaces";
-import { U64, U32 } from "@polkadot/types/primitive";
+import { Block, Hash } from "@polkadot/types/interfaces";
+import { U64 } from "@polkadot/types/primitive";
 
 export const txHashMock = "random hash" as unknown as Hash;
 
@@ -11,7 +11,7 @@ export const txDataMock = {
   block: "block hex",
   metadata: {
     hash: "random hash" as unknown as Hash,
-    number: 1 as unknown as U32,
+    number: 1,
   }
 };
 
@@ -19,11 +19,16 @@ const block = {
   block: {
     header: {
       hash: "random hash",
+      number: {
+        toString() {
+          return "100"
+        }
+      }
     },
     extrinsics: [],
   },
-  toHex() {
-    return "block hex";
+  toString() {
+    return "block as string";
   },
 };
 
@@ -44,6 +49,7 @@ export const apiMock = {
     },
     rpc: {
       chain: {
+        getBlock: jest.fn().mockReturnValue(of(block)),
         subscribeFinalizedHeads() {
           return of({
             hash: "random hash" as unknown as Hash,
@@ -55,11 +61,6 @@ export const apiMock = {
           });
         },
       },
-    },
-  },
-  rpc: {
-    chain: {
-      getBlock: jest.fn().mockResolvedValue(block as unknown as SignedBlock),
     },
   },
   query: {
