@@ -597,6 +597,15 @@ impl BlockArchiver {
         Ok(archiver)
     }
 
+    /// Get last archived block if there was any
+    pub fn last_archived_block_number(&self) -> Option<u32> {
+        if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
+            Some(self.last_archived_block.number)
+        } else {
+            None
+        }
+    }
+
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
     pub fn add_block<B: Encode>(&mut self, block: &B) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
