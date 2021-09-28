@@ -506,9 +506,9 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let poc_farmer = async move {
-            let spartan = spartan_codec::Spartan::<PRIME_SIZE_BYTES, PIECE_SIZE>::new(
-                genesis_piece_from_seed(GENESIS_PIECE_SEED),
-            );
+            let spartan = sp_consensus_spartan::spartan::Spartan::new(genesis_piece_from_seed(
+                GENESIS_PIECE_SEED,
+            ));
             let keypair = Keypair::generate();
             let public_key_hash = hash_public_key(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);

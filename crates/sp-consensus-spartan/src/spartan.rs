@@ -50,6 +50,26 @@ impl Default for Spartan {
 }
 
 impl Spartan {
+    /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
+    /// desired number of rounds
+    pub fn encode(
+        &self,
+        encoding_key_hash: [u8; PRIME_SIZE_BYTES],
+        nonce: u64,
+        rounds: usize,
+    ) -> [u8; PIECE_SIZE] {
+        let mut expanded_iv = encoding_key_hash;
+        for (i, &byte) in nonce.to_le_bytes().iter().rev().enumerate() {
+            expanded_iv[PRIME_SIZE_BYTES - i - 1] ^= byte;
+        }
+
+        let mut encoding = self.genesis_piece;
+
+        cpu::encode(&mut encoding, &expanded_iv, rounds).unwrap();
+
+        encoding
+    }
+
     /// Check if previously created encoding is valid
     pub fn is_encoding_valid(
         &self,
