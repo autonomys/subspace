@@ -10,6 +10,7 @@ export const txDataMock = {
   feedId: 1 as unknown as U64,
   block: "block hex",
   chain: "Random chain name",
+  signer: "Random signer",
   metadata: {
     hash: "random hash" as unknown as Hash,
     number: 1,

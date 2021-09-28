@@ -1,8 +1,8 @@
 import Target from "../target";
 import {
-    apiMock, loggerMock, txDataMock
+    apiMock, loggerMock,
+    txDataMock
 } from "../mocks";
-// import { ApiPromise } from "@polkadot/api";
 import { of } from "rxjs";
 
 describe("Target class", () => {
@@ -33,7 +33,7 @@ describe("Target class", () => {
             );
 
             expect(defaultParams.api.rx.tx.feeds.put().signAndSend).toHaveBeenCalledWith(
-                defaultParams.signer,
+                txDataMock.signer,
                 { nonce: -1 },
                 Promise.resolve
             );
