@@ -2037,15 +2037,20 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + 'static,
     Client::Api: PoCApi<Block>,
 {
-    let mut archiver = if let Some(latest_root_block) = find_last_root_block(client.as_ref()) {
+    let mut archiver = if let Some(last_root_block) = find_last_root_block(client.as_ref()) {
+        info!(
+            target: "poc",
+            "Last archived block {}",
+            last_root_block.last_archived_block().number,
+        );
         // Continuing from existing initial state
         BlockArchiver::with_initial_state(
             RECORD_SIZE,
             RECORDED_HISTORY_SEGMENT_SIZE,
-            latest_root_block,
+            last_root_block,
             &client
                 .block(&BlockId::Number(
-                    latest_root_block.last_archived_block().number.into(),
+                    last_root_block.last_archived_block().number.into(),
                 ))
                 .expect("Older blocks should always exist")
                 .expect("Older blocks should always exist"),
@@ -2082,6 +2087,53 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         object_archiver.into_block_archiver()
     };
 
+    // Process blocks since last fully archived block (or genesis) up to the current head minus K
+    {
+        let blocks_to_archive_from = archiver
+            .last_archived_block_number()
+            .map(|n| n + 1)
+            .unwrap_or_default();
+        let best_number = client.info().best_number;
+        let blocks_to_archive_to = TryInto::<u32>::try_into(best_number)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Best block number {} can't be converted into u32",
+                    best_number,
+                );
+            })
+            .checked_sub(CONFIRMATION_DEPTH_K);
+
+        if let Some(blocks_to_archive_to) = blocks_to_archive_to {
+            info!(
+                target: "poc",
+                "Archiving already produced blocks {}..={}",
+                blocks_to_archive_from,
+                blocks_to_archive_to,
+            );
+            for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
+                let block = client
+                    .block(&BlockId::Number(block_to_archive.into()))
+                    .expect("Older block by number should always exist")
+                    .expect("Older block by number should always exist");
+
+                // These archived segments were processed before, thus do not need to be sent to
+                // farmers
+                let new_root_blocks = archiver
+                    .add_block(&block)
+                    .into_iter()
+                    .map(|archived_segment| archived_segment.root_block)
+                    .collect();
+
+                // Set list of expected root blocks for the block where we expect root block
+                // extrinsic to be included
+                poc_link.root_blocks.lock().put(
+                    (block_to_archive + CONFIRMATION_DEPTH_K + 1).into(),
+                    new_root_blocks,
+                );
+            }
+        }
+    }
+
     spawner.spawn_blocking(
         "subspace-archiver",
         Box::pin({
@@ -2091,7 +2143,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 poc_link.archived_segment_notification_sender.clone();
 
             async move {
-                let mut last_archived_block_number = None;
+                let mut last_archived_block_number =
+                    archiver.last_archived_block_number().map(Into::into);
 
                 while let Some((block_number, mut root_block_sender)) =
                     imported_block_notification_stream.next().await
@@ -2117,9 +2170,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     debug!(target: "poc", "Archiving block {:?}", block_to_archive);
 
-                    let id = BlockId::number(block_to_archive);
                     let block = client
-                        .block(&id)
+                        .block(&BlockId::Number(block_to_archive))
                         .expect("Older block by number should always exist")
                         .expect("Older block by number should always exist");
 
@@ -2182,8 +2234,6 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
 {
-    // TODO: This task should probably be in a separate function altogether
-
     let verifier = PoCVerifier {
         select_chain,
         create_inherent_data_providers,
