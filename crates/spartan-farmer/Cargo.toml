@@ -26,9 +26,9 @@ indicatif = "0.16.2"
 log = "0.4.14"
 rayon = "1.5.0"
 ring = "0.16.20"
-serde_json = "1.0.64"
 schnorrkel = "0.10.1"
-spartan-codec = "0.1.0"
+serde_json = "1.0.64"
+sloth256-189 = "0.2.2"
 thiserror = "1.0.24"
 tokio = "1.11.0"
 
@@ -54,7 +54,17 @@ path = "../subspace-core-primitives"
 
 [dev-dependencies]
 rand = "0.8.4"
+tempfile = "3.2.0"
 
 [dev-dependencies.async-std]
 features = ["attributes"]
 version = "1.9.0"
+
+[features]
+default = ["cuda"]
+# Compile with CUDA support and use it if compatible GPU is available
+cuda = [
+    "sloth256-189/cuda",
+]
+# Special feature to test CUDA support
+test-cuda = []

@@ -38,10 +38,6 @@ docker run --rm -it --mount source=spartan-farmer,target=/var/spartan subspacela
 ## Install and Run Manually
 Instead of Docker you can also install spartan-farmer natively by compiling it using cargo.
 
-**Notes:** This will currently only work on Mac and Linux, not Windows.
-
-If you have not previously installed the `gmp_mpfr_sys` crate, follow these [instructions](https://docs.rs/gmp-mpfr-sys/1.3.0/gmp_mpfr_sys/index.html#building-on-gnulinux). 
-
 RocksDB on Linux needs LLVM/Clang:
 ```bash
 sudo apt-get install llvm clang

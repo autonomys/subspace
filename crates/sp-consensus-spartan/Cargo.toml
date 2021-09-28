@@ -12,13 +12,16 @@ readme = "README.md"
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
+
 [dependencies]
 ring = { version = "0.16.20", optional = true }
-spartan-codec = { version = "0.1.0", default-features = false, optional = true }
+sloth256-189 = { version = "0.2.2", optional = true}
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", optional = true}
 
 [features]
 default = ["std"]
 std = [
     "ring/std",
-    "spartan-codec"
+    "sloth256-189",
+    "subspace-core-primitives"
 ]

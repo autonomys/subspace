@@ -18,6 +18,7 @@
 mod commands;
 mod crypto;
 mod plot;
+mod spartan;
 mod utils;
 
 use async_std::task;
@@ -29,13 +30,14 @@ use std::path::PathBuf;
 use subspace_core_primitives::{Piece, PIECE_SIZE};
 use tokio::runtime::Runtime;
 
-type Tag = [u8; PRIME_SIZE_BYTES];
-type Salt = [u8; PRIME_SIZE_BYTES];
+type Tag = [u8; 8];
+type Salt = [u8; 8];
 
-const PRIME_SIZE_BYTES: usize = 8;
+const PRIME_SIZE_BYTES: usize = 32;
 const ENCODE_ROUNDS: usize = 1;
 const SIGNING_CONTEXT: &[u8] = b"FARMER";
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
+const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
 
 #[derive(Debug, Clap)]
 #[clap(about, version)]
