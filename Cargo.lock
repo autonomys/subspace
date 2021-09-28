@@ -7287,6 +7287,7 @@ dependencies = [
  "serde_json",
  "sloth256-189",
  "subspace-core-primitives",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
