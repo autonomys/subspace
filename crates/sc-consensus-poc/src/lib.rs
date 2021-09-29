@@ -2034,7 +2034,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
     let confirmation_depth_k = client
         .runtime_api()
-        .confirmation_depth_k(&BlockId::Number(Zero::zero()))
+        .confirmation_depth_k(&genesis_block_id)
         .expect("Failed to get `confirmation_depth_k` from runtime API");
     let record_size = client
         .runtime_api()

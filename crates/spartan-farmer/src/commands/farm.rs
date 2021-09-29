@@ -17,6 +17,26 @@ use std::{fs, io};
 
 type SlotNumber = u64;
 
+/// Metadata necessary for farmer operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FarmerMetadata {
+    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
+    /// to the client-dependent transaction confirmation depth `k`).
+    pub confirmation_depth_k: u32,
+    /// The size of data in one piece (in bytes).
+    pub record_size: u32,
+    /// Recorded history is encoded and plotted in segments of this size (in bytes).
+    pub recorded_history_segment_size: u32,
+    /// This constant defines the size (in bytes) of one pre-genesis object.
+    pub pre_genesis_object_size: u32,
+    /// This constant defines the number of a pre-genesis objects that will bootstrap the
+    /// history.
+    pub pre_genesis_object_count: u32,
+    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
+    /// the history.
+    pub pre_genesis_object_seed: Vec<u8>,
+}
+
 #[derive(Debug, Serialize)]
 struct Solution {
     public_key: [u8; 32],
@@ -67,6 +87,13 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     let keypair =
         Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+
+    let farmer_metadata: FarmerMetadata = client
+        .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
+        .await?;
+
+    // TODO: Use metadata
+    println!("farmer metadata: {:#?}", farmer_metadata);
 
     info!("Opening plot");
     let plot = Plot::open_or_create(&path.into()).await?;

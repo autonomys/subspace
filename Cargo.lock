@@ -5618,8 +5618,11 @@ dependencies = [
  "sc-consensus-poc",
  "sc-rpc-api",
  "serde",
+ "sp-api",
+ "sp-blockchain",
  "sp-consensus-poc",
  "sp-core",
+ "sp-runtime",
  "subspace-core-primitives",
 ]
 
