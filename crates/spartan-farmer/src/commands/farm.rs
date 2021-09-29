@@ -9,9 +9,9 @@ use ring::digest;
 use schnorrkel::Keypair;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
-use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
+use std::{fs, io};
 
 type SlotNumber = u64;
 
@@ -83,163 +83,12 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
         )
         .await?;
 
-    let mut current_salt = None;
-    let mut next_salt = None;
+    let mut salts = Salts::default();
 
     while let Some(slot_info) = sub.next().await? {
         debug!("New slot: {:?}", slot_info);
 
-        if current_salt.is_none() {
-            let mut salts = vec![slot_info.salt];
-            if let Some(salt) = slot_info.next_salt {
-                salts.push(salt);
-            }
-            plot.retain_commitments(salts).await?;
-        }
-
-        // Check if current salt has changed
-        if current_salt != Some(slot_info.salt) {
-            // If previous `next_salt` is the same as current (expected behavior) remove old
-            // commitment
-            if next_salt == Some(slot_info.salt) {
-                let old_salt = current_salt.replace(slot_info.salt);
-                if let Some(old_salt) = old_salt {
-                    info!(
-                        "Salt {} is out of date, removing commitment",
-                        hex::encode(old_salt)
-                    );
-
-                    tokio::spawn({
-                        let plot = plot.clone();
-
-                        async move {
-                            if let Err(error) = plot.remove_commitment(old_salt).await {
-                                error!(
-                                    "Failed to remove old commitment for {}: {}",
-                                    hex::encode(old_salt),
-                                    error
-                                );
-                            }
-                        }
-                    })
-                    .await
-                    .unwrap();
-                }
-            } else {
-                // `next_salt` is not the same as new salt, need to re-commit
-                tokio::spawn({
-                    let salt = slot_info.salt;
-                    let plot = plot.clone();
-
-                    async move {
-                        let started = Instant::now();
-                        info!(
-                            "Salt updated to {}, recommitting in background",
-                            hex::encode(salt)
-                        );
-
-                        if let Err(error) = plot.create_commitment(salt).await {
-                            error!(
-                                "Failed to create commitment for {}: {}",
-                                hex::encode(salt),
-                                error
-                            );
-                        } else {
-                            info!(
-                                "Finished recommitment for {} in {} seconds",
-                                hex::encode(salt),
-                                started.elapsed().as_secs_f32()
-                            );
-                        }
-                    }
-                });
-
-                let old_salt = current_salt.replace(slot_info.salt);
-                if let Some(old_salt) = old_salt {
-                    warn!(
-                        "New salt {} is not the same as previously known next salt {:?}",
-                        hex::encode(slot_info.salt),
-                        next_salt.map(hex::encode)
-                    );
-                    info!(
-                        "Salt {} is out of date, removing commitment",
-                        hex::encode(old_salt)
-                    );
-
-                    tokio::spawn({
-                        let plot = plot.clone();
-
-                        async move {
-                            if let Err(error) = plot.remove_commitment(old_salt).await {
-                                error!(
-                                    "Failed to remove old commitment for {}: {}",
-                                    hex::encode(old_salt),
-                                    error
-                                );
-                            }
-                        }
-                    })
-                    .await
-                    .unwrap();
-                }
-            }
-        }
-        if let Some(new_next_salt) = slot_info.next_salt {
-            if Some(new_next_salt) != next_salt {
-                let old_salt = next_salt.replace(new_next_salt);
-                if old_salt != current_salt {
-                    if let Some(old_salt) = old_salt {
-                        warn!(
-                            "Previous next salt {} is out of date (current is {:?}), \
-                            removing commitment",
-                            hex::encode(old_salt),
-                            current_salt.map(hex::encode)
-                        );
-
-                        tokio::spawn({
-                            let plot = plot.clone();
-
-                            async move {
-                                if let Err(error) = plot.remove_commitment(old_salt).await {
-                                    error!(
-                                        "Failed to remove old commitment for {}: {}",
-                                        hex::encode(old_salt),
-                                        error
-                                    );
-                                }
-                            }
-                        })
-                        .await
-                        .unwrap();
-                    }
-                }
-
-                tokio::spawn({
-                    let plot = plot.clone();
-
-                    async move {
-                        let started = Instant::now();
-                        info!(
-                            "Salt will update to {} soon, recommitting in background",
-                            hex::encode(new_next_salt)
-                        );
-                        if let Err(error) = plot.create_commitment(new_next_salt).await {
-                            error!(
-                                "Recommitting salt in background failed for {}: {}",
-                                hex::encode(new_next_salt),
-                                error
-                            );
-                            return;
-                        }
-                        info!(
-                            "Finished recommitment in background for {} in {} seconds",
-                            hex::encode(new_next_salt),
-                            started.elapsed().as_secs_f32()
-                        );
-                    }
-                });
-            }
-        }
+        update_commitments(&plot, &mut salts, &slot_info).await?;
 
         let local_challenge = derive_local_challenge(&slot_info.challenge, &public_key_hash);
 
@@ -290,6 +139,174 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     drop(plot);
 
     rx.await?;
+
+    Ok(())
+}
+
+#[derive(Default)]
+struct Salts {
+    current: Option<Salt>,
+    next: Option<Salt>,
+}
+
+/// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
+/// accordingly if necessary
+async fn update_commitments(
+    plot: &Plot,
+    salts: &mut Salts,
+    slot_info: &SlotInfo,
+) -> io::Result<()> {
+    if salts.current.is_none() {
+        let mut salts = vec![slot_info.salt];
+        if let Some(salt) = slot_info.next_salt {
+            salts.push(salt);
+        }
+        plot.retain_commitments(salts).await?;
+    }
+
+    // Check if current salt has changed
+    if salts.current != Some(slot_info.salt) {
+        // If previous `salts.next` is the same as current (expected behavior) remove old commitment
+        if salts.next == Some(slot_info.salt) {
+            let old_salt = salts.current.replace(slot_info.salt);
+            if let Some(old_salt) = old_salt {
+                info!(
+                    "Salt {} is out of date, removing commitment",
+                    hex::encode(old_salt)
+                );
+
+                tokio::spawn({
+                    let plot = plot.clone();
+
+                    async move {
+                        if let Err(error) = plot.remove_commitment(old_salt).await {
+                            error!(
+                                "Failed to remove old commitment for {}: {}",
+                                hex::encode(old_salt),
+                                error
+                            );
+                        }
+                    }
+                })
+                .await
+                .unwrap();
+            }
+        } else {
+            // `salts.next` is not the same as new salt, need to re-commit
+            tokio::spawn({
+                let salt = slot_info.salt;
+                let plot = plot.clone();
+
+                async move {
+                    let started = Instant::now();
+                    info!(
+                        "Salt updated to {}, recommitting in background",
+                        hex::encode(salt)
+                    );
+
+                    if let Err(error) = plot.create_commitment(salt).await {
+                        error!(
+                            "Failed to create commitment for {}: {}",
+                            hex::encode(salt),
+                            error
+                        );
+                    } else {
+                        info!(
+                            "Finished recommitment for {} in {} seconds",
+                            hex::encode(salt),
+                            started.elapsed().as_secs_f32()
+                        );
+                    }
+                }
+            });
+
+            let old_salt = salts.current.replace(slot_info.salt);
+            if let Some(old_salt) = old_salt {
+                warn!(
+                    "New salt {} is not the same as previously known next salt {:?}",
+                    hex::encode(slot_info.salt),
+                    salts.next.map(hex::encode)
+                );
+                info!(
+                    "Salt {} is out of date, removing commitment",
+                    hex::encode(old_salt)
+                );
+
+                tokio::spawn({
+                    let plot = plot.clone();
+
+                    async move {
+                        if let Err(error) = plot.remove_commitment(old_salt).await {
+                            error!(
+                                "Failed to remove old commitment for {}: {}",
+                                hex::encode(old_salt),
+                                error
+                            );
+                        }
+                    }
+                })
+                .await
+                .unwrap();
+            }
+        }
+    }
+
+    if let Some(new_next_salt) = slot_info.next_salt {
+        if Some(new_next_salt) != salts.next {
+            let old_salt = salts.next.replace(new_next_salt);
+            if old_salt != salts.current {
+                if let Some(old_salt) = old_salt {
+                    warn!(
+                        "Previous next salt {} is out of date (current is {:?}), \
+                            removing commitment",
+                        hex::encode(old_salt),
+                        salts.current.map(hex::encode)
+                    );
+
+                    tokio::spawn({
+                        let plot = plot.clone();
+
+                        async move {
+                            if let Err(error) = plot.remove_commitment(old_salt).await {
+                                error!(
+                                    "Failed to remove old commitment for {}: {}",
+                                    hex::encode(old_salt),
+                                    error
+                                );
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap();
+                }
+            }
+
+            tokio::spawn({
+                let plot = plot.clone();
+
+                async move {
+                    let started = Instant::now();
+                    info!(
+                        "Salt will update to {} soon, recommitting in background",
+                        hex::encode(new_next_salt)
+                    );
+                    if let Err(error) = plot.create_commitment(new_next_salt).await {
+                        error!(
+                            "Recommitting salt in background failed for {}: {}",
+                            hex::encode(new_next_salt),
+                            error
+                        );
+                        return;
+                    }
+                    info!(
+                        "Finished recommitment in background for {} in {} seconds",
+                        hex::encode(new_next_salt),
+                        started.elapsed().as_secs_f32()
+                    );
+                }
+            });
+        }
+    }
 
     Ok(())
 }
