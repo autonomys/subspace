@@ -17,15 +17,3 @@ jobs:
         working-directory: relayer
       - run: npm run build
         working-directory: relayer
-  test:
-    runs-on: ubuntu-20.04
-    name: Run tests
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: "16.x"
-      - run: npm ci
-        working-directory: relayer
-      - run: npm test
-        working-directory: relayer

@@ -1,8 +1,0 @@
-{
-  "preset": "ts-jest",
-  "testEnvironment": "node",
-  "modulePathIgnorePatterns": [
-    "<rootDir>/dist/",
-    "<rootDir>/src/node_modules"
-  ]
-}

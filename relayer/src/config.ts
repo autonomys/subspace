@@ -3,17 +3,16 @@ import { ParachainConfigType } from './types';
 
 dotenv.config();
 
-
-type SourceChain = {
+interface SourceChain {
   url: string;
   parachains: ParachainConfigType[];
   signerSeed: string;
-};
+}
 
-type Config = {
+interface Config {
   targetChainUrl: string;
   sourceChainUrls: SourceChain[];
-};
+}
 
 // TODO: convert to class
 const loadConfig = (): Config => {

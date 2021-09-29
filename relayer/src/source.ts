@@ -7,19 +7,19 @@ import { concatMap, take, map } from "rxjs/operators";
 import { from, merge } from 'rxjs';
 import { Logger } from "pino";
 import { ParaHeadAndId, TxData } from "./types";
-import { getParaHeadAndIdFromRecord, isRelevantRecord } from './utils'
+import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
 
-type SourceConstructorParams = {
+interface SourceConstructorParams {
   api: ApiPromise;
   chain: string;
   feedId: U64;
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
   signer: AddressOrPair;
-};
+}
 
-type TxDataInput = {
+interface TxDataInput {
   block: SignedBlock;
   hash: Hash;
   feedId: U64;
@@ -28,12 +28,12 @@ type TxDataInput = {
 }
 
 class Source {
-  private api: ApiPromise;
-  private chain: string;
-  private feedId: U64;
-  private parachainsMap: Map<string, Parachain>;
-  private logger: Logger;
-  signer: AddressOrPair;
+  private readonly api: ApiPromise;
+  private readonly chain: string;
+  private readonly feedId: U64;
+  private readonly parachainsMap: Map<string, Parachain>;
+  private readonly logger: Logger;
+  public readonly signer: AddressOrPair;
 
   constructor(params: SourceConstructorParams) {
     this.api = params.api;
@@ -42,7 +42,7 @@ class Source {
     this.parachainsMap = params.parachainsMap;
     this.logger = params.logger;
     this.signer = params.signer;
-    this.getBlocksByHeader = this.getBlocksByHeader.bind(this);
+    this.getBlocksByHash = this.getBlocksByHash.bind(this);
     this.getParablocks = this.getParablocks.bind(this);
   }
 
@@ -51,7 +51,7 @@ class Source {
   }
 
   private getBlock(hash: Hash): Observable<SignedBlock> {
-    return this.api.rx.rpc.chain.getBlock(hash).pipe(take(1))
+    return this.api.rx.rpc.chain.getBlock(hash).pipe(take(1));
   }
 
   // TODO: refactor to return Observable<ParaHeadAndId>
@@ -68,7 +68,7 @@ class Source {
       if (method.section == "paraInherent" && method.method == "enter") {
         blockRecords
           .filter(isRelevantRecord(index))
-          .map(getParaHeadAndIdFromRecord)
+          .map(({ event }) => getParaHeadAndIdFromEvent(event))
           .forEach((parablockData) => result.push(parablockData));
       }
     }
@@ -81,7 +81,7 @@ class Source {
   // TODO: add logging for individual parablocks
   getParablocks({ block }: SignedBlock): Observable<TxData> {
     return from(this.getParaHeadsAndIds(block))
-      .pipe(concatMap(x => x))
+      .pipe(from)
       .pipe(concatMap(({ paraId, paraHead }) => {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
@@ -108,7 +108,7 @@ class Source {
     };
   }
 
-  private getBlocksByHeader({ hash }: Header): Observable<TxData> {
+  private getBlocksByHash(hash: Hash): Observable<TxData> {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
@@ -126,7 +126,7 @@ class Source {
   }
 
   subscribeBlocks(): Observable<TxData> {
-    return this.subscribeHeads().pipe(concatMap(this.getBlocksByHeader));
+    return this.subscribeHeads().pipe(concatMap(({ hash }) => this.getBlocksByHash(hash)));
   }
 }
 

@@ -2,28 +2,28 @@ import { U64 } from "@polkadot/types/primitive";
 import { Hash } from "@polkadot/types/interfaces";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 
-export type TxData = {
+export interface TxData {
   feedId: U64;
   block: string;
   metadata: Metadata;
   chain: string;
   signer: AddressOrPair;
-};
+}
 
-type Metadata = {
+interface Metadata {
   hash: Hash;
-  number: string | number;
-};
+  number: string;
+}
 
-export type ParaHeadAndId = {
+export interface ParaHeadAndId {
   paraId: string;
   paraHead: Hash;
-};
+}
 
-export type ParachainConfigType = {
-  url: string,
-  paraId: number,
+export interface ParachainConfigType {
+  url: string;
+  paraId: number;
   // TODO: get chain name from api
-  chain: string,
-  signerSeed: string,
+  chain: string;
+  signerSeed: string;
 }
