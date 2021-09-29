@@ -25,5 +25,4 @@ export interface ParachainConfigType {
   paraId: number;
   // TODO: get chain name from api
   chain: string;
-  signerSeed: string;
 }

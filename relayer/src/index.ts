@@ -22,12 +22,15 @@ const createApi = async (url: string) => {
   const target = new Target({ api: targetApi, logger });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url, parachains }, index) => {
+    config.sourceChainUrls.map(async ({ url, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
-      const signer = getAccount(config.sourceChainUrls[index].signerSeed);
-      const feedId = await target.sendCreateFeedTx(signer);
-      const parachainsMap = await createParachainsMap(target, parachains);
+      // const master = getAccount(config.accountSeed);
+      const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
+      // TODO: Alice has to delegate spending to these accounts
+      const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
+      const feedId = await target.sendCreateFeedTx(sourceSigner);
+      const parachainsMap = await createParachainsMap(target, parachains, paraSigners);
 
       return new Source({
         api,
@@ -35,7 +38,7 @@ const createApi = async (url: string) => {
         parachainsMap,
         logger,
         feedId,
-        signer,
+        signer: sourceSigner,
       });
     })
   );
