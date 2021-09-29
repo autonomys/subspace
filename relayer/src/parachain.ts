@@ -43,7 +43,12 @@ class Parachain {
         this.logger.info(`Fetching ${this.chain} parablock: ${hash}`);
 
         return defer(() => from(fetch(this.url, options)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(response.statusText);
+                }
+                return response.json();
+            })
             .then(({ result }) => {
                 if (!result) {
                     throw new Error(`Could not fetch ${this.chain} parablock ${hash} from ${this.url}`);
