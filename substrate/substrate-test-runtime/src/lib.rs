@@ -594,6 +594,12 @@ parameter_types! {
 	pub const EonDuration: u64 = 11;
 	pub const InitialSolutionRange: u64 = u64::MAX;
 	pub const SlotProbability: (u64, u64) = (3, 10);
+	pub const ConfirmationDepthK: u32 = 10;
+	pub const RecordSize: u32 = 3840;
+	pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
+	pub const PreGenesisObjectSize: u32 = 3840 * 256 / 2;
+	pub const PreGenesisObjectCount: u32 = 5;
+	pub const PreGenesisObjectSeed: &'static [u8] = b"subspace";
 }
 
 impl pallet_spartan::Config for Runtime {
@@ -604,6 +610,12 @@ impl pallet_spartan::Config for Runtime {
 	type InitialSolutionRange = InitialSolutionRange;
 	type SlotProbability = SlotProbability;
 	type ExpectedBlockTime = ExpectedBlockTime;
+	type ConfirmationDepthK = ConfirmationDepthK;
+	type RecordSize = RecordSize;
+	type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+	type PreGenesisObjectSize = PreGenesisObjectSize;
+	type PreGenesisObjectCount = PreGenesisObjectCount;
+	type PreGenesisObjectSeed = PreGenesisObjectSeed;
 	type EpochChangeTrigger = pallet_spartan::NormalEpochChange;
 	type EraChangeTrigger = pallet_spartan::NormalEraChange;
 	type EonChangeTrigger = pallet_spartan::NormalEonChange;
@@ -866,6 +878,30 @@ cfg_if! {
 			}
 
 			impl sp_consensus_poc::PoCApi<Block> for Runtime {
+				fn confirmation_depth_k() -> u32 {
+					ConfirmationDepthK::get()
+				}
+
+				fn record_size() -> u32 {
+					RecordSize::get()
+				}
+
+				fn recorded_history_segment_size() -> u32 {
+					RecordedHistorySegmentSize::get()
+				}
+
+				fn pre_genesis_object_size() -> u32 {
+					PreGenesisObjectSize::get()
+				}
+
+				fn pre_genesis_object_count() -> u32 {
+					PreGenesisObjectCount::get()
+				}
+
+				fn pre_genesis_object_seed() -> Vec<u8> {
+					Vec::from(PreGenesisObjectSeed::get())
+				}
+
 				fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
 					sp_consensus_poc::PoCGenesisConfiguration {
 						slot_duration: 1000,
@@ -1174,6 +1210,30 @@ cfg_if! {
 			}
 
 			impl sp_consensus_poc::PoCApi<Block> for Runtime {
+				fn confirmation_depth_k() -> u32 {
+					ConfirmationDepthK::get()
+				}
+
+				fn record_size() -> u32 {
+					RecordSize::get()
+				}
+
+				fn recorded_history_segment_size() -> u32 {
+					RecordedHistorySegmentSize::get()
+				}
+
+				fn pre_genesis_object_size() -> u32 {
+					PreGenesisObjectSize::get()
+				}
+
+				fn pre_genesis_object_count() -> u32 {
+					PreGenesisObjectCount::get()
+				}
+
+				fn pre_genesis_object_seed() -> Vec<u8> {
+					Vec::from(PreGenesisObjectSeed::get())
+				}
+
 				fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
 					sp_consensus_poc::PoCGenesisConfiguration {
 						slot_duration: 1000,

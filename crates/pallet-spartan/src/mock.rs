@@ -146,6 +146,12 @@ parameter_types! {
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: u64 = 1;
+    pub const ConfirmationDepthK: u32 = 10;
+    pub const RecordSize: u32 = 3840;
+    pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
+    pub const PreGenesisObjectSize: u32 = 3840 * 256 / 2;
+    pub const PreGenesisObjectCount: u32 = 5;
+    pub const PreGenesisObjectSeed: &'static [u8] = b"subspace";
     pub const ReportLongevity: u64 = 34;
 }
 
@@ -157,6 +163,12 @@ impl Config for Test {
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
+    type ConfirmationDepthK = ConfirmationDepthK;
+    type RecordSize = RecordSize;
+    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type PreGenesisObjectSize = PreGenesisObjectSize;
+    type PreGenesisObjectCount = PreGenesisObjectCount;
+    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
