@@ -3,9 +3,10 @@ use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::channel::oneshot;
 use jsonrpsee::ws_client::traits::{Client, SubscriptionClient};
 use jsonrpsee::ws_client::v2::params::JsonRpcParams;
-use jsonrpsee::ws_client::{Subscription, WsClientBuilder};
+use jsonrpsee::ws_client::{Subscription, WsClient, WsClientBuilder};
 use log::{debug, error, info, trace, warn};
 use ring::digest;
+use schnorrkel::context::SigningContext;
 use schnorrkel::Keypair;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
@@ -64,7 +65,6 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     info!("Opening existing keypair");
     let keypair =
         Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
     info!("Opening plot");
@@ -73,6 +73,29 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     if plot.is_empty().await {
         panic!("Plot is empty, please create it first using plot command");
     }
+
+    subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await?;
+
+    let (tx, rx) = oneshot::channel();
+
+    let _handler = plot.on_close(move || {
+        let _ = tx.send(());
+    });
+
+    drop(plot);
+
+    rx.await?;
+
+    Ok(())
+}
+
+async fn subscribe_to_slot_info(
+    client: &WsClient,
+    plot: &Plot,
+    keypair: &Keypair,
+    ctx: &SigningContext,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let public_key_hash = crypto::hash_public_key(&keypair.public);
 
     info!("Subscribing to slot info notifications");
     let mut sub: Subscription<SlotInfo> = client
@@ -88,7 +111,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     while let Some(slot_info) = sub.next().await? {
         debug!("New slot: {:?}", slot_info);
 
-        update_commitments(&plot, &mut salts, &slot_info).await?;
+        update_commitments(plot, &mut salts, &slot_info).await?;
 
         let local_challenge = derive_local_challenge(&slot_info.challenge, &public_key_hash);
 
@@ -129,16 +152,6 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
             )
             .await?;
     }
-
-    let (tx, rx) = oneshot::channel();
-
-    let _handler = plot.on_close(move || {
-        let _ = tx.send(());
-    });
-
-    drop(plot);
-
-    rx.await?;
 
     Ok(())
 }
