@@ -70,7 +70,7 @@ class Source {
   // TODO: add logging for individual parablocks
   getParablocks({ block }: SignedBlock): Observable<TxData> {
     return from(this.getParaHeadsAndIds(block))
-      .pipe(concatMap(x => x))
+      .pipe(from)
       .pipe(concatMap(({ paraId, paraHead }) => {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
