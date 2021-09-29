@@ -1,11 +1,10 @@
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
 import { ParaHeadAndId, ParachainConfigType } from "./types";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
 import Parachain from "./parachain";
 import Target from "./target";
 import logger from "./logger";
-import { getAccount } from "./account";
 
-// TODO: consider moving to a separate utils module
 // TODO: implement tests
 export const getParaHeadAndIdFromEvent = (event: Event): ParaHeadAndId => {
     // use 'any' because this is not typed array - element can be number, string or Record<string, unknown>
@@ -35,13 +34,14 @@ type ParachainsMap = Map<string, Parachain>;
 
 export const createParachainsMap = async (
     target: Target,
-    configParachains: ParachainConfigType[]
+    configParachains: ParachainConfigType[],
+    signers: AddressOrPair[],
 ): Promise<ParachainsMap> => {
     const map = new Map();
 
     for (let index = 0; index < configParachains.length; index++) {
-        const { url, chain, paraId, signerSeed } = configParachains[index];
-        const signer = getAccount(signerSeed);
+        const { url, chain, paraId } = configParachains[index];
+        const signer = signers[index];
         const feedId = await target.sendCreateFeedTx(signer);
         const parachain = new Parachain({ feedId, url, chain, logger, signer });
         map.set(paraId, parachain);
