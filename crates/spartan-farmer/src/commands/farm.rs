@@ -187,9 +187,7 @@ async fn update_commitments(
                             );
                         }
                     }
-                })
-                .await
-                .unwrap();
+                });
             }
         } else {
             // `salts.next` is not the same as new salt, need to re-commit
@@ -244,9 +242,7 @@ async fn update_commitments(
                             );
                         }
                     }
-                })
-                .await
-                .unwrap();
+                });
             }
         }
     }
@@ -275,9 +271,7 @@ async fn update_commitments(
                                 );
                             }
                         }
-                    })
-                    .await
-                    .unwrap();
+                    });
                 }
             }
 
