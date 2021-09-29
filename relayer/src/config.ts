@@ -2,23 +2,23 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-type Parachain = {
-  url: string,
-  paraId: number,
+interface Parachain {
+  url: string;
+  paraId: number;
   // TODO: get chain name from api
-  chain: string,
+  chain: string;
 }
 
-type SourceChain = {
+interface SourceChain {
   url: string;
   parachains: Parachain[];
-};
+}
 
-type Config = {
+interface Config {
   accountSeed: string;
   targetChainUrl: string;
   sourceChainUrls: SourceChain[];
-};
+}
 
 // TODO: convert to class
 export const loadConfig = (): Config => {

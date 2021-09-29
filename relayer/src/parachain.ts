@@ -6,18 +6,18 @@ import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 import { Logger } from "pino";
 
-type ParachainConstructorParams = {
-    feedId: U64,
-    url: string,
-    chain: string,
-    logger: Logger
+interface ParachainConstructorParams {
+    feedId: U64;
+    url: string;
+    chain: string;
+    logger: Logger;
 }
 
 class Parachain {
-    private url: string;
-    private logger: Logger;
-    chain: string;
-    feedId: U64;
+    private readonly url: string;
+    private readonly logger: Logger;
+    public chain: string;
+    public feedId: U64;
 
     constructor({ feedId, url, chain, logger }: ParachainConstructorParams) {
         this.feedId = feedId;
@@ -48,17 +48,17 @@ class Parachain {
                 if (!result) {
                     throw new Error(`Could not fetch ${this.chain} parablock ${hash} from ${this.url}`);
                 }
-                return result as SignedBlock;
+                return result;
             })))
             // TODO: currently this works, but need more elegant solution
             .pipe(
                 retry(3),
                 catchError((error) => {
-                    this.logger.error(error)
-                    return EMPTY
+                    this.logger.error(error);
+                    return EMPTY;
                 }),
                 shareReplay()
-            )
+            );
     }
 }
 

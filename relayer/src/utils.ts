@@ -1,4 +1,4 @@
-import { EventRecord } from "@polkadot/types/interfaces/system";
+import { EventRecord, Event } from "@polkadot/types/interfaces/system";
 import { ParaHeadAndId, ParachainsMap } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
@@ -6,7 +6,7 @@ import logger from "./logger";
 
 // TODO: consider moving to a separate utils module
 // TODO: implement tests
-export const getParaHeadAndIdFromRecord = ({ event }: EventRecord): ParaHeadAndId => {
+export const getParaHeadAndIdFromEvent = (event: Event): ParaHeadAndId => {
     // use 'any' because this is not typed array - element can be number, string or Record<string, unknown>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { paraHead, paraId } = (event.toJSON().data as Array<any>)[0]
@@ -36,11 +36,11 @@ export const createParachainsMap = async (target: Target, configParachains: {
 }[]): Promise<ParachainsMap> => {
     const map = new Map();
 
-    for await (const { url, chain, paraId } of configParachains) {
+    for (const { url, chain, paraId } of configParachains) {
         const feedId = await target.sendCreateFeedTx();
         const parachain = new Parachain({ feedId, url: url, chain: chain, logger });
-        map.set(paraId, parachain)
+        map.set(paraId, parachain);
     }
 
     return map;
-}
+};

@@ -1,35 +1,35 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { of } from "rxjs";
-import { Block, Hash } from "@polkadot/types/interfaces";
+import { Hash } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 
-export const txHashMock = "random hash" as unknown as Hash;
+const stringifiedBlockJson = "stringified block json";
 
 export const txDataMock = {
   feedId: 1 as unknown as U64,
-  block: "block hex",
+  block: stringifiedBlockJson,
   chain: "Random chain name",
   metadata: {
-    hash: "random hash" as unknown as Hash,
-    number: 1,
+    hash: "0x84283d2b1b62b7a79d3a4c12464a28dbdcc0c13ca7c046cd82e9826d13c6ce48" as unknown as Hash,
+    number: "1,000",
   }
 };
 
 const block = {
   block: {
     header: {
-      hash: "random hash",
+      hash: "0x84283d2b1b62b7a79d3a4c12464a28dbdcc0c13ca7c046cd82e9826d13c6ce48" as unknown as Hash,
       number: {
         toString() {
-          return "100"
+          return "100";
         }
       }
     },
     extrinsics: [],
   },
   toString() {
-    return "block as string";
+    return stringifiedBlockJson;
   },
 };
 
@@ -41,7 +41,7 @@ export const apiMock = {
           signAndSend: jest.fn().mockReturnValue({
             pipe: jest.fn().mockReturnValue({
               subscribe() {
-                return
+                return;
               }
             })
           })
@@ -56,7 +56,7 @@ export const apiMock = {
             hash: "random hash" as unknown as Hash,
             number: {
               toNumber() {
-                return 10
+                return 10;
               }
             },
           });
@@ -74,7 +74,7 @@ export const apiMock = {
     },
   },
   createType() {
-    return
+    return;
   },
 } as unknown as ApiPromise;
 
@@ -82,5 +82,3 @@ export const loggerMock = {
   info: jest.fn(),
   error: jest.fn(),
 } as unknown as Logger;
-
-export const fetchParaBlockMock = jest.fn().mockResolvedValue({} as Block);

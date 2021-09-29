@@ -12,15 +12,16 @@ import { TxData } from "./types";
 const polkadotAppsUrl =
   "https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/";
 
-type TargetConstructorParams = {
+interface TargetConstructorParams {
   api: ApiPromise;
   signer: AddressOrPair;
   logger: Logger;
-};
+}
+
 class Target {
-  private api: ApiPromise;
-  private signer: AddressOrPair;
-  private logger: Logger;
+  private readonly api: ApiPromise;
+  private readonly signer: AddressOrPair;
+  private readonly logger: Logger;
 
   constructor({ api, signer, logger }: TargetConstructorParams) {
     this.api = api;
