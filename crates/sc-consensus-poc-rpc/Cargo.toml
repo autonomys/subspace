@@ -21,6 +21,7 @@ jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
 jsonrpc-pubsub = "18.0.0"
 sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
+sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 serde = { version = "1.0.127", features = ["derive"] }
 futures = "0.3.17"
 futures-timer = "3.0.2"

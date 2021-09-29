@@ -36,7 +36,8 @@
 
 use frame_support::traits::Get;
 use sp_consensus_poc::offence::{Kind, Offence, OffenceError, ReportOffence};
-use sp_consensus_poc::{EquivocationProof, FarmerId, Slot};
+use sp_consensus_poc::{EquivocationProof, FarmerId};
+use sp_consensus_slots::Slot;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,

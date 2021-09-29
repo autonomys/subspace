@@ -71,10 +71,9 @@ use sc_consensus::{
 use sc_consensus_epochs::{
     descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
 };
-pub use sc_consensus_slots::SlotProportion;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SimpleSlotWorker, SlotInfo, StorageChanges,
+    SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
@@ -89,17 +88,17 @@ use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
     SelectChain, SlotData, SyncOracle,
 };
-pub use sp_consensus_poc::{
+use sp_consensus_poc::{
     digests::{
         CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
     inherents::PoCInherentData,
-    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, Randomness,
-    POC_ENGINE_ID,
+    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Salt, SIGNING_CONTEXT};
+use sp_consensus_spartan::Randomness;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};

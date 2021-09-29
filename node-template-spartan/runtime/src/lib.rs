@@ -8,37 +8,27 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::Decode;
+use frame_support::{
+    construct_runtime, parameter_types,
+    weights::{
+        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
+        IdentityFee, Weight,
+    },
+};
+use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys,
     transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, MultiSignature,
+    ApplyExtrinsicResult, MultiSignature, Perbill,
 };
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::{RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
-
-// A few exports that help ease life for downstream crates.
-pub use frame_support::{
-    construct_runtime, parameter_types,
-    traits::{KeyOwnerProofSystem, Randomness, StorageInfo},
-    weights::{
-        constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
-        IdentityFee, Weight,
-    },
-    StorageValue,
-};
-pub use pallet_balances::Call as BalancesCall;
-pub use pallet_feeds;
-pub use pallet_timestamp::Call as TimestampCall;
-use pallet_transaction_payment::CurrencyAdapter;
-#[cfg(any(feature = "std", test))]
-pub use sp_runtime::BuildStorage;
-pub use sp_runtime::{Perbill, Permill};
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -69,7 +59,7 @@ pub type Moment = u64;
 pub mod opaque {
     use super::*;
 
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+    use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -275,7 +265,8 @@ impl pallet_spartan::Config for Runtime {
     type EraChangeTrigger = pallet_spartan::NormalEraChange;
     type EonChangeTrigger = pallet_spartan::NormalEonChange;
 
-    type HandleEquivocation = pallet_spartan::EquivocationHandler<OffencesPoC, ReportLongevity>;
+    type HandleEquivocation =
+        pallet_spartan::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -511,7 +502,7 @@ impl_runtime_apis! {
             PoC::salt()
         }
 
-        fn current_epoch_start() -> sp_consensus_poc::Slot {
+        fn current_epoch_start() -> sp_consensus_slots::Slot {
             PoC::current_epoch_start()
         }
 

@@ -31,7 +31,8 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-pub use sp_consensus_spartan::{Randomness, RANDOMNESS_LENGTH};
+use sp_consensus_slots::Slot;
+use sp_consensus_spartan::Randomness;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::RootBlock;
@@ -60,8 +61,6 @@ pub const POC_ENGINE_ID: ConsensusEngineId = *b"POC_";
 /// This will not vary from chain to chain as it is not dependent on slot duration
 /// or epoch length.
 pub const MEDIAN_ALGORITHM_CARDINALITY: usize = 1200; // arbitrary suggestion by w3f-research.
-
-pub use sp_consensus_slots::Slot;
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerId>;
