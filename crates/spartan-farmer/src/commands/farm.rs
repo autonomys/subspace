@@ -1,9 +1,10 @@
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::channel::oneshot;
-use jsonrpsee::ws_client::traits::{Client, SubscriptionClient};
-use jsonrpsee::ws_client::v2::params::JsonRpcParams;
-use jsonrpsee::ws_client::{Subscription, WsClient, WsClientBuilder};
+use jsonrpsee::types::traits::{Client, SubscriptionClient};
+use jsonrpsee::types::v2::params::JsonRpcParams;
+use jsonrpsee::types::Subscription;
+use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace, warn};
 use ring::digest;
 use schnorrkel::context::SigningContext;
