@@ -22,7 +22,7 @@
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
 mod default_weights;
-mod equivocation;
+pub mod equivocation;
 
 #[cfg(all(feature = "std", test))]
 mod mock;
@@ -30,7 +30,7 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode};
-pub use equivocation::{EquivocationHandler, HandleEquivocation, PoCEquivocationOffence};
+use equivocation::{HandleEquivocation, PoCEquivocationOffence};
 use frame_support::{
     dispatch::DispatchResultWithPostInfo,
     traits::{Get, OnTimestampSet},
@@ -45,9 +45,10 @@ use sp_consensus_poc::{
         PreDigest, SaltDescriptor, SolutionRangeDescriptor,
     },
     offence::{OffenceDetails, OnOffenceHandler},
-    ConsensusLog, Epoch, EquivocationProof, PoCEpochConfiguration, Slot, POC_ENGINE_ID,
+    ConsensusLog, Epoch, EquivocationProof, FarmerId, PoCEpochConfiguration, POC_ENGINE_ID,
 };
-pub use sp_consensus_poc::{FarmerId, RANDOMNESS_LENGTH};
+use sp_consensus_slots::Slot;
+use sp_consensus_spartan::RANDOMNESS_LENGTH;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -121,7 +122,7 @@ impl EonChangeTrigger for NormalEonChange {
 
 const UNDER_CONSTRUCTION_SEGMENT_LENGTH: usize = 256;
 
-type MaybeRandomness = Option<sp_consensus_poc::Randomness>;
+type MaybeRandomness = Option<sp_consensus_spartan::Randomness>;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -294,7 +295,7 @@ pub mod pallet {
     // variable to its underlying value.
     #[pallet::storage]
     #[pallet::getter(fn randomness)]
-    pub type Randomness<T> = StorageValue<_, sp_consensus_poc::Randomness, ValueQuery>;
+    pub type Randomness<T> = StorageValue<_, sp_consensus_spartan::Randomness, ValueQuery>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
@@ -316,7 +317,8 @@ pub mod pallet {
 
     /// Next epoch randomness.
     #[pallet::storage]
-    pub(super) type NextRandomness<T> = StorageValue<_, sp_consensus_poc::Randomness, ValueQuery>;
+    pub(super) type NextRandomness<T> =
+        StorageValue<_, sp_consensus_spartan::Randomness, ValueQuery>;
 
     /// Randomness under construction.
     ///
@@ -333,7 +335,7 @@ pub mod pallet {
     /// TWOX-NOTE: `SegmentIndex` is an increasing integer, so this is okay.
     #[pallet::storage]
     pub(super) type UnderConstruction<T> =
-        StorageMap<_, Twox64Concat, u32, Vec<sp_consensus_poc::Randomness>, ValueQuery>;
+        StorageMap<_, Twox64Concat, u32, Vec<sp_consensus_spartan::Randomness>, ValueQuery>;
 
     /// Temporary value (cleared at block finalization) which is `Some`
     /// if per-block initialization has already been called for current block.
@@ -768,7 +770,7 @@ impl<T: Config> Pallet<T> {
         <frame_system::Pallet<T>>::deposit_log(log)
     }
 
-    fn deposit_randomness(randomness: &sp_consensus_poc::Randomness) {
+    fn deposit_randomness(randomness: &sp_consensus_spartan::Randomness) {
         let segment_idx = SegmentIndex::<T>::get();
         let mut segment = UnderConstruction::<T>::get(&segment_idx);
         if segment.len() < UNDER_CONSTRUCTION_SEGMENT_LENGTH {
@@ -855,7 +857,7 @@ impl<T: Config> Pallet<T> {
 
     /// Call this function exactly once when an epoch changes, to update the
     /// randomness. Returns the new randomness.
-    fn randomness_change_epoch(next_epoch_index: u64) -> sp_consensus_poc::Randomness {
+    fn randomness_change_epoch(next_epoch_index: u64) -> sp_consensus_spartan::Randomness {
         let this_randomness = NextRandomness::<T>::get();
         let segment_idx: u32 = SegmentIndex::<T>::mutate(|s| sp_std::mem::replace(s, 0));
 
@@ -1064,11 +1066,11 @@ impl<T: Config> OnOffenceHandler<FarmerId> for Pallet<T> {
 //
 // An optional size hint as to how many PoR outputs there were may be provided.
 fn compute_randomness(
-    last_epoch_randomness: sp_consensus_poc::Randomness,
+    last_epoch_randomness: sp_consensus_spartan::Randomness,
     epoch_index: u64,
-    rho: impl Iterator<Item = sp_consensus_poc::Randomness>,
+    rho: impl Iterator<Item = sp_consensus_spartan::Randomness>,
     rho_size_hint: Option<usize>,
-) -> sp_consensus_poc::Randomness {
+) -> sp_consensus_spartan::Randomness {
     let mut s = Vec::with_capacity(40 + rho_size_hint.unwrap_or(0) * RANDOMNESS_LENGTH);
     s.extend_from_slice(&last_epoch_randomness);
     s.extend_from_slice(&epoch_index.to_le_bytes());

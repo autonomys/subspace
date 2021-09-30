@@ -20,7 +20,6 @@ mod crypto;
 mod plot;
 mod utils;
 
-use async_std::task;
 use clap::{Clap, ValueHint};
 use env_logger::Env;
 use log::info;
@@ -70,6 +69,7 @@ fn main() {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
 
     let command: Command = Command::parse();
+    let runtime = Runtime::new().unwrap();
 
     match command {
         Command::Plot {
@@ -78,12 +78,13 @@ fn main() {
             seed,
         } => {
             let path = utils::get_path(custom_path);
-            task::block_on(commands::plot(
-                path,
-                crypto::genesis_piece_from_seed(&seed),
-                plot_pieces,
-            ))
-            .unwrap();
+            runtime
+                .block_on(commands::plot(
+                    path,
+                    crypto::genesis_piece_from_seed(&seed),
+                    plot_pieces,
+                ))
+                .unwrap();
         }
         Command::ErasePlot { custom_path } => {
             let path = utils::get_path(custom_path);
@@ -100,7 +101,6 @@ fn main() {
             ws_server,
         } => {
             let path = utils::get_path(custom_path);
-            let runtime = Runtime::new().unwrap();
             runtime.block_on(commands::farm(path, &ws_server)).unwrap();
         }
     }

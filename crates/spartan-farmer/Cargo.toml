@@ -14,7 +14,6 @@ include = [
 ]
 
 [dependencies]
-async-global-executor = "2.0.2"
 async-std = "1.9.0"
 clap = "3.0.0-beta.4"
 dirs = "4.0.0"
@@ -32,8 +31,8 @@ thiserror = "1.0.24"
 tokio = "1.11.0"
 
 [dependencies.jsonrpsee]
-features = ["client"]
-version = "0.2.0"
+features = ["client", "types"]
+version = "0.3.1"
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to
@@ -62,6 +61,10 @@ tempfile = "3.2.0"
 [dev-dependencies.async-std]
 features = ["attributes"]
 version = "1.9.0"
+
+[dev-dependencies.tokio]
+features = ["macros"]
+version = "1.11.0"
 
 [features]
 default = ["cuda"]

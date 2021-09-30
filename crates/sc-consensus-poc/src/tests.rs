@@ -34,7 +34,8 @@ use sc_network_test::{
 // use sc_service::TaskManager;
 use schnorrkel::Keypair;
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
-use sp_consensus_poc::{inherents::InherentDataProvider, Slot};
+use sp_consensus_poc::inherents::InherentDataProvider;
+use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::Tag;
 use sp_core::Public;
 use sp_runtime::{
