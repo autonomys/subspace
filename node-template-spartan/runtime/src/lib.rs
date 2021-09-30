@@ -1,3 +1,4 @@
+#![feature(int_log)]
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
@@ -19,7 +20,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::{RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -102,6 +103,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     transaction_version: 1,
 };
 
+// TODO: Many of below constants should probably be updatable but currently they are not
+
 /// Since PoC is probabilistic this is the average expected block time that
 /// we are targeting. Blocks will be produced at a minimum duration defined
 /// by `SLOT_DURATION`, but some slots will not be allocated to any
@@ -160,6 +163,17 @@ pub fn native_version() -> NativeVersion {
 }
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
+
+// TODO: Proper value here
+const CONFIRMATION_DEPTH_K: u32 = 10;
+// This is a nice power of 2 for Merkle Tree
+const MERKLE_NUM_LEAVES: u32 = 256;
+const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
+const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const PRE_GENESIS_OBJECT_SIZE: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
+const PRE_GENESIS_OBJECT_COUNT: u32 = 10;
+const PRE_GENESIS_OBJECT_SEED: &[u8] = b"subspace";
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -234,6 +248,12 @@ parameter_types! {
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
+    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
+    pub const RecordSize: u32 = RECORD_SIZE;
+    pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
+    pub const PreGenesisObjectSize: u32 = PRE_GENESIS_OBJECT_SIZE;
+    pub const PreGenesisObjectCount: u32 = PRE_GENESIS_OBJECT_COUNT;
+    pub const PreGenesisObjectSeed: &'static [u8] = PRE_GENESIS_OBJECT_SEED;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -245,6 +265,12 @@ impl pallet_spartan::Config for Runtime {
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
+    type ConfirmationDepthK = ConfirmationDepthK;
+    type RecordSize = RecordSize;
+    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type PreGenesisObjectSize = PreGenesisObjectSize;
+    type PreGenesisObjectCount = PreGenesisObjectCount;
+    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = pallet_spartan::NormalEpochChange;
     type EraChangeTrigger = pallet_spartan::NormalEraChange;
     type EonChangeTrigger = pallet_spartan::NormalEonChange;
@@ -439,6 +465,30 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_poc::PoCApi<Block> for Runtime {
+        fn confirmation_depth_k() -> u32 {
+            ConfirmationDepthK::get()
+        }
+
+        fn record_size() -> u32 {
+            RecordSize::get()
+        }
+
+        fn recorded_history_segment_size() -> u32 {
+            RecordedHistorySegmentSize::get()
+        }
+
+        fn pre_genesis_object_size() -> u32 {
+            PreGenesisObjectSize::get()
+        }
+
+        fn pre_genesis_object_count() -> u32 {
+            PreGenesisObjectCount::get()
+        }
+
+        fn pre_genesis_object_seed() -> Vec<u8> {
+            Vec::from(PreGenesisObjectSeed::get())
+        }
+
         fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
             // The choice of `c` parameter (where `1 - c` represents the
             // probability of a slot being empty), is done in accordance to the

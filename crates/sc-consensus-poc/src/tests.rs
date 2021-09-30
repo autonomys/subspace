@@ -21,7 +21,7 @@ use super::*;
 use futures::executor::block_on;
 use log::debug;
 use parking_lot::Mutex;
-use ring::{digest, hmac};
+use ring::hmac;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sc_client_api::{backend::TransactionFor, BlockchainEvents};
 use sc_consensus::{BoxBlockImport, BoxJustificationImport};
@@ -32,21 +32,19 @@ use sc_network_test::{
     TestClientBuilderExt, TestNetFactory,
 };
 // use sc_service::TaskManager;
-use schnorrkel::{Keypair, PublicKey};
+use schnorrkel::Keypair;
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
 use sp_consensus_poc::{inherents::InherentDataProvider, Slot};
-use sp_consensus_spartan::spartan::{
-    Piece, Tag, ENCODE_ROUNDS, GENESIS_PIECE_SEED, PIECE_SIZE, PRIME_SIZE_BYTES,
-};
+use sp_consensus_spartan::spartan::Tag;
 use sp_core::Public;
 use sp_runtime::{
     generic::DigestItem,
     traits::{Block as BlockT, DigestFor},
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
-use std::io::Write;
 // use std::sync::mpsc;
 use std::{cell::RefCell, task::Poll, time::Duration};
+use subspace_codec::Spartan;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;
@@ -382,7 +380,6 @@ impl TestNetFactory for PoCTestNet {
                 epoch_changes: data.link.epoch_changes.clone(),
                 can_author_with: AlwaysCanAuthor,
                 telemetry: None,
-                spartan: Spartan::default(),
                 signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
@@ -506,14 +503,11 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let poc_farmer = async move {
-            let spartan = sp_consensus_spartan::spartan::Spartan::new(genesis_piece_from_seed(
-                GENESIS_PIECE_SEED,
-            ));
             let keypair = Keypair::generate();
-            let public_key_hash = hash_public_key(&keypair.public);
+            let spartan = Spartan::new(keypair.public.as_ref());
             let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
             let nonce = 0;
-            let encoding: Piece = spartan.encode(public_key_hash, nonce, ENCODE_ROUNDS);
+            let encoding: Piece = spartan.encode(nonce);
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -559,23 +553,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             future::join_all(poc_futures),
         ),
     ));
-}
-
-fn genesis_piece_from_seed(seed: &str) -> Piece {
-    let mut piece = [0u8; PIECE_SIZE];
-    let mut input = seed.as_bytes().to_vec();
-    for mut chunk in piece.chunks_mut(digest::SHA256.output_len) {
-        input = digest::digest(&digest::SHA256, &input).as_ref().to_vec();
-        chunk.write_all(input.as_ref()).unwrap();
-    }
-    piece
-}
-
-fn hash_public_key(public_key: &PublicKey) -> [u8; PRIME_SIZE_BYTES] {
-    let mut array = [0u8; PRIME_SIZE_BYTES];
-    let hash = digest::digest(&digest::SHA256, public_key.as_ref());
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE_BYTES]);
-    array
 }
 
 fn create_tag(encoding: &[u8], salt: &[u8]) -> Tag {
