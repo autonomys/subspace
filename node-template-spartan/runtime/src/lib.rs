@@ -127,10 +127,6 @@ const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: u32 = 2016;
 
-// We assume initial plot size to be 1 GiB with piece size being 4096 bytes
-const INITIAL_SOLUTION_RANGE: u64 =
-    u64::MAX / (1024 * 1024 * 1024 / 4096) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
-
 const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
 const EPOCH_DURATION_IN_SLOTS: u64 =
     EPOCH_DURATION_IN_BLOCKS as u64 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0;
@@ -164,6 +160,13 @@ const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 const PRE_GENESIS_OBJECT_SIZE: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
 const PRE_GENESIS_OBJECT_COUNT: u32 = 10;
 const PRE_GENESIS_OBJECT_SEED: &[u8] = b"subspace";
+
+// We assume initial plot size starts with the size of pre-genesis history (roughly, there is some
+// overhead in archiving process)
+const INITIAL_SOLUTION_RANGE: u64 = u64::MAX
+    / (PRE_GENESIS_OBJECT_SIZE * PRE_GENESIS_OBJECT_COUNT / PIECE_SIZE as u32) as u64
+    * SLOT_PROBABILITY.0
+    / SLOT_PROBABILITY.1;
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
