@@ -44,11 +44,16 @@ jobs:
           args: --all -- --check
 
   cargo-clippy:
-    runs-on: ubuntu-20.04
     strategy:
       matrix:
+        os:
+          - ubuntu-20.04
+          - macos-11
+          - windows-2019
         rust:
           - nightly-2021-09-15
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -62,14 +67,17 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: CUDA toolchain
-        run: sudo apt-get install --no-install-recommends -y nvidia-cuda-toolkit
+      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
+      - name: Remove msys64
+        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
+        if: runner.os == 'Windows'
 
-      # CUDA toolchain above doesn't like GCC newer than 8
-      - name: Select GCC 8
-        run: |
-          echo "CC=gcc-8" >> $GITHUB_ENV
-          echo "CXX=g++-8" >> $GITHUB_ENV
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@v0.2.4
+        id: cuda-toolkit
+        with:
+          cuda: '11.2.2'
+        if: runner.os != 'macOS'
 
       - name: Configure cache
         uses: actions/cache@v2
@@ -77,22 +85,35 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ matrix.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ matrix.os }}-cargo-
 
-      - name: cargo clippy
+      - name: cargo clippy (Linux or Windows with CUDA)
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --features=spartan-farmer/cuda -- -D warnings
+        if: runner.os != 'macOS'
+
+      - name: cargo clippy (macOS)
         uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: -- -D warnings
+        if: runner.os == 'macOS'
 
   cargo-test:
-    runs-on: ubuntu-20.04
     strategy:
       matrix:
+        os:
+          - ubuntu-20.04
+          - macos-11
+          - windows-2019
         rust:
           - nightly-2021-09-15
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -106,14 +127,17 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: CUDA toolchain
-        run: sudo apt-get install --no-install-recommends -y nvidia-cuda-toolkit
+      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
+      - name: Remove msys64
+        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
+        if: runner.os == 'Windows'
 
-      # CUDA toolchain above doesn't like GCC newer than 8
-      - name: Select GCC 8
-        run: |
-          echo "CC=gcc-8" >> $GITHUB_ENV
-          echo "CXX=g++-8" >> $GITHUB_ENV
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@v0.2.4
+        id: cuda-toolkit
+        with:
+          cuda: '11.2.2'
+        if: runner.os != 'macOS'
 
       - name: Configure cache
         uses: actions/cache@v2
@@ -121,11 +145,19 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ matrix.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ matrix.os }}-cargo-
 
-      - name: cargo test
+      - name: cargo test (Linux or Windows with CUDA)
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --features=spartan-farmer/cuda
+        if: runner.os != 'macOS'
+
+      - name: cargo test (macOS)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+        if: runner.os == 'macOS'
