@@ -1,4 +1,4 @@
-use crate::plot::Plot;
+use crate::plot::{Plot, WeakPlot};
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::channel::oneshot;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
@@ -12,10 +12,14 @@ use schnorrkel::Keypair;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
+use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
+use subspace_archiving::pre_genesis_data;
 
 type SlotNumber = u64;
+type BoxedError = Box<dyn std::error::Error>;
 
 /// Metadata necessary for farmer operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,9 +78,9 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), BoxedError> {
     info!("Connecting to RPC server");
-    let client = WsClientBuilder::default().build(ws_server).await?;
+    let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
     let identity_file = path.join("identity.bin");
     if !identity_file.exists() {
@@ -88,15 +92,30 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
         Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
-    let farmer_metadata: FarmerMetadata = client
+    let farmer_metadata = client
         .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
         .await?;
 
-    // TODO: Use metadata
-    println!("farmer metadata: {:#?}", farmer_metadata);
-
+    // TODO: This doesn't account for the fact that node can have a completely different history to
+    //  what farmer expects
     info!("Opening plot");
     let plot = Plot::open_or_create(&path.into()).await?;
+
+    tokio::spawn({
+        // let client = Arc::clone(&client);
+        let weak_plot = plot.downgrade();
+
+        async move {
+            match background_plotting(/*&client, */ weak_plot, farmer_metadata).await {
+                Ok(()) => {
+                    info!("Background plotting stopped without error");
+                }
+                Err(error) => {
+                    error!("Background plotting error: {}", error);
+                }
+            }
+        }
+    });
 
     if plot.is_empty().await {
         panic!("Plot is empty, please create it first using plot command");
@@ -117,12 +136,76 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), Box<dyn s
     Ok(())
 }
 
+/// Maintains plot in up to date state plotting new pieces as they are produced on the network.
+async fn background_plotting(
+    // client: &WsClient,
+    weak_plot: WeakPlot,
+    farmer_metadata: FarmerMetadata,
+) -> Result<(), BoxedError> {
+    let FarmerMetadata {
+        record_size,
+        recorded_history_segment_size,
+        pre_genesis_object_size,
+        pre_genesis_object_count,
+        pre_genesis_object_seed,
+        ..
+    } = farmer_metadata;
+
+    // TODO: This doesn't support continuation of the plotting
+    // TODO: This doesn't support joining the network that already has non-genesis blocks
+    let block_archiver_handle = tokio::task::spawn_blocking({
+        let weak_plot = weak_plot.clone();
+
+        move || -> Result<Option<BlockArchiver>, ArchiverInstantiationError> {
+            let mut object_archiver =
+                ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
+
+            // These archived segments are a part of the public parameters of network setup
+            for index in 0..pre_genesis_object_count {
+                // Erasure coding in archiver is a CPU-intensive operation, but since we are doing this
+                let archived_segments = object_archiver.add_object(&pre_genesis_data::from_seed(
+                    &pre_genesis_object_seed,
+                    index,
+                    pre_genesis_object_size,
+                ));
+
+                for archived_segment in archived_segments {
+                    // TODO: Encode pieces
+                    drop(archived_segment);
+
+                    if let Some(plot) = weak_plot.upgrade() {
+                        // TODO: Plot pieces
+                        drop(plot);
+                    } else {
+                        return Ok(None);
+                    }
+                }
+            }
+
+            Ok(Some(object_archiver.into_block_archiver()))
+        }
+    });
+
+    let block_archiver = match block_archiver_handle.await?? {
+        Some(block_archiver) => block_archiver,
+        None => {
+            // Plot was dropped, time to exit already
+            return Ok(());
+        }
+    };
+
+    // TODO: Use block archiver for ongoing plotting of post-genesis pieces
+    drop(block_archiver);
+
+    Ok(())
+}
+
 async fn subscribe_to_slot_info(
     client: &WsClient,
     plot: &Plot,
     keypair: &Keypair,
     ctx: &SigningContext,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxedError> {
     let public_key_hash = crypto::hash_public_key(&keypair.public);
 
     info!("Subscribing to slot info notifications");

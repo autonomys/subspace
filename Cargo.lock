@@ -7295,6 +7295,7 @@ dependencies = [
  "schnorrkel 0.10.1",
  "serde",
  "serde_json",
+ "subspace-archiving",
  "subspace-codec",
  "subspace-core-primitives",
  "tempfile",

@@ -16,7 +16,7 @@ use std::convert::TryInto;
 use std::io;
 use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use thiserror::Error;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -718,6 +718,12 @@ impl Plot {
         self.inner.handlers.close.add(Box::new(callback))
     }
 
+    pub(crate) fn downgrade(&self) -> WeakPlot {
+        WeakPlot {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+
     /// Returns pieces packed one after another in contiguous `Vec<u8>`
     async fn read_pieces(&self, first_index: u64, count: u64) -> io::Result<Vec<u8>> {
         let (result_sender, result_receiver) = oneshot::channel();
@@ -747,6 +753,17 @@ impl Plot {
                 format!("Read encodings result sender was dropped: {}", error),
             )
         })?
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct WeakPlot {
+    inner: Weak<Inner>,
+}
+
+impl WeakPlot {
+    pub(crate) fn upgrade(&self) -> Option<Plot> {
+        self.inner.upgrade().map(|inner| Plot { inner })
     }
 }
 
