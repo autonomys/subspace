@@ -7,7 +7,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::Decode;
+use codec::{Decode, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
@@ -25,12 +25,12 @@ use subspace_core_primitives::{RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
     construct_runtime, parameter_types,
-    traits::{KeyOwnerProofSystem, Randomness, StorageInfo},
+    traits::{InstanceFilter, KeyOwnerProofSystem, Randomness, StorageInfo},
     weights::{
         constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
         IdentityFee, Weight,
     },
-    StorageValue,
+    RuntimeDebug, StorageValue,
 };
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_feeds;
@@ -349,6 +349,76 @@ impl pallet_feeds::Config for Runtime {
     type Event = Event;
 }
 
+parameter_types! {
+    pub const ProxyDepositBase: Balance = 0;
+    // Additional storage item size of 33 bytes.
+    pub const ProxyDepositFactor: Balance = 0;
+    pub const MaxProxies: u16 = 32;
+    pub const AnnouncementDepositBase: Balance = 0;
+    pub const AnnouncementDepositFactor: Balance = 0;
+    pub const MaxPending: u16 = 32;
+}
+
+/// The type used to represent the kinds of proxying allowed.
+#[derive(
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    RuntimeDebug,
+    MaxEncodedLen,
+    scale_info::TypeInfo,
+)]
+pub enum ProxyType {
+    Any,
+    NonTransfer,
+    Governance,
+    Staking,
+}
+impl Default for ProxyType {
+    fn default() -> Self {
+        Self::Any
+    }
+}
+impl InstanceFilter<Call> for ProxyType {
+    fn filter(&self, c: &Call) -> bool {
+        match self {
+            ProxyType::Any => true,
+            ProxyType::NonTransfer => !matches!(c, Call::Balances(..)),
+            ProxyType::Governance => true,
+            ProxyType::Staking => true,
+        }
+    }
+    fn is_superset(&self, o: &Self) -> bool {
+        match (self, o) {
+            (x, y) if x == y => true,
+            (ProxyType::Any, _) => true,
+            (_, ProxyType::Any) => false,
+            (ProxyType::NonTransfer, _) => true,
+            _ => false,
+        }
+    }
+}
+
+impl pallet_proxy::Config for Runtime {
+    type Event = Event;
+    type Call = Call;
+    type Currency = Balances;
+    type ProxyType = ProxyType;
+    type ProxyDepositBase = ProxyDepositBase;
+    type ProxyDepositFactor = ProxyDepositFactor;
+    type MaxProxies = MaxProxies;
+    type WeightInfo = pallet_proxy::weights::SubstrateWeight<Runtime>;
+    type MaxPending = MaxPending;
+    type CallHasher = BlakeTwo256;
+    type AnnouncementDepositBase = AnnouncementDepositBase;
+    type AnnouncementDepositFactor = AnnouncementDepositFactor;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
@@ -365,6 +435,7 @@ construct_runtime!(
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
         OffencesPoC: pallet_offences_poc::{Pallet, Storage, Event},
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>},
+        Proxy: pallet_proxy::{Pallet, Call, Storage, Event<T>},
     }
 );
 
@@ -593,6 +664,7 @@ impl_runtime_apis! {
             list_benchmark!(list, extra, pallet_balances, Balances);
             list_benchmark!(list, extra, pallet_timestamp, Timestamp);
             list_benchmark!(list, extra, pallet_template, TemplateModule);
+            list_benchmark!(list, extra, pallet_proxy, Proxy);
 
             let storage_info = AllPalletsWithSystem::storage_info();
 
@@ -627,6 +699,7 @@ impl_runtime_apis! {
             add_benchmark!(params, batches, pallet_balances, Balances);
             add_benchmark!(params, batches, pallet_timestamp, Timestamp);
             add_benchmark!(params, batches, pallet_template, TemplateModule);
+            add_benchmark!(params, batches, pallet_proxy, Proxy);
 
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
