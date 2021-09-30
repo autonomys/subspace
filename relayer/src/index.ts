@@ -1,9 +1,12 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-
+import { merge } from "rxjs";
 import { getAccount } from "./account";
 import { loadConfig } from "./config";
 import Source from "./source";
 import Target from "./target";
+import logger from "./logger";
+import { createParachainsMap } from './utils';
+import { ChainName } from './types';
 
 const config = loadConfig();
 
@@ -22,24 +25,26 @@ const createApi = async (url: string) => {
   // use getAccount func because we cannot create keyring instance before API is instanciated
   const signer = getAccount(config.accountSeed);
 
-  const target = new Target({ api: targetApi, signer });
-
+  const target = new Target({ api: targetApi, signer, logger });
 
   const sources = await Promise.all(
-    config.sourceChainUrls.map(async ({ url }) => {
+    config.sourceChainUrls.map(async ({ url, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
       const feedId = await target.sendCreateFeedTx();
+      const parachainsMap = await createParachainsMap(target, parachains);
 
       return new Source({
         api,
-        chain,
+        chain: chain.toString() as ChainName,
+        parachainsMap,
+        logger,
         feedId,
       });
     })
   );
 
-  const blockSubscriptions = sources.map((source) => source.subscribeBlocks());
+  const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
 
-  target.processBlocks(blockSubscriptions).subscribe();
+  target.processSubscriptions(blockSubscriptions).subscribe();
 })();

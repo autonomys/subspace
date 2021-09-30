@@ -1,13 +1,26 @@
-import { U64, U32 } from "@polkadot/types/primitive";
+import { U64 } from "@polkadot/types/primitive";
 import { Hash } from "@polkadot/types/interfaces";
+import Parachain from "./parachain";
 
-export type TxData = {
+export type ChainName = Brand<string, 'chain'>;
+
+export interface TxData {
   feedId: U64;
   block: string;
   metadata: Metadata;
-};
+  chain: ChainName;
+}
 
-type Metadata = {
+interface Metadata {
   hash: Hash;
-  number: U32;
-};
+  number: string;
+}
+
+export interface ParaHeadAndId {
+  paraId: string;
+  paraHead: Hash;
+}
+
+export type ParachainsMap = Map<string, Parachain>;
+
+export type Brand<K, T> = K & { __brand: T; };

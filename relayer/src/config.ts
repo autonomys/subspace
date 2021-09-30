@@ -2,16 +2,23 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-type SourceChain = {
+interface Parachain {
   url: string;
-  parachains: string[];
-};
+  paraId: number;
+  // TODO: get chain name from api
+  chain: string;
+}
 
-type Config = {
+interface SourceChain {
+  url: string;
+  parachains: Parachain[];
+}
+
+interface Config {
   accountSeed: string;
   targetChainUrl: string;
   sourceChainUrls: SourceChain[];
-};
+}
 
 // TODO: convert to class
 export const loadConfig = (): Config => {
@@ -33,15 +40,52 @@ export const loadConfig = (): Config => {
       {
         url: "wss://kusama-rpc.polkadot.io",
         parachains: [
-          // TODO: add parachains
-          // "wss://kusama-statemine-rpc.paritytech.net",
-          // "wss://karura-rpc-3.aca-api.network/ws", // requires custom types
-          // "wss://bifrost-rpc.liebi.com/ws", // requires custom types
-          // "wss://khala-api.phala.network/ws", // requires custom types
-          // "wss://rpc.shiden.astar.network",
-          // "wss://wss.moonriver.moonbeam.network", // requires custom types
-          // "wss://spiritnet.kilt.io/",
-        ],
+          {
+            url: "https://kusama-statemine-rpc.paritytech.net",
+            paraId: 1000,
+            chain: "Statemine",
+          },
+          {
+            url: "https://karura.api.onfinality.io/public",
+            paraId: 2000,
+            chain: "Karura",
+          },
+          {
+            url: "https://bifrost-parachain.api.onfinality.io/public",
+            paraId: 2001,
+            chain: "Bifrost",
+          },
+          {
+            url: "https://khala.api.onfinality.io/public",
+            paraId: 2004,
+            chain: "Khala Network",
+          },
+          {
+            url: "https://shiden.api.onfinality.io/public",
+            paraId: 2007,
+            chain: "Shiden",
+          },
+          {
+            url: "https://moonriver.api.onfinality.io/public",
+            paraId: 2023,
+            chain: "Moonriver",
+          },
+          {
+            url: "https://calamari.api.onfinality.io/public",
+            paraId: 2084,
+            chain: "Calamari",
+          },
+          {
+            url: "https://spiritnet.api.onfinality.io/public",
+            paraId: 2086,
+            chain: "Kilt Spiritnet",
+          },
+          {
+            url: "https://basilisk.api.onfinality.io/public",
+            paraId: 2090,
+            chain: "Basilisk",
+          },
+        ]
       },
     ],
   };
