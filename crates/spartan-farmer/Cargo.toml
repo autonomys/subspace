@@ -67,7 +67,7 @@ features = ["macros"]
 version = "1.11.0"
 
 [features]
-default = ["cuda"]
+default = []
 # Compile with CUDA support and use it if compatible GPU is available
 cuda = [
     "subspace-codec/cuda",
