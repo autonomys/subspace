@@ -4,7 +4,7 @@ import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-import { Subscription } from "rxjs";
+import { Subscription, EMPTY, catchError } from "rxjs";
 import { concatMap, take } from "rxjs/operators";
 
 import { TxData } from "./types";
@@ -60,7 +60,15 @@ class Target {
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
         .signAndSend(signer, { nonce: -1 }, Promise.resolve)
-        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        // TODO: remove duplication
+        .pipe(
+          // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          })
+        )
         .subscribe(this.logTxResult)
     );
   }
@@ -72,7 +80,14 @@ class Target {
       this.api.rx.tx.feeds
         .create()
         .signAndSend(signer, { nonce: -1 }, Promise.resolve)
-        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        // TODO: remove duplication
+        .pipe(
+          // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          }))
         .subscribe((result) => {
           this.logTxResult(result);
 
