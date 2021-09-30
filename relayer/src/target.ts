@@ -108,6 +108,28 @@ class Target {
     });
   }
 
+  sendAddProxyTx(signer: AddressOrPair, proxy: AddressOrPair): Promise<void> {
+    this.logger.info(`Adding proxy ${(proxy as KeyringPair).address} for signer ${(signer as KeyringPair).address}`);
+    return new Promise((resolve) => {
+      this.api.rx.tx.proxy
+        .addProxy((proxy as KeyringPair).address, "Any", 0)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
+        // TODO: remove duplication
+        .pipe(
+          // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          }))
+        .subscribe((result) => {
+          this.logTxResult(result);
+          this.logger.info(`New proxy added: ${(proxy as KeyringPair).address}`);
+          resolve();
+        });
+    });
+  }
+
   processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {
     return subscription.pipe(concatMap(this.sendBlockTx));
   }

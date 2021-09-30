@@ -25,10 +25,16 @@ const createApi = async (url: string) => {
     config.sourceChainUrls.map(async ({ url, parachains }) => {
       const api = await createApi(url);
       const chain = await api.rpc.system.chain();
-      // const master = getAccount(config.accountSeed);
+
+      // creating and delegating to new accounts
+      const master = getAccount(config.accountSeed);
       const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
-      // TODO: Alice has to delegate spending to these accounts
       const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
+      // TODO: master has to delegate spending to sourceSigner and paraSigners
+      for (const delegate of [sourceSigner, ...paraSigners]) {
+        await target.sendAddProxyTx(master, delegate);
+      }
+
       const feedId = await target.sendCreateFeedTx(sourceSigner);
       const parachainsMap = await createParachainsMap(target, parachains, paraSigners);
 
