@@ -115,15 +115,16 @@ jobs:
           echo "CC=gcc-8" >> $GITHUB_ENV
           echo "CXX=g++-8" >> $GITHUB_ENV
 
-      - name: Configure cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      # TODO: uncomment when https://github.com/rust-lang/rust/issues/89295 is resolved
+      # - name: Configure cache
+      #   uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       ~/.cargo/registry
+      #       ~/.cargo/git
+      #     key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-cargo-
 
       - name: cargo test
         uses: actions-rs/cargo@v1
