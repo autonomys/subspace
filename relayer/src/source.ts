@@ -6,13 +6,13 @@ import { from, merge } from 'rxjs';
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 
-import { ParaHeadAndId, TxData } from "./types";
+import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
 
 interface SourceConstructorParams {
   api: ApiPromise;
-  chain: string;
+  chain: ChainName;
   feedId: U64;
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
@@ -20,7 +20,7 @@ interface SourceConstructorParams {
 
 class Source {
   private readonly api: ApiPromise;
-  private readonly chain: string;
+  private readonly chain: ChainName;
   private readonly feedId: U64;
   private readonly parachainsMap: Map<string, Parachain>;
   private readonly logger: Logger;
@@ -75,11 +75,16 @@ class Source {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
         return parachain.fetchParaBlock(paraHead)
-          .pipe(map((block) => this.addBlockMetadata({ block, hash: paraHead, feedId: parachain.feedId, chain: parachain.chain })));
+          .pipe(map((block) => this.addBlockMetadata({
+            block,
+            hash: paraHead,
+            feedId: parachain.feedId,
+            chain: parachain.chain,
+          })));
       }));
   }
 
-  private addBlockMetadata({ block, hash, feedId, chain }: { block: SignedBlock, hash: Hash, feedId: U64, chain: string; }): TxData {
+  private addBlockMetadata({ block, hash, feedId, chain }: { block: SignedBlock, hash: Hash, feedId: U64, chain: ChainName; }): TxData {
     const metadata = {
       hash,
       number: block.block.header.number.toString(),

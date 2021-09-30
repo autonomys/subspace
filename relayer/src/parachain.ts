@@ -5,18 +5,19 @@ import { retry, shareReplay } from "rxjs/operators";
 import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 import { Logger } from "pino";
+import { ChainName } from './types';
 
 interface ParachainConstructorParams {
     feedId: U64;
     url: string;
-    chain: string;
+    chain: ChainName;
     logger: Logger;
 }
 
 class Parachain {
     private readonly url: string;
     private readonly logger: Logger;
-    public chain: string;
+    public chain: ChainName;
     public feedId: U64;
 
     constructor({ feedId, url, chain, logger }: ParachainConstructorParams) {

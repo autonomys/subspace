@@ -1,5 +1,5 @@
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
-import { ParaHeadAndId, ParachainsMap } from "./types";
+import { ParaHeadAndId, ParachainsMap, ChainName } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
 import logger from "./logger";
@@ -38,7 +38,13 @@ export const createParachainsMap = async (target: Target, configParachains: {
 
     for (const { url, chain, paraId } of configParachains) {
         const feedId = await target.sendCreateFeedTx();
-        const parachain = new Parachain({ feedId, url: url, chain: chain, logger });
+        const parachain = new Parachain({
+            feedId,
+            url,
+            chain: chain as ChainName,
+            logger
+        });
+
         map.set(paraId, parachain);
     }
 
