@@ -344,7 +344,6 @@ impl pallet_feeds::Config for Runtime {
 
 parameter_types! {
     pub const ProxyDepositBase: Balance = 0;
-    // Additional storage item size of 33 bytes.
     pub const ProxyDepositFactor: Balance = 0;
     pub const MaxProxies: u16 = 32;
     pub const AnnouncementDepositBase: Balance = 0;
@@ -366,17 +365,20 @@ parameter_types! {
     MaxEncodedLen,
     scale_info::TypeInfo,
 )]
+
 pub enum ProxyType {
     Any,
     NonTransfer,
     Governance,
     Staking,
 }
+
 impl Default for ProxyType {
     fn default() -> Self {
         Self::Any
     }
 }
+// TODO: might not need this for first implementation
 impl InstanceFilter<Call> for ProxyType {
     fn filter(&self, c: &Call) -> bool {
         match self {
