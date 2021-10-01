@@ -22,11 +22,24 @@ default-features = false
 features = ["derive"]
 version = "2.3.0"
 
-[dependencies.reed-solomon-erasure]
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+[target.'cfg(not(all(target_os = "macos", target_arch = "aarch64")))'.dependencies.reed-solomon-erasure]
 features = ["simd-accel"]
 version = "4.0.2"
 
-[dependencies.sha2]
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+# See https://github.com/darrenldl/reed-solomon-erasure/issues/86 for why `simd-accel` is disabled
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies.reed-solomon-erasure]
+version = "4.0.2"
+
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
+features = ["asm"]
+version = "0.9.8"
+
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+# `asm` feature is not supported on Windows except with GNU toolchain
+[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
 default-features = false
 version = "0.9.8"
 
@@ -44,8 +57,6 @@ version = "0.8.4"
 default = ["std"]
 std = [
     "parity-scale-codec/std",
-    # Can't enable this in platform-specific way, see https://github.com/rust-lang/cargo/issues/1197
-    "sha2/asm",
     "sha2/std",
     "subspace-core-primitives/std",
 ]
