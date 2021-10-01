@@ -15,8 +15,6 @@ include = [
 [dependencies]
 merkletree = "0.21.0"
 parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
-reed-solomon-erasure = { version = "4.0.2", features = ["simd-accel"] }
-sha2 = { version = "0.9.8", default-features = false }
 thiserror = "1.0.29"
 typenum = "1.14.0"
 
