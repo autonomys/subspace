@@ -14,6 +14,8 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 ring = { version = "0.16.20", optional = true }
+
+# Subspace
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", optional = true}
 
 [features]

@@ -14,30 +14,14 @@ include = [
 
 [dependencies]
 merkletree = "0.21.0"
+parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
+rand = { version = "0.8.4", features = ["min_const_gen"] }
+reed-solomon-erasure = { version = "4.0.2", features = ["simd-accel"] }
+sha2 = { version = "0.9.8", default-features = false }
 thiserror = "1.0.29"
 typenum = "1.14.0"
 
-[dependencies.parity-scale-codec]
-default-features = false
-features = ["derive"]
-version = "2.3.0"
-
-[dependencies.reed-solomon-erasure]
-features = ["simd-accel"]
-version = "4.0.2"
-
-[dependencies.sha2]
-default-features = false
-version = "0.9.8"
-
-[dependencies.subspace-core-primitives]
-default-features = false
-version = "0.1.0"
-path = "../subspace-core-primitives"
-
-[dev-dependencies.rand]
-features = ["min_const_gen"]
-version = "0.8.4"
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 # TODO: Nothing is exposed in no-std environment at the moment :(
 [features]
