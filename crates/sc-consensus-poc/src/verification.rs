@@ -28,8 +28,9 @@ use sp_consensus_spartan::Randomness;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
-use subspace_codec::Spartan;
-use subspace_core_primitives::{Piece, PRIME_SIZE};
+use std::mem;
+use subspace_codec::SubspaceCodec;
+use subspace_core_primitives::{Piece, Sha256Hash};
 
 /// PoC verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -161,10 +162,17 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    let spartan = Spartan::new(solution.public_key.as_ref());
-    if !spartan.is_encoding_valid(piece, solution.nonce) {
+    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+
+    let mut piece = solution.encoding.clone();
+    if subspace_codec
+        .decode(solution.piece_index, &mut piece)
+        .is_err()
+    {
         return Err(Error::InvalidEncoding(slot));
     }
+
+    // TODO: Check whether Piece witness is correct
 
     Ok(())
 }
@@ -219,9 +227,9 @@ pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) 
         .unwrap()
 }
 
-pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; PRIME_SIZE] {
-    let mut array = [0u8; PRIME_SIZE];
+pub(crate) fn hash_public_key(public_key: &[u8]) -> Sha256Hash {
+    let mut array = [0u8; mem::size_of::<Sha256Hash>()];
     let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE]);
+    array.copy_from_slice(&hash.as_ref()[..mem::size_of::<Sha256Hash>()]);
     array
 }

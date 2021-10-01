@@ -8,18 +8,18 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace, warn};
 use ring::digest;
 use schnorrkel::context::SigningContext;
-use schnorrkel::Keypair;
+use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
-use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
+use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
+use subspace_codec::SubspaceCodec;
 
 type SlotNumber = u64;
-type BoxedError = Box<dyn std::error::Error>;
 
 /// Metadata necessary for farmer operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +44,7 @@ pub struct FarmerMetadata {
 #[derive(Debug, Serialize)]
 struct Solution {
     public_key: [u8; 32],
-    nonce: u64,
+    piece_index: u64,
     encoding: Vec<u8>,
     signature: Vec<u8>,
     tag: Tag,
@@ -78,18 +78,20 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), BoxedError> {
+pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), anyhow::Error> {
     info!("Connecting to RPC server");
     let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
     let identity_file = path.join("identity.bin");
-    if !identity_file.exists() {
-        panic!("Identity not found, please create it first using plot command");
-    }
-
-    info!("Opening existing keypair");
-    let keypair =
-        Keypair::from_bytes(&fs::read(identity_file)?).map_err(|error| error.to_string())?;
+    let keypair = if identity_file.exists() {
+        info!("Opening existing keypair");
+        Keypair::from_bytes(&fs::read(identity_file)?).map_err(anyhow::Error::msg)?
+    } else {
+        info!("Generating new keypair");
+        let keypair = Keypair::generate();
+        fs::write(identity_file, keypair.to_bytes())?;
+        keypair
+    };
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
     let farmer_metadata = client
@@ -104,9 +106,10 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), BoxedErro
     tokio::spawn({
         // let client = Arc::clone(&client);
         let weak_plot = plot.downgrade();
+        let public_key = keypair.public;
 
         async move {
-            match background_plotting(/*&client, */ weak_plot, farmer_metadata).await {
+            match background_plotting(/*&client, */ weak_plot, farmer_metadata, &public_key).await {
                 Ok(()) => {
                     info!("Background plotting stopped without error");
                 }
@@ -116,10 +119,6 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), BoxedErro
             }
         }
     });
-
-    if plot.is_empty().await {
-        panic!("Plot is empty, please create it first using plot command");
-    }
 
     subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await?;
 
@@ -141,7 +140,8 @@ async fn background_plotting(
     // client: &WsClient,
     weak_plot: WeakPlot,
     farmer_metadata: FarmerMetadata,
-) -> Result<(), BoxedError> {
+    public_key: &PublicKey,
+) -> Result<(), anyhow::Error> {
     let FarmerMetadata {
         record_size,
         recorded_history_segment_size,
@@ -151,15 +151,21 @@ async fn background_plotting(
         ..
     } = farmer_metadata;
 
+    let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+
+    let subspace_codec = SubspaceCodec::new(public_key);
+
     // TODO: This doesn't support continuation of the plotting
     // TODO: This doesn't support joining the network that already has non-genesis blocks
     let block_archiver_handle = tokio::task::spawn_blocking({
         let weak_plot = weak_plot.clone();
 
-        move || -> Result<Option<BlockArchiver>, ArchiverInstantiationError> {
+        move || -> Result<Option<BlockArchiver>, anyhow::Error> {
+            let runtime_handle = tokio::runtime::Handle::current();
             let mut object_archiver =
                 ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
 
+            info!("Plotting pre-genesis objects");
             // These archived segments are a part of the public parameters of network setup
             for index in 0..pre_genesis_object_count {
                 // Erasure coding in archiver is a CPU-intensive operation, but since we are doing this
@@ -170,17 +176,28 @@ async fn background_plotting(
                 ));
 
                 for archived_segment in archived_segments {
-                    // TODO: Encode pieces
-                    drop(archived_segment);
+                    let ArchivedSegment {
+                        root_block,
+                        mut pieces,
+                    } = archived_segment;
+                    let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                    // TODO: Batch encoding
+                    for (position, piece) in pieces.iter_mut().enumerate() {
+                        subspace_codec.encode(piece_index_offset + position as u64, piece)?;
+                    }
 
                     if let Some(plot) = weak_plot.upgrade() {
-                        // TODO: Plot pieces
-                        drop(plot);
+                        // TODO: There is no internal mapping between pieces and their indexes yet
+                        // TODO: Then we might want to send indexes as a separate vector
+                        runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
                     } else {
                         return Ok(None);
                     }
                 }
             }
+
+            info!("Finished plotting pre-genesis objects");
 
             Ok(Some(object_archiver.into_block_archiver()))
         }
@@ -205,7 +222,7 @@ async fn subscribe_to_slot_info(
     plot: &Plot,
     keypair: &Keypair,
     ctx: &SigningContext,
-) -> Result<(), BoxedError> {
+) -> Result<(), anyhow::Error> {
     let public_key_hash = crypto::hash_public_key(&keypair.public);
 
     info!("Subscribing to slot info notifications");
@@ -230,11 +247,11 @@ async fn subscribe_to_slot_info(
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
             .await?
         {
-            Some((tag, index)) => {
-                let encoding = plot.read(index).await?;
+            Some((tag, piece_index)) => {
+                let encoding = plot.read(piece_index).await?;
                 let solution = Solution {
                     public_key: keypair.public.to_bytes(),
-                    nonce: index,
+                    piece_index,
                     encoding: encoding.to_vec(),
                     signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
                     tag,

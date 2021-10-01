@@ -105,7 +105,7 @@ impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RpcSolution {
     pub public_key: [u8; 32],
-    pub nonce: u64,
+    pub piece_index: u64,
     pub encoding: Vec<u8>,
     pub signature: Vec<u8>,
     pub tag: [u8; 8],
@@ -326,7 +326,7 @@ where
                             if let Some(solution) = proposed_proof_of_space_result.solution {
                                 let solution = Solution {
                                     public_key: FarmerId::from_slice(&solution.public_key),
-                                    nonce: solution.nonce,
+                                    piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,
                                     tag: solution.tag,

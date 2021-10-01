@@ -8,10 +8,7 @@ fn merkle_tree() {
     let pieces: Vec<Piece> = iter::repeat_with(rand::random)
         .take(number_of_pieces)
         .collect();
-    let hashes: Vec<Sha256Hash> = pieces
-        .iter()
-        .map(|p| crypto::sha256_hash(p.as_ref()))
-        .collect();
+    let hashes: Vec<Sha256Hash> = pieces.iter().map(crypto::sha256_hash).collect();
 
     let merkle_tree_data = MerkleTree::from_data(&pieces);
     let merkle_tree_hashes = MerkleTree::new(hashes.iter().copied());

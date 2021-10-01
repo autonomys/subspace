@@ -404,7 +404,9 @@ impl Plot {
         })
     }
 
+    // TODO: Remove in the future if not needed
     /// Whether plot doesn't have anything in it
+    #[cfg(test)]
     pub(crate) async fn is_empty(&self) -> bool {
         self.inner.piece_count.load(Ordering::Acquire) == 0
     }

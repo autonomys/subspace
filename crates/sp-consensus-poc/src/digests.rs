@@ -30,8 +30,8 @@ use sp_std::vec::Vec;
 pub struct Solution {
     /// Public key of the farmer that created solution
     pub public_key: FarmerId,
-    /// Nonce used for encoding
-    pub nonce: u64,
+    /// Index of encoded piece
+    pub piece_index: u64,
     /// Encoding
     pub encoding: Vec<u8>,
     /// Signature of the tag
@@ -45,7 +45,7 @@ impl Solution {
     pub fn get_for_genesis() -> Self {
         Self {
             public_key: FarmerId::default(),
-            nonce: 0u64,
+            piece_index: 0u64,
             encoding: Vec::new(),
             signature: Vec::new(),
             tag: [0u8; 8],

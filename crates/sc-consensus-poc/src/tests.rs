@@ -45,7 +45,7 @@ use sp_runtime::{
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 // use std::sync::mpsc;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_codec::Spartan;
+use subspace_codec::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;
@@ -505,10 +505,11 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let poc_farmer = async move {
             let keypair = Keypair::generate();
-            let spartan = Spartan::new(keypair.public.as_ref());
+            let subspace_codec = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
-            let nonce = 0;
-            let encoding: Piece = spartan.encode(nonce);
+            let piece_index = 0;
+            let mut piece: Piece = [0u8; 4096];
+            subspace_codec.encode(piece_index, &mut piece).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -516,14 +517,14 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&encoding, &new_slot_info.salt);
+                    let tag: Tag = create_tag(&piece, &new_slot_info.salt);
 
                     let _ = solution_sender
                         .send((
                             Solution {
                                 public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-                                nonce,
-                                encoding: encoding.to_vec(),
+                                piece_index,
+                                encoding: piece.to_vec(),
                                 signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
                                 tag,
                             },
@@ -640,7 +641,7 @@ pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, Farmer
         PreDigest {
             solution: Solution {
                 public_key: Default::default(),
-                nonce: 0,
+                piece_index: 0,
                 encoding: vec![],
                 signature: vec![],
                 tag: Default::default(),
@@ -712,7 +713,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                     slot,
                     solution: Solution {
                         public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-                        nonce: 0,
+                        piece_index: 0,
                         encoding: encoding.to_vec(),
                         signature: signature.clone(),
                         tag,

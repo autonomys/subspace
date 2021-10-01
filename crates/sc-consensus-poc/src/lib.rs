@@ -277,7 +277,7 @@ pub enum Error<B: BlockT> {
     /// Encoding is of wrong size
     #[display(fmt = "Encoding is of the wrong size")]
     EncodingOfWrongSize,
-    /// Invalid encoding of genesis piece for public key and nonce
+    /// Invalid encoding of a piece
     #[display(fmt = "Invalid encoding for slot {}", _0)]
     InvalidEncoding(Slot),
     /// Invalid commitment for salt
