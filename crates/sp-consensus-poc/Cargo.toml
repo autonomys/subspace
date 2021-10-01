@@ -22,15 +22,15 @@ sp-api = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan", default-features = false }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", optional = true }
+sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", default-features = false }
 
 # Subspace
-subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
+sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan", default-features = false }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [features]
 default = ["std"]
@@ -43,11 +43,12 @@ std = [
 	"sp-application-crypto/std",
 	"sp-consensus",
 	"sp-consensus-slots/std",
-	"sp-consensus-spartan/std",
 	"sp-core/std",
 	"sp-inherents/std",
 	"sp-runtime/std",
 	"sp-std/std",
-	"sp-timestamp",
+	"sp-timestamp/std",
+	# Subspace
+	"sp-consensus-spartan/std",
 	"subspace-core-primitives/std",
 ]

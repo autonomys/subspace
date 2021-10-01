@@ -54,6 +54,7 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"pallet-timestamp/std",
+	# Subspace
 	"sp-consensus-poc/std",
 	"sp-consensus-spartan/std",
 	"subspace-core-primitives/std",

@@ -34,4 +34,4 @@ sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/subst
 
 # Subspace
 sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
-subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
