@@ -29,6 +29,7 @@ use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
 use std::mem;
+use subspace_archiving::archiver;
 use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{Piece, Sha256Hash};
 
@@ -48,6 +49,12 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) solution_range: u64,
     /// Salt corresponding to this block.
     pub(super) salt: Salt,
+    /// Merkle Root hash for pieces in the segment to which solution in `pre_digest` belongs to
+    pub(super) merkle_root: &'a Sha256Hash,
+    /// Position within segment of a piece from solution in `pre_digest`
+    pub(super) position: u64,
+    /// Record size for a segment to which solution in `pre_digest` belongs to
+    pub(super) record_size: u32,
     /// Signing context for verifying signatures
     pub(super) signing_context: &'a SigningContext,
 }
@@ -73,6 +80,9 @@ where
         epoch,
         solution_range,
         salt,
+        merkle_root,
+        position,
+        record_size,
         signing_context,
     } = params;
 
@@ -117,6 +127,9 @@ where
         solution_range,
         pre_digest.slot,
         salt,
+        merkle_root,
+        position,
+        record_size,
         signing_context,
     )?;
 
@@ -132,12 +145,17 @@ pub(super) struct VerifiedHeaderInfo<B: BlockT> {
     pub(super) seal: DigestItemFor<B>,
 }
 
+/// TODO: Probably a struct for arguments
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_solution<B: BlockT + Sized>(
     solution: &Solution,
     epoch_randomness: &Randomness,
     solution_range: u64,
     slot: Slot,
     salt: Salt,
+    merkle_root: &Sha256Hash,
+    position: u64,
+    record_size: u32,
     signing_context: &SigningContext,
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
@@ -172,7 +190,14 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::InvalidEncoding(slot));
     }
 
-    // TODO: Check whether Piece witness is correct
+    if !archiver::is_piece_valid(
+        &piece,
+        *merkle_root,
+        position as usize,
+        record_size as usize,
+    ) {
+        return Err(Error::InvalidEncoding(slot));
+    }
 
     Ok(())
 }

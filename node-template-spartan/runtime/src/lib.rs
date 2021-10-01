@@ -28,7 +28,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{RootBlock, PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE};
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -531,6 +531,10 @@ impl_runtime_apis! {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             PoC::is_in_block_list(farmer_id)
+        }
+
+        fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
+            PoC::merkle_tree_for_segment_index(segment_index)
         }
 
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {

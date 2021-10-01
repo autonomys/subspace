@@ -307,6 +307,9 @@ pub enum Error<B: BlockT> {
     /// Farmer in block list
     #[display(fmt = "Farmer {} is in block list", _0)]
     FarmerInBlockList(FarmerId),
+    /// Merkle Root not found
+    #[display(fmt = "Merkle Root for segment index {} not found", _0)]
+    MerkleRootNotFound(u64),
     /// Check inherents error
     #[display(fmt = "Checking inherents failed: {}", _0)]
     CheckInherents(sp_inherents::Error),
@@ -722,34 +725,37 @@ where
             solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
         }
 
+        let parent_block_id = BlockId::Hash(parent_header.hash());
         let maybe_prepared_data: Option<PreparedData<B>> = try {
             let epoch_changes = self.poc_link.epoch_changes.shared_data();
             let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
                 Epoch::genesis(&self.poc_link.config, slot)
             })?;
             let epoch_randomness = epoch.as_ref().randomness;
-            let block_id = BlockId::Hash(parent_header.hash());
-            // Here we always use parent block as the source of information, thus on the edge of the era
-            // the very first block of the era still uses solution range from the previous one, but the
-            // block after it uses "next" solution range deposited in the first block.
+            // Here we always use parent block as the source of information, thus on the edge of the
+            // era the very first block of the era still uses solution range from the previous one,
+            // but the block after it uses "next" solution range deposited in the first block.
             let solution_range = find_next_solution_range_digest::<B>(parent_header)
                 .ok()?
                 .map(|d| d.solution_range)
                 .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when there is
-                    // no solution range stored yet
-                    self.client.runtime_api().solution_range(&block_id).ok()
+                    // We use runtime API as it will fallback to default value for genesis when
+                    // there is no solution range stored yet
+                    self.client
+                        .runtime_api()
+                        .solution_range(&parent_block_id)
+                        .ok()
                 })?;
-            // Here we always use parent block as the source of information, thus on the edge of the eon
-            // the very first block of the eon still uses salt from the previous one, but the
+            // Here we always use parent block as the source of information, thus on the edge of the
+            // eon the very first block of the eon still uses salt from the previous one, but the
             // block after it uses "next" salt deposited in the first block.
             let salt = find_next_salt_digest::<B>(parent_header)
                 .ok()?
                 .map(|d| d.salt)
                 .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when there is
-                    // no salt stored yet
-                    self.client.runtime_api().salt(&block_id).ok()
+                    // We use runtime API as it will fallback to default value for genesis when
+                    // there is no salt stored yet
+                    self.client.runtime_api().salt(&parent_block_id).ok()
                 })?;
 
             let new_slot_info = NewSlotInfo {
@@ -772,7 +778,7 @@ where
                 });
 
             PreparedData {
-                block_id,
+                block_id: parent_block_id,
                 solution_range,
                 epoch_randomness,
                 salt: salt.to_le_bytes(),
@@ -809,6 +815,54 @@ where
                 continue;
             }
 
+            let record_size = self
+                .client
+                .runtime_api()
+                .record_size(&parent_block_id)
+                .ok()?;
+            let recorded_history_segment_size = self
+                .client
+                .runtime_api()
+                .recorded_history_segment_size(&parent_block_id)
+                .ok()?;
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            let segment_index = solution.piece_index / merkle_num_leaves;
+            let position = solution.piece_index % merkle_num_leaves;
+            let mut merkle_root = self
+                .client
+                .runtime_api()
+                .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+                .ok()?;
+
+            // TODO: This is not a very nice hack due to the fact that at the time first block is
+            //  produced extrinsics with root blocks are not yet in runtime
+            if merkle_root.is_none() && parent_header.number().is_zero() {
+                merkle_root = self.poc_link.root_blocks.lock().iter().find_map(
+                    |(_block_number, root_blocks)| {
+                        root_blocks.iter().find_map(|root_block| {
+                            if root_block.segment_index() == segment_index {
+                                Some(root_block.merkle_tree_root())
+                            } else {
+                                None
+                            }
+                        })
+                    },
+                );
+            }
+
+            let merkle_root = match merkle_root {
+                Some(merkle_root) => merkle_root,
+                None => {
+                    warn!(
+                        target: "poc",
+                        "Merkle Root segment index {} not found (slot {})",
+                        segment_index,
+                        slot,
+                    );
+                    continue;
+                }
+            };
+
             let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
 
             match verification::verify_solution::<B>(
@@ -817,6 +871,9 @@ where
                 solution_range,
                 slot,
                 salt,
+                &merkle_root,
+                position,
+                record_size,
                 &signing_context,
             ) {
                 Ok(_) => {
@@ -1160,6 +1217,9 @@ pub struct PoCVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
     config: Config,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     can_author_with: CAW,
+    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// validation
+    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     telemetry: Option<TelemetryHandle>,
     signing_context: SigningContext,
 }
@@ -1304,6 +1364,7 @@ where
 
         let hash = block.header.hash();
         let parent_hash = *block.header.parent_hash();
+        let parent_block_id = BlockId::Hash(parent_hash);
 
         debug!(target: "poc", "We have {:?} logs in this header", block.header.digest().logs().len());
 
@@ -1346,7 +1407,7 @@ where
             if self
                 .client
                 .runtime_api()
-                .is_in_block_list(&BlockId::Hash(parent_hash), &pre_digest.solution.public_key)
+                .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)
                 .map_err(Error::<Block>::RuntimeApi)?
             {
                 warn!(
@@ -1360,6 +1421,56 @@ where
                 );
             }
 
+            // TODO: This assumes fixed size segments, which might not be the case
+            let record_size = self
+                .client
+                .runtime_api()
+                .record_size(&parent_block_id)
+                .expect("Failed to get `record_size` from runtime API");
+            let recorded_history_segment_size = self
+                .client
+                .runtime_api()
+                .recorded_history_segment_size(&parent_block_id)
+                .expect("Failed to get `recorded_history_segment_size` from runtime API");
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
+            let position = pre_digest.solution.piece_index % merkle_num_leaves;
+            let mut merkle_root = self
+                .client
+                .runtime_api()
+                .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "Failed to get Merkle Root for segment {} from runtime API: {}",
+                        segment_index, error
+                    );
+                });
+
+            // TODO: This is not a very nice hack due to the fact that at the time first block is
+            //  produced extrinsics with root blocks are not yet in runtime
+            if merkle_root.is_none() && block.header.number().is_one() {
+                merkle_root =
+                    self.root_blocks
+                        .lock()
+                        .iter()
+                        .find_map(|(_block_number, root_blocks)| {
+                            root_blocks.iter().find_map(|root_block| {
+                                if root_block.segment_index() == segment_index {
+                                    Some(root_block.merkle_tree_root())
+                                } else {
+                                    None
+                                }
+                            })
+                        });
+            }
+
+            let merkle_root = match merkle_root {
+                Some(merkle_root) => merkle_root,
+                None => {
+                    return Err(Error::<Block>::MerkleRootNotFound(segment_index).into());
+                }
+            };
+
             // We add one to the current slot to allow for some small drift.
             // FIXME #1019 in the future, alter this queue to allow deferring of headers
             let v_params = verification::VerificationParams {
@@ -1369,6 +1480,9 @@ where
                 epoch: viable_epoch.as_ref(),
                 solution_range,
                 salt: salt.to_le_bytes(),
+                merkle_root: &merkle_root,
+                position,
+                record_size,
                 signing_context: &self.signing_context,
             };
 
@@ -2228,7 +2342,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 // TODO: Create a struct for these parameters
 #[allow(clippy::too_many_arguments)]
 pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
-    poc_link: PoCLink<Block>,
+    poc_link: &PoCLink<Block>,
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
     client: Arc<Client>,
@@ -2264,9 +2378,10 @@ where
     let verifier = PoCVerifier {
         select_chain,
         create_inherent_data_providers,
-        config: poc_link.config,
-        epoch_changes: poc_link.epoch_changes,
+        config: poc_link.config.clone(),
+        epoch_changes: poc_link.epoch_changes.clone(),
         can_author_with,
+        root_blocks: Arc::clone(&poc_link.root_blocks),
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency

@@ -622,12 +622,7 @@ impl BlockArchiver {
 }
 
 /// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(
-    piece: &Piece,
-    root: Sha256Hash,
-    position: usize,
-    record_size: usize,
-) -> bool {
+pub fn is_piece_valid(piece: &[u8], root: Sha256Hash, position: usize, record_size: usize) -> bool {
     let witness = match Witness::new(Cow::Borrowed(&piece[record_size..])) {
         Ok(witness) => witness,
         Err(_) => {

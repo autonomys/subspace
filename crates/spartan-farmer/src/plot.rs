@@ -480,6 +480,7 @@ impl Plot {
         })?
     }
 
+    // TODO: This should also update commitment for every piece written
     /// Writes a piece to the plot by index, will overwrite if piece exists (updates)
     pub(crate) async fn write_many(
         &self,

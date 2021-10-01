@@ -35,7 +35,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_spartan::Randomness;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::{RootBlock, Sha256Hash};
 
 /// Key type for PoC module.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");
@@ -304,6 +304,9 @@ sp_api::decl_runtime_apis! {
 
         /// Check if `farmer_id` is in block list (due to equivocation)
         fn is_in_block_list(farmer_id: &FarmerId) -> bool;
+
+        /// Get MerkleRoot for specified segment index
+        fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash>;
 
         /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;

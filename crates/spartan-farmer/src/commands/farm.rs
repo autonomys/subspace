@@ -111,7 +111,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), anyhow::E
         async move {
             match background_plotting(/*&client, */ weak_plot, farmer_metadata, &public_key).await {
                 Ok(()) => {
-                    info!("Background plotting stopped without error");
+                    info!("Background plotting finished successfully");
                 }
                 Err(error) => {
                     error!("Background plotting error: {}", error);
@@ -151,6 +151,7 @@ async fn background_plotting(
         ..
     } = farmer_metadata;
 
+    // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let subspace_codec = SubspaceCodec::new(public_key);
