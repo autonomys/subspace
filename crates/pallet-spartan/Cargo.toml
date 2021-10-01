@@ -19,6 +19,7 @@ frame-support = { version = "4.0.0-dev", default-features = false, git = "https:
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../sp-consensus-poc" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-spartan = { version = "0.1.0", default-features = false, path = "../sp-consensus-spartan" }
 sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
@@ -44,6 +45,7 @@ std = [
 	"frame-system/std",
 	"pallet-timestamp/std",
 	"sp-consensus-poc/std",
+	"sp-consensus-slots/std",
 	"sp-consensus-spartan/std",
 	"sp-io/std",
 	"sp-runtime/std",

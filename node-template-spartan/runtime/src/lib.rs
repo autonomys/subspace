@@ -8,13 +8,21 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::{
+    construct_runtime, parameter_types,
+    weights::{
+        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
+        IdentityFee, Weight,
+    },
+};
+use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys,
     transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, MultiSignature,
+    ApplyExtrinsicResult, MultiSignature, Perbill,
 };
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -69,7 +77,7 @@ pub type Moment = u64;
 pub mod opaque {
     use super::*;
 
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+    use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -275,7 +283,8 @@ impl pallet_spartan::Config for Runtime {
     type EraChangeTrigger = pallet_spartan::NormalEraChange;
     type EonChangeTrigger = pallet_spartan::NormalEonChange;
 
-    type HandleEquivocation = pallet_spartan::EquivocationHandler<OffencesPoC, ReportLongevity>;
+    type HandleEquivocation =
+        pallet_spartan::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -582,7 +591,7 @@ impl_runtime_apis! {
             PoC::salt()
         }
 
-        fn current_epoch_start() -> sp_consensus_poc::Slot {
+        fn current_epoch_start() -> sp_consensus_slots::Slot {
             PoC::current_epoch_start()
         }
 

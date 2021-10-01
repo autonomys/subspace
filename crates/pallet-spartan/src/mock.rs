@@ -26,7 +26,7 @@ use frame_system::InitKind;
 use ring::hmac;
 use schnorrkel::Keypair;
 use sp_consensus_poc::digests::{PreDigest, Solution};
-use sp_consensus_poc::Slot;
+use sp_consensus_slots::Slot;
 use sp_consensus_spartan::spartan::{Tag, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, Public, H256};
@@ -173,7 +173,8 @@ impl Config for Test {
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
 
-    type HandleEquivocation = super::EquivocationHandler<OffencesPoC, ReportLongevity>;
+    type HandleEquivocation =
+        crate::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
 
     type WeightInfo = ();
 }

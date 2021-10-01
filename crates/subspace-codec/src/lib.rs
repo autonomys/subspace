@@ -81,6 +81,12 @@ impl Spartan {
         encoding
     }
 
+    // TODO: Remove when CUDA support is properly integrated
+    #[cfg(not(feature = "cuda"))]
+    #[doc(hidden)]
+    /// Encode given batch of pieces using GPU, and CPU for the leftovers
+    pub fn cuda_batch_encode(&self, _pieces: &mut [u8], _nonce_array: &[u64]) {}
+
     // TODO: Refactor from being CUDA-specific to be batch-oriented
     /// Encode given batch of pieces using GPU, and CPU for the leftovers
     #[cfg(feature = "cuda")]

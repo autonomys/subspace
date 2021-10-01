@@ -5,17 +5,16 @@
 
 #![warn(missing_docs)]
 
-use std::sync::Arc;
-
 use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
 use sc_consensus_poc::notification::SubspaceNotificationStream;
 use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
-pub use sc_rpc_api::DenyUnsafe;
+use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use std::sync::Arc;
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
@@ -37,12 +36,16 @@ pub struct FullDeps<C, P> {
 /// Instantiate all full RPC extensions.
 pub fn create_full<C, P>(deps: FullDeps<C, P>) -> jsonrpc_core::IoHandler<sc_rpc::Metadata>
 where
-    C: ProvideRuntimeApi<Block>,
-    C: HeaderBackend<Block> + HeaderMetadata<Block, Error = BlockChainError> + 'static,
-    C: Send + Sync + 'static,
-    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>,
-    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
-    C::Api: BlockBuilder<Block>,
+    C: ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = BlockChainError>
+        + Send
+        + Sync
+        + 'static,
+    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
+        + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
+        + BlockBuilder<Block>
+        + sp_consensus_poc::PoCApi<Block>,
     P: TransactionPool + 'static,
 {
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};
@@ -65,21 +68,17 @@ where
     )));
 
     io.extend_with(TransactionPaymentApi::to_delegate(TransactionPayment::new(
-        client,
+        client.clone(),
     )));
 
-    io.extend_with(sc_consensus_poc_rpc::PoCApi::to_delegate(
+    io.extend_with(sc_consensus_poc_rpc::PoCRpcApi::to_delegate(
         sc_consensus_poc_rpc::PoCRpcHandler::new(
+            client,
             subscription_executor,
             new_slot_notification_stream,
             archived_segment_notification_stream,
         ),
     ));
-
-    // Extend this RPC with a custom API by using the following syntax.
-    // `YourRpcStruct` should have a reference to a client, which is needed
-    // to call into the runtime.
-    // `io.extend_with(YourRpcTrait::to_delegate(YourRpcStruct::new(ReferenceToClient, ...)));`
 
     io
 }

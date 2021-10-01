@@ -16,20 +16,27 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! RPC api for PoC.
+#![feature(try_blocks)]
 
 use futures::task::SpawnExt;
 use futures::{future, task::Spawn, FutureExt, SinkExt, StreamExt};
-use jsonrpc_core::{Error as RpcError, Result as RpcResult};
+use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
-use log::warn;
+use log::{error, warn};
 use parking_lot::Mutex;
 use sc_consensus_poc::notification::SubspaceNotificationStream;
 use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use serde::{Deserialize, Serialize};
+use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_blockchain::HeaderBackend;
 use sp_consensus_poc::digests::Solution;
-use sp_consensus_poc::{FarmerId, Slot};
+use sp_consensus_poc::{FarmerId, PoCApi};
+use sp_consensus_slots::Slot;
 use sp_core::crypto::Public;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::Block as BlockT;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::RootBlock;
@@ -38,6 +45,27 @@ const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 type SlotNumber = u64;
 type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
+
+// TODO: Move RPC types into separate crate shared with farmer
+/// Metadata necessary for farmer operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FarmerMetadata {
+    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
+    /// to the client-dependent transaction confirmation depth `k`).
+    pub confirmation_depth_k: u32,
+    /// The size of data in one piece (in bytes).
+    pub record_size: u32,
+    /// Recorded history is encoded and plotted in segments of this size (in bytes).
+    pub recorded_history_segment_size: u32,
+    /// This constant defines the size (in bytes) of one pre-genesis object.
+    pub pre_genesis_object_size: u32,
+    /// This constant defines the number of a pre-genesis objects that will bootstrap the
+    /// history.
+    pub pre_genesis_object_count: u32,
+    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
+    /// the history.
+    pub pre_genesis_object_seed: Vec<u8>,
+}
 
 /// Information about new slot that just arrived
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,9 +120,12 @@ pub struct ProposedProofOfSpaceResult {
 
 /// Provides rpc methods for interacting with PoC.
 #[rpc]
-pub trait PoCApi {
+pub trait PoCRpcApi {
     /// RPC metadata
     type Metadata;
+
+    #[rpc(name = "subspace_getFarmerMetadata")]
+    fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata>;
 
     #[rpc(name = "poc_proposeProofOfSpace")]
     fn propose_proof_of_space(
@@ -154,11 +185,13 @@ struct ResponseSenders {
 }
 
 /// Implements the PoCRpc trait for interacting with PoC.
-pub struct PoCRpcHandler {
+pub struct PoCRpcHandler<Block, Client> {
+    client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     response_senders: Arc<Mutex<ResponseSenders>>,
+    _block: PhantomData<Block>,
 }
 
 /// PoCRpcHandler is used for notifying subscribers about arrival of new slots and for submission of
@@ -168,9 +201,15 @@ pub struct PoCRpcHandler {
 /// every subscriber, after which RPC server waits for the same number of `poc_proposeProofOfSpace`
 /// requests with `ProposedProofOfSpaceResult` in them or until timeout is exceeded. The first valid
 /// solution for a particular slot wins, others are ignored.
-impl PoCRpcHandler {
+impl<Block, Client> PoCRpcHandler<Block, Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
+    Client::Api: PoCApi<Block>,
+{
     /// Creates a new instance of the PoCRpc handler.
     pub fn new<E>(
+        client: Arc<Client>,
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
         archived_segment_notification_stream: SubspaceNotificationStream<
@@ -181,16 +220,51 @@ impl PoCRpcHandler {
         E: Spawn + Send + Sync + 'static,
     {
         Self {
+            client,
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
             archived_segment_notification_stream,
             response_senders: Arc::default(),
+            _block: PhantomData::default(),
         }
     }
 }
 
-impl PoCApi for PoCRpcHandler {
+impl<Block, Client> PoCRpcApi for PoCRpcHandler<Block, Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
+    Client::Api: PoCApi<Block>,
+{
     type Metadata = sc_rpc_api::Metadata;
+
+    fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata> {
+        let client = Arc::clone(&self.client);
+        Box::pin(async move {
+            let best_block_hash = BlockId::Hash(client.info().best_hash);
+            let runtime_api = client.runtime_api();
+
+            let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
+                FarmerMetadata {
+                    confirmation_depth_k: runtime_api.confirmation_depth_k(&best_block_hash)?,
+                    record_size: runtime_api.record_size(&best_block_hash)?,
+                    recorded_history_segment_size: runtime_api
+                        .recorded_history_segment_size(&best_block_hash)?,
+                    pre_genesis_object_size: runtime_api
+                        .pre_genesis_object_size(&best_block_hash)?,
+                    pre_genesis_object_count: runtime_api
+                        .pre_genesis_object_count(&best_block_hash)?,
+                    pre_genesis_object_seed: runtime_api
+                        .pre_genesis_object_seed(&best_block_hash)?,
+                }
+            };
+
+            farmer_metadata.map_err(|error| {
+                error!("Failed to get data from runtime API: {}", error);
+                RpcError::new(ErrorCode::InternalError)
+            })
+        })
+    }
 
     fn propose_proof_of_space(
         &self,

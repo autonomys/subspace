@@ -1,14 +1,5 @@
-use async_std::task;
 use std::fs;
 use std::path::PathBuf;
-
-pub(crate) fn spawn_blocking<F, T>(f: F) -> task::JoinHandle<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    task::spawn(async_global_executor::spawn_blocking(f))
-}
 
 pub(crate) fn get_path(custom_path: Option<PathBuf>) -> PathBuf {
     // set storage path

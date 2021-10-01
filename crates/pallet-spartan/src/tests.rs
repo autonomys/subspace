@@ -24,7 +24,8 @@ use frame_support::{
 use frame_system::{EventRecord, Phase};
 use mock::{Event, *};
 use schnorrkel::Keypair;
-use sp_consensus_poc::{digests::Solution, PoCEpochConfiguration, Slot};
+use sp_consensus_poc::{digests::Solution, PoCEpochConfiguration};
+use sp_consensus_slots::Slot;
 use sp_core::Public;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{

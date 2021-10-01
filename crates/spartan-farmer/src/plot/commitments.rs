@@ -1,4 +1,4 @@
-use crate::{utils, Salt};
+use crate::Salt;
 use async_std::io;
 use async_std::path::PathBuf;
 use log::warn;
@@ -128,8 +128,9 @@ impl Commitments {
             Entry::Vacant(entry) => {
                 let db_path = self.path.join(hex::encode(salt));
                 let db = Arc::new(
-                    utils::spawn_blocking(move || DB::open_default(db_path))
+                    tokio::task::spawn_blocking(move || DB::open_default(db_path))
                         .await
+                        .unwrap()
                         .map_err(DbError::RocksDb)?,
                 );
 
@@ -168,11 +169,12 @@ impl Commitments {
         self.metadata.commitments.remove(&salt);
         let db_path = self.path.join(hex::encode(salt));
         let database = self.databases.remove(&salt);
-        utils::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             drop(database);
             std::fs::remove_dir_all(db_path)
         })
-        .await?;
+        .await
+        .unwrap()?;
 
         Ok(())
     }
