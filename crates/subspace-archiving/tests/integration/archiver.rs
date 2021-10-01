@@ -38,11 +38,11 @@ fn archiver() {
     }
 
     // Check that all pieces are valid
-    for (index, piece) in first_archived_segment.pieces.iter().enumerate() {
+    for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             piece,
             first_archived_segment.root_block.merkle_tree_root(),
-            index,
+            position,
             RECORD_SIZE,
         ));
     }
@@ -98,11 +98,11 @@ fn archiver() {
             previous_root_block_hash
         );
 
-        for (index, piece) in archived_segment.pieces.iter().enumerate() {
+        for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.merkle_tree_root(),
-                index,
+                position,
                 RECORD_SIZE,
             ));
         }
@@ -136,11 +136,11 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.bytes, None);
 
-        for (index, piece) in archived_segment.pieces.iter().enumerate() {
+        for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.merkle_tree_root(),
-                index,
+                position,
                 RECORD_SIZE,
             ));
         }

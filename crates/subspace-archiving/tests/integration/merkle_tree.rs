@@ -19,19 +19,19 @@ fn merkle_tree() {
     let root = merkle_tree_data.root();
     assert_eq!(root, merkle_tree_hashes.root());
 
-    for index in 0..number_of_pieces {
-        let witness = merkle_tree_data.get_witness(index).unwrap();
+    for position in 0..number_of_pieces {
+        let witness = merkle_tree_data.get_witness(position).unwrap();
 
-        assert_eq!(witness, merkle_tree_hashes.get_witness(index).unwrap());
+        assert_eq!(witness, merkle_tree_hashes.get_witness(position).unwrap());
 
-        assert!(witness.is_valid(root, index, *hashes.get(index).unwrap()));
-        assert!(!witness.is_valid(rand::random(), index, *hashes.get(index).unwrap()));
-        assert!(!witness.is_valid(root, index, rand::random()));
-        assert!(!witness.is_valid(root, rand::random(), *hashes.get(index).unwrap()));
+        assert!(witness.is_valid(root, position, *hashes.get(position).unwrap()));
+        assert!(!witness.is_valid(rand::random(), position, *hashes.get(position).unwrap()));
+        assert!(!witness.is_valid(root, position, rand::random()));
+        assert!(!witness.is_valid(root, rand::random(), *hashes.get(position).unwrap()));
     }
 
     assert_eq!(
         merkle_tree_data.get_witness(number_of_pieces),
-        Err(MerkleTreeWitnessError::WrongIndex(number_of_pieces)),
+        Err(MerkleTreeWitnessError::WrongPosition(number_of_pieces)),
     );
 }

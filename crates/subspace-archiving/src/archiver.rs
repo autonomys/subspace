@@ -455,9 +455,9 @@ impl<State: private::ArchiverState> Archiver<State> {
         let pieces: Vec<Piece> = records
             .into_iter()
             .enumerate()
-            .map(|(index, record)| {
+            .map(|(position, record)| {
                 let witness = merkle_tree
-                    .get_witness(index)
+                    .get_witness(position)
                     .expect("We use the same indexes as during Merkle tree creation; qed");
                 let mut piece: Piece = [0u8; PIECE_SIZE];
 
@@ -622,7 +622,12 @@ impl BlockArchiver {
 }
 
 /// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(piece: &Piece, root: Sha256Hash, index: usize, record_size: usize) -> bool {
+pub fn is_piece_valid(
+    piece: &Piece,
+    root: Sha256Hash,
+    position: usize,
+    record_size: usize,
+) -> bool {
     let witness = match Witness::new(Cow::Borrowed(&piece[record_size..])) {
         Ok(witness) => witness,
         Err(_) => {
@@ -631,5 +636,5 @@ pub fn is_piece_valid(piece: &Piece, root: Sha256Hash, index: usize, record_size
     };
     let leaf_hash = crypto::sha256_hash(&piece[..record_size]);
 
-    witness.is_valid(root, index, leaf_hash)
+    witness.is_valid(root, position, leaf_hash)
 }
