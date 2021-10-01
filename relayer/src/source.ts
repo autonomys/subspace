@@ -6,13 +6,13 @@ import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { concatMap, take, map } from "rxjs/operators";
 import { from, merge } from 'rxjs';
 import { Logger } from "pino";
-import { ParaHeadAndId, TxData } from "./types";
+import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
 
 interface SourceConstructorParams {
   api: ApiPromise;
-  chain: string;
+  chain: ChainName;
   feedId: U64;
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
@@ -23,13 +23,13 @@ interface TxDataInput {
   block: SignedBlock;
   hash: Hash;
   feedId: U64;
-  chain: string;
+  chain: ChainName;
   signer: AddressOrPair;
 }
 
 class Source {
   private readonly api: ApiPromise;
-  private readonly chain: string;
+  private readonly chain: ChainName;
   private readonly feedId: U64;
   private readonly parachainsMap: Map<string, Parachain>;
   private readonly logger: Logger;

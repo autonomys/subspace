@@ -6,6 +6,7 @@ import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
 import { createParachainsMap } from './utils';
+import { ChainName } from "./types";
 
 const createApi = async (url: string) => {
   const provider = new WsProvider(url);
@@ -40,7 +41,7 @@ const createApi = async (url: string) => {
 
       return new Source({
         api,
-        chain: chain.toString(),
+        chain: chain.toString() as ChainName,
         parachainsMap,
         logger,
         feedId,
