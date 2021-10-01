@@ -50,7 +50,7 @@ tempfile = "3.2.0"
 tokio = { version = "1.11.0", features = ["macros"] }
 
 [features]
-default = ["cuda"]
+default = []
 # Compile with CUDA support and use it if compatible GPU is available
 cuda = [
     "subspace-codec/cuda",
