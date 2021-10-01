@@ -1,7 +1,7 @@
 [package]
 name = "pallet-feeds"
 version = "0.1.0"
-authors = ["Subspace Labs <admin@subspace.network>"]
+authors = ["Serge Kovbasiuk <serge@subspace.network>"]
 edition = "2018"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
