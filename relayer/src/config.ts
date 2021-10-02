@@ -85,6 +85,11 @@ export const loadConfig = (): Config => {
             paraId: 2090,
             chain: "Basilisk",
           },
+          {
+            url: "https://altair.api.onfinality.io/public",
+            paraId: 2088,
+            chain: "Altair",
+          },
         ]
       },
     ],
