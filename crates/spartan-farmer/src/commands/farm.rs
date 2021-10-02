@@ -1,6 +1,5 @@
 use crate::plot::{Plot, WeakPlot};
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
-use futures::channel::oneshot;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
@@ -120,19 +119,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), anyhow::E
         }
     });
 
-    subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await?;
-
-    let (tx, rx) = oneshot::channel();
-
-    let _handler = plot.on_close(move || {
-        let _ = tx.send(());
-    });
-
-    drop(plot);
-
-    rx.await?;
-
-    Ok(())
+    subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await
 }
 
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.

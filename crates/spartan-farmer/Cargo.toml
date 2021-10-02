@@ -19,7 +19,6 @@ async-std = "1.9.0"
 clap = "3.0.0-beta.4"
 dirs = "4.0.0"
 env_logger = "0.9.0"
-event-listener-primitives = "2.0.1"
 futures = "0.3.13"
 hex = "0.4.3"
 indicatif = "0.16.2"
@@ -48,7 +47,7 @@ version = "0.17.0"
 async-std = { version = "1.9.0", features = ["attributes"] }
 rand = "0.8.4"
 tempfile = "3.2.0"
-tokio = { version = "1.11.0", features = ["macros"] }
+tokio = { version = "1.11.0", features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []

@@ -4,7 +4,6 @@ use crate::plot::commitments::Commitments;
 use crate::{crypto, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
 use async_std::fs::OpenOptions;
 use async_std::path::PathBuf;
-use event_listener_primitives::{BagOnce, HandlerId};
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SinkExt, StreamExt};
@@ -18,6 +17,7 @@ use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use thiserror::Error;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum CommitmentStatus {
@@ -80,26 +80,38 @@ enum WriteRequests {
     },
 }
 
-#[derive(Default)]
-struct Handlers {
-    close: BagOnce<Box<dyn FnOnce() + Send>>,
-}
-
 struct Inner {
-    handlers: Arc<Handlers>,
-    any_requests_sender: async_mpsc::Sender<()>,
-    read_requests_sender: async_mpsc::Sender<ReadRequests>,
-    write_requests_sender: async_mpsc::Sender<WriteRequests>,
+    background_handle: Option<JoinHandle<Commitments>>,
+    any_requests_sender: Option<async_mpsc::Sender<()>>,
+    read_requests_sender: Option<async_mpsc::Sender<ReadRequests>>,
+    write_requests_sender: Option<async_mpsc::Sender<WriteRequests>>,
     piece_count: Arc<AtomicU64>,
     commitment_statuses: Mutex<HashMap<Salt, CommitmentStatus>>,
 }
 
-/// `Plot` struct is an abstraction on top of both plot and tags database. It converts async
-/// requests to internal reads/writes to the plot and tags database. It prioritizes reads over
-/// writes. Internally for that it has 2 queues for reads and writes requests, read requests are
-/// executed until exhausted after which at most 1 write request is handled and cycle repeats. This
-/// allows finding solution with as little delay as possible while introducing changes to the plot
-/// at the same time (re-plotting on salt changes or extending plot size).
+impl Drop for Inner {
+    fn drop(&mut self) {
+        // Close sending channels so that background future can actually exit
+        self.any_requests_sender.take();
+        self.read_requests_sender.take();
+        self.write_requests_sender.take();
+
+        let background_handle = self.background_handle.take().unwrap();
+        tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current()
+                .block_on(async move { background_handle.await })
+                .unwrap();
+        });
+    }
+}
+
+/// `Plot` struct is an abstraction on top of both plot and tags database.
+///
+/// It converts async requests to internal reads/writes to the plot and tags database. It
+/// prioritizes reads over writes by having separate queues for reads and writes requests, read
+/// requests are executed until exhausted after which at most 1 write request is handled and the
+/// cycle repeats. This allows finding solution with as little delay as possible while introducing
+/// changes to the plot at the same time (re-plotting on salt changes or extending plot size).
 #[derive(Clone)]
 pub(crate) struct Plot {
     inner: Arc<Inner>,
@@ -131,16 +143,16 @@ impl Plot {
         let (write_requests_sender, mut write_requests_receiver) =
             async_mpsc::channel::<WriteRequests>(100);
 
-        let handlers = Arc::new(Handlers::default());
-        let tags_dbs_fut = Commitments::new(path.join("plot-tags"));
-        let mut tags_dbs = tags_dbs_fut.await.map_err(PlotError::PlotCommitmentsOpen)?;
-        let commitment_statuses: HashMap<Salt, CommitmentStatus> = tags_dbs
+        let commitments_fut = Commitments::new(path.join("plot-tags"));
+        let mut commitments = commitments_fut
+            .await
+            .map_err(PlotError::PlotCommitmentsOpen)?;
+        let commitment_statuses: HashMap<Salt, CommitmentStatus> = commitments
             .get_existing_commitments()
             .map(|&salt| (salt, CommitmentStatus::Created))
             .collect();
 
-        tokio::spawn({
-            let handlers = Arc::clone(&handlers);
+        let background_handle = tokio::spawn({
             let piece_count = Arc::clone(&piece_count);
 
             async move {
@@ -202,7 +214,7 @@ impl Plot {
                                 salt,
                                 result_sender,
                             }) => {
-                                let tags_db = match tags_dbs.get_or_create_db(salt).await {
+                                let tags_db = match commitments.get_or_create_db(salt).await {
                                     Ok(tags_db) => tags_db,
                                     Err(error) => {
                                         error!("Failed to open tags database: {}", error);
@@ -322,7 +334,7 @@ impl Plot {
                         })) => {
                             let _ = result_sender.send(
                                 try {
-                                    let tags_db = match tags_dbs.get_or_create_db(salt).await {
+                                    let tags_db = match commitments.get_or_create_db(salt).await {
                                         Ok(tags_db) => tags_db,
                                         Err(error) => {
                                             error!("Failed to open tags database: {}", error);
@@ -347,7 +359,7 @@ impl Plot {
                             salt,
                             result_sender,
                         })) => {
-                            if let Err(error) = tags_dbs.finish_commitment_creation(salt).await {
+                            if let Err(error) = commitments.finish_commitment_creation(salt).await {
                                 error!("Failed to finish commitment creation: {}", error);
                                 continue;
                             }
@@ -358,7 +370,7 @@ impl Plot {
                             salt,
                             result_sender,
                         })) => {
-                            if let Err(error) = tags_dbs.remove_commitment(salt).await {
+                            if let Err(error) = commitments.remove_commitment(salt).await {
                                 error!("Failed to remove commitment: {}", error);
                                 continue;
                             }
@@ -378,23 +390,15 @@ impl Plot {
                     error!("Failed to sync plot file before exit: {}", error);
                 }
 
-                std::thread::spawn({
-                    let handlers = Arc::clone(&handlers);
-
-                    move || {
-                        drop(tags_dbs);
-
-                        handlers.close.call_simple();
-                    }
-                });
+                commitments
             }
         });
 
         let inner = Inner {
-            handlers,
-            any_requests_sender,
-            read_requests_sender,
-            write_requests_sender,
+            background_handle: Some(background_handle),
+            any_requests_sender: Some(any_requests_sender),
+            read_requests_sender: Some(read_requests_sender),
+            write_requests_sender: Some(write_requests_sender),
             piece_count,
             commitment_statuses: Mutex::new(commitment_statuses),
         };
@@ -418,6 +422,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::ReadEncoding {
                 index,
                 result_sender,
@@ -431,7 +436,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -455,6 +460,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::FindByRange {
                 target,
                 range,
@@ -470,7 +476,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -495,6 +501,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::WriteEncodings {
                 encodings,
                 first_index,
@@ -509,7 +516,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -569,6 +576,7 @@ impl Plot {
             self.inner
                 .write_requests_sender
                 .clone()
+                .unwrap()
                 .send(WriteRequests::WriteTags {
                     first_index: batch_start,
                     tags,
@@ -584,7 +592,7 @@ impl Plot {
                 })?;
 
             // If fails - it is either full or disconnected, we don't care either way, so ignore result
-            let _ = self.inner.any_requests_sender.clone().try_send(());
+            let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
             result_receiver.await.map_err(|error| {
                 io::Error::new(
@@ -618,6 +626,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::FinishCommitmentCreation {
                 salt,
                 result_sender,
@@ -634,7 +643,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -692,6 +701,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::RemoveCommitment {
                 salt,
                 result_sender,
@@ -705,7 +715,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -713,12 +723,6 @@ impl Plot {
                 format!("Remove tags result sender was dropped: {}", error),
             )
         })
-    }
-
-    /// Run callback when plot is closed, can be used to handle graceful shutdown since plot will be
-    /// closed on drop asynchronously and thus requires extra care to be handled properly.
-    pub(crate) fn on_close<F: FnOnce() + Send + 'static>(&self, callback: F) -> HandlerId {
-        self.inner.handlers.close.add(Box::new(callback))
     }
 
     pub(crate) fn downgrade(&self) -> WeakPlot {
@@ -734,6 +738,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::ReadEncodings {
                 first_index,
                 count,
@@ -748,7 +753,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -774,7 +779,6 @@ impl WeakPlot {
 mod tests {
     use super::*;
     use rand::prelude::*;
-    use std::time::Duration;
     use tempfile::TempDir;
 
     fn init() {
@@ -787,7 +791,7 @@ mod tests {
         bytes
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_read_write() {
         init();
         let path = TempDir::new().unwrap();
@@ -809,21 +813,15 @@ mod tests {
 
         drop(plot);
 
-        async_std::task::sleep(Duration::from_millis(100)).await;
-
         // Make sure it is still not empty on reopen
         let plot = Plot::open_or_create(&path.path().to_path_buf().into())
             .await
             .unwrap();
         assert_eq!(false, plot.is_empty().await);
         drop(plot);
-
-        // Let plot to destroy gracefully, otherwise may get "pure virtual method called
-        // terminate called without an active exception" message
-        async_std::task::sleep(Duration::from_millis(100)).await;
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_commitment() {
         init();
         let path = TempDir::new().unwrap();
@@ -849,7 +847,7 @@ mod tests {
         assert_eq!(correct_tag, tag);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_find_by_tag() {
         init();
         let path = TempDir::new().unwrap();
@@ -937,9 +935,5 @@ mod tests {
         }
 
         drop(plot);
-
-        // Let plot to destroy gracefully, otherwise may get "pure virtual method called
-        // terminate called without an active exception" message
-        async_std::task::sleep(Duration::from_millis(100)).await;
     }
 }
