@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::plot::{Plot, WeakPlot};
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
@@ -77,19 +78,35 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), anyhow::Error> {
+pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(), anyhow::Error> {
     info!("Connecting to RPC server");
     let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
-    let identity_file = path.join("identity.bin");
-    let keypair = if identity_file.exists() {
-        info!("Opening existing keypair");
-        Keypair::from_bytes(&fs::read(identity_file)?).map_err(anyhow::Error::msg)?
-    } else {
-        info!("Generating new keypair");
-        let keypair = Keypair::generate();
-        fs::write(identity_file, keypair.to_bytes())?;
-        keypair
+    let config = Config::open_or_create(base_directory).await?;
+    let keypair = match config.get_keypair().await? {
+        Some(keypair) => {
+            info!("Found existing keypair");
+            keypair
+        }
+        None => {
+            // TODO: Remove old identity file support in the future
+            let old_identity_file = config.base_directory().join("identity.bin");
+            let keypair = if old_identity_file.exists() {
+                info!("Upgrading old keypair");
+                let keypair = Keypair::from_bytes(&fs::read(&old_identity_file)?)
+                    .map_err(anyhow::Error::msg)?;
+                // We no longer need old identity file
+                fs::remove_file(old_identity_file)?;
+                keypair
+            } else {
+                info!("Generating new keypair");
+                Keypair::generate()
+            };
+
+            config.set_keypair(&keypair).await?;
+
+            keypair
+        }
     };
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
@@ -100,7 +117,7 @@ pub(crate) async fn farm(path: PathBuf, ws_server: &str) -> Result<(), anyhow::E
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
     info!("Opening plot");
-    let plot = Plot::open_or_create(&path.into()).await?;
+    let plot = Plot::open_or_create(config).await?;
 
     tokio::spawn({
         // let client = Arc::clone(&client);

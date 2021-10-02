@@ -16,6 +16,7 @@
 #![feature(hash_drain_filter)]
 
 mod commands;
+mod config;
 mod crypto;
 mod plot;
 mod utils;
@@ -66,11 +67,13 @@ fn main() {
         Command::ErasePlot { custom_path } => {
             let path = utils::get_path(custom_path);
             info!("Erasing the plot");
-            fs::remove_file(path.join("plot.bin")).unwrap();
+            let _ = fs::remove_file(path.join("plot.bin"));
             info!("Erasing plot metadata");
-            fs::remove_dir_all(path.join("plot-tags")).unwrap();
-            info!("Erasing identify");
-            fs::remove_file(path.join("identity.bin")).unwrap();
+            let _ = fs::remove_dir_all(path.join("plot-tags"));
+            info!("Erasing old identify");
+            let _ = fs::remove_file(path.join("identity.bin"));
+            info!("Erasing configuration");
+            let _ = fs::remove_dir_all(path.join("config"));
             info!("Done");
         }
         Command::Farm {

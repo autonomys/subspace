@@ -1,9 +1,9 @@
 mod commitments;
 
+use crate::config::Config;
 use crate::plot::commitments::Commitments;
 use crate::{crypto, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
 use async_std::fs::OpenOptions;
-use async_std::path::PathBuf;
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SinkExt, StreamExt};
@@ -119,12 +119,12 @@ pub(crate) struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub(crate) async fn open_or_create(path: &PathBuf) -> Result<Plot, PlotError> {
+    pub(crate) async fn open_or_create(config: Config) -> Result<Plot, PlotError> {
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(path.join("plot.bin"))
+            .open(config.base_directory().join("plot.bin"))
             .await
             .map_err(PlotError::PlotOpen)?;
 
@@ -143,7 +143,7 @@ impl Plot {
         let (write_requests_sender, mut write_requests_receiver) =
             async_mpsc::channel::<WriteRequests>(100);
 
-        let commitments_fut = Commitments::new(path.join("plot-tags"));
+        let commitments_fut = Commitments::new(config.base_directory().join("plot-tags").into());
         let mut commitments = commitments_fut
             .await
             .map_err(PlotError::PlotCommitmentsOpen)?;
@@ -794,15 +794,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_read_write() {
         init();
-        let path = TempDir::new().unwrap();
+        let base_directory = TempDir::new().unwrap();
+        let config = Config::open_or_create(base_directory.path().to_path_buf())
+            .await
+            .unwrap();
 
         let piece = generate_random_piece();
         let salt: Salt = [1u8; 8];
         let index = 0;
 
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
+        let plot = Plot::open_or_create(config.clone()).await.unwrap();
         assert_eq!(true, plot.is_empty().await);
         plot.write_many(vec![piece], index).await.unwrap();
         plot.create_commitment(salt).await.unwrap();
@@ -814,9 +815,7 @@ mod tests {
         drop(plot);
 
         // Make sure it is still not empty on reopen
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
+        let plot = Plot::open_or_create(config).await.unwrap();
         assert_eq!(false, plot.is_empty().await);
         drop(plot);
     }
@@ -824,7 +823,10 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_commitment() {
         init();
-        let path = TempDir::new().unwrap();
+        let base_directory = TempDir::new().unwrap();
+        let config = Config::open_or_create(base_directory.path().to_path_buf())
+            .await
+            .unwrap();
 
         let piece: Piece = [9u8; 4096];
         let salt: Salt = [1u8; 8];
@@ -833,9 +835,7 @@ mod tests {
             u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         let index = 0;
 
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
+        let plot = Plot::open_or_create(config).await.unwrap();
         plot.write_many(vec![piece], index).await.unwrap();
         plot.create_commitment(salt).await.unwrap();
 
@@ -850,12 +850,13 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_find_by_tag() {
         init();
-        let path = TempDir::new().unwrap();
-        let salt: Salt = [1u8; 8];
-
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
+        let base_directory = TempDir::new().unwrap();
+        let config = Config::open_or_create(base_directory.path().to_path_buf())
             .await
             .unwrap();
+        let salt: Salt = [1u8; 8];
+
+        let plot = Plot::open_or_create(config).await.unwrap();
 
         plot.write_many(
             (0..1024_usize).map(|_| generate_random_piece()).collect(),
