@@ -41,7 +41,7 @@ const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 #[derive(Debug, Clap)]
 #[clap(about, version)]
 enum Command {
-    /// Erase existing plot
+    /// Erase existing plot (including identity)
     ErasePlot {
         /// Use custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]

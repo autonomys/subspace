@@ -503,9 +503,9 @@ impl<State: private::ArchiverState> Archiver<State> {
 
 impl ObjectArchiver {
     /// Adds new object to internal buffer, potentially producing pieces and root block headers
-    pub fn add_object<O: Encode>(&mut self, object: &O) -> Vec<ArchivedSegment> {
+    pub fn add_object(&mut self, object: Vec<u8>) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Object(object.encode()));
+        self.buffer.push_back(SegmentItem::Object(object));
 
         let mut archived_segments = Vec::new();
 
@@ -545,11 +545,11 @@ impl BlockArchiver {
     /// Create a new instance of block archiver with initial state in case of restart.
     ///
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
-    pub fn with_initial_state<B: Encode>(
+    pub fn with_initial_state<B: AsRef<[u8]>>(
         record_size: usize,
         segment_size: usize,
         root_block: RootBlock,
-        block: &B,
+        encoded_block: B,
     ) -> Result<Self, ArchiverInstantiationError> {
         if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
             return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
@@ -567,8 +567,7 @@ impl BlockArchiver {
             .push_back(SegmentItem::RootBlock(root_block));
 
         if let Some(archived_block_bytes) = archiver.last_archived_block.bytes {
-            let encoded_block = block.encode();
-
+            let encoded_block = encoded_block.as_ref();
             let encoded_block_bytes = u32::try_from(encoded_block.len())
                 .expect("Blocks length is never bigger than u32; qed");
 
@@ -607,9 +606,9 @@ impl BlockArchiver {
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub fn add_block<B: Encode>(&mut self, block: &B) -> Vec<ArchivedSegment> {
+    pub fn add_block(&mut self, block: Vec<u8>) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Block(block.encode()));
+        self.buffer.push_back(SegmentItem::Block(block));
 
         let mut archived_segments = Vec::new();
 

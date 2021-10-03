@@ -461,7 +461,7 @@ fn get_archived_pieces(client: &TestClient) -> Vec<Piece> {
     (0..pre_genesis_object_count)
         .map(|index| {
             object_archiver
-                .add_object(&pre_genesis_data::from_seed(
+                .add_object(pre_genesis_data::from_seed(
                     &pre_genesis_object_seed,
                     index,
                     pre_genesis_object_size,

@@ -17,11 +17,11 @@ fn archiver() {
 
     let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>();
     // There is not enough data to produce archived segment yet
-    assert!(archiver.add_block(&block_0).is_empty());
+    assert!(archiver.add_block(block_0.to_vec()).is_empty());
 
     let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>();
     // This should produce 1 archived segment
-    let archived_segments = archiver.add_block(&block_1);
+    let archived_segments = archiver.add_block(block_1.to_vec());
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
@@ -49,7 +49,7 @@ fn archiver() {
 
     let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>();
     // This should be big enough to produce two archived segments in one go
-    let archived_segments = archiver.add_block(&block_2);
+    let archived_segments = archiver.add_block(block_2.to_vec());
     assert_eq!(archived_segments.len(), 2);
 
     // Check that initializing archiver with initial state before last block results in the same
@@ -59,12 +59,12 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
-            &block_1,
+            block_1.to_vec(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(&block_2),
+            archiver_with_initial_state.add_block(block_2.to_vec()),
             archived_segments,
         );
     }
@@ -113,18 +113,22 @@ fn archiver() {
 
     // Add a block such that it fits in the next segment exactly
     let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>();
-    let archived_segments = archiver.add_block(&block_3);
+    let archived_segments = archiver.add_block(block_3.to_vec());
     assert_eq!(archived_segments.len(), 1);
 
     // Check that initializing archiver with initial state before last block results in the same
     // archived segments once last block is added
     {
-        let mut archiver_with_initial_state =
-            BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, last_root_block, &block_2)
-                .unwrap();
+        let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
+            RECORD_SIZE,
+            SEGMENT_SIZE,
+            last_root_block,
+            block_2.to_vec(),
+        )
+        .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(&block_3),
+            archiver_with_initial_state.add_block(block_3.to_vec()),
             archived_segments,
         );
     }
@@ -158,7 +162,7 @@ fn object_archiver() {
         for _ in 0..10 {
             rng.fill(object.as_mut_slice());
 
-            assert_eq!(archiver.add_object(&object).len(), 1);
+            assert_eq!(archiver.add_object(object.to_vec()).len(), 1);
         }
     }
 
@@ -167,19 +171,20 @@ fn object_archiver() {
     let block_0 = rand::random::<[u8; SEGMENT_SIZE]>();
 
     let root_block = archiver
-        .add_block(&block_0)
+        .add_block(block_0.to_vec())
         .into_iter()
         .next()
         .unwrap()
         .root_block;
 
     let mut archiver_with_initial_state =
-        BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, root_block, &block_0).unwrap();
+        BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, root_block, block_0.to_vec())
+            .unwrap();
 
     let block_1 = rand::random::<[u8; SEGMENT_SIZE]>();
     assert_eq!(
-        archiver.add_block(&block_1),
-        archiver_with_initial_state.add_block(&block_1),
+        archiver.add_block(block_1.to_vec()),
+        archiver_with_initial_state.add_block(block_1.to_vec()),
     );
 }
 
@@ -222,7 +227,7 @@ fn archiver_invalid_usage() {
                     bytes: Some(10),
                 },
             },
-            &vec![0u8; 9],
+            &vec![0u8; 10],
         );
 
         assert_matches!(
@@ -248,7 +253,7 @@ fn archiver_invalid_usage() {
                     bytes: Some(10),
                 },
             },
-            &vec![0u8; 5],
+            &vec![0u8; 6],
         );
 
         assert_matches!(

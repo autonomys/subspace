@@ -2175,7 +2175,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             record_size as usize,
             recorded_history_segment_size as usize,
             last_root_block,
-            &last_archived_block,
+            &last_archived_block.encode(),
         )
         .expect("Incorrect parameters for archiver")
     } else {
@@ -2202,7 +2202,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
             .map(|index| {
                 object_archiver
-                    .add_object(&pre_genesis_data::from_seed(
+                    .add_object(pre_genesis_data::from_seed(
                         &pre_genesis_object_seed,
                         index,
                         pre_genesis_object_size,
@@ -2264,7 +2264,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 // These archived segments were processed before, thus do not need to be sent to
                 // farmers
                 let new_root_blocks = archiver
-                    .add_block(&block)
+                    .add_block(block.encode())
                     .into_iter()
                     .map(|archived_segment| archived_segment.root_block)
                     .collect();
@@ -2320,7 +2320,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .expect("Older block by number should always exist")
                         .expect("Older block by number should always exist");
 
-                    for archived_segment in archiver.add_block(&block) {
+                    for archived_segment in archiver.add_block(block.encode()) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;
 
                         archived_segment_notification_sender

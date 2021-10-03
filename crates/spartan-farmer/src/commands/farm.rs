@@ -1,6 +1,8 @@
 use crate::config::Config;
 use crate::plot::{Plot, WeakPlot};
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
+use futures::future;
+use futures::future::Either;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
@@ -18,13 +20,12 @@ use std::{fs, io};
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
-use subspace_core_primitives::RootBlock;
 
 type SlotNumber = u64;
 
 /// Metadata necessary for farmer operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FarmerMetadata {
+#[derive(Debug, Deserialize)]
+struct FarmerMetadata {
     /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
     /// to the client-dependent transaction confirmation depth `k`).
     pub confirmation_depth_k: u32,
@@ -40,6 +41,12 @@ pub struct FarmerMetadata {
     /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
     /// the history.
     pub pre_genesis_object_seed: Vec<u8>,
+}
+
+// There are more fields in this struct, but we only care about one
+#[derive(Debug, Deserialize)]
+struct NewHead {
+    number: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -116,40 +123,51 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     info!("Opening plot");
     let plot = Plot::open_or_create(config.clone()).await?;
 
-    tokio::spawn({
-        let client = Arc::clone(&client);
-        let weak_plot = plot.downgrade();
-        let public_key = keypair.public;
+    match future::select(
+        {
+            let client = Arc::clone(&client);
+            let weak_plot = plot.downgrade();
+            let public_key = keypair.public;
 
-        async move {
-            match background_plotting(&config, &client, weak_plot, &public_key).await {
-                Ok(()) => {
-                    info!("Background plotting finished successfully");
-                }
-                Err(error) => {
-                    error!("Background plotting error: {}", error);
-                }
+            Box::pin(
+                async move { background_plotting(config, client, weak_plot, &public_key).await },
+            )
+        },
+        Box::pin(async move { subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await }),
+    )
+    .await
+    {
+        Either::Left((result, _)) => match result {
+            Ok(()) => {
+                info!("Background plotting finished successfully");
+
+                Ok(())
             }
-        }
-    });
-
-    subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await
+            Err(error) => Err(anyhow::Error::msg(format!(
+                "Background plotting error: {}",
+                error
+            ))),
+        },
+        Either::Right((result, _)) => result.map_err(anyhow::Error::from),
+    }
 }
 
+// TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
+//  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting(
-    config: &Config,
-    client: &WsClient,
+    config: Config,
+    client: Arc<WsClient>,
     weak_plot: WeakPlot,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
     let FarmerMetadata {
+        confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
         pre_genesis_object_size,
         pre_genesis_object_count,
         pre_genesis_object_seed,
-        ..
     } = client
         .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
         .await?;
@@ -159,13 +177,23 @@ async fn background_plotting(
 
     let subspace_codec = SubspaceCodec::new(public_key);
 
-    // TODO: This doesn't support joining the network that already has non-genesis blocks
-    let archiver = if let Some(last_root_block) = config.get_last_root_block().await? {
+    let mut archiver = if let Some(last_root_block) = config.get_last_root_block().await? {
         // Continuing from existing initial state
+        if let Some(plot) = weak_plot.upgrade() {
+            if plot.is_empty().await {
+                return Err(anyhow::Error::msg(
+                    "Plot is empty on restart, can't continue",
+                ));
+            }
+        } else {
+            // Plot was dropped, time to exit already
+            return Ok(());
+        }
+
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
-        let last_archived_block = client
+        let last_archived_block: Vec<u8> = client
             .request(
                 "subspace_getEncodedBlockByNumber",
                 JsonRpcParams::Array(vec![
@@ -179,27 +207,35 @@ async fn background_plotting(
             recorded_history_segment_size as usize,
             last_root_block,
             &last_archived_block,
-        )
-        .expect("Incorrect parameters for archiver")
+        )?
     } else {
         // Starting from genesis
+        if let Some(plot) = weak_plot.upgrade() {
+            if !plot.is_empty().await {
+                // Restart before first block was archived, erase the plot
+                // TODO: Erase plot
+            }
+        } else {
+            // Plot was dropped, time to exit already
+            return Ok(());
+        }
+
         let mut object_archiver =
             ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
 
-        // Erasure coding in archiver is a CPU-intensive operation
+        // Erasure coding in archiver and piece encoding are a CPU-intensive operations
         let maybe_block_archiver_handle = tokio::task::spawn_blocking({
-            let config = config.clone();
             let weak_plot = weak_plot.clone();
+            let subspace_codec = subspace_codec.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
                 let runtime_handle = tokio::runtime::Handle::current();
                 info!("Plotting pre-genesis objects");
 
-                let mut last_root_block = None;
                 // These archived segments are a part of the public parameters of network setup
                 for index in 0..pre_genesis_object_count {
                     let archived_segments =
-                        object_archiver.add_object(&pre_genesis_data::from_seed(
+                        object_archiver.add_object(pre_genesis_data::from_seed(
                             &pre_genesis_object_seed,
                             index,
                             pre_genesis_object_size,
@@ -214,21 +250,24 @@ async fn background_plotting(
 
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
-                            subspace_codec.encode(piece_index_offset + position as u64, piece)?;
+                            if let Err(error) =
+                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                            {
+                                error!("Failed to encode a piece: error: {}", error);
+                                continue;
+                            }
                         }
 
                         if let Some(plot) = weak_plot.upgrade() {
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
                             runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
-                            last_root_block.replace(root_block);
+                            info!("Archived segment {}", root_block.segment_index());
                         } else {
                             return Ok(None);
                         }
                     }
                 }
-
-                runtime_handle.block_on(config.set_last_root_block(&last_root_block.unwrap()))?;
 
                 info!("Finished plotting pre-genesis objects");
 
@@ -245,8 +284,118 @@ async fn background_plotting(
         }
     };
 
-    // TODO: Use block archiver for ongoing plotting of post-genesis pieces
-    drop(archiver);
+    let (new_block_to_archive_sender, new_block_to_archive_receiver) =
+        std::sync::mpsc::sync_channel(0);
+    // Process blocks since last fully archived block (or genesis) up to the current head minus K
+    let mut blocks_to_archive_from = archiver
+        .last_archived_block_number()
+        .map(|n| n + 1)
+        .unwrap_or_default();
+
+    // Erasure coding in archiver and piece encoding are a CPU-intensive operations
+    tokio::task::spawn_blocking({
+        let client = Arc::clone(&client);
+        let weak_plot = weak_plot.clone();
+
+        #[allow(clippy::mut_range_bound)]
+        move || {
+            let runtime_handle = tokio::runtime::Handle::current();
+            info!("Plotting new blocks in the background");
+
+            'outer: while let Ok(blocks_to_archive_to) = new_block_to_archive_receiver.recv() {
+                if blocks_to_archive_to >= blocks_to_archive_from {
+                    debug!(
+                        "Archiving blocks {}..={}",
+                        blocks_to_archive_from, blocks_to_archive_to,
+                    );
+                }
+
+                let mut last_root_block = None;
+                for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
+                    let block_fut = client.request::<'_, '_, '_, Vec<u8>>(
+                        "subspace_getEncodedBlockByNumber",
+                        JsonRpcParams::Array(vec![serde_json::to_value(block_to_archive).unwrap()]),
+                    );
+                    let block = match runtime_handle.block_on(block_fut) {
+                        Ok(block) => block,
+                        Err(error) => {
+                            error!(
+                                "Failed to get block #{} from RPC: {}",
+                                block_to_archive, error,
+                            );
+
+                            blocks_to_archive_from = block_to_archive;
+                            continue 'outer;
+                        }
+                    };
+
+                    for archived_segment in archiver.add_block(block) {
+                        let ArchivedSegment {
+                            root_block,
+                            mut pieces,
+                        } = archived_segment;
+                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                        // TODO: Batch encoding
+                        for (position, piece) in pieces.iter_mut().enumerate() {
+                            if let Err(error) =
+                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                            {
+                                error!("Failed to encode a piece: error: {}", error);
+                                continue;
+                            }
+                        }
+
+                        if let Some(plot) = weak_plot.upgrade() {
+                            // TODO: There is no internal mapping between pieces and their indexes yet
+                            // TODO: Then we might want to send indexes as a separate vector
+                            if let Err(error) =
+                                runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))
+                            {
+                                error!("Failed to write encoded pieces: {}", error);
+                            }
+                            let segment_index = root_block.segment_index();
+                            last_root_block.replace(root_block);
+
+                            info!("Archived segment {}", segment_index);
+                        }
+                    }
+                }
+
+                if let Some(last_root_block) = last_root_block {
+                    if let Err(error) =
+                        runtime_handle.block_on(config.set_last_root_block(&last_root_block))
+                    {
+                        error!("Failed to store last root block: {:?}", error);
+                    }
+                }
+
+                blocks_to_archive_from = blocks_to_archive_to + 1;
+            }
+        }
+    });
+
+    info!("Subscribing to new heads notifications");
+
+    let mut subscription: Subscription<NewHead> = client
+        .subscribe(
+            "chain_subscribeNewHead",
+            JsonRpcParams::NoParams,
+            "chain_unsubscribeNewHead",
+        )
+        .await?;
+
+    // Listen for new blocks produced on the network
+    while let Some(new_head) = subscription.next().await? {
+        // Numbers are in the format `0xabcd`, so strip `0x` prefix and interpret the rest as an
+        // integer in hex
+        let block_number = u32::from_str_radix(&new_head.number[2..], 16).unwrap();
+        debug!("Last block number: {:#?}", block_number);
+
+        if let Some(block_to_archive) = block_number.checked_sub(confirmation_depth_k) {
+            let _ = new_block_to_archive_sender.try_send(block_to_archive);
+        }
+    }
 
     Ok(())
 }
@@ -260,7 +409,7 @@ async fn subscribe_to_slot_info(
     let public_key_hash = crypto::hash_public_key(&keypair.public);
 
     info!("Subscribing to slot info notifications");
-    let mut sub: Subscription<SlotInfo> = client
+    let mut subscription: Subscription<SlotInfo> = client
         .subscribe(
             "poc_subscribeSlotInfo",
             JsonRpcParams::NoParams,
@@ -270,7 +419,7 @@ async fn subscribe_to_slot_info(
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = sub.next().await? {
+    while let Some(slot_info) = subscription.next().await? {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, &mut salts, &slot_info).await?;
