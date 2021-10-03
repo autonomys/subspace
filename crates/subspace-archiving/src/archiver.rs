@@ -49,6 +49,11 @@ impl Segment {
         let Self::V0 { items } = self;
         items.push(segment_item);
     }
+
+    fn pop_item(&mut self) -> Option<SegmentItem> {
+        let Self::V0 { items } = self;
+        items.pop()
+    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -242,45 +247,7 @@ impl<State: private::ArchiverState> Archiver<State> {
 
         while segment.encoded_size() < self.segment_size {
             let segment_item = match self.buffer.pop_front() {
-                Some(segment_item) => {
-                    match &segment_item {
-                        SegmentItem::Object(_)
-                        | SegmentItem::ObjectStart(_)
-                        | SegmentItem::ObjectContinuation(_) => {
-                            // We are not interested in object here
-                        }
-                        SegmentItem::Block(_) => {
-                            // Skip block number increase in case of the very first block
-                            if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
-                                // Increase archived block number and assume the whole block was
-                                // archived
-                                last_archived_block.number += 1;
-                            }
-                            last_archived_block.bytes = None;
-                        }
-                        SegmentItem::BlockStart(_) => {
-                            unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
-                        }
-                        SegmentItem::BlockContinuation(bytes) => {
-                            // Same block, but assume for now that the whole block was archived, but
-                            // also store the number of bytes as opposed to `None`, we'll transform
-                            // it into `None` if needed later
-                            let archived_bytes = last_archived_block.bytes.expect(
-                                "Block continuation implies that there are some bytes \
-                                archived already; qed",
-                            );
-                            last_archived_block.bytes.replace(
-                                archived_bytes
-                                    + u32::try_from(bytes.len())
-                                        .expect("Blocks length is never bigger than u32; qed"),
-                            );
-                        }
-                        SegmentItem::RootBlock(_) => {
-                            // We are not interested in root block here
-                        }
-                    }
-                    segment_item
-                }
+                Some(segment_item) => segment_item,
                 None => {
                     let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
@@ -292,11 +259,77 @@ impl<State: private::ArchiverState> Archiver<State> {
                 }
             };
 
+            // Push segment item into the segment temporarily to measure encoded size of resulting
+            // segment
+            segment.push_item(segment_item);
+            let encoded_segment_length = segment.encoded_size();
+            // Pop segment item back from segment
+            let segment_item = segment.pop_item().unwrap();
+
+            // Check if there would be enough data collected with above segment item inserted
+            if encoded_segment_length >= self.segment_size {
+                // Check if there is an excess of data that should be spilled over into the next
+                // segment
+                let spill_over = encoded_segment_length - self.segment_size;
+
+                // Due to compact vector length encoding in scale codec, spill over might happen to
+                // be the same or even bigger than the inserted segment item bytes, in which case
+                // last segment item insertion needs to be skipped to avoid out of range panic when
+                // trying to cut it later. Spill over should be strictly less than encoded length
+                // because one byte of scale encoding will be taken by enum variant of the segment
+                // item, so it wouldn't be possible to slice its bytes at the spill over point if
+                // spill over is the same as encoded segment item length.
+                if spill_over >= segment_item.encoded_size() {
+                    self.buffer.push_front(segment_item);
+                    break;
+                }
+            }
+
+            match &segment_item {
+                SegmentItem::Object(_)
+                | SegmentItem::ObjectStart(_)
+                | SegmentItem::ObjectContinuation(_) => {
+                    // We are not interested in object here
+                }
+                SegmentItem::Block(_) => {
+                    // Skip block number increase in case of the very first block
+                    if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
+                        // Increase archived block number and assume the whole block was
+                        // archived
+                        last_archived_block.number += 1;
+                    }
+                    last_archived_block.bytes = None;
+                }
+                SegmentItem::BlockStart(_) => {
+                    unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
+                }
+                SegmentItem::BlockContinuation(bytes) => {
+                    // Same block, but assume for now that the whole block was archived, but
+                    // also store the number of bytes as opposed to `None`, we'll transform
+                    // it into `None` if needed later
+                    let archived_bytes = last_archived_block.bytes.expect(
+                        "Block continuation implies that there are some bytes \
+                                archived already; qed",
+                    );
+                    last_archived_block.bytes.replace(
+                        archived_bytes
+                            + u32::try_from(bytes.len())
+                                .expect("Blocks length is never bigger than u32; qed"),
+                    );
+                }
+                SegmentItem::RootBlock(_) => {
+                    // We are not interested in root block here
+                }
+            }
+
             segment.push_item(segment_item);
         }
 
-        // We may have gotten more data than needed, check and move the excess into the next segment
-        let spill_over = segment.encoded_size() - self.segment_size;
+        // Check if there is an excess of data that should be spilled over into the next segment
+        let spill_over = segment
+            .encoded_size()
+            .checked_sub(self.segment_size)
+            .unwrap_or_default();
 
         if spill_over > 0 {
             let Segment::V0 { items } = &mut segment;
@@ -404,6 +437,7 @@ impl<State: private::ArchiverState> Archiver<State> {
             let mut segment = segment.encode();
             // Add a few bytes of padding if needed to get constant size (caused by compact length
             // encoding of scale codec)
+            assert!(self.segment_size >= segment.len());
             segment.resize(self.segment_size, 0u8);
             segment
         };

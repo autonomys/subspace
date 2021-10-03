@@ -293,3 +293,21 @@ fn archiver_invalid_usage() {
         );
     }
 }
+
+#[test]
+fn spill_over_edge_case() {
+    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+
+    // Carefully compute size of the blocks
+    for _ in 0..62 {
+        archiver.add_block(vec![0u8; SEGMENT_SIZE / 63]);
+    }
+    archiver.add_block(vec![0u8; SEGMENT_SIZE / 63 - 131]);
+
+    // Here we add 64th block, which will increase compact integer size of the vector inside of
+    // archived segment, which will mean spill over resulted from inserting last element will
+    // actually be bigger than last inserted element and implementation needs to handle it properly
+    // or else error like `range start index 18446744073709551615 out of range for slice of length
+    // 4440` will appear
+    archiver.add_block(vec![0u8; 10]);
+}
