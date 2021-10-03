@@ -46,7 +46,7 @@ class Parachain {
         return defer(() => from(fetch(this.url, options)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(response.statusText);
+                    throw new Error(`Could not fetch ${this.chain} parablock ${hash} from ${this.url}: ${response.statusText}`);
                 }
                 return response.json();
             })
