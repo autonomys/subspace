@@ -5,7 +5,7 @@ import config from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
-import { createParachainsMap } from './utils';
+import { createParachainsMap, sleep } from './utils';
 import { ChainName } from "./types";
 
 const createApi = async (url: string) => {
@@ -33,8 +33,15 @@ const createApi = async (url: string) => {
       const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
       // TODO: master has to delegate spending to sourceSigner and paraSigners
       for (const delegate of [sourceSigner, ...paraSigners]) {
-        await target.sendAddProxyTx(master, delegate);
+        // send 1.5 units
+        // TODO: investigate why 0.5 existential deposit is not enough - probably some fees are involved
+        await target.sendBalanceTx(master, delegate, 1.5);
+        // add this account as proxy for master
+        // await target.sendAddProxyTx(master, delegate);
       }
+
+      // TODO: clean later
+      await sleep(15000);
 
       const feedId = await target.sendCreateFeedTx(sourceSigner);
       const parachainsMap = await createParachainsMap(target, parachains, paraSigners);

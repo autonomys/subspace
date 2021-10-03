@@ -48,5 +48,16 @@ export const createParachainsMap = async (
         map.set(paraId, parachain);
     }
 
+    // TODO: investigate why this code results in Uknown paraId error
+    // configParachains.forEach(async ({ url, chain, paraId }, index) => {
+    //     const signer = signers[index];
+    //     const feedId = await target.sendCreateFeedTx(signer);
+    //     const parachain = new Parachain({ feedId, url, chain: chain as ChainName, logger, signer });
+    //     map.set(paraId, parachain);
+    // });
+
     return map;
 };
+
+export const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
