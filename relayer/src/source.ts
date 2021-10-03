@@ -1,7 +1,7 @@
 import { ApiPromise } from "@polkadot/api";
 import { Observable } from "@polkadot/types/types";
 import { U64 } from "@polkadot/types/primitive";
-import { concatMap, take, map } from "rxjs/operators";
+import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
 import { from, merge } from 'rxjs';
 import { Logger } from "pino";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
@@ -70,7 +70,11 @@ class Source {
   // TODO: add logging for individual parablocks
   getParablocks({ block }: SignedBlock): Observable<TxData> {
     return from(this.getParaHeadsAndIds(block))
-      .pipe(from)
+      // print extracted para heads and ids
+      .pipe(tap((paraHeadsAndIds) => paraHeadsAndIds
+        .forEach(paraItem => this.logger.debug(`Extracted para head and id: ${JSON.stringify(paraItem)}`))))
+      // converts Observable<ParaHeadAndId[]> to Observable<ParaHeadAndId>
+      .pipe(concatAll())
       .pipe(concatMap(({ paraId, paraHead }) => {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
