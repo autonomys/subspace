@@ -14,48 +14,48 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+async-trait = "0.1.51"
 codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
-sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
+derive_more = "0.99.16"
+fork-tree = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+futures = "0.3.16"
+log = "0.4.14"
+lru = { version = "0.6.6", default-features = false }
+parking_lot = "0.11.1"
+prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", version = "0.9.0" }
+rand = "0.8.4"
+ring = "0.16"
+schnorrkel = "0.9.1"
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-serde = { version = "1.0.127", features = ["derive"] }
-sp-version = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-io = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-inherents = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-consensus-epochs = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+serde = { version = "1.0.127", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan" }
-sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-inherents = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sp-io = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-fork-tree = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", version = "0.9.0"}
-futures = "0.3.16"
-parking_lot = "0.11.1"
-log = "0.4.14"
-schnorrkel = { version = "0.9.1" }
-rand = "0.8.4"
-derive_more = "0.99.16"
-async-trait = "0.1.51"
-lru = { version = "0.6.6", default-features = false }
-ring = "0.16"
+sp-version = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [dev-dependencies]
+sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+sc-network = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-tracing = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sc-network = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-network-test = { version = "0.8.0", path = "../../substrate/sc-network-test" }
 substrate-test-runtime = { version = "2.0.0", path = "../../substrate/substrate-test-runtime" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../substrate/substrate-test-runtime-client" }
-sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }

@@ -14,10 +14,7 @@ include = [
 
 [dependencies]
 sloth256-189 = "0.2.2"
-
-[dependencies.subspace-core-primitives]
-version = "0.1.0"
-path = "../subspace-core-primitives"
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [dev-dependencies]
 rand = "0.8.4"
