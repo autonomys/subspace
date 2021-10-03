@@ -21,7 +21,7 @@
       ],
       "parserOptions": {
         "project": [
-          "./relayer/tsconfig.json"
+          "./tsconfig.json"
         ]
       }
     }
