@@ -29,11 +29,10 @@ ring = "0.16.20"
 schnorrkel = "0.10.1"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = "1.0.64"
-thiserror = "1.0.24"
-tokio = "1.11.0"
-
 subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+thiserror = "1.0.24"
+tokio = "1.11.0"
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to

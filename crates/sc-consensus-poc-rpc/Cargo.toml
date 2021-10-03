@@ -22,16 +22,13 @@ jsonrpc-derive = "18.0.0"
 jsonrpc-pubsub = "18.0.0"
 log = "0.4.14"
 parking_lot = "0.11.1"
-serde = { version = "1.0.127", features = ["derive"] }
-
+sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
 sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
+serde = { version = "1.0.127", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-
-# Subspace
-sc-consensus-poc = { version = "0.1.0", path = "../sc-consensus-poc" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
