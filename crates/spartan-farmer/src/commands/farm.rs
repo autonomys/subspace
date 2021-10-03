@@ -1,5 +1,4 @@
-use crate::config::Config;
-use crate::plot::{Plot, WeakPlot};
+use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::future;
 use futures::future::Either;
@@ -90,48 +89,30 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     info!("Connecting to RPC server");
     let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
-    let config = Config::open_or_create(base_directory).await?;
-    let keypair = match config.get_keypair().await? {
-        Some(keypair) => {
-            info!("Found existing keypair");
-            keypair
-        }
-        None => {
-            // TODO: Remove old identity file support in the future
-            let old_identity_file = config.base_directory().join("identity.bin");
-            let keypair = if old_identity_file.exists() {
-                info!("Upgrading old keypair");
-                let keypair = Keypair::from_bytes(&fs::read(&old_identity_file)?)
-                    .map_err(anyhow::Error::msg)?;
-                // We no longer need old identity file
-                fs::remove_file(old_identity_file)?;
-                keypair
-            } else {
-                info!("Generating new keypair");
-                Keypair::generate()
-            };
-
-            config.set_keypair(&keypair).await?;
-
-            keypair
-        }
+    let identity_file = base_directory.join("identity.bin");
+    let keypair = if identity_file.exists() {
+        info!("Opening existing keypair");
+        Keypair::from_bytes(&fs::read(identity_file)?).map_err(anyhow::Error::msg)?
+    } else {
+        info!("Generating new keypair");
+        let keypair = Keypair::generate();
+        fs::write(identity_file, keypair.to_bytes())?;
+        keypair
     };
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
     info!("Opening plot");
-    let plot = Plot::open_or_create(config.clone()).await?;
+    let plot = Plot::open_or_create(&base_directory.into()).await?;
 
     match future::select(
         {
             let client = Arc::clone(&client);
-            let weak_plot = plot.downgrade();
+            let plot = plot.clone();
             let public_key = keypair.public;
 
-            Box::pin(
-                async move { background_plotting(config, client, weak_plot, &public_key).await },
-            )
+            Box::pin(async move { background_plotting(client, plot, &public_key).await })
         },
         Box::pin(async move { subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await }),
     )
@@ -156,11 +137,11 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting(
-    config: Config,
     client: Arc<WsClient>,
-    weak_plot: WeakPlot,
+    plot: Plot,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
+    let weak_plot = plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
         record_size,
@@ -177,18 +158,15 @@ async fn background_plotting(
 
     let subspace_codec = SubspaceCodec::new(public_key);
 
-    let mut archiver = if let Some(last_root_block) = config.get_last_root_block().await? {
+    let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
         // Continuing from existing initial state
-        if let Some(plot) = weak_plot.upgrade() {
-            if plot.is_empty().await {
-                return Err(anyhow::Error::msg(
-                    "Plot is empty on restart, can't continue",
-                ));
-            }
-        } else {
-            // Plot was dropped, time to exit already
-            return Ok(());
+        if plot.is_empty().await {
+            return Err(anyhow::Error::msg(
+                "Plot is empty on restart, can't continue",
+            ));
         }
+
+        drop(plot);
 
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
@@ -210,15 +188,12 @@ async fn background_plotting(
         )?
     } else {
         // Starting from genesis
-        if let Some(plot) = weak_plot.upgrade() {
-            if !plot.is_empty().await {
-                // Restart before first block was archived, erase the plot
-                // TODO: Erase plot
-            }
-        } else {
-            // Plot was dropped, time to exit already
-            return Ok(());
+        if !plot.is_empty().await {
+            // Restart before first block was archived, erase the plot
+            // TODO: Erase plot
         }
+
+        drop(plot);
 
         let mut object_archiver =
             ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
@@ -363,10 +338,12 @@ async fn background_plotting(
                 }
 
                 if let Some(last_root_block) = last_root_block {
-                    if let Err(error) =
-                        runtime_handle.block_on(config.set_last_root_block(&last_root_block))
-                    {
-                        error!("Failed to store last root block: {:?}", error);
+                    if let Some(plot) = weak_plot.upgrade() {
+                        if let Err(error) =
+                            runtime_handle.block_on(plot.set_last_root_block(&last_root_block))
+                        {
+                            error!("Failed to store last root block: {:?}", error);
+                        }
                     }
                 }
 

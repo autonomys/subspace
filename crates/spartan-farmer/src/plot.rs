@@ -1,14 +1,15 @@
 mod commitments;
 
-use crate::config::Config;
 use crate::plot::commitments::Commitments;
 use crate::{crypto, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
 use async_std::fs::OpenOptions;
+use async_std::path::PathBuf;
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SinkExt, StreamExt};
 use log::{error, trace};
 use rayon::prelude::*;
+use rocksdb::DB;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -16,8 +17,11 @@ use std::io;
 use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+use subspace_core_primitives::RootBlock;
 use thiserror::Error;
 use tokio::task::JoinHandle;
+
+const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum CommitmentStatus {
@@ -29,12 +33,15 @@ enum CommitmentStatus {
     Aborted,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub(crate) enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
-    #[error("Plot commitments open error: {0}")]
-    PlotCommitmentsOpen(io::Error),
+    #[error("Plot DB open error: {0}")]
+    PlotDbOpen(rocksdb::Error),
+    #[error("Commitments open error: {0}")]
+    CommitmentsOpen(io::Error),
 }
 
 #[derive(Debug)]
@@ -85,6 +92,7 @@ struct Inner {
     any_requests_sender: Option<async_mpsc::Sender<()>>,
     read_requests_sender: Option<async_mpsc::Sender<ReadRequests>>,
     write_requests_sender: Option<async_mpsc::Sender<WriteRequests>>,
+    plot_db: Option<Arc<DB>>,
     piece_count: Arc<AtomicU64>,
     commitment_statuses: Mutex<HashMap<Salt, CommitmentStatus>>,
 }
@@ -95,12 +103,15 @@ impl Drop for Inner {
         self.any_requests_sender.take();
         self.read_requests_sender.take();
         self.write_requests_sender.take();
+        let plot_db = self.plot_db.take();
 
         let background_handle = self.background_handle.take().unwrap();
         tokio::task::block_in_place(move || {
             tokio::runtime::Handle::current()
                 .block_on(async move { background_handle.await })
                 .unwrap();
+
+            drop(plot_db);
         });
     }
 }
@@ -119,12 +130,12 @@ pub(crate) struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub(crate) async fn open_or_create(config: Config) -> Result<Plot, PlotError> {
+    pub(crate) async fn open_or_create(base_directory: &PathBuf) -> Result<Plot, PlotError> {
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(config.base_directory().join("plot.bin"))
+            .open(base_directory.join("plot.bin"))
             .await
             .map_err(PlotError::PlotOpen)?;
 
@@ -136,6 +147,15 @@ impl Plot {
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
+        let plot_db = tokio::task::spawn_blocking({
+            let path = base_directory.join("plot-metadata");
+
+            move || DB::open_default(path)
+        })
+        .await
+        .unwrap()
+        .map_err(PlotError::PlotDbOpen)?;
+
         // Channel with at most single element to throttle loop below if there are no updates
         let (any_requests_sender, mut any_requests_receiver) = async_mpsc::channel::<()>(1);
         let (read_requests_sender, mut read_requests_receiver) =
@@ -143,10 +163,8 @@ impl Plot {
         let (write_requests_sender, mut write_requests_receiver) =
             async_mpsc::channel::<WriteRequests>(100);
 
-        let commitments_fut = Commitments::new(config.base_directory().join("plot-tags").into());
-        let mut commitments = commitments_fut
-            .await
-            .map_err(PlotError::PlotCommitmentsOpen)?;
+        let commitments_fut = Commitments::new(base_directory.join("commitments"));
+        let mut commitments = commitments_fut.await.map_err(PlotError::CommitmentsOpen)?;
         let commitment_statuses: HashMap<Salt, CommitmentStatus> = commitments
             .get_existing_commitments()
             .map(|&salt| (salt, CommitmentStatus::Created))
@@ -399,6 +417,7 @@ impl Plot {
             any_requests_sender: Some(any_requests_sender),
             read_requests_sender: Some(read_requests_sender),
             write_requests_sender: Some(write_requests_sender),
+            plot_db: Some(Arc::new(plot_db)),
             piece_count,
             commitment_statuses: Mutex::new(commitment_statuses),
         };
@@ -721,6 +740,33 @@ impl Plot {
                 format!("Remove tags result sender was dropped: {}", error),
             )
         })
+    }
+
+    /// Get last root block
+    pub(crate) async fn get_last_root_block(&self) -> Result<Option<RootBlock>, rocksdb::Error> {
+        let db = Arc::clone(self.inner.plot_db.as_ref().unwrap());
+        tokio::task::spawn_blocking(move || {
+            db.get(LAST_ROOT_BLOCK_KEY).map(|maybe_last_root_block| {
+                maybe_last_root_block.as_ref().map(|last_root_block| {
+                    serde_json::from_slice(last_root_block)
+                        .expect("Database contains incorrect last root block")
+                })
+            })
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Store last root block
+    pub(crate) async fn set_last_root_block(
+        &self,
+        last_root_block: &RootBlock,
+    ) -> Result<(), rocksdb::Error> {
+        let db = Arc::clone(self.inner.plot_db.as_ref().unwrap());
+        let last_root_block = serde_json::to_vec(&last_root_block).unwrap();
+        tokio::task::spawn_blocking(move || db.put(LAST_ROOT_BLOCK_KEY, last_root_block))
+            .await
+            .unwrap()
     }
 
     pub(crate) fn downgrade(&self) -> WeakPlot {

@@ -16,7 +16,6 @@
 #![feature(hash_drain_filter)]
 
 mod commands;
-mod config;
 mod crypto;
 mod plot;
 mod utils;
@@ -69,11 +68,11 @@ fn main() {
             info!("Erasing the plot");
             let _ = fs::remove_file(path.join("plot.bin"));
             info!("Erasing plot metadata");
-            let _ = fs::remove_dir_all(path.join("plot-tags"));
-            info!("Erasing old identify");
+            let _ = fs::remove_dir_all(path.join("plot-metadata"));
+            info!("Erasing plot commitments");
+            let _ = fs::remove_dir_all(path.join("commitments"));
+            info!("Erasing identify");
             let _ = fs::remove_file(path.join("identity.bin"));
-            info!("Erasing configuration");
-            let _ = fs::remove_dir_all(path.join("config"));
             info!("Done");
         }
         Command::Farm {
