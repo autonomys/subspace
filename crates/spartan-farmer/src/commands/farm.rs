@@ -238,7 +238,11 @@ async fn background_plotting(
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
                             runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
-                            info!("Archived segment {}", root_block.segment_index());
+                            info!(
+                                "Archived segment {} at object {}",
+                                root_block.segment_index(),
+                                index
+                            );
                         } else {
                             return Ok(None);
                         }
@@ -334,7 +338,10 @@ async fn background_plotting(
                             let segment_index = root_block.segment_index();
                             last_root_block.replace(root_block);
 
-                            info!("Archived segment {}", segment_index);
+                            info!(
+                                "Archived segment {} at block {}",
+                                segment_index, block_to_archive
+                            );
                         }
                     }
                 }
