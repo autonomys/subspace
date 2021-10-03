@@ -2,8 +2,10 @@ use rocksdb::DB;
 use schnorrkel::Keypair;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subspace_core_primitives::RootBlock;
 
 const KEYPAIR_KEY: &[u8] = b"keypair";
+const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 #[derive(Debug)]
 struct Inner {
@@ -54,8 +56,35 @@ impl Config {
     /// Store farmer keypair/identity
     pub(crate) async fn set_keypair(&self, keypair: &Keypair) -> Result<(), rocksdb::Error> {
         let db = Arc::clone(&self.inner.db);
-        let keypair_bytes = keypair.to_bytes();
-        tokio::task::spawn_blocking(move || db.put(KEYPAIR_KEY, keypair_bytes))
+        let keypair = keypair.to_bytes();
+        tokio::task::spawn_blocking(move || db.put(KEYPAIR_KEY, keypair))
+            .await
+            .unwrap()
+    }
+
+    /// Get last root block
+    pub(crate) async fn get_last_root_block(&self) -> Result<Option<RootBlock>, rocksdb::Error> {
+        let db = Arc::clone(&self.inner.db);
+        tokio::task::spawn_blocking(move || {
+            db.get(LAST_ROOT_BLOCK_KEY).map(|maybe_last_root_block| {
+                maybe_last_root_block.as_ref().map(|last_root_block| {
+                    serde_json::from_slice(last_root_block)
+                        .expect("Database contains incorrect last root block")
+                })
+            })
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Store last root block
+    pub(crate) async fn set_last_root_block(
+        &self,
+        last_root_block: &RootBlock,
+    ) -> Result<(), rocksdb::Error> {
+        let db = Arc::clone(&self.inner.db);
+        let last_root_block = serde_json::to_vec(&last_root_block).unwrap();
+        tokio::task::spawn_blocking(move || db.put(LAST_ROOT_BLOCK_KEY, last_root_block))
             .await
             .unwrap()
     }

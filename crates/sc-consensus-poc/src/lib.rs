@@ -2159,28 +2159,29 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
     let mut archiver = if let Some(last_root_block) = find_last_root_block(client.as_ref()) {
+        // Continuing from existing initial state
+        let last_archived_block_number = last_root_block.last_archived_block().number;
         info!(
             target: "poc",
             "Last archived block {}",
-            last_root_block.last_archived_block().number,
+            last_archived_block_number,
         );
-        // Continuing from existing initial state
+        let last_archived_block = client
+            .block(&BlockId::Number(last_archived_block_number.into()))
+            .expect("Older blocks should always exist")
+            .expect("Older blocks should always exist");
+
         BlockArchiver::with_initial_state(
             record_size as usize,
             recorded_history_segment_size as usize,
             last_root_block,
-            &client
-                .block(&BlockId::Number(
-                    last_root_block.last_archived_block().number.into(),
-                ))
-                .expect("Older blocks should always exist")
-                .expect("Older blocks should always exist"),
+            &last_archived_block,
         )
         .expect("Incorrect parameters for archiver")
     } else {
+        // Starting from genesis
         let runtime_api = client.runtime_api();
 
-        // Starting from genesis
         let mut object_archiver =
             ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
                 .expect("Incorrect parameters for archiver");
@@ -2197,6 +2198,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
         // These archived segments are a part of the public parameters of network setup, thus do not
         // need to be sent to farmers
+        info!(target: "poc", "Processing pre-genesis objects");
         let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
             .map(|index| {
                 object_archiver
@@ -2224,6 +2226,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         // Set list of expected root blocks for the next block after genesis (we can't have
         // extrinsics in genesis block, at least not right now)
         poc_link.root_blocks.lock().put(One::one(), new_root_blocks);
+
+        info!(target: "poc", "Finished processing pre-genesis objects");
 
         object_archiver.into_block_archiver()
     };

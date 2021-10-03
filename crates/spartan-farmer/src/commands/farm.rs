@@ -18,6 +18,7 @@ use std::{fs, io};
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
+use subspace_core_primitives::RootBlock;
 
 type SlotNumber = u64;
 
@@ -110,22 +111,18 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     };
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
 
-    let farmer_metadata = client
-        .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
-        .await?;
-
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
     info!("Opening plot");
-    let plot = Plot::open_or_create(config).await?;
+    let plot = Plot::open_or_create(config.clone()).await?;
 
     tokio::spawn({
-        // let client = Arc::clone(&client);
+        let client = Arc::clone(&client);
         let weak_plot = plot.downgrade();
         let public_key = keypair.public;
 
         async move {
-            match background_plotting(/*&client, */ weak_plot, farmer_metadata, &public_key).await {
+            match background_plotting(&config, &client, weak_plot, &public_key).await {
                 Ok(()) => {
                     info!("Background plotting finished successfully");
                 }
@@ -141,9 +138,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
 
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting(
-    // client: &WsClient,
+    config: &Config,
+    client: &WsClient,
     weak_plot: WeakPlot,
-    farmer_metadata: FarmerMetadata,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
     let FarmerMetadata {
@@ -153,71 +150,103 @@ async fn background_plotting(
         pre_genesis_object_count,
         pre_genesis_object_seed,
         ..
-    } = farmer_metadata;
+    } = client
+        .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
+        .await?;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let subspace_codec = SubspaceCodec::new(public_key);
 
-    // TODO: This doesn't support continuation of the plotting
     // TODO: This doesn't support joining the network that already has non-genesis blocks
-    let block_archiver_handle = tokio::task::spawn_blocking({
-        let weak_plot = weak_plot.clone();
+    let archiver = if let Some(last_root_block) = config.get_last_root_block().await? {
+        // Continuing from existing initial state
+        let last_archived_block_number = last_root_block.last_archived_block().number;
+        info!("Last archived block {}", last_archived_block_number);
 
-        move || -> Result<Option<BlockArchiver>, anyhow::Error> {
-            let runtime_handle = tokio::runtime::Handle::current();
-            let mut object_archiver =
-                ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
+        let last_archived_block = client
+            .request(
+                "subspace_getEncodedBlockByNumber",
+                JsonRpcParams::Array(vec![
+                    serde_json::to_value(last_archived_block_number).unwrap()
+                ]),
+            )
+            .await?;
 
-            info!("Plotting pre-genesis objects");
-            // These archived segments are a part of the public parameters of network setup
-            for index in 0..pre_genesis_object_count {
-                // Erasure coding in archiver is a CPU-intensive operation, but since we are doing this
-                let archived_segments = object_archiver.add_object(&pre_genesis_data::from_seed(
-                    &pre_genesis_object_seed,
-                    index,
-                    pre_genesis_object_size,
-                ));
+        BlockArchiver::with_initial_state(
+            record_size as usize,
+            recorded_history_segment_size as usize,
+            last_root_block,
+            &last_archived_block,
+        )
+        .expect("Incorrect parameters for archiver")
+    } else {
+        // Starting from genesis
+        let mut object_archiver =
+            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
 
-                for archived_segment in archived_segments {
-                    let ArchivedSegment {
-                        root_block,
-                        mut pieces,
-                    } = archived_segment;
-                    let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+        // Erasure coding in archiver is a CPU-intensive operation
+        let maybe_block_archiver_handle = tokio::task::spawn_blocking({
+            let config = config.clone();
+            let weak_plot = weak_plot.clone();
 
-                    // TODO: Batch encoding
-                    for (position, piece) in pieces.iter_mut().enumerate() {
-                        subspace_codec.encode(piece_index_offset + position as u64, piece)?;
-                    }
+            move || -> Result<Option<BlockArchiver>, anyhow::Error> {
+                let runtime_handle = tokio::runtime::Handle::current();
+                info!("Plotting pre-genesis objects");
 
-                    if let Some(plot) = weak_plot.upgrade() {
-                        // TODO: There is no internal mapping between pieces and their indexes yet
-                        // TODO: Then we might want to send indexes as a separate vector
-                        runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
-                    } else {
-                        return Ok(None);
+                let mut last_root_block = None;
+                // These archived segments are a part of the public parameters of network setup
+                for index in 0..pre_genesis_object_count {
+                    let archived_segments =
+                        object_archiver.add_object(&pre_genesis_data::from_seed(
+                            &pre_genesis_object_seed,
+                            index,
+                            pre_genesis_object_size,
+                        ));
+
+                    for archived_segment in archived_segments {
+                        let ArchivedSegment {
+                            root_block,
+                            mut pieces,
+                        } = archived_segment;
+                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                        // TODO: Batch encoding
+                        for (position, piece) in pieces.iter_mut().enumerate() {
+                            subspace_codec.encode(piece_index_offset + position as u64, piece)?;
+                        }
+
+                        if let Some(plot) = weak_plot.upgrade() {
+                            // TODO: There is no internal mapping between pieces and their indexes yet
+                            // TODO: Then we might want to send indexes as a separate vector
+                            runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
+                            last_root_block.replace(root_block);
+                        } else {
+                            return Ok(None);
+                        }
                     }
                 }
+
+                runtime_handle.block_on(config.set_last_root_block(&last_root_block.unwrap()))?;
+
+                info!("Finished plotting pre-genesis objects");
+
+                Ok(Some(object_archiver.into_block_archiver()))
             }
+        });
 
-            info!("Finished plotting pre-genesis objects");
-
-            Ok(Some(object_archiver.into_block_archiver()))
-        }
-    });
-
-    let block_archiver = match block_archiver_handle.await?? {
-        Some(block_archiver) => block_archiver,
-        None => {
-            // Plot was dropped, time to exit already
-            return Ok(());
+        match maybe_block_archiver_handle.await?? {
+            Some(block_archiver) => block_archiver,
+            None => {
+                // Plot was dropped, time to exit already
+                return Ok(());
+            }
         }
     };
 
     // TODO: Use block archiver for ongoing plotting of post-genesis pieces
-    drop(block_archiver);
+    drop(archiver);
 
     Ok(())
 }
