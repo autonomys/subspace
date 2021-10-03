@@ -13,6 +13,7 @@ use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
@@ -260,7 +261,7 @@ async fn background_plotting(
     };
 
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =
-        std::sync::mpsc::sync_channel(0);
+        std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     let mut blocks_to_archive_from = archiver
         .last_archived_block_number()
@@ -278,6 +279,7 @@ async fn background_plotting(
             info!("Plotting new blocks in the background");
 
             'outer: while let Ok(blocks_to_archive_to) = new_block_to_archive_receiver.recv() {
+                let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
                 if blocks_to_archive_to >= blocks_to_archive_from {
                     debug!(
                         "Archiving blocks {}..={}",
@@ -362,6 +364,7 @@ async fn background_plotting(
         )
         .await?;
 
+    let block_to_archive = Arc::new(AtomicU32::default());
     // Listen for new blocks produced on the network
     while let Some(new_head) = subscription.next().await? {
         // Numbers are in the format `0xabcd`, so strip `0x` prefix and interpret the rest as an
@@ -369,8 +372,11 @@ async fn background_plotting(
         let block_number = u32::from_str_radix(&new_head.number[2..], 16).unwrap();
         debug!("Last block number: {:#?}", block_number);
 
-        if let Some(block_to_archive) = block_number.checked_sub(confirmation_depth_k) {
-            let _ = new_block_to_archive_sender.try_send(block_to_archive);
+        if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
+            // We send block that should be archived over channel that doesn't have a buffer, atomic
+            // integer is used to make sure archiving process always read up to date value
+            block_to_archive.store(block, Ordering::Relaxed);
+            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
         }
     }
 
