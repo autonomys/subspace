@@ -1,7 +1,7 @@
 use crate::plot::Plot;
 use crate::{Salt, Tag};
 use rand::prelude::*;
-use subspace_core_primitives::Piece;
+use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock};
 use tempfile::TempDir;
 
 fn init() {
@@ -15,7 +15,7 @@ fn generate_random_piece() -> Piece {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_read_write() {
+async fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -41,11 +41,36 @@ async fn test_read_write() {
         .await
         .unwrap();
     assert_eq!(false, plot.is_empty().await);
-    drop(plot);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_commitment() {
+async fn last_root_block() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
+        .await
+        .unwrap();
+
+    assert!(plot.get_last_root_block().await.unwrap().is_none());
+
+    let root_block = RootBlock::V0 {
+        segment_index: rand::random(),
+        merkle_tree_root: rand::random(),
+        prev_root_block_hash: rand::random(),
+        last_archived_block: LastArchivedBlock {
+            number: rand::random(),
+            bytes: Some(rand::random()),
+        },
+    };
+
+    plot.set_last_root_block(&root_block).await.unwrap();
+
+    assert_eq!(plot.get_last_root_block().await.unwrap(), Some(root_block));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commitment() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -70,7 +95,7 @@ async fn test_commitment() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_find_by_tag() {
+async fn find_by_tag() {
     init();
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
@@ -152,6 +177,4 @@ async fn test_find_by_tag() {
             upper.to_be_bytes(),
         );
     }
-
-    drop(plot);
 }
