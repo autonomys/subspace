@@ -172,7 +172,7 @@ async fn background_plotting(
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
-        let last_archived_block: Vec<u8> = client
+        let maybe_last_archived_block: Option<Vec<u8>> = client
             .request(
                 "subspace_getEncodedBlockByNumber",
                 JsonRpcParams::Array(vec![
@@ -180,6 +180,15 @@ async fn background_plotting(
                 ]),
             )
             .await?;
+        let last_archived_block = match maybe_last_archived_block {
+            Some(block) => block,
+            None => {
+                return Err(anyhow::Error::msg(format!(
+                    "Failed to get block {} from the chain, probably need to erase existing plot",
+                    last_archived_block_number
+                )));
+            }
+        };
 
         BlockArchiver::with_initial_state(
             record_size as usize,
@@ -293,12 +302,21 @@ async fn background_plotting(
 
                 let mut last_root_block = None;
                 for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                    let block_fut = client.request::<'_, '_, '_, Vec<u8>>(
+                    let block_fut = client.request::<'_, '_, '_, Option<Vec<u8>>>(
                         "subspace_getEncodedBlockByNumber",
                         JsonRpcParams::Array(vec![serde_json::to_value(block_to_archive).unwrap()]),
                     );
                     let block = match runtime_handle.block_on(block_fut) {
-                        Ok(block) => block,
+                        Ok(Some(block)) => block,
+                        Ok(None) => {
+                            error!(
+                                "Failed to get block #{} from RPC: Block not found",
+                                block_to_archive,
+                            );
+
+                            blocks_to_archive_from = block_to_archive;
+                            continue 'outer;
+                        }
                         Err(error) => {
                             error!(
                                 "Failed to get block #{} from RPC: {}",
