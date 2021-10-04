@@ -29,6 +29,11 @@ pub(crate) async fn plot(
         keypair
     };
 
+    let plot_tags = path.join("plot-tags");
+    if !plot_tags.exists() {
+        fs::create_dir(plot_tags)?;
+    }
+
     let plot = Plot::open_or_create(&path.into()).await?;
     let spartan = Spartan::new(keypair.public.as_ref());
 
