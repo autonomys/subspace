@@ -34,10 +34,7 @@ const createApi = async (url: string) => {
       // TODO: master has to delegate spending to sourceSigner and paraSigners
       for (const delegate of [sourceSigner, ...paraSigners]) {
         // send 1.5 units
-        // TODO: investigate why 0.5 existential deposit is not enough - probably some fees are involved
         await target.sendBalanceTx(master, delegate, 1.5);
-        // add this account as proxy for master
-        // await target.sendAddProxyTx(master, delegate);
       }
 
       // TODO: clean later
