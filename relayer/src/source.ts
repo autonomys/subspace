@@ -20,7 +20,8 @@ interface SourceConstructorParams {
 }
 
 interface TxDataInput {
-  block: SignedBlock;
+  block: string;
+  number: string;
   hash: Hash;
   feedId: U64;
   chain: ChainName;
@@ -93,19 +94,30 @@ class Source {
         const { feedId, chain, signer } = parachain;
 
         return parachain.fetchParaBlock(paraHead)
-          .pipe(map((block) => this.addBlockTxData({ block, hash: paraHead, feedId, chain, signer })));
+          .pipe(map(({ block }) => {
+            const blockStr = JSON.stringify(block);
+            const number = block.header.number.toString();
+            return this.addBlockTxData({
+              block: blockStr,
+              number,
+              hash: paraHead,
+              feedId,
+              chain,
+              signer
+            });
+          }));
       }));
   }
 
-  private addBlockTxData({ block, hash, feedId, chain, signer }: TxDataInput): TxData {
+  private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
     const metadata = {
       hash,
-      number: block.block.header.number.toString(),
+      number,
     };
 
     return {
       feedId,
-      block: block.toString(),
+      block,
       metadata,
       chain,
       signer,
@@ -117,7 +129,18 @@ class Source {
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
     const relayBlockWithMetadata = relayBlock.pipe(
-      map(block => this.addBlockTxData({ block, hash, feedId: this.feedId, chain: this.chain, signer: this.signer }))
+      map(({ block }) => {
+        const blockStr = block.toString();
+        const number = block.header.number.toString();
+        return this.addBlockTxData({
+          block: blockStr,
+          number,
+          hash,
+          feedId: this.feedId,
+          chain: this.chain,
+          signer: this.signer
+        });
+      })
     );
 
     // TODO: check relay block and parablocks size
