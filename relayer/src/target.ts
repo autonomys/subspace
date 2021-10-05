@@ -6,7 +6,7 @@ import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 import { Subscription, EMPTY, catchError } from "rxjs";
-import { concatMap, take } from "rxjs/operators";
+import { concatMap, takeWhile } from "rxjs/operators";
 
 import { TxData } from "./types";
 
@@ -65,8 +65,7 @@ class Target {
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
         .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
         .pipe(
-           // we only need to subscribe until second status - IN BLOCK
-          take(2),
+          takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
             this.logger.error(error);
             return EMPTY;
@@ -83,8 +82,7 @@ class Target {
         .create()
         .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
         .pipe(
-          // we only need to subscribe until second status - IN BLOCK
-          take(2),
+          takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
             this.logger.error(error);
             return EMPTY;
@@ -118,15 +116,17 @@ class Target {
         .transfer(toAddress, amount * Math.pow(10, 12))
         .signAndSend(from, { nonce: -1 }, Promise.resolve)
         .pipe(
-          // we only need to subscribe until second status - IN BLOCK
-          take(2),
+          takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
             this.logger.error(error);
             return EMPTY;
           }))
         .subscribe((result) => {
           this.logTxResult(result);
-          resolve();
+
+          if (result.status.isInBlock) {
+            resolve();
+          }
         });
     });
   }

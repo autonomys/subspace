@@ -1,6 +1,6 @@
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
-
+import { SignedBlock } from "@polkadot/types/interfaces";
 import { ParaHeadAndId, ParachainConfigType, ChainName } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
@@ -32,17 +32,16 @@ export const isRelevantRecord =
         };
 
 
-type ParachainsMap = Map<string, Parachain>;
+type ParachainsMap = Map<ChainName, Parachain>;
 
 export const createParachainsMap = async (
-    target: Target, 
+    target: Target,
     configParachains: ParachainConfigType[],
     signers: AddressOrPair[],
 ): Promise<ParachainsMap> => {
     const map = new Map();
 
-    for (let index = 0; index < configParachains.length; index++) {
-        const { url, chain, paraId } = configParachains[index];
+    for (const [index, { url, chain, paraId }] of configParachains.entries()) {
         const signer = signers[index];
         const feedId = await target.sendCreateFeedTx(signer);
         const parachain = new Parachain({ feedId, url, chain: chain as ChainName, logger, signer });
@@ -60,5 +59,6 @@ export const createParachainsMap = async (
     return map;
 };
 
-export const sleep = (ms: number): Promise<void> =>
-    new Promise((resolve) => setTimeout(resolve, ms));
+export const isValidBlock = (block: SignedBlock): boolean => {
+    return block && block.block && block.block.header && Boolean(block.block.extrinsics);
+};

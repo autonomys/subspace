@@ -1,12 +1,18 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { merge } from "rxjs";
 import { getAccount } from "./account";
-import config from "./config";
+import Config, { sourceChains } from "./config";
 import Source from "./source";
 import Target from "./target";
 import logger from "./logger";
-import { createParachainsMap, sleep } from './utils';
+import { createParachainsMap } from './utils';
 import { ChainName } from './types';
+
+const config = new Config({
+  accountSeed: process.env.ACCOUNT_SEED,
+  targetChainUrl: process.env.TARGET_CHAIN_URL,
+  sourceChains,
+});
 
 const createApi = async (url: string) => {
   const provider = new WsProvider(url);
@@ -32,14 +38,13 @@ const createApi = async (url: string) => {
       const master = getAccount(config.accountSeed);
       const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
       const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
+
+      // TODO: can be optimized by sending batch of txs
       // TODO: master has to delegate spending to sourceSigner and paraSigners
       for (const delegate of [sourceSigner, ...paraSigners]) {
         // send 1.5 units
         await target.sendBalanceTx(master, delegate, 1.5);
       }
-
-      // TODO: use better way to wait for prev transactions to be included
-      await sleep(15000);
 
       const feedId = await target.sendCreateFeedTx(sourceSigner);
       const parachainsMap = await createParachainsMap(target, parachains, paraSigners);

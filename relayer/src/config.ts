@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import { ParachainConfigType } from './types';
+import { ChainName, ParachainConfigType } from './types';
 
 dotenv.config();
 
@@ -8,18 +8,18 @@ interface SourceChain {
   parachains: ParachainConfigType[];
 }
 
-interface IConfig {
-  accountSeed: string;
-  targetChainUrl: string;
+interface ConfigParams {
+  accountSeed: string | undefined;
+  targetChainUrl: string | undefined;
   sourceChains: SourceChain[];
 }
 
-class Config implements IConfig {
+class Config {
   public readonly accountSeed: string;
   public readonly targetChainUrl: string;
   public readonly sourceChains: SourceChain[];
 
-  constructor(params: { accountSeed: string | undefined; targetChainUrl: string | undefined; sourceChains: SourceChain[]; }) {
+  constructor(params: ConfigParams) {
     if (!params.accountSeed) {
       throw new Error("Seed is not provided");
     }
@@ -29,72 +29,66 @@ class Config implements IConfig {
     }
     this.accountSeed = params.accountSeed;
     this.targetChainUrl = params.targetChainUrl;
-    this.sourceChains = sourceChains;
+    this.sourceChains = params.sourceChains;
   }
 }
 
-const sourceChains = [
+export const sourceChains = [
   {
     url: "wss://kusama-rpc.polkadot.io",
     parachains: [
       {
         url: "https://kusama-statemine-rpc.paritytech.net",
         paraId: 1000,
-        chain: "Statemine",
+        chain: "Statemine" as ChainName,
       },
       {
         url: "https://karura.api.onfinality.io/public",
         paraId: 2000,
-        chain: "Karura",
+        chain: "Karura" as ChainName,
       },
       {
         url: "https://bifrost-parachain.api.onfinality.io/public",
         paraId: 2001,
-        chain: "Bifrost",
+        chain: "Bifrost" as ChainName,
       },
       {
         url: "https://khala.api.onfinality.io/public",
         paraId: 2004,
-        chain: "Khala Network",
+        chain: "Khala Network" as ChainName,
       },
       {
         url: "https://shiden.api.onfinality.io/public",
         paraId: 2007,
-        chain: "Shiden",
+        chain: "Shiden" as ChainName,
       },
       {
         url: "https://moonriver.api.onfinality.io/public",
         paraId: 2023,
-        chain: "Moonriver",
+        chain: "Moonriver" as ChainName,
       },
       {
         url: "https://calamari.api.onfinality.io/public",
         paraId: 2084,
-        chain: "Calamari",
+        chain: "Calamari" as ChainName,
       },
       {
         url: "https://spiritnet.api.onfinality.io/public",
         paraId: 2086,
-        chain: "Kilt Spiritnet",
+        chain: "Kilt Spiritnet" as ChainName,
       },
       {
         url: "https://basilisk.api.onfinality.io/public",
         paraId: 2090,
-        chain: "Basilisk",
+        chain: "Basilisk" as ChainName,
       },
       {
         url: "https://altair.api.onfinality.io/public",
         paraId: 2088,
-        chain: "Altair",
+        chain: "Altair" as ChainName,
       },
     ]
   },
 ];
 
-const config = new Config({
-  accountSeed: process.env.ACCOUNT_SEED,
-  targetChainUrl: process.env.TARGET_CHAIN_URL,
-  sourceChains,
-});
-
-export default config;
+export default Config;

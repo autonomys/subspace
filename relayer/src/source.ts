@@ -3,6 +3,7 @@ import { Observable } from "@polkadot/types/types";
 import { U64 } from "@polkadot/types/primitive";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
+import { BN } from '@polkadot/util';
 import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
 import { from, merge } from 'rxjs';
 import { Logger } from "pino";
@@ -22,7 +23,7 @@ interface SourceConstructorParams {
 
 interface TxDataInput {
   block: string;
-  number: string;
+  number: BN;
   hash: Hash;
   feedId: U64;
   chain: ChainName;
@@ -97,7 +98,7 @@ class Source {
         return parachain.fetchParaBlock(paraHead)
           .pipe(map(({ block }) => {
             const blockStr = JSON.stringify(block);
-            const number = block.header.number.toString();
+            const number = this.api.createType("BlockNumber", block.header.number).toBn();
             return this.addBlockTxData({
               block: blockStr,
               number,
@@ -133,7 +134,7 @@ class Source {
     const relayBlockWithMetadata = relayBlock.pipe(
       map(({ block }) => {
         const blockStr = block.toString();
-        const number = block.header.number.toString();
+        const number = block.header.number.toBn();
         return this.addBlockTxData({
           block: blockStr,
           number,

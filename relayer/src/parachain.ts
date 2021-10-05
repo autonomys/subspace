@@ -6,7 +6,9 @@ import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { Logger } from "pino";
+
 import { ChainName } from './types';
+import { isValidBlock } from './utils';
 
 interface ParachainConstructorParams {
     feedId: U64;
@@ -58,6 +60,11 @@ class Parachain {
                 if (!data.result) {
                     throw new Error(`Could not fetch ${this.chain} parablock ${hash}. Response: ${JSON.stringify(data)}`);
                 }
+
+                if (!isValidBlock(data.result)) {
+                    throw new Error(`Response result ${JSON.stringify(data.result)} is not a valid block`);
+                }
+
                 return data.result;
             })))
             .pipe(
