@@ -1,9 +1,10 @@
 
 import fetch from "node-fetch";
 import { EMPTY, defer, from, Observable, catchError } from 'rxjs';
-import { retry, shareReplay } from "rxjs/operators";
+import { retry, shareReplay, timeout } from "rxjs/operators";
 import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { Logger } from "pino";
 import { ChainName } from './types';
 
@@ -12,19 +13,22 @@ interface ParachainConstructorParams {
     url: string;
     chain: ChainName;
     logger: Logger;
+    signer: AddressOrPair;
 }
 
 class Parachain {
     private readonly url: string;
     private readonly logger: Logger;
-    public chain: ChainName;
-    public feedId: U64;
+    public readonly chain: ChainName;
+    public readonly feedId: U64;
+    public readonly signer: AddressOrPair;
 
-    constructor({ feedId, url, chain, logger }: ParachainConstructorParams) {
+    constructor({ feedId, url, chain, logger, signer }: ParachainConstructorParams) {
         this.feedId = feedId;
         this.url = url;
         this.chain = chain;
         this.logger = logger;
+        this.signer = signer;
     }
 
     fetchParaBlock(
@@ -50,14 +54,14 @@ class Parachain {
                 }
                 return response.json();
             })
-            .then(({ result }) => {
-                if (!result) {
-                    throw new Error(`Could not fetch ${this.chain} parablock ${hash} from ${this.url}`);
+            .then((data) => {
+                if (!data.result) {
+                    throw new Error(`Could not fetch ${this.chain} parablock ${hash}. Response: ${JSON.stringify(data)}`);
                 }
-                return result;
+                return data.result;
             })))
-            // TODO: currently this works, but need more elegant solution
             .pipe(
+                timeout(8000),
                 retry(3),
                 catchError((error) => {
                     this.logger.error(error);
