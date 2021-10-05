@@ -1,10 +1,11 @@
 import { ApiPromise } from "@polkadot/api";
 import { Observable } from "@polkadot/types/types";
 import { U64 } from "@polkadot/types/primitive";
+import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
 import { from, merge } from 'rxjs';
 import { Logger } from "pino";
-import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 
 import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
@@ -16,6 +17,16 @@ interface SourceConstructorParams {
   feedId: U64;
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
+  signer: AddressOrPair;
+}
+
+interface TxDataInput {
+  block: string;
+  number: string;
+  hash: Hash;
+  feedId: U64;
+  chain: ChainName;
+  signer: AddressOrPair;
 }
 
 class Source {
@@ -24,6 +35,7 @@ class Source {
   private readonly feedId: U64;
   private readonly parachainsMap: Map<string, Parachain>;
   private readonly logger: Logger;
+  public readonly signer: AddressOrPair;
 
   constructor(params: SourceConstructorParams) {
     this.api = params.api;
@@ -31,6 +43,7 @@ class Source {
     this.feedId = params.feedId;
     this.parachainsMap = params.parachainsMap;
     this.logger = params.logger;
+    this.signer = params.signer;
     this.getBlocksByHash = this.getBlocksByHash.bind(this);
     this.getParablocks = this.getParablocks.bind(this);
   }
@@ -78,27 +91,38 @@ class Source {
       .pipe(concatMap(({ paraId, paraHead }) => {
         const parachain = this.parachainsMap.get(paraId);
         if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
+
+        const { feedId, chain, signer } = parachain;
+
         return parachain.fetchParaBlock(paraHead)
-          .pipe(map((block) => this.addBlockMetadata({
-            block,
-            hash: paraHead,
-            feedId: parachain.feedId,
-            chain: parachain.chain,
-          })));
+          .pipe(map(({ block }) => {
+            const blockStr = JSON.stringify(block);
+            const number = block.header.number.toString();
+            return this.addBlockTxData({
+              block: blockStr,
+              number,
+              hash: paraHead,
+              feedId,
+              chain,
+              signer
+            });
+          }));
       }));
   }
 
-  private addBlockMetadata({ block, hash, feedId, chain }: { block: SignedBlock, hash: Hash, feedId: U64, chain: ChainName; }): TxData {
+  private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
     const metadata = {
       hash,
-      number: block.block.header.number.toString(),
+      number,
     };
+
 
     return {
       feedId,
-      block: block.toString(),
+      block,
       metadata,
       chain,
+      signer,
     };
   }
 
@@ -106,7 +130,20 @@ class Source {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
-    const relayBlockWithMetadata = relayBlock.pipe(map(block => this.addBlockMetadata({ block, hash, feedId: this.feedId, chain: this.chain })));
+    const relayBlockWithMetadata = relayBlock.pipe(
+      map(({ block }) => {
+        const blockStr = block.toString();
+        const number = block.header.number.toString();
+        return this.addBlockTxData({
+          block: blockStr,
+          number,
+          hash,
+          feedId: this.feedId,
+          chain: this.chain,
+          signer: this.signer
+        });
+      })
+    );
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());

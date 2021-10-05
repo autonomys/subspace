@@ -1,14 +1,16 @@
 import { ApiPromise } from "@polkadot/api";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
+import { KeyringPair } from "@polkadot/keyring/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-import { Subscription } from "rxjs";
+import { Subscription, EMPTY, catchError } from "rxjs";
 import { concatMap, take } from "rxjs/operators";
 
 import { TxData } from "./types";
 
+// TODO: remove hardcoded url
 const polkadotAppsUrl =
   "https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer/query/";
 
@@ -49,9 +51,9 @@ class Target {
     }
   }
 
-  // TODO: signer should be proxy account per feed
-  private async sendBlockTx({ feedId, block, metadata, chain }: TxData) {
+  private async sendBlockTx({ feedId, block, metadata, chain, signer }: TxData) {
     this.logger.info(`Sending ${chain} block to feed: ${feedId}`);
+    this.logger.info(`Signer: ${(signer as KeyringPair).address}`);
     // metadata is stored as Vec<u8>
     // to decode: new TextDecoder().decode(new Uint8Array([...]))
     const metadataPayload = JSON.stringify(metadata);
@@ -62,20 +64,31 @@ class Target {
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
         .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
-        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        .pipe(
+           // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          }))
         .subscribe(this.logTxResult)
     );
   }
 
-  // TODO: signer should be proxy account per feed
   // TODO: think about re-using existing feedIds instead of creating
-  async sendCreateFeedTx(): Promise<U64> {
-    this.logger.info("Creating feed for signer X");
+  async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
+    this.logger.info(`Creating feed for signer ${(signer as KeyringPair).address}`);
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
         .create()
         .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
-        .pipe(take(2)) // we only need to subscribe until second status - IN BLOCK
+        .pipe(
+          // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          }))
         .subscribe((result) => {
           this.logTxResult(result);
 
@@ -92,6 +105,28 @@ class Target {
             const feedIdAsU64 = this.api.createType('u64', feedId);
             resolve(feedIdAsU64);
           }
+        });
+    });
+  }
+
+  sendBalanceTx(from: AddressOrPair, to: AddressOrPair, amount: number): Promise<void> {
+    const fromAddress = (from as KeyringPair).address;
+    const toAddress = (to as KeyringPair).address;
+    this.logger.info(`Sending balance ${amount} from ${fromAddress} to ${toAddress}`);
+    return new Promise((resolve) => {
+      this.api.rx.tx.balances
+        .transfer(toAddress, amount * Math.pow(10, 12))
+        .signAndSend(from, { nonce: -1 }, Promise.resolve)
+        .pipe(
+          // we only need to subscribe until second status - IN BLOCK
+          take(2),
+          catchError((error) => {
+            this.logger.error(error);
+            return EMPTY;
+          }))
+        .subscribe((result) => {
+          this.logTxResult(result);
+          resolve();
         });
     });
   }
