@@ -326,8 +326,8 @@ impl<State: private::ArchiverState> Archiver<State> {
         }
 
         // Check if there is an excess of data that should be spilled over into the next segment
-        let spill_over = segment
-            .encoded_size()
+        let segment_encoded_length = segment.encoded_size();
+        let spill_over = segment_encoded_length
             .checked_sub(self.segment_size)
             .unwrap_or_default();
 
@@ -367,6 +367,17 @@ impl<State: private::ArchiverState> Archiver<State> {
                 }
                 SegmentItem::Block(mut bytes) => {
                     let split_point = bytes.len() - spill_over;
+                    if bytes.get(split_point).is_none() {
+                        // TODO: Delete this if it doesn't reproduce in a long time (really
+                        //  shouldn't, but still have suspicion)
+                        eprintln!("segment items {}+1", items.len());
+                        eprintln!(
+                            "segment_encoded_length {} self.segment_size {}",
+                            segment_encoded_length, self.segment_size
+                        );
+                        eprintln!("spill_over {} bytes.len() {}", spill_over, bytes.len());
+                        eprintln!("split_point {}", split_point);
+                    }
                     let continuation_bytes = bytes[split_point..].to_vec();
 
                     bytes.truncate(split_point);
