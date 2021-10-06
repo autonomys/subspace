@@ -1,5 +1,7 @@
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
-import { ParaHeadAndId, ParachainsMap, ChainName } from "./types";
+import { AddressOrPair } from "@polkadot/api/submittable/types";
+import { SignedBlock } from "@polkadot/types/interfaces";
+import { ParaHeadAndId, ParachainConfigType, ChainName } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
 import logger from "./logger";
@@ -29,24 +31,34 @@ export const isRelevantRecord =
             );
         };
 
-export const createParachainsMap = async (target: Target, configParachains: {
-    url: string,
-    paraId: number,
-    chain: string,
-}[]): Promise<ParachainsMap> => {
+
+type ParachainsMap = Map<ChainName, Parachain>;
+
+export const createParachainsMap = async (
+    target: Target,
+    configParachains: ParachainConfigType[],
+    signers: AddressOrPair[],
+): Promise<ParachainsMap> => {
     const map = new Map();
 
-    for (const { url, chain, paraId } of configParachains) {
-        const feedId = await target.sendCreateFeedTx();
-        const parachain = new Parachain({
-            feedId,
-            url,
-            chain: chain as ChainName,
-            logger
-        });
-
+    for (const [index, { url, chain, paraId }] of configParachains.entries()) {
+        const signer = signers[index];
+        const feedId = await target.sendCreateFeedTx(signer);
+        const parachain = new Parachain({ feedId, url, chain: chain as ChainName, logger, signer });
         map.set(paraId, parachain);
     }
 
+    // TODO: investigate why this code results in Uknown paraId error
+    // configParachains.forEach(async ({ url, chain, paraId }, index) => {
+    //     const signer = signers[index];
+    //     const feedId = await target.sendCreateFeedTx(signer);
+    //     const parachain = new Parachain({ feedId, url, chain: chain as ChainName, logger, signer });
+    //     map.set(paraId, parachain);
+    // });
+
     return map;
+};
+
+export const isValidBlock = (block: SignedBlock): boolean => {
+    return block && block.block && block.block.header && Boolean(block.block.extrinsics);
 };
