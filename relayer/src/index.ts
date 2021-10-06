@@ -28,10 +28,8 @@ const createApi = async (url: string) => {
 (async () => {
   try {
     const targetApi = await createApi(config.targetChainUrl);
-    // use getAccount func because we cannot create keyring instance before API is instanciated
-    const signer = getAccount(config.accountSeed);
 
-    const target = new Target({ api: targetApi, signer, logger });
+    const target = new Target({ api: targetApi, logger });
 
     const sources = await Promise.all(
       config.sourceChains.map(async ({ url, parachains }) => {

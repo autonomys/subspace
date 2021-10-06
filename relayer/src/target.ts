@@ -17,18 +17,15 @@ const polkadotAppsUrl =
 
 interface TargetConstructorParams {
   api: ApiPromise;
-  signer: AddressOrPair;
   logger: Logger;
 }
 
 class Target {
   private readonly api: ApiPromise;
-  private readonly signer: AddressOrPair;
   private readonly logger: Logger;
 
-  constructor({ api, signer, logger }: TargetConstructorParams) {
+  constructor({ api, logger }: TargetConstructorParams) {
     this.api = api;
-    this.signer = signer;
     this.logger = logger;
     this.sendBlockTx = this.sendBlockTx.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
@@ -64,7 +61,7 @@ class Target {
         // it is required to specify nonce, otherwise transaction within same block will be rejected
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(
           takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
@@ -81,7 +78,7 @@ class Target {
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
         .create()
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(
           takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
