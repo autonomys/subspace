@@ -245,7 +245,9 @@ impl<State: private::ArchiverState> Archiver<State> {
 
         let mut last_archived_block = self.last_archived_block;
 
-        while segment.encoded_size() < self.segment_size {
+        // `-2` because even the smallest segment item will take 2 bytes to encode, so it makes
+        // sense to stop earlier here
+        while segment.encoded_size() < (self.segment_size - 2) {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
@@ -275,11 +277,27 @@ impl<State: private::ArchiverState> Archiver<State> {
                 // Due to compact vector length encoding in scale codec, spill over might happen to
                 // be the same or even bigger than the inserted segment item bytes, in which case
                 // last segment item insertion needs to be skipped to avoid out of range panic when
-                // trying to cut it later. Spill over should be strictly less than encoded length
-                // because one byte of scale encoding will be taken by enum variant of the segment
-                // item, so it wouldn't be possible to slice its bytes at the spill over point if
-                // spill over is the same as encoded segment item length.
-                if spill_over >= segment_item.encoded_size() {
+                // trying to cut segment item internal bytes.
+                let inner_bytes_size = match &segment_item {
+                    SegmentItem::Object(bytes) => bytes.len(),
+                    SegmentItem::ObjectStart(_) => {
+                        unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
+                    }
+                    SegmentItem::ObjectContinuation(bytes) => bytes.len(),
+                    SegmentItem::Block(bytes) => bytes.len(),
+                    SegmentItem::BlockStart(_) => {
+                        unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
+                    }
+                    SegmentItem::BlockContinuation(bytes) => bytes.len(),
+                    SegmentItem::RootBlock(_) => {
+                        unreachable!(
+                            "SegmentItem::RootBlock is always the first element in the buffer and \
+                            fits into the segment; qed",
+                        );
+                    }
+                };
+
+                if spill_over > inner_bytes_size {
                     self.buffer.push_front(segment_item);
                     break;
                 }
@@ -367,17 +385,6 @@ impl<State: private::ArchiverState> Archiver<State> {
                 }
                 SegmentItem::Block(mut bytes) => {
                     let split_point = bytes.len() - spill_over;
-                    if bytes.get(split_point).is_none() {
-                        // TODO: Delete this if it doesn't reproduce in a long time (really
-                        //  shouldn't, but still have suspicion)
-                        eprintln!("segment items {}+1", items.len());
-                        eprintln!(
-                            "segment_encoded_length {} self.segment_size {}",
-                            segment_encoded_length, self.segment_size
-                        );
-                        eprintln!("spill_over {} bytes.len() {}", spill_over, bytes.len());
-                        eprintln!("split_point {}", split_point);
-                    }
                     let continuation_bytes = bytes[split_point..].to_vec();
 
                     bytes.truncate(split_point);

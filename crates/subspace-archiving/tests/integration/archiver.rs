@@ -295,19 +295,26 @@ fn archiver_invalid_usage() {
 }
 
 #[test]
+fn one_byte_smaller_segment() {
+    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+
+    // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
+    // but this should already produce archived segment since just enum variant and smallest compact
+    // vector length encoding will take 2 bytes to encode, thus it will be impossible to slice
+    // internal bytes of the segment item anyway
+    assert_eq!(archiver.add_block(vec![0u8; SEGMENT_SIZE - 7]).len(), 1);
+}
+
+#[test]
 fn spill_over_edge_case() {
     let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
-    // Carefully compute size of the blocks
-    for _ in 0..62 {
-        archiver.add_block(vec![0u8; SEGMENT_SIZE / 63]);
-    }
-    archiver.add_block(vec![0u8; SEGMENT_SIZE / 63 - 131]);
+    // Carefully compute the block size such that there is just 3 byte left to fill the segment
+    assert!(archiver.add_block(vec![0u8; SEGMENT_SIZE - 8]).is_empty());
 
-    // Here we add 64th block, which will increase compact integer size of the vector inside of
-    // archived segment, which will mean spill over resulted from inserting last element will
-    // actually be bigger than last inserted element and implementation needs to handle it properly
-    // or else error like `range start index 18446744073709551615 out of range for slice of length
-    // 4440` will appear
-    archiver.add_block(vec![0u8; 10]);
+    // Here we add one more block with internal length that takes 4 bytes in compact length
+    // encoding + one more for enum variant, this should result in new segment being created, but
+    // the very first segment item will not include newly added block because it would result in
+    // subtracting with overflow when trying to slice internal bytes of the segment item
+    assert_eq!(archiver.add_block(vec![0u8; 2_usize.pow(14)]).len(), 2);
 }
