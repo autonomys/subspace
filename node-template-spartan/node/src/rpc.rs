@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 
 use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
+use sc_client_api::BlockBackend;
 use sc_consensus_poc::notification::SubspaceNotificationStream;
 use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
@@ -37,6 +38,7 @@ pub struct FullDeps<C, P> {
 pub fn create_full<C, P>(deps: FullDeps<C, P>) -> jsonrpc_core::IoHandler<sc_rpc::Metadata>
 where
     C: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = BlockChainError>
         + Send

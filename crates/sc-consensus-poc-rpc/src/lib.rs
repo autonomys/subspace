@@ -24,7 +24,9 @@ use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
 use log::{error, warn};
+use parity_scale_codec::Encode;
 use parking_lot::Mutex;
+use sc_client_api::BlockBackend;
 use sc_consensus_poc::notification::SubspaceNotificationStream;
 use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
 use serde::{Deserialize, Serialize};
@@ -105,7 +107,7 @@ impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RpcSolution {
     pub public_key: [u8; 32],
-    pub nonce: u64,
+    pub piece_index: u64,
     pub encoding: Vec<u8>,
     pub signature: Vec<u8>,
     pub tag: [u8; 8],
@@ -124,8 +126,13 @@ pub trait PoCRpcApi {
     /// RPC metadata
     type Metadata;
 
+    /// Ger metadata necessary for farmer operation
     #[rpc(name = "subspace_getFarmerMetadata")]
     fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata>;
+
+    /// Get encoded block by given block number
+    #[rpc(name = "subspace_getEncodedBlockByNumber")]
+    fn get_encoded_block_by_number(&self, block_number: u32) -> FutureResult<Option<Vec<u8>>>;
 
     #[rpc(name = "poc_proposeProofOfSpace")]
     fn propose_proof_of_space(
@@ -204,7 +211,12 @@ pub struct PoCRpcHandler<Block, Client> {
 impl<Block, Client> PoCRpcHandler<Block, Client>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
     Client::Api: PoCApi<Block>,
 {
     /// Creates a new instance of the PoCRpc handler.
@@ -233,7 +245,12 @@ where
 impl<Block, Client> PoCRpcApi for PoCRpcHandler<Block, Client>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
     Client::Api: PoCApi<Block>,
 {
     type Metadata = sc_rpc_api::Metadata;
@@ -263,6 +280,19 @@ where
                 error!("Failed to get data from runtime API: {}", error);
                 RpcError::new(ErrorCode::InternalError)
             })
+        })
+    }
+
+    fn get_encoded_block_by_number(&self, block_number: u32) -> FutureResult<Option<Vec<u8>>> {
+        let client = Arc::clone(&self.client);
+        Box::pin(async move {
+            client
+                .block(&BlockId::Number(block_number.into()))
+                .map(|maybe_block| maybe_block.map(|block| block.encode()))
+                .map_err(|error| {
+                    error!("Failed to get block by number: {}", error);
+                    RpcError::new(ErrorCode::InternalError)
+                })
         })
     }
 
@@ -326,7 +356,7 @@ where
                             if let Some(solution) = proposed_proof_of_space_result.solution {
                                 let solution = Solution {
                                     public_key: FarmerId::from_slice(&solution.public_key),
-                                    nonce: solution.nonce,
+                                    piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,
                                     tag: solution.tag,

@@ -1,23 +1,29 @@
 mod commitments;
+#[cfg(test)]
+mod tests;
 
 use crate::plot::commitments::Commitments;
 use crate::{crypto, Piece, Salt, Tag, BATCH_SIZE, PIECE_SIZE};
 use async_std::fs::OpenOptions;
 use async_std::path::PathBuf;
-use event_listener_primitives::{BagOnce, HandlerId};
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SinkExt, StreamExt};
 use log::{error, trace};
 use rayon::prelude::*;
+use rocksdb::DB;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io;
 use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
+use subspace_core_primitives::RootBlock;
 use thiserror::Error;
+use tokio::task::JoinHandle;
+
+const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum CommitmentStatus {
@@ -29,12 +35,15 @@ enum CommitmentStatus {
     Aborted,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub(crate) enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
-    #[error("Plot commitments open error: {0}")]
-    PlotCommitmentsOpen(io::Error),
+    #[error("Plot DB open error: {0}")]
+    PlotDbOpen(rocksdb::Error),
+    #[error("Commitments open error: {0}")]
+    CommitmentsOpen(io::Error),
 }
 
 #[derive(Debug)]
@@ -80,26 +89,42 @@ enum WriteRequests {
     },
 }
 
-#[derive(Default)]
-struct Handlers {
-    close: BagOnce<Box<dyn FnOnce() + Send>>,
-}
-
 struct Inner {
-    handlers: Arc<Handlers>,
-    any_requests_sender: async_mpsc::Sender<()>,
-    read_requests_sender: async_mpsc::Sender<ReadRequests>,
-    write_requests_sender: async_mpsc::Sender<WriteRequests>,
+    background_handle: Option<JoinHandle<Commitments>>,
+    any_requests_sender: Option<async_mpsc::Sender<()>>,
+    read_requests_sender: Option<async_mpsc::Sender<ReadRequests>>,
+    write_requests_sender: Option<async_mpsc::Sender<WriteRequests>>,
+    plot_db: Option<Arc<DB>>,
     piece_count: Arc<AtomicU64>,
     commitment_statuses: Mutex<HashMap<Salt, CommitmentStatus>>,
 }
 
-/// `Plot` struct is an abstraction on top of both plot and tags database. It converts async
-/// requests to internal reads/writes to the plot and tags database. It prioritizes reads over
-/// writes. Internally for that it has 2 queues for reads and writes requests, read requests are
-/// executed until exhausted after which at most 1 write request is handled and cycle repeats. This
-/// allows finding solution with as little delay as possible while introducing changes to the plot
-/// at the same time (re-plotting on salt changes or extending plot size).
+impl Drop for Inner {
+    fn drop(&mut self) {
+        // Close sending channels so that background future can actually exit
+        self.any_requests_sender.take();
+        self.read_requests_sender.take();
+        self.write_requests_sender.take();
+        let plot_db = self.plot_db.take();
+
+        let background_handle = self.background_handle.take().unwrap();
+        tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current()
+                .block_on(async move { background_handle.await })
+                .unwrap();
+
+            drop(plot_db);
+        });
+    }
+}
+
+/// `Plot` struct is an abstraction on top of both plot and tags database.
+///
+/// It converts async requests to internal reads/writes to the plot and tags database. It
+/// prioritizes reads over writes by having separate queues for reads and writes requests, read
+/// requests are executed until exhausted after which at most 1 write request is handled and the
+/// cycle repeats. This allows finding solution with as little delay as possible while introducing
+/// changes to the plot at the same time (re-plotting on salt changes or extending plot size).
 #[derive(Clone)]
 pub(crate) struct Plot {
     inner: Arc<Inner>,
@@ -107,12 +132,12 @@ pub(crate) struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub(crate) async fn open_or_create(path: &PathBuf) -> Result<Plot, PlotError> {
+    pub(crate) async fn open_or_create(base_directory: &PathBuf) -> Result<Plot, PlotError> {
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(path.join("plot.bin"))
+            .open(base_directory.join("plot.bin"))
             .await
             .map_err(PlotError::PlotOpen)?;
 
@@ -124,6 +149,15 @@ impl Plot {
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
+        let plot_db = tokio::task::spawn_blocking({
+            let path = base_directory.join("plot-metadata");
+
+            move || DB::open_default(path)
+        })
+        .await
+        .unwrap()
+        .map_err(PlotError::PlotDbOpen)?;
+
         // Channel with at most single element to throttle loop below if there are no updates
         let (any_requests_sender, mut any_requests_receiver) = async_mpsc::channel::<()>(1);
         let (read_requests_sender, mut read_requests_receiver) =
@@ -131,16 +165,14 @@ impl Plot {
         let (write_requests_sender, mut write_requests_receiver) =
             async_mpsc::channel::<WriteRequests>(100);
 
-        let handlers = Arc::new(Handlers::default());
-        let tags_dbs_fut = Commitments::new(path.join("plot-tags"));
-        let mut tags_dbs = tags_dbs_fut.await.map_err(PlotError::PlotCommitmentsOpen)?;
-        let commitment_statuses: HashMap<Salt, CommitmentStatus> = tags_dbs
+        let commitments_fut = Commitments::new(base_directory.join("commitments"));
+        let mut commitments = commitments_fut.await.map_err(PlotError::CommitmentsOpen)?;
+        let commitment_statuses: HashMap<Salt, CommitmentStatus> = commitments
             .get_existing_commitments()
             .map(|&salt| (salt, CommitmentStatus::Created))
             .collect();
 
-        tokio::spawn({
-            let handlers = Arc::clone(&handlers);
+        let background_handle = tokio::spawn({
             let piece_count = Arc::clone(&piece_count);
 
             async move {
@@ -202,7 +234,7 @@ impl Plot {
                                 salt,
                                 result_sender,
                             }) => {
-                                let tags_db = match tags_dbs.get_or_create_db(salt).await {
+                                let tags_db = match commitments.get_or_create_db(salt).await {
                                     Ok(tags_db) => tags_db,
                                     Err(error) => {
                                         error!("Failed to open tags database: {}", error);
@@ -322,7 +354,7 @@ impl Plot {
                         })) => {
                             let _ = result_sender.send(
                                 try {
-                                    let tags_db = match tags_dbs.get_or_create_db(salt).await {
+                                    let tags_db = match commitments.get_or_create_db(salt).await {
                                         Ok(tags_db) => tags_db,
                                         Err(error) => {
                                             error!("Failed to open tags database: {}", error);
@@ -347,7 +379,7 @@ impl Plot {
                             salt,
                             result_sender,
                         })) => {
-                            if let Err(error) = tags_dbs.finish_commitment_creation(salt).await {
+                            if let Err(error) = commitments.finish_commitment_creation(salt).await {
                                 error!("Failed to finish commitment creation: {}", error);
                                 continue;
                             }
@@ -358,7 +390,7 @@ impl Plot {
                             salt,
                             result_sender,
                         })) => {
-                            if let Err(error) = tags_dbs.remove_commitment(salt).await {
+                            if let Err(error) = commitments.remove_commitment(salt).await {
                                 error!("Failed to remove commitment: {}", error);
                                 continue;
                             }
@@ -378,23 +410,16 @@ impl Plot {
                     error!("Failed to sync plot file before exit: {}", error);
                 }
 
-                std::thread::spawn({
-                    let handlers = Arc::clone(&handlers);
-
-                    move || {
-                        drop(tags_dbs);
-
-                        handlers.close.call_simple();
-                    }
-                });
+                commitments
             }
         });
 
         let inner = Inner {
-            handlers,
-            any_requests_sender,
-            read_requests_sender,
-            write_requests_sender,
+            background_handle: Some(background_handle),
+            any_requests_sender: Some(any_requests_sender),
+            read_requests_sender: Some(read_requests_sender),
+            write_requests_sender: Some(write_requests_sender),
+            plot_db: Some(Arc::new(plot_db)),
             piece_count,
             commitment_statuses: Mutex::new(commitment_statuses),
         };
@@ -416,6 +441,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::ReadEncoding {
                 index,
                 result_sender,
@@ -429,7 +455,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -453,6 +479,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::FindByRange {
                 target,
                 range,
@@ -468,7 +495,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -478,6 +505,7 @@ impl Plot {
         })?
     }
 
+    // TODO: This should also update commitment for every piece written
     /// Writes a piece to the plot by index, will overwrite if piece exists (updates)
     pub(crate) async fn write_many(
         &self,
@@ -492,6 +520,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::WriteEncodings {
                 encodings,
                 first_index,
@@ -506,7 +535,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -566,6 +595,7 @@ impl Plot {
             self.inner
                 .write_requests_sender
                 .clone()
+                .unwrap()
                 .send(WriteRequests::WriteTags {
                     first_index: batch_start,
                     tags,
@@ -581,7 +611,7 @@ impl Plot {
                 })?;
 
             // If fails - it is either full or disconnected, we don't care either way, so ignore result
-            let _ = self.inner.any_requests_sender.clone().try_send(());
+            let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
             result_receiver.await.map_err(|error| {
                 io::Error::new(
@@ -615,6 +645,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::FinishCommitmentCreation {
                 salt,
                 result_sender,
@@ -631,7 +662,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -689,6 +720,7 @@ impl Plot {
         self.inner
             .write_requests_sender
             .clone()
+            .unwrap()
             .send(WriteRequests::RemoveCommitment {
                 salt,
                 result_sender,
@@ -702,7 +734,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -712,10 +744,37 @@ impl Plot {
         })
     }
 
-    /// Run callback when plot is closed, can be used to handle graceful shutdown since plot will be
-    /// closed on drop asynchronously and thus requires extra care to be handled properly.
-    pub(crate) fn on_close<F: FnOnce() + Send + 'static>(&self, callback: F) -> HandlerId {
-        self.inner.handlers.close.add(Box::new(callback))
+    /// Get last root block
+    pub(crate) async fn get_last_root_block(&self) -> Result<Option<RootBlock>, rocksdb::Error> {
+        let db = Arc::clone(self.inner.plot_db.as_ref().unwrap());
+        tokio::task::spawn_blocking(move || {
+            db.get(LAST_ROOT_BLOCK_KEY).map(|maybe_last_root_block| {
+                maybe_last_root_block.as_ref().map(|last_root_block| {
+                    serde_json::from_slice(last_root_block)
+                        .expect("Database contains incorrect last root block")
+                })
+            })
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Store last root block
+    pub(crate) async fn set_last_root_block(
+        &self,
+        last_root_block: &RootBlock,
+    ) -> Result<(), rocksdb::Error> {
+        let db = Arc::clone(self.inner.plot_db.as_ref().unwrap());
+        let last_root_block = serde_json::to_vec(&last_root_block).unwrap();
+        tokio::task::spawn_blocking(move || db.put(LAST_ROOT_BLOCK_KEY, last_root_block))
+            .await
+            .unwrap()
+    }
+
+    pub(crate) fn downgrade(&self) -> WeakPlot {
+        WeakPlot {
+            inner: Arc::downgrade(&self.inner),
+        }
     }
 
     /// Returns pieces packed one after another in contiguous `Vec<u8>`
@@ -725,6 +784,7 @@ impl Plot {
         self.inner
             .read_requests_sender
             .clone()
+            .unwrap()
             .send(ReadRequests::ReadEncodings {
                 first_index,
                 count,
@@ -739,7 +799,7 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().try_send(());
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.await.map_err(|error| {
             io::Error::new(
@@ -750,176 +810,13 @@ impl Plot {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::prelude::*;
-    use std::time::Duration;
-    use tempfile::TempDir;
+#[derive(Clone)]
+pub(crate) struct WeakPlot {
+    inner: Weak<Inner>,
+}
 
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
-
-    fn generate_random_piece() -> Piece {
-        let mut bytes = [0u8; crate::PIECE_SIZE];
-        rand::thread_rng().fill(&mut bytes[..]);
-        bytes
-    }
-
-    #[tokio::test]
-    async fn test_read_write() {
-        init();
-        let path = TempDir::new().unwrap();
-
-        let piece = generate_random_piece();
-        let salt: Salt = [1u8; 8];
-        let index = 0;
-
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
-        assert_eq!(true, plot.is_empty().await);
-        plot.write_many(vec![piece], index).await.unwrap();
-        plot.create_commitment(salt).await.unwrap();
-        assert_eq!(false, plot.is_empty().await);
-        let extracted_piece = plot.read(index).await.unwrap();
-
-        assert_eq!(piece[..], extracted_piece[..]);
-
-        drop(plot);
-
-        async_std::task::sleep(Duration::from_millis(100)).await;
-
-        // Make sure it is still not empty on reopen
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
-        assert_eq!(false, plot.is_empty().await);
-        drop(plot);
-
-        // Let plot to destroy gracefully, otherwise may get "pure virtual method called
-        // terminate called without an active exception" message
-        async_std::task::sleep(Duration::from_millis(100)).await;
-    }
-
-    #[tokio::test]
-    async fn test_commitment() {
-        init();
-        let path = TempDir::new().unwrap();
-
-        let piece: Piece = [9u8; 4096];
-        let salt: Salt = [1u8; 8];
-        let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
-        let solution_range =
-            u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-        let index = 0;
-
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
-        plot.write_many(vec![piece], index).await.unwrap();
-        plot.create_commitment(salt).await.unwrap();
-
-        let (tag, _index) = plot
-            .find_by_range(correct_tag, solution_range, salt)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(correct_tag, tag);
-    }
-
-    #[tokio::test]
-    async fn test_find_by_tag() {
-        init();
-        let path = TempDir::new().unwrap();
-        let salt: Salt = [1u8; 8];
-
-        let plot = Plot::open_or_create(&path.path().to_path_buf().into())
-            .await
-            .unwrap();
-
-        plot.write_many(
-            (0..1024_usize).map(|_| generate_random_piece()).collect(),
-            0,
-        )
-        .await
-        .unwrap();
-
-        plot.create_commitment(salt).await.unwrap();
-
-        {
-            let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
-            let solution_range =
-                u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-            // This is probabilistic, but should be fine most of the time
-            let (solution, _) = plot
-                .find_by_range(target, solution_range, salt)
-                .await
-                .unwrap()
-                .unwrap();
-            // Wraps around
-            let lower = u64::from_be_bytes(target).wrapping_sub(solution_range / 2);
-            let upper = u64::from_be_bytes(target) + solution_range / 2;
-            let solution = u64::from_be_bytes(solution);
-            assert!(
-                solution >= lower || solution <= upper,
-                "Solution {:?} must be over wrapped lower edge {:?} or under upper edge {:?}",
-                solution.to_be_bytes(),
-                lower.to_be_bytes(),
-                upper.to_be_bytes(),
-            );
-        }
-
-        {
-            let target = [0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe];
-            let solution_range =
-                u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-            // This is probabilistic, but should be fine most of the time
-            let (solution, _) = plot
-                .find_by_range(target, solution_range, salt)
-                .await
-                .unwrap()
-                .unwrap();
-            // Wraps around
-            let lower = u64::from_be_bytes(target) - solution_range / 2;
-            let upper = u64::from_be_bytes(target).wrapping_add(solution_range / 2);
-            let solution = u64::from_be_bytes(solution);
-            assert!(
-                solution >= lower || solution <= upper,
-                "Solution {:?} must be over lower edge {:?} or under wrapped upper edge {:?}",
-                solution.to_be_bytes(),
-                lower.to_be_bytes(),
-                upper.to_be_bytes(),
-            );
-        }
-
-        {
-            let target = [0xef_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
-            let solution_range =
-                u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-            // This is probabilistic, but should be fine most of the time
-            let (solution, _) = plot
-                .find_by_range(target, solution_range, salt)
-                .await
-                .unwrap()
-                .unwrap();
-            let lower = u64::from_be_bytes(target) - solution_range / 2;
-            let upper = u64::from_be_bytes(target) + solution_range / 2;
-            let solution = u64::from_be_bytes(solution);
-            assert!(
-                solution >= lower && solution <= upper,
-                "Solution {:?} must be over lower edge {:?} and under upper edge {:?}",
-                solution.to_be_bytes(),
-                lower.to_be_bytes(),
-                upper.to_be_bytes(),
-            );
-        }
-
-        drop(plot);
-
-        // Let plot to destroy gracefully, otherwise may get "pure virtual method called
-        // terminate called without an active exception" message
-        async_std::task::sleep(Duration::from_millis(100)).await;
+impl WeakPlot {
+    pub(crate) fn upgrade(&self) -> Option<Plot> {
+        self.inner.upgrade().map(|inner| Plot { inner })
     }
 }

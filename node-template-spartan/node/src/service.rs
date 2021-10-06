@@ -93,14 +93,14 @@ pub fn new_partial(
         client.clone(),
     )?;
 
-    let slot_duration = poc_link.config().slot_duration();
     sc_consensus_poc::start_subspace_archiver(
         &poc_link,
         client.clone(),
         &task_manager.spawn_handle(),
     );
+    let slot_duration = poc_link.config().slot_duration();
     let import_queue = sc_consensus_poc::import_queue(
-        poc_link.clone(),
+        &poc_link,
         block_import.clone(),
         None,
         client.clone(),
@@ -322,13 +322,8 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
     )?;
 
     let slot_duration = poc_link.config().slot_duration();
-    sc_consensus_poc::start_subspace_archiver(
-        &poc_link,
-        client.clone(),
-        &task_manager.spawn_handle(),
-    );
     let import_queue = sc_consensus_poc::import_queue(
-        poc_link,
+        &poc_link,
         poc_block_import,
         None,
         client.clone(),

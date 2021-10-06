@@ -84,9 +84,9 @@ impl<'a> Witness<'a> {
     }
 
     /// Check whether witness is valid for a specific leaf hash (none of these parameters are stored
-    /// in the witness itself) given its index within a segment
-    pub fn is_valid(&self, root: Sha256Hash, index: usize, leaf_hash: Sha256Hash) -> bool {
-        if index >= self.merkle_num_leaves {
+    /// in the witness itself) given its position within a segment
+    pub fn is_valid(&self, root: Sha256Hash, position: usize, leaf_hash: Sha256Hash) -> bool {
+        if position >= self.merkle_num_leaves {
             return false;
         }
 
@@ -114,15 +114,15 @@ impl<'a> Witness<'a> {
             .chain(iter::once(root))
             .collect();
 
-        // There is no path inside of witness, but by knowing index and number of leaves we can
+        // There is no path inside of witness, but by knowing position and number of leaves we can
         // recover it
         let path = {
             let mut path = Vec::with_capacity(self.merkle_num_leaves);
-            let mut local_index = index;
+            let mut local_position = position;
 
             for _ in 0..self.merkle_num_leaves.log2() {
-                path.push(if local_index % 2 == 0 { 0 } else { 1 });
-                local_index /= 2;
+                path.push(if local_position % 2 == 0 { 0 } else { 1 });
+                local_position /= 2;
             }
 
             path
@@ -152,9 +152,9 @@ impl<'a> From<Witness<'a>> for Cow<'a, [u8]> {
 /// Errors that can happen when creating a witness
 #[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum MerkleTreeWitnessError {
-    /// Wrong index
-    #[error("Wrong index, there is just {0} leaves available")]
-    WrongIndex(usize),
+    /// Wrong position
+    #[error("Wrong position, there is just {0} leaves available")]
+    WrongPosition(usize),
 }
 
 /// Merkle Tree
@@ -181,7 +181,7 @@ impl MerkleTree {
         T: AsRef<[u8]>,
         I: IntoIterator<Item = T>,
     {
-        Self::new(data.into_iter().map(|d| crypto::sha256_hash(d.as_ref())))
+        Self::new(data.into_iter().map(crypto::sha256_hash))
     }
 
     /// Get Merkle Root
@@ -189,16 +189,18 @@ impl MerkleTree {
         self.merkle_tree.root()
     }
 
-    /// Creates a Merkle Tree proof-based witness for a leaf at specified index, returns error if
-    /// leaf with such index doesn't exist
-    pub fn get_witness(&self, index: usize) -> Result<Witness<'static>, MerkleTreeWitnessError> {
-        if index >= self.merkle_tree.leafs() {
-            return Err(MerkleTreeWitnessError::WrongIndex(self.merkle_tree.leafs()));
+    /// Creates a Merkle Tree proof-based witness for a leaf at specified position, returns error if
+    /// leaf with such position doesn't exist
+    pub fn get_witness(&self, position: usize) -> Result<Witness<'static>, MerkleTreeWitnessError> {
+        if position >= self.merkle_tree.leafs() {
+            return Err(MerkleTreeWitnessError::WrongPosition(
+                self.merkle_tree.leafs(),
+            ));
         }
 
         let proof = self
             .merkle_tree
-            .gen_proof(index)
+            .gen_proof(position)
             .expect("This version of the tree from the library never returns error; qed");
 
         // The first lemma element is root and the last is the item itself, we skip both here

@@ -950,6 +950,10 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
 				}
 
+				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+					<pallet_spartan::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
+				}
+
 				fn extract_root_block(
 					_encoded_extrinsic: Vec<u8>,
 				) -> Option<subspace_core_primitives::RootBlock> {
@@ -1280,6 +1284,10 @@ cfg_if! {
 
 				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
 					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				}
+
+				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+					<pallet_spartan::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
 				}
 
 				fn extract_root_block(

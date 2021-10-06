@@ -1,12 +1,16 @@
-use subspace_codec::Spartan;
+use subspace_codec::SubspaceCodec;
+use subspace_core_primitives::PIECE_SIZE;
 
 #[test]
 fn test_random_piece() {
     let public_key = rand::random::<[u8; 32]>();
-    let nonce = rand::random();
+    let original_piece = rand::random::<[u8; PIECE_SIZE]>();
+    let piece_index = rand::random();
 
-    let spartan = Spartan::new(public_key.as_ref());
-    let encoding = spartan.encode(nonce);
+    let subspace_codec = SubspaceCodec::new(&public_key);
+    let mut piece = original_piece;
+    subspace_codec.encode(piece_index, &mut piece).unwrap();
+    subspace_codec.decode(piece_index, &mut piece).unwrap();
 
-    assert!(spartan.is_encoding_valid(encoding, nonce));
+    assert_eq!(original_piece, piece);
 }

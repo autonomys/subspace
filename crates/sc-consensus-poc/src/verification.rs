@@ -28,8 +28,10 @@ use sp_consensus_spartan::Randomness;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
-use subspace_codec::Spartan;
-use subspace_core_primitives::{Piece, PRIME_SIZE};
+use std::mem;
+use subspace_archiving::archiver;
+use subspace_codec::SubspaceCodec;
+use subspace_core_primitives::{Piece, Sha256Hash};
 
 /// PoC verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -47,6 +49,12 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) solution_range: u64,
     /// Salt corresponding to this block.
     pub(super) salt: Salt,
+    /// Merkle Root hash for pieces in the segment to which solution in `pre_digest` belongs to
+    pub(super) merkle_root: &'a Sha256Hash,
+    /// Position within segment of a piece from solution in `pre_digest`
+    pub(super) position: u64,
+    /// Record size for a segment to which solution in `pre_digest` belongs to
+    pub(super) record_size: u32,
     /// Signing context for verifying signatures
     pub(super) signing_context: &'a SigningContext,
 }
@@ -72,6 +80,9 @@ where
         epoch,
         solution_range,
         salt,
+        merkle_root,
+        position,
+        record_size,
         signing_context,
     } = params;
 
@@ -116,6 +127,9 @@ where
         solution_range,
         pre_digest.slot,
         salt,
+        merkle_root,
+        position,
+        record_size,
         signing_context,
     )?;
 
@@ -131,12 +145,17 @@ pub(super) struct VerifiedHeaderInfo<B: BlockT> {
     pub(super) seal: DigestItemFor<B>,
 }
 
+/// TODO: Probably a struct for arguments
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_solution<B: BlockT + Sized>(
     solution: &Solution,
     epoch_randomness: &Randomness,
     solution_range: u64,
     slot: Slot,
     salt: Salt,
+    merkle_root: &Sha256Hash,
+    position: u64,
+    record_size: u32,
     signing_context: &SigningContext,
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
@@ -161,8 +180,22 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    let spartan = Spartan::new(solution.public_key.as_ref());
-    if !spartan.is_encoding_valid(piece, solution.nonce) {
+    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+
+    let mut piece = solution.encoding.clone();
+    if subspace_codec
+        .decode(solution.piece_index, &mut piece)
+        .is_err()
+    {
+        return Err(Error::InvalidEncoding(slot));
+    }
+
+    if !archiver::is_piece_valid(
+        &piece,
+        *merkle_root,
+        position as usize,
+        record_size as usize,
+    ) {
         return Err(Error::InvalidEncoding(slot));
     }
 
@@ -219,9 +252,9 @@ pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) 
         .unwrap()
 }
 
-pub(crate) fn hash_public_key(public_key: &[u8]) -> [u8; PRIME_SIZE] {
-    let mut array = [0u8; PRIME_SIZE];
+pub(crate) fn hash_public_key(public_key: &[u8]) -> Sha256Hash {
+    let mut array = [0u8; mem::size_of::<Sha256Hash>()];
     let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..PRIME_SIZE]);
+    array.copy_from_slice(&hash.as_ref()[..mem::size_of::<Sha256Hash>()]);
     array
 }
