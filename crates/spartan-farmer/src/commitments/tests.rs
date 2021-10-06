@@ -3,6 +3,7 @@ use crate::plot::Plot;
 use crate::{Salt, Tag};
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use std::sync::Arc;
 use subspace_core_primitives::Piece;
 use tempfile::TempDir;
 
@@ -27,7 +28,7 @@ async fn create() {
     let commitments = Commitments::new(base_directory.path().join("commitments").into())
         .await
         .unwrap();
-    plot.write_many(vec![piece], index).await.unwrap();
+    plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
     commitments.create(salt, plot).await.unwrap();
 
     let (tag, _) = commitments
@@ -36,6 +37,8 @@ async fn create() {
         .unwrap();
     assert_eq!(correct_tag, tag);
 }
+
+// TODO: Tests for recommitting in background
 
 #[tokio::test(flavor = "multi_thread")]
 async fn find_by_tag() {
@@ -53,13 +56,15 @@ async fn find_by_tag() {
     // Generate deterministic pieces, such that we don't have random errors in CI
     let mut rng = StdRng::seed_from_u64(0);
     plot.write_many(
-        (0..1024_usize)
-            .map(|_| {
-                let mut bytes = [0u8; crate::PIECE_SIZE];
-                rng.fill(&mut bytes[..]);
-                bytes
-            })
-            .collect(),
+        Arc::new(
+            (0..1024_usize)
+                .map(|_| {
+                    let mut bytes = [0u8; crate::PIECE_SIZE];
+                    rng.fill(&mut bytes[..]);
+                    bytes
+                })
+                .collect(),
+        ),
         0,
     )
     .await

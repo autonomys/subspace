@@ -114,9 +114,12 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
         {
             let client = Arc::clone(&client);
             let plot = plot.clone();
+            let commitments = commitments.clone();
             let public_key = keypair.public;
 
-            Box::pin(async move { background_plotting(client, plot, &public_key).await })
+            Box::pin(
+                async move { background_plotting(client, plot, commitments, &public_key).await },
+            )
         },
         Box::pin(async move {
             subscribe_to_slot_info(&client, &plot, &commitments, &keypair, &ctx).await
@@ -145,6 +148,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
 async fn background_plotting(
     client: Arc<WsClient>,
     plot: Plot,
+    commitments: Commitments,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
     let weak_plot = plot.downgrade();
@@ -216,6 +220,7 @@ async fn background_plotting(
         // Erasure coding in archiver and piece encoding are a CPU-intensive operations
         let maybe_block_archiver_handle = tokio::task::spawn_blocking({
             let weak_plot = weak_plot.clone();
+            let commitments = commitments.clone();
             let subspace_codec = subspace_codec.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
@@ -249,9 +254,15 @@ async fn background_plotting(
                         }
 
                         if let Some(plot) = weak_plot.upgrade() {
+                            let pieces = Arc::new(pieces);
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
-                            runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))?;
+                            runtime_handle.block_on(
+                                plot.write_many(Arc::clone(&pieces), piece_index_offset),
+                            )?;
+                            runtime_handle.block_on(
+                                commitments.create_for_pieces(pieces, piece_index_offset),
+                            )?;
                             info!(
                                 "Archived segment {} at object {}",
                                 root_block.segment_index(),
@@ -351,13 +362,20 @@ async fn background_plotting(
                         }
 
                         if let Some(plot) = weak_plot.upgrade() {
+                            let pieces = Arc::new(pieces);
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
-                            if let Err(error) =
-                                runtime_handle.block_on(plot.write_many(pieces, piece_index_offset))
+                            if let Err(error) = runtime_handle
+                                .block_on(plot.write_many(Arc::clone(&pieces), piece_index_offset))
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
+                            if let Err(error) = runtime_handle
+                                .block_on(commitments.create_for_pieces(pieces, piece_index_offset))
+                            {
+                                error!("Failed to create commitments for pieces: {}", error);
+                            }
+
                             let segment_index = root_block.segment_index();
                             last_root_block.replace(root_block);
 

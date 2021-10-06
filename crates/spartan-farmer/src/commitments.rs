@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::{Piece, PIECE_SIZE};
 use thiserror::Error;
 
 const COMMITMENTS_KEY: &[u8] = b"commitments";
@@ -172,6 +172,7 @@ impl Commitments {
         })
     }
 
+    /// Create commitments for all pieces for a given salt
     pub(crate) async fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
         let mut commitment_databases = self.inner.commitment_databases.lock().await;
         if commitment_databases.databases.contains(&salt) {
@@ -247,14 +248,79 @@ impl Commitments {
         });
 
         db_guard.replace(Arc::new(db_fut.await.unwrap()?));
+        // Drop guard because locks need to be taken in a specific order or else will result in a
+        // deadlock
+        drop(db_guard);
 
         let mut commitment_databases = self.inner.commitment_databases.lock().await;
 
         // Check if database was already been removed
-        if commitment_databases.databases.contains(&salt) {
-            commitment_databases
-                .update_status(salt, CommitmentStatus::Created)
-                .await?;
+        if let Some(db_entry) = commitment_databases.databases.get(&salt) {
+            if db_entry.db.lock().await.is_some() {
+                commitment_databases
+                    .update_status(salt, CommitmentStatus::Created)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create commitments for all salts for specified pieces
+    pub(crate) async fn create_for_pieces(
+        &self,
+        pieces: Arc<Vec<Piece>>,
+        start_offset: u64,
+    ) -> Result<(), CommitmentError> {
+        let salts = self
+            .inner
+            .commitment_databases
+            .lock()
+            .await
+            .databases
+            .iter()
+            .map(|(salt, _db_entry)| *salt)
+            .collect::<Vec<Salt>>();
+
+        for salt in salts {
+            let commitment_databases = self.inner.commitment_databases.lock().await;
+            let db_entry = match commitment_databases.databases.peek(&salt).cloned() {
+                Some(db_entry) => db_entry,
+                None => {
+                    continue;
+                }
+            };
+
+            // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
+            // that nothing else can modify it
+            let db_guard = db_entry.db.lock().await;
+            drop(commitment_databases);
+
+            let db = match db_guard.clone() {
+                Some(db) => db,
+                None => {
+                    continue;
+                }
+            };
+            let create_commitment_fut = tokio::task::spawn_blocking({
+                let pieces = Arc::clone(&pieces);
+
+                move || {
+                    let tags: Vec<Tag> = pieces
+                        .par_iter()
+                        .map(|piece| crypto::create_tag(piece, &salt))
+                        .collect();
+
+                    for (tag, offset) in tags.iter().zip(start_offset..) {
+                        db.put(tag, offset.to_le_bytes())
+                            .map_err(CommitmentError::CommitmentDb)?;
+                    }
+
+                    Ok::<_, CommitmentError>(db)
+                }
+            });
+
+            create_commitment_fut.await.unwrap()?;
         }
 
         Ok(())

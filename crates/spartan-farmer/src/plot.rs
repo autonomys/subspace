@@ -42,7 +42,7 @@ enum ReadRequests {
 #[derive(Debug)]
 enum WriteRequests {
     WriteEncodings {
-        encodings: Vec<Piece>,
+        encodings: Arc<Vec<Piece>>,
         first_index: u64,
         result_sender: oneshot::Sender<io::Result<()>>,
     },
@@ -182,7 +182,7 @@ impl Plot {
                                         let mut whole_encoding = Vec::with_capacity(
                                             encodings[0].len() * encodings.len(),
                                         );
-                                        for encoding in &encodings {
+                                        for encoding in encodings.iter() {
                                             whole_encoding.extend_from_slice(encoding);
                                         }
                                         plot_file.write_all(&whole_encoding).await?;
@@ -263,11 +263,10 @@ impl Plot {
         })?
     }
 
-    // TODO: This should also update commitment for every piece written
     /// Writes a piece to the plot by index, will overwrite if piece exists (updates)
     pub(crate) async fn write_many(
         &self,
-        encodings: Vec<Piece>,
+        encodings: Arc<Vec<Piece>>,
         first_index: u64,
     ) -> io::Result<()> {
         if encodings.is_empty() {

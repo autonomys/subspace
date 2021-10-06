@@ -1,5 +1,6 @@
 use crate::plot::Plot;
 use rand::prelude::*;
+use std::sync::Arc;
 use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock};
 use tempfile::TempDir;
 
@@ -25,7 +26,7 @@ async fn read_write() {
         .await
         .unwrap();
     assert_eq!(true, plot.is_empty());
-    plot.write_many(vec![piece], index).await.unwrap();
+    plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
     assert_eq!(false, plot.is_empty());
     let extracted_piece = plot.read(index).await.unwrap();
 
