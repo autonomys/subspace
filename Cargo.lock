@@ -7270,6 +7270,7 @@ name = "spartan-farmer"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "async-lock",
  "async-std",
  "clap 3.0.0-beta.4",
  "dirs",
@@ -7279,6 +7280,7 @@ dependencies = [
  "indicatif",
  "jsonrpsee",
  "log",
+ "lru",
  "rand 0.8.4",
  "rayon",
  "ring",
