@@ -1,12 +1,13 @@
+import * as fs from 'fs';
 import { ApiPromise } from "@polkadot/api";
+import { Subscription, EMPTY, catchError } from "rxjs";
+import { concatMap, takeWhile } from "rxjs/operators";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { KeyringPair } from "@polkadot/keyring/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-import { Subscription, EMPTY, catchError } from "rxjs";
-import { concatMap, takeWhile } from "rxjs/operators";
 
 import { TxData } from "./types";
 
@@ -74,8 +75,7 @@ class Target {
     );
   }
 
-  // TODO: think about re-using existing feedIds instead of creating
-  async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
+  private async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
     this.logger.info(`Creating feed for signer ${(signer as KeyringPair).address}`);
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
@@ -129,6 +129,28 @@ class Target {
           }
         });
     });
+  }
+
+  async getFeedId(signer: AddressOrPair): Promise<U64> {
+    const { address } = (signer as KeyringPair);
+    this.logger.info(`Checking feed for ${address}`);
+
+    const file = await fs.promises.readFile('./feeds.json', 'utf8');
+    const feeds = JSON.parse(file);
+
+    if (feeds[address]) {
+      this.logger.info(`Feed already exists: ${feeds[address]}`);
+      const feedId = this.api.createType("U64", feeds[address]);
+      return feedId;
+    }
+
+    const feedId = await this.sendCreateFeedTx(signer);
+
+    feeds[address] = feedId.toBn();
+
+    await fs.promises.writeFile('./feeds.json', JSON.stringify(feeds, null, 4));
+
+    return feedId;
   }
 
   processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {

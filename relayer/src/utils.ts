@@ -1,6 +1,7 @@
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { SignedBlock } from "@polkadot/types/interfaces";
+
 import { ParaHeadAndId, ParachainConfigType, ChainName } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
@@ -43,7 +44,7 @@ export const createParachainsMap = async (
 
     for (const [index, { url, chain, paraId }] of configParachains.entries()) {
         const signer = signers[index];
-        const feedId = await target.sendCreateFeedTx(signer);
+        const feedId = await target.getFeedId(signer);
         const parachain = new Parachain({ feedId, url, chain: chain as ChainName, logger, signer });
         map.set(paraId, parachain);
     }
