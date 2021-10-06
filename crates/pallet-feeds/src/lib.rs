@@ -2,6 +2,7 @@
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
@@ -20,9 +21,19 @@ pub mod pallet {
     pub type FeedId = u64;
     pub type ObjectMetadata = Vec<u8>;
 
+    #[derive(Decode, Encode, TypeInfo, Default)]
+    pub struct TotalObjectsAndSize {
+        pub size: u64,
+        pub objects: u64,
+    }
+
     #[pallet::storage]
     pub type Feeds<T: Config> =
         StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
+
+    #[pallet::storage]
+    pub type Totals<T: Config> =
+        StorageMap<_, Blake2_128Concat, FeedId, TotalObjectsAndSize, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn current_feed_id)]
@@ -31,7 +42,9 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        DataSubmitted(ObjectMetadata, T::AccountId),
+        /// New object is added \[object_metadata, account_id, object_size\]
+        DataSubmitted(ObjectMetadata, T::AccountId, u64),
+        /// New feed is created \[feed_id, account_id\]
         FeedCreated(FeedId, T::AccountId),
     }
 
@@ -52,9 +65,10 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: add data handling
+            let object_size = data.len() as u64;
+
             log::debug!("metadata: {:?}", metadata);
-            log::debug!("data.len: {:?}", data.len());
+            log::debug!("object_size: {:?}", object_size);
 
             let current_feed_id = Self::current_feed_id();
 
@@ -62,7 +76,12 @@ pub mod pallet {
 
             Feeds::<T>::insert(feed_id, metadata.clone());
 
-            Self::deposit_event(Event::DataSubmitted(metadata, who));
+            Totals::<T>::mutate(feed_id, |feed_totals| {
+                feed_totals.size += object_size;
+                feed_totals.objects += 1;
+            });
+
+            Self::deposit_event(Event::DataSubmitted(metadata, who, object_size));
 
             Ok(())
         }
@@ -75,6 +94,8 @@ pub mod pallet {
             let feed_id = Self::current_feed_id();
 
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
+
+            Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated(feed_id, who));
 
