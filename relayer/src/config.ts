@@ -87,6 +87,11 @@ export const sourceChains = [
         paraId: 2088,
         chain: "Altair" as ChainName,
       },
+      {
+        url: "https://parallel-heiko.api.onfinality.io/public",
+        paraId: 2085,
+        chain: "Parallel Heiko" as ChainName,
+      },
     ]
   },
 ];
