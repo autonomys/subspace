@@ -16,6 +16,7 @@
 #![feature(hash_drain_filter)]
 
 mod commands;
+mod commitments;
 mod crypto;
 mod plot;
 mod utils;
@@ -25,7 +26,7 @@ use env_logger::Env;
 use log::info;
 use std::fs;
 use std::path::PathBuf;
-use subspace_core_primitives::{Piece, PIECE_SIZE};
+use subspace_core_primitives::PIECE_SIZE;
 use tokio::runtime::Runtime;
 
 type Tag = [u8; 8];

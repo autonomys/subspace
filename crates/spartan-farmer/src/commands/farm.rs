@@ -1,3 +1,4 @@
+use crate::commitments::Commitments;
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::future;
@@ -6,17 +7,17 @@ use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use ring::digest;
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use std::{fs, io};
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
@@ -105,7 +106,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
     info!("Opening plot");
-    let plot = Plot::open_or_create(&base_directory.into()).await?;
+    let plot = Plot::open_or_create(&base_directory.clone().into()).await?;
+    info!("Opening commitments");
+    let commitments = Commitments::new(base_directory.join("commitments").into()).await?;
 
     match future::select(
         {
@@ -115,7 +118,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
 
             Box::pin(async move { background_plotting(client, plot, &public_key).await })
         },
-        Box::pin(async move { subscribe_to_slot_info(&client, &plot, &keypair, &ctx).await }),
+        Box::pin(async move {
+            subscribe_to_slot_info(&client, &plot, &commitments, &keypair, &ctx).await
+        }),
     )
     .await
     {
@@ -161,7 +166,7 @@ async fn background_plotting(
 
     let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
         // Continuing from existing initial state
-        if plot.is_empty().await {
+        if plot.is_empty() {
             return Err(anyhow::Error::msg(
                 "Plot is empty on restart, can't continue",
             ));
@@ -198,7 +203,7 @@ async fn background_plotting(
         )?
     } else {
         // Starting from genesis
-        if !plot.is_empty().await {
+        if !plot.is_empty() {
             // Restart before first block was archived, erase the plot
             // TODO: Erase plot
         }
@@ -411,6 +416,7 @@ async fn background_plotting(
 async fn subscribe_to_slot_info(
     client: &WsClient,
     plot: &Plot,
+    commitments: &Commitments,
     keypair: &Keypair,
     ctx: &SigningContext,
 ) -> Result<(), anyhow::Error> {
@@ -430,13 +436,13 @@ async fn subscribe_to_slot_info(
     while let Some(slot_info) = subscription.next().await? {
         debug!("New slot: {:?}", slot_info);
 
-        update_commitments(plot, &mut salts, &slot_info).await?;
+        update_commitments(plot, commitments, &mut salts, &slot_info);
 
         let local_challenge = derive_local_challenge(&slot_info.challenge, &public_key_hash);
 
-        let solution = match plot
+        let solution = match commitments
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
-            .await?
+            .await
         {
             Some((tag, piece_index)) => {
                 let encoding = plot.read(piece_index).await?;
@@ -482,50 +488,24 @@ struct Salts {
 }
 
 /// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
-/// accordingly if necessary
-async fn update_commitments(
+/// accordingly if necessary (in background)
+fn update_commitments(
     plot: &Plot,
+    commitments: &Commitments,
     salts: &mut Salts,
     slot_info: &SlotInfo,
-) -> io::Result<()> {
-    if salts.current.is_none() {
-        let mut salts = vec![slot_info.salt];
-        if let Some(salt) = slot_info.next_salt {
-            salts.push(salt);
-        }
-        plot.retain_commitments(salts).await?;
-    }
-
+) {
     // Check if current salt has changed
     if salts.current != Some(slot_info.salt) {
-        // If previous `salts.next` is the same as current (expected behavior) remove old commitment
-        if salts.next == Some(slot_info.salt) {
-            let old_salt = salts.current.replace(slot_info.salt);
-            if let Some(old_salt) = old_salt {
-                info!(
-                    "Salt {} is out of date, removing commitment",
-                    hex::encode(old_salt)
-                );
+        salts.current.replace(slot_info.salt);
 
-                tokio::spawn({
-                    let plot = plot.clone();
+        if salts.next != Some(slot_info.salt) {
+            // If previous `salts.next` is the same as current (expected behavior), need to re-commit
 
-                    async move {
-                        if let Err(error) = plot.remove_commitment(old_salt).await {
-                            error!(
-                                "Failed to remove old commitment for {}: {}",
-                                hex::encode(old_salt),
-                                error
-                            );
-                        }
-                    }
-                });
-            }
-        } else {
-            // `salts.next` is not the same as new salt, need to re-commit
             tokio::spawn({
                 let salt = slot_info.salt;
                 let plot = plot.clone();
+                let commitments = commitments.clone();
 
                 async move {
                     let started = Instant::now();
@@ -534,7 +514,7 @@ async fn update_commitments(
                         hex::encode(salt)
                     );
 
-                    if let Err(error) = plot.create_commitment(salt).await {
+                    if let Err(error) = commitments.create(salt, plot).await {
                         error!(
                             "Failed to create commitment for {}: {}",
                             hex::encode(salt),
@@ -549,66 +529,16 @@ async fn update_commitments(
                     }
                 }
             });
-
-            let old_salt = salts.current.replace(slot_info.salt);
-            if let Some(old_salt) = old_salt {
-                warn!(
-                    "New salt {} is not the same as previously known next salt {:?}",
-                    hex::encode(slot_info.salt),
-                    salts.next.map(hex::encode)
-                );
-                info!(
-                    "Salt {} is out of date, removing commitment",
-                    hex::encode(old_salt)
-                );
-
-                tokio::spawn({
-                    let plot = plot.clone();
-
-                    async move {
-                        if let Err(error) = plot.remove_commitment(old_salt).await {
-                            error!(
-                                "Failed to remove old commitment for {}: {}",
-                                hex::encode(old_salt),
-                                error
-                            );
-                        }
-                    }
-                });
-            }
         }
     }
 
     if let Some(new_next_salt) = slot_info.next_salt {
-        if Some(new_next_salt) != salts.next {
-            let old_salt = salts.next.replace(new_next_salt);
-            if old_salt != salts.current {
-                if let Some(old_salt) = old_salt {
-                    warn!(
-                        "Previous next salt {} is out of date (current is {:?}), \
-                            removing commitment",
-                        hex::encode(old_salt),
-                        salts.current.map(hex::encode)
-                    );
-
-                    tokio::spawn({
-                        let plot = plot.clone();
-
-                        async move {
-                            if let Err(error) = plot.remove_commitment(old_salt).await {
-                                error!(
-                                    "Failed to remove old commitment for {}: {}",
-                                    hex::encode(old_salt),
-                                    error
-                                );
-                            }
-                        }
-                    });
-                }
-            }
+        if salts.next != Some(new_next_salt) {
+            salts.next.replace(new_next_salt);
 
             tokio::spawn({
                 let plot = plot.clone();
+                let commitments = commitments.clone();
 
                 async move {
                     let started = Instant::now();
@@ -616,7 +546,7 @@ async fn update_commitments(
                         "Salt will update to {} soon, recommitting in background",
                         hex::encode(new_next_salt)
                     );
-                    if let Err(error) = plot.create_commitment(new_next_salt).await {
+                    if let Err(error) = commitments.create(new_next_salt, plot).await {
                         error!(
                             "Recommitting salt in background failed for {}: {}",
                             hex::encode(new_next_salt),
@@ -633,8 +563,6 @@ async fn update_commitments(
             });
         }
     }
-
-    Ok(())
 }
 
 fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) -> [u8; 8] {
