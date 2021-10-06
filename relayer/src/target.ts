@@ -139,8 +139,8 @@ class Target {
     const feeds = JSON.parse(file);
 
     if (feeds[address]) {
-      this.logger.info(`Feed already exists: ${feeds[address]}`);
       const feedId = this.api.createType("U64", feeds[address]);
+      this.logger.info(`Feed already exists: ${feedId}`);
       return feedId;
     }
 
