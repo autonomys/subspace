@@ -5,7 +5,7 @@ import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { BN } from '@polkadot/util';
 import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
-import { from, merge } from 'rxjs';
+import { from, merge, EMPTY } from 'rxjs';
 import { Logger } from "pino";
 
 import { ParaHeadAndId, TxData, ChainName } from "./types";
@@ -77,6 +77,7 @@ class Source {
     }
 
     this.logger.info(`Associated parablocks: ${result.length}`);
+    this.logger.debug(`ParaIds: ${result.map(({ paraId }) => paraId).join(", ")}`);
 
     return result;
   }
@@ -89,26 +90,33 @@ class Source {
         .forEach(paraItem => this.logger.debug(`Extracted para head and id: ${JSON.stringify(paraItem)}`))))
       // converts Observable<ParaHeadAndId[]> to Observable<ParaHeadAndId>
       .pipe(concatAll())
-      .pipe(concatMap(({ paraId, paraHead }) => {
-        const parachain = this.parachainsMap.get(paraId);
-        if (!parachain) throw new Error(`Uknown paraId: ${paraId}`);
+      .pipe(
+        concatMap(({ paraId, paraHead }) => {
+          const parachain = this.parachainsMap.get(paraId);
 
-        const { feedId, chain, signer } = parachain;
+          // skip parachains that are not included in config
+          if (!parachain) {
+            this.logger.error(`Uknown paraId: ${paraId}`);
+            return EMPTY;
+          }
 
-        return parachain.fetchParaBlock(paraHead)
-          .pipe(map(({ block }) => {
-            const blockStr = JSON.stringify(block);
-            const number = this.api.createType("BlockNumber", block.header.number).toBn();
-            return this.addBlockTxData({
-              block: blockStr,
-              number,
-              hash: paraHead,
-              feedId,
-              chain,
-              signer
-            });
-          }));
-      }));
+          const { feedId, chain, signer } = parachain;
+
+          return parachain.fetchParaBlock(paraHead)
+            .pipe(map(({ block }) => {
+              const blockStr = JSON.stringify(block);
+              const number = this.api.createType("BlockNumber", block.header.number).toBn();
+              return this.addBlockTxData({
+                block: blockStr,
+                number,
+                hash: paraHead,
+                feedId,
+                chain,
+                signer
+              });
+            }));
+        })
+      );
   }
 
   private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
