@@ -54,7 +54,7 @@ class Target {
 
   private async sendBlockTx({ feedId, block, metadata, chain, signer }: TxData) {
     this.logger.info(`Sending ${chain} block to feed: ${feedId}`);
-    this.logger.info(`Signer: ${(signer as KeyringPair).address}`);
+    this.logger.debug(`Signer: ${(signer as KeyringPair).address}`);
     // metadata is stored as Vec<u8>
     // to decode: new TextDecoder().decode(new Uint8Array([...]))
     const metadataPayload = JSON.stringify(metadata);
@@ -77,6 +77,7 @@ class Target {
 
   private async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
     this.logger.info(`Creating feed for signer ${(signer as KeyringPair).address}`);
+    this.logger.debug(`Signer: ${(signer as KeyringPair).address}`);
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
         .create()
