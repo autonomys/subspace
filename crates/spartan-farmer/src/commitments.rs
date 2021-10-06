@@ -17,6 +17,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PIECE_SIZE};
 use thiserror::Error;
 
+const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 
 #[derive(Debug, Error)]
@@ -116,7 +117,7 @@ impl Commitments {
                     .unwrap_or_default();
 
                 let mut commitment_databases = CommitmentDatabases {
-                    databases: LruCache::new(2),
+                    databases: LruCache::new(COMMITMENTS_CACHE_SIZE),
                     metadata_cache,
                     metadata_db: Arc::new(metadata_db),
                 };
@@ -184,10 +185,19 @@ impl Commitments {
             db: Mutex::new(None),
         });
 
-        if let Some(old_db_entry) = commitment_databases
+        let old_db_entry = if commitment_databases.databases.len() >= COMMITMENTS_CACHE_SIZE {
+            commitment_databases
+                .databases
+                .pop_lru()
+                .map(|(_salt, db_entry)| db_entry)
+        } else {
+            None
+        };
+        commitment_databases
             .databases
-            .put(salt, Arc::clone(&db_entry))
-        {
+            .put(salt, Arc::clone(&db_entry));
+
+        if let Some(old_db_entry) = old_db_entry {
             let old_salt = old_db_entry.salt;
             let old_db_path = self.inner.base_directory.join(hex::encode(old_salt));
 
