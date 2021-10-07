@@ -959,6 +959,12 @@ cfg_if! {
 				) -> Option<subspace_core_primitives::RootBlock> {
 					panic!("Not needed in tests")
 				}
+
+				fn extract_block_object_mapping(
+					_block: Block,
+				) -> subspace_core_primitives::BlockObjectMapping {
+					todo!()
+				}
 			}
 
 			impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
@@ -1294,6 +1300,12 @@ cfg_if! {
 					_encoded_extrinsic: Vec<u8>,
 				) -> Option<subspace_core_primitives::RootBlock> {
 					panic!("Not needed in tests")
+				}
+
+				fn extract_block_object_mapping(
+					_block: Block,
+				) -> subspace_core_primitives::BlockObjectMapping {
+					todo!()
 				}
 			}
 

@@ -105,7 +105,7 @@ use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvid
 use sp_runtime::traits::One;
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
-    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
+    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Saturating, Zero},
 };
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -2317,8 +2317,19 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     let block = client
                         .block(&BlockId::Number(block_to_archive))
-                        .expect("Older block by number should always exist")
-                        .expect("Older block by number should always exist");
+                        .expect("Older block by number must always exist")
+                        .expect("Older block by number must always exist");
+
+                    let block_object_mapping = client
+                        .runtime_api()
+                        .extract_block_object_mapping(
+                            &BlockId::Number(block_to_archive.saturating_sub(One::one())),
+                            block.block.clone(),
+                        )
+                        .expect("Must be able to make runtime call");
+
+                    // TODO: Use block object mapping
+                    drop(block_object_mapping);
 
                     for archived_segment in archiver.add_block(block.encode()) {
                         let ArchivedSegment { root_block, pieces } = archived_segment;

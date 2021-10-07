@@ -7,7 +7,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::Decode;
+use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::{
     construct_runtime, parameter_types,
     weights::{
@@ -28,7 +28,9 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{
+    BlockObject, BlockObjectMapping, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+};
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -400,6 +402,46 @@ fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
     None
 }
 
+fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+    let mut block_object_mapping = BlockObjectMapping::default();
+    let mut base_offset =
+        block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
+    for extrinsic in block.extrinsics {
+        let signature_size = extrinsic
+            .signature
+            .as_ref()
+            .map(|s| s.encoded_size())
+            .unwrap_or_default();
+        // Extrinsic starts with vector length and version byte, followed by optional signature and
+        // `function` encoding.
+        // The last `+1` accounts for `Call::X()` enum variant encoding.
+        let base_extrinsic_offset = base_offset
+            + Compact::compact_len(
+                &((1 + signature_size + extrinsic.function.encoded_size()) as u32),
+            )
+            + 1
+            + signature_size
+            + 1;
+
+        if let Call::Feeds(call) = &extrinsic.function {
+            if let Some(call_object_location) = call.extract_object_location() {
+                let offset = (base_extrinsic_offset + call_object_location.offset).to_le_bytes();
+                let size = call_object_location.size.to_le_bytes();
+
+                // Block is known to never exceed 16MiB, hence 24-bit addressing
+                block_object_mapping.objects.push(BlockObject::V0 {
+                    offset: [offset[0], offset[1], offset[2]],
+                    size: [size[0], size[1], size[2]],
+                });
+            }
+        }
+
+        base_offset += extrinsic.encoded_size();
+    }
+
+    block_object_mapping
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -539,6 +581,10 @@ impl_runtime_apis! {
 
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
             extract_root_block(encoded_extrinsic)
+        }
+
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+            extract_block_object_mapping(block)
         }
     }
 
