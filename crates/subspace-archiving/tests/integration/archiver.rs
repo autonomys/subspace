@@ -1,9 +1,11 @@
 use rand::Rng;
 use std::assert_matches::assert_matches;
+use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
 use subspace_core_primitives::{
-    BlockObjectMapping, LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    BlockObject, BlockObjectMapping, LastArchivedBlock, PieceObject, RootBlock, Sha256Hash,
+    PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
@@ -11,21 +13,81 @@ const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
-// TODO: Tests for block object mapping to piece object mapping translation
+fn size_to_u24(size: u32) -> [u8; 3] {
+    let size = size.to_le_bytes();
+    [size[0], size[1], size[2]]
+}
+
+fn slice_chunk<O: Into<u64>, S: Into<u64>>(data: &[u8], offset: O, size: S) -> &[u8] {
+    let offset: u64 = offset.into();
+    let size: u64 = size.into();
+    &data[offset as usize..][..size as usize]
+}
+
+#[track_caller]
+fn compare_block_objects_to_piece_objects<'a>(
+    block_objects: impl Iterator<Item = (&'a [u8], &'a BlockObject)>,
+    piece_objects: impl Iterator<Item = (&'a [u8], &'a PieceObject)>,
+) {
+    block_objects.zip(piece_objects).for_each(
+        |((block, block_object_mapping), (piece, piece_object_mapping))| {
+            assert_eq!(
+                slice_chunk(
+                    piece,
+                    piece_object_mapping.offset(),
+                    piece_object_mapping.size()
+                ),
+                slice_chunk(
+                    block,
+                    block_object_mapping.offset(),
+                    block_object_mapping.size()
+                )
+            );
+        },
+    );
+}
 
 #[test]
 fn archiver() {
     let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>();
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
+    let block_0_object_mapping = BlockObjectMapping {
+        objects: vec![
+            BlockObject::V0 {
+                offset: size_to_u24(0),
+                size: size_to_u24(100),
+            },
+            BlockObject::V0 {
+                offset: size_to_u24(7000),
+                size: size_to_u24(128),
+            },
+        ],
+    };
     // There is not enough data to produce archived segment yet
     assert!(archiver
-        .add_block(block_0.to_vec(), BlockObjectMapping::default())
+        .add_block(block_0.clone(), block_0_object_mapping.clone())
         .is_empty());
 
-    let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>();
+    let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>().to_vec();
+    let block_1_object_mapping = BlockObjectMapping {
+        objects: vec![
+            BlockObject::V0 {
+                offset: size_to_u24(100),
+                size: size_to_u24(100),
+            },
+            BlockObject::V0 {
+                offset: size_to_u24(1000),
+                size: size_to_u24(2048),
+            },
+            BlockObject::V0 {
+                offset: size_to_u24(10000),
+                size: size_to_u24(100),
+            },
+        ],
+    };
     // This should produce 1 archived segment
-    let archived_segments = archiver.add_block(block_1.to_vec(), BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block_1.clone(), block_1_object_mapping.clone());
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
@@ -38,7 +100,28 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(last_archived_block.bytes, Some(7992),);
+        assert_eq!(last_archived_block.bytes, Some(7992));
+    }
+
+    // 4 objects fit into the first segment
+    assert_eq!(first_archived_segment.object_mapping.len(), 4);
+    assert_eq!(first_archived_segment.object_mapping[0].objects.len(), 1);
+    assert_eq!(first_archived_segment.object_mapping[1].objects.len(), 1);
+    assert_eq!(first_archived_segment.object_mapping[2].objects.len(), 2);
+    assert_eq!(first_archived_segment.object_mapping[3].objects.len(), 0);
+    {
+        let block_objects = iter::repeat(block_0.as_ref())
+            .zip(&block_0_object_mapping.objects)
+            .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter()));
+        let piece_objects = first_archived_segment
+            .pieces
+            .iter()
+            .zip(&first_archived_segment.object_mapping)
+            .flat_map(|(piece, object_mapping)| {
+                iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
+            });
+
+        compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
 
     // Check that all pieces are valid
@@ -51,9 +134,9 @@ fn archiver() {
         ));
     }
 
-    let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>();
+    let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>().to_vec();
     // This should be big enough to produce two archived segments in one go
-    let archived_segments = archiver.add_block(block_2.to_vec(), BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block_2.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 2);
 
     // Check that initializing archiver with initial state before last block results in the same
@@ -63,15 +146,41 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
-            block_1.to_vec(),
-            BlockObjectMapping::default(),
+            block_1.clone(),
+            block_1_object_mapping.clone(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_2.to_vec(), BlockObjectMapping::default()),
+            archiver_with_initial_state.add_block(block_2.clone(), BlockObjectMapping::default()),
             archived_segments,
         );
+    }
+
+    // 1 object fits into the second segment
+    assert_eq!(archived_segments[0].object_mapping.len(), 4);
+    assert_eq!(archived_segments[0].object_mapping[0].objects.len(), 1);
+    assert_eq!(archived_segments[0].object_mapping[1].objects.len(), 0);
+    assert_eq!(archived_segments[0].object_mapping[2].objects.len(), 0);
+    assert_eq!(archived_segments[0].object_mapping[3].objects.len(), 0);
+    // 0 object fits into the second segment
+    assert_eq!(archived_segments[1].object_mapping.len(), 4);
+    assert_eq!(archived_segments[1].object_mapping[0].objects.len(), 0);
+    assert_eq!(archived_segments[1].object_mapping[1].objects.len(), 0);
+    assert_eq!(archived_segments[1].object_mapping[2].objects.len(), 0);
+    assert_eq!(archived_segments[1].object_mapping[3].objects.len(), 0);
+    {
+        let block_objects =
+            iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter().skip(2));
+        let piece_objects = archived_segments[0]
+            .pieces
+            .iter()
+            .zip(&archived_segments[0].object_mapping)
+            .flat_map(|(piece, object_mapping)| {
+                iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
+            });
+
+        compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
 
     // Check archived bytes for block with index `2` in each archived segment
@@ -79,13 +188,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(13233),);
+        assert_eq!(last_archived_block.bytes, Some(13233));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(29143),);
+        assert_eq!(last_archived_block.bytes, Some(29143));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -117,8 +226,8 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>();
-    let archived_segments = archiver.add_block(block_3.to_vec(), BlockObjectMapping::default());
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>().to_vec();
+    let archived_segments = archiver.add_block(block_3.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
     // Check that initializing archiver with initial state before last block results in the same
@@ -128,13 +237,13 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             last_root_block,
-            block_2.to_vec(),
+            block_2.clone(),
             BlockObjectMapping::default(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_3.to_vec(), BlockObjectMapping::default()),
+            archiver_with_initial_state.add_block(block_3.clone(), BlockObjectMapping::default()),
             archived_segments,
         );
     }
@@ -198,6 +307,8 @@ fn object_archiver() {
         archiver_with_initial_state.add_block(block_1.to_vec(), BlockObjectMapping::default()),
     );
 }
+
+// TODO: Tests for block to piece object translation that crosses piece boundary
 
 #[test]
 fn archiver_invalid_usage() {
