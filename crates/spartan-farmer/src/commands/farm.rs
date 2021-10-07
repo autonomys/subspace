@@ -1,4 +1,5 @@
 use crate::commitments::Commitments;
+use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::future;
@@ -21,7 +22,9 @@ use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
-use subspace_core_primitives::BlockObjectMapping;
+use subspace_core_primitives::{
+    BlockObjectMapping, GlobalObject, Piece, PieceObject, PieceObjectMapping, Sha256Hash,
+};
 
 type SlotNumber = u64;
 
@@ -119,6 +122,14 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     let plot = Plot::open_or_create(&base_directory.clone().into()).await?;
     info!("Opening commitments");
     let commitments = Commitments::new(base_directory.join("commitments").into()).await?;
+    info!("Opening object mapping");
+    let object_mappings = tokio::task::spawn_blocking({
+        let path = base_directory.join("object-mappings");
+
+        move || ObjectMappings::new(&path)
+    })
+    .await
+    .unwrap()?;
 
     match future::select(
         {
@@ -127,9 +138,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
             let commitments = commitments.clone();
             let public_key = keypair.public;
 
-            Box::pin(
-                async move { background_plotting(client, plot, commitments, &public_key).await },
-            )
+            Box::pin(async move {
+                background_plotting(client, plot, commitments, object_mappings, &public_key).await
+            })
         },
         Box::pin(async move {
             subscribe_to_slot_info(&client, &plot, &commitments, &keypair, &ctx).await
@@ -159,6 +170,7 @@ async fn background_plotting(
     client: Arc<WsClient>,
     plot: Plot,
     commitments: Commitments,
+    object_mappings: ObjectMappings,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
     let weak_plot = plot.downgrade();
@@ -234,6 +246,7 @@ async fn background_plotting(
         let maybe_block_archiver_handle = tokio::task::spawn_blocking({
             let weak_plot = weak_plot.clone();
             let commitments = commitments.clone();
+            let object_mappings = object_mappings.clone();
             let subspace_codec = subspace_codec.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
@@ -257,6 +270,12 @@ async fn background_plotting(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
+                        let object_mapping = create_global_object_mapping(
+                            piece_index_offset,
+                            &pieces,
+                            object_mapping,
+                        );
+
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
@@ -275,8 +294,9 @@ async fn background_plotting(
                                 plot.write_many(Arc::clone(&pieces), piece_index_offset),
                             )?;
                             runtime_handle.block_on(
-                                commitments.create_for_pieces(pieces, piece_index_offset),
+                                commitments.create_for_pieces(&pieces, piece_index_offset),
                             )?;
+                            object_mappings.store(&object_mapping)?;
                             info!(
                                 "Archived segment {} at object {}",
                                 root_block.segment_index(),
@@ -372,6 +392,12 @@ async fn background_plotting(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
+                        let object_mapping = create_global_object_mapping(
+                            piece_index_offset,
+                            &pieces,
+                            object_mapping,
+                        );
+
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
@@ -391,10 +417,13 @@ async fn background_plotting(
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
-                            if let Err(error) = runtime_handle
-                                .block_on(commitments.create_for_pieces(pieces, piece_index_offset))
-                            {
+                            if let Err(error) = runtime_handle.block_on(
+                                commitments.create_for_pieces(&pieces, piece_index_offset),
+                            ) {
                                 error!("Failed to create commitments for pieces: {}", error);
+                            }
+                            if let Err(error) = object_mappings.store(&object_mapping) {
+                                error!("Failed to store object mappings for pieces: {}", error);
                             }
 
                             let segment_index = root_block.segment_index();
@@ -450,6 +479,33 @@ async fn background_plotting(
     }
 
     Ok(())
+}
+
+fn create_global_object_mapping(
+    piece_index_offset: u64,
+    pieces: &[Piece],
+    object_mapping: Vec<PieceObjectMapping>,
+) -> Vec<(Sha256Hash, GlobalObject)> {
+    pieces
+        .iter()
+        .enumerate()
+        .zip(object_mapping.iter())
+        .flat_map(move |((position, piece), object_mapping)| {
+            object_mapping.objects.iter().map(move |piece_object| {
+                let PieceObject::V0 { offset, size } = piece_object;
+                (
+                    subspace_core_primitives::crypto::sha256_hash(
+                        &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
+                    ),
+                    GlobalObject::V0 {
+                        piece_index: piece_index_offset + position as u64,
+                        offset: *offset,
+                        size: *size,
+                    },
+                )
+            })
+        })
+        .collect()
 }
 
 async fn subscribe_to_slot_info(

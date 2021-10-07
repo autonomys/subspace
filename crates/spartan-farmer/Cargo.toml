@@ -26,6 +26,7 @@ indicatif = "0.16.2"
 jsonrpsee = { version = "0.3.1", features = ["client", "types"] }
 log = "0.4.14"
 lru = "0.6.6"
+parity-scale-codec = "2.3.0"
 rayon = "1.5.0"
 ring = "0.16.20"
 schnorrkel = "0.10.1"

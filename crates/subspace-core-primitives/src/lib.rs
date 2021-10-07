@@ -250,6 +250,59 @@ impl PieceObject {
     }
 }
 
+/// Object stored inside in the history of the blockchain
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalObject {
+    /// V0 of object mapping data structure
+    #[codec(index = 0)]
+    V0 {
+        /// Piece index where object is contained (at least its beginning, might not fit fully)
+        piece_index: u64,
+        /// Offset of the object
+        offset: u16,
+        /// 24-bit little-endian size of the object
+        size: [u8; 3],
+    },
+}
+
+impl GlobalObject {
+    /// Piece index where object is contained (at least its beginning, might not fit fully)
+    pub fn piece_index(&self) -> u64 {
+        match self {
+            GlobalObject::V0 { piece_index, .. } => *piece_index,
+        }
+    }
+
+    /// Offset of the object
+    pub fn offset(&self) -> u16 {
+        match self {
+            GlobalObject::V0 { offset, .. } => *offset,
+        }
+    }
+
+    /// Offset of the object (limited to 24-bit size internally)
+    pub fn size(&self) -> u32 {
+        match self {
+            GlobalObject::V0 { size, .. } => u32::from_le_bytes([size[0], size[1], size[2], 0]),
+        }
+    }
+}
+
 /// Mapping of objects stored inside of the piece
 #[derive(
     Default,
