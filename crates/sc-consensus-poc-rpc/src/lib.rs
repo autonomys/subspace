@@ -41,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{BlockObjectMapping, RootBlock};
+use subspace_core_primitives::{BlockObjectMapping, PieceObjectMapping, RootBlock};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -100,15 +100,24 @@ pub struct RpcArchivedSegment {
     pub root_block: RootBlock,
     /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Vec<u8>>,
+    /// Mappings for objects stored in corresponding pieces.
+    ///
+    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
+    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
     fn from(archived_segment_notification: ArchivedSegmentNotification) -> Self {
-        let ArchivedSegmentNotification { root_block, pieces } = archived_segment_notification;
+        let ArchivedSegmentNotification {
+            root_block,
+            pieces,
+            object_mapping,
+        } = archived_segment_notification;
 
         Self {
             root_block,
             pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
+            object_mapping,
         }
     }
 }

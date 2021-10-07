@@ -115,7 +115,7 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::{Piece, RootBlock};
+use subspace_core_primitives::{Piece, PieceObjectMapping, RootBlock};
 
 pub mod aux_schema;
 pub mod notification;
@@ -154,6 +154,10 @@ pub struct ArchivedSegmentNotification {
     pub root_block: RootBlock,
     /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Piece>,
+    /// Mappings for objects stored in corresponding pieces.
+    ///
+    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
+    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 /// PoC epoch information
@@ -2347,10 +2351,19 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     for archived_segment in archiver.add_block(block.encode(), block_object_mapping)
                     {
-                        let ArchivedSegment { root_block, pieces } = archived_segment;
+                        let ArchivedSegment {
+                            root_block,
+                            pieces,
+                            object_mapping,
+                        } = archived_segment;
 
-                        archived_segment_notification_sender
-                            .notify(move || ArchivedSegmentNotification { root_block, pieces });
+                        archived_segment_notification_sender.notify(move || {
+                            ArchivedSegmentNotification {
+                                root_block,
+                                pieces,
+                                object_mapping,
+                            }
+                        });
 
                         let _ = root_block_sender.send(root_block).await;
                     }

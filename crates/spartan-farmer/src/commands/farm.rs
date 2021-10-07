@@ -253,6 +253,7 @@ async fn background_plotting(
                         let ArchivedSegment {
                             root_block,
                             mut pieces,
+                            object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
@@ -367,6 +368,7 @@ async fn background_plotting(
                         let ArchivedSegment {
                             root_block,
                             mut pieces,
+                            object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
