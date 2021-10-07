@@ -31,7 +31,7 @@ use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
     TestClientBuilderExt, TestNetFactory,
 };
-// use sc_service::TaskManager;
+use sc_service::TaskManager;
 use schnorrkel::Keypair;
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
 use sp_consensus_poc::inherents::InherentDataProvider;
@@ -44,8 +44,9 @@ use sp_runtime::{
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 // use std::sync::mpsc;
+use rand::prelude::*;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_codec::Spartan;
+use subspace_codec::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;
@@ -209,7 +210,10 @@ thread_local! {
 }
 
 #[derive(Clone)]
-pub struct PanickingBlockImport<B>(B);
+pub struct PanickingBlockImport<B> {
+    block_import: B,
+    link: PoCLink<TestBlock>,
+}
 
 #[async_trait::async_trait]
 impl<B: BlockImport<TestBlock>> BlockImport<TestBlock> for PanickingBlockImport<B>
@@ -225,11 +229,26 @@ where
         block: BlockImportParams<TestBlock, Self::Transaction>,
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
-        Ok(self
-            .0
+        // TODO: Here we are hacking around lack of transaction support in test runtime and
+        //  remove known root blocks for current block to make sure block import doesn't fail, this
+        //  should be removed once runtime supports transactions
+        let block_number = block.header.number.into();
+        let removed_root_blocks = self.link.root_blocks.lock().pop(&block_number);
+
+        let import_result = self
+            .block_import
             .import_block(block, new_cache)
             .await
-            .expect("importing block failed"))
+            .expect("importing block failed");
+
+        if let Some(removed_root_blocks) = removed_root_blocks {
+            self.link
+                .root_blocks
+                .lock()
+                .put(block_number, removed_root_blocks);
+        }
+
+        Ok(import_result)
     }
 
     async fn check_block(
@@ -237,7 +256,7 @@ where
         block: BlockCheckParams<TestBlock>,
     ) -> Result<ImportResult, Self::Error> {
         Ok(self
-            .0
+            .block_import
             .check_block(block)
             .await
             .expect("checking block failed"))
@@ -330,7 +349,10 @@ impl TestNetFactory for PoCTestNet {
         let (block_import, link) = crate::block_import(config, client.clone(), client.clone())
             .expect("can initialize block-import");
 
-        let block_import = PanickingBlockImport(block_import);
+        let block_import = PanickingBlockImport {
+            block_import,
+            link: link.clone(),
+        };
 
         let data_block_import =
             Mutex::new(Some(Box::new(block_import.clone()) as BoxBlockImport<_, _>));
@@ -380,6 +402,7 @@ impl TestNetFactory for PoCTestNet {
                 config: data.link.config.clone(),
                 epoch_changes: data.link.epoch_changes.clone(),
                 can_author_with: AlwaysCanAuthor,
+                root_blocks: Arc::clone(&data.link.root_blocks),
                 telemetry: None,
                 signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
             },
@@ -413,6 +436,44 @@ fn rejects_empty_block() {
     })
 }
 
+fn get_archived_pieces(client: &TestClient) -> Vec<Piece> {
+    let genesis_block_id = BlockId::Number(Zero::zero());
+    let runtime_api = client.runtime_api();
+
+    let record_size = runtime_api.record_size(&genesis_block_id).unwrap();
+    let recorded_history_segment_size = runtime_api
+        .recorded_history_segment_size(&genesis_block_id)
+        .unwrap();
+    let pre_genesis_object_size = runtime_api
+        .pre_genesis_object_size(&genesis_block_id)
+        .unwrap();
+    let pre_genesis_object_count = runtime_api
+        .pre_genesis_object_count(&genesis_block_id)
+        .unwrap();
+    let pre_genesis_object_seed = runtime_api
+        .pre_genesis_object_seed(&genesis_block_id)
+        .unwrap();
+
+    let mut object_archiver =
+        ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+            .expect("Incorrect parameters for archiver");
+
+    (0..pre_genesis_object_count)
+        .map(|index| {
+            object_archiver
+                .add_object(pre_genesis_data::from_seed(
+                    &pre_genesis_object_seed,
+                    index,
+                    pre_genesis_object_size,
+                ))
+                .into_iter()
+        })
+        .flatten()
+        .map(|archived_segment| archived_segment.pieces.into_iter())
+        .flatten()
+        .collect()
+}
+
 fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static) {
     sp_tracing::try_init_simple();
     let mutator = Arc::new(mutator) as Mutator;
@@ -423,6 +484,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
     let net = Arc::new(Mutex::new(net));
     let mut import_notifications = Vec::new();
     let mut poc_futures = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
+    let tokio_runtime = sc_cli::build_runtime().unwrap();
 
     for peer_id in [0, 1, 2_usize].iter() {
         let mut net = net.lock();
@@ -472,6 +534,21 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .for_each(|_| future::ready(())),
         );
 
+        let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
+
+        super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_handle());
+
+        let (archived_pieces_sender, archived_pieces_receiver) = oneshot::channel();
+
+        std::thread::spawn({
+            let client = Arc::clone(&client);
+
+            move || {
+                let archived_pieces = get_archived_pieces(&client);
+                archived_pieces_sender.send(archived_pieces).unwrap();
+            }
+        });
+
         let poc_worker = start_poc(PoCParams {
             block_import: data
                 .block_import
@@ -505,10 +582,17 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let poc_farmer = async move {
             let keypair = Keypair::generate();
-            let spartan = Spartan::new(keypair.public.as_ref());
+            let subspace_codec = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
-            let nonce = 0;
-            let encoding: Piece = spartan.encode(nonce);
+            let (piece_index, mut piece) = archived_pieces_receiver
+                .await
+                .unwrap()
+                .into_iter()
+                .enumerate()
+                .choose(&mut rand::thread_rng())
+                .map(|(piece_index, piece)| (piece_index as u64, piece))
+                .unwrap();
+            subspace_codec.encode(piece_index, &mut piece).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -516,14 +600,14 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&encoding, &new_slot_info.salt);
+                    let tag: Tag = create_tag(&piece, &new_slot_info.salt);
 
                     let _ = solution_sender
                         .send((
                             Solution {
                                 public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-                                nonce,
-                                encoding: encoding.to_vec(),
+                                piece_index,
+                                encoding: piece.to_vec(),
                                 signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
                                 tag,
                             },
@@ -537,7 +621,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         poc_futures.push(Box::pin(poc_worker));
         poc_futures.push(Box::pin(poc_farmer));
     }
-    block_on(future::select(
+    tokio_runtime.block_on(future::select(
         futures::future::poll_fn(move |cx| {
             let mut net = net.lock();
             net.poll(cx);
@@ -563,7 +647,10 @@ fn create_tag(encoding: &[u8], salt: &[u8]) -> Tag {
         .unwrap()
 }
 
+// TODO: Un-ignore once `submit_test_store_root_block()` is working or transactions are supported in
+//  test runtime
 #[test]
+#[ignore]
 fn authoring_blocks() {
     run_one_test(|_, _| ())
 }
@@ -640,7 +727,7 @@ pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, Farmer
         PreDigest {
             solution: Solution {
                 public_key: Default::default(),
-                nonce: 0,
+                piece_index: 0,
                 encoding: vec![],
                 signature: vec![],
                 tag: Default::default(),
@@ -712,7 +799,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                     slot,
                     solution: Solution {
                         public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-                        nonce: 0,
+                        piece_index: 0,
                         encoding: encoding.to_vec(),
                         signature: signature.clone(),
                         tag,
@@ -1054,7 +1141,7 @@ fn verify_slots_are_strictly_increasing() {
 //                     .send(archived_segment_notification)
 //                     .unwrap();
 //             }
-//         })
+//         });
 //     });
 //
 //     {

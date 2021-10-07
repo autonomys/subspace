@@ -935,6 +935,11 @@ impl<T: Config> Pallet<T> {
     pub fn is_in_block_list(farmer_id: &FarmerId) -> bool {
         BlockList::<T>::contains_key(farmer_id)
     }
+
+    /// Get MerkleRoot for specified segment index
+    pub fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
+        MerkleRootsBySegmentIndex::<T>::get(segment_index)
+    }
 }
 
 impl<T> Pallet<T>

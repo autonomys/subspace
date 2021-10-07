@@ -14,21 +14,24 @@ include = [
 ]
 
 [dependencies]
+anyhow = "1.0.44"
+async-lock = "2.4.0"
 async-std = "1.9.0"
 clap = "3.0.0-beta.4"
 dirs = "4.0.0"
 env_logger = "0.9.0"
-event-listener-primitives = "2.0.1"
 futures = "0.3.13"
 hex = "0.4.3"
 indicatif = "0.16.2"
 jsonrpsee = { version = "0.3.1", features = ["client", "types"] }
 log = "0.4.14"
+lru = "0.6.6"
 rayon = "1.5.0"
 ring = "0.16.20"
 schnorrkel = "0.10.1"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = "1.0.64"
+subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.24"
@@ -46,7 +49,7 @@ version = "0.17.0"
 async-std = { version = "1.9.0", features = ["attributes"] }
 rand = "0.8.4"
 tempfile = "3.2.0"
-tokio = { version = "1.11.0", features = ["macros"] }
+tokio = { version = "1.11.0", features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []

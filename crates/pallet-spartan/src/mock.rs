@@ -37,6 +37,7 @@ use sp_runtime::{
     Perbill,
 };
 use std::convert::TryInto;
+use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -191,18 +192,19 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let spartan = subspace_codec::Spartan::new(keypair.public.as_ref());
+    let subspace_codec = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
-    let nonce = 0;
-    let encoding: Piece = spartan.encode(nonce);
-    let tag: Tag = create_tag(&encoding, &Spartan::salt().to_le_bytes());
+    let piece_index = 0;
+    let mut piece: Piece = [0u8; 4096];
+    subspace_codec.encode(piece_index, &mut piece).unwrap();
+    let tag: Tag = create_tag(&piece, &Spartan::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
             public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
-            nonce: 0,
-            encoding: encoding.to_vec(),
+            piece_index: 0,
+            encoding: piece.to_vec(),
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
             tag,
         },
@@ -259,13 +261,13 @@ pub fn generate_equivocation_proof(
     let public_key = FarmerId::from_slice(&keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();
 
-    let make_header = |nonce| {
+    let make_header = |piece_index| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
                 public_key: public_key.clone(),
-                nonce,
+                piece_index,
                 encoding: encoding.to_vec(),
                 signature: signature.clone(),
                 tag,
