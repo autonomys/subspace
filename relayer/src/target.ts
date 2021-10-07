@@ -1,12 +1,13 @@
+import * as fs from 'fs';
 import { ApiPromise } from "@polkadot/api";
+import { Subscription, EMPTY, catchError } from "rxjs";
+import { concatMap, takeWhile } from "rxjs/operators";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { KeyringPair } from "@polkadot/keyring/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-import { Subscription, EMPTY, catchError } from "rxjs";
-import { concatMap, takeWhile } from "rxjs/operators";
 
 import { TxData } from "./types";
 
@@ -16,18 +17,15 @@ const polkadotAppsUrl =
 
 interface TargetConstructorParams {
   api: ApiPromise;
-  signer: AddressOrPair;
   logger: Logger;
 }
 
 class Target {
   private readonly api: ApiPromise;
-  private readonly signer: AddressOrPair;
   private readonly logger: Logger;
 
-  constructor({ api, signer, logger }: TargetConstructorParams) {
+  constructor({ api, logger }: TargetConstructorParams) {
     this.api = api;
-    this.signer = signer;
     this.logger = logger;
     this.sendBlockTx = this.sendBlockTx.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
@@ -63,7 +61,7 @@ class Target {
         // it is required to specify nonce, otherwise transaction within same block will be rejected
         // if nonce is -1 API will do the lookup for the right value
         // https://polkadot.js.org/docs/api/cookbook/tx/#how-do-i-take-the-pending-tx-pool-into-account-in-my-nonce
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(
           takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
@@ -74,14 +72,13 @@ class Target {
     );
   }
 
-  // TODO: think about re-using existing feedIds instead of creating
-  async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
+  private async sendCreateFeedTx(signer: AddressOrPair): Promise<U64> {
     this.logger.info(`Creating feed for signer ${(signer as KeyringPair).address}`);
     this.logger.debug(`Signer: ${(signer as KeyringPair).address}`);
     return new Promise((resolve) => {
       this.api.rx.tx.feeds
         .create()
-        .signAndSend(this.signer, { nonce: -1 }, Promise.resolve)
+        .signAndSend(signer, { nonce: -1 }, Promise.resolve)
         .pipe(
           takeWhile(({ status }) => !status.isInBlock, true),
           catchError((error) => {
@@ -130,6 +127,28 @@ class Target {
           }
         });
     });
+  }
+
+  async getFeedId(signer: AddressOrPair): Promise<U64> {
+    const { address } = (signer as KeyringPair);
+    this.logger.info(`Checking feed for ${address}`);
+
+    const file = await fs.promises.readFile('./feeds.json', 'utf8');
+    const feeds = JSON.parse(file);
+
+    if (feeds[address]) {
+      const feedId = this.api.createType("U64", feeds[address]);
+      this.logger.info(`Feed already exists: ${feedId}`);
+      return feedId;
+    }
+
+    const feedId = await this.sendCreateFeedTx(signer);
+
+    feeds[address] = feedId.toBn();
+
+    await fs.promises.writeFile('./feeds.json', JSON.stringify(feeds, null, 4));
+
+    return feedId;
   }
 
   processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {

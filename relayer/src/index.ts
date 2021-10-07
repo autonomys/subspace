@@ -1,5 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { merge } from "rxjs";
+
 import { getAccount } from "./account";
 import Config, { sourceChains } from "./config";
 import Source from "./source";
@@ -25,42 +26,45 @@ const createApi = async (url: string) => {
 
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
-  const targetApi = await createApi(config.targetChainUrl);
-  // use getAccount func because we cannot create keyring instance before API is instanciated
-  const signer = getAccount(config.accountSeed);
+  try {
+    const targetApi = await createApi(config.targetChainUrl);
 
-  const target = new Target({ api: targetApi, signer, logger });
+    const target = new Target({ api: targetApi, logger });
 
-  const sources = await Promise.all(
-    config.sourceChains.map(async ({ url, parachains }) => {
-      const api = await createApi(url);
-      const chain = await api.rpc.system.chain();
-      const master = getAccount(config.accountSeed);
-      const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
-      const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
+    const sources = await Promise.all(
+      config.sourceChains.map(async ({ url, parachains }) => {
+        const api = await createApi(url);
+        const chain = await api.rpc.system.chain();
+        const master = getAccount(config.accountSeed);
+        const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
+        const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
 
-      // TODO: can be optimized by sending batch of txs
-      // TODO: master has to delegate spending to sourceSigner and paraSigners
-      for (const delegate of [sourceSigner, ...paraSigners]) {
-        // send 1.5 units
-        await target.sendBalanceTx(master, delegate, 1.5);
-      }
+        // TODO: can be optimized by sending batch of txs
+        // TODO: master has to delegate spending to sourceSigner and paraSigners
+        for (const delegate of [sourceSigner, ...paraSigners]) {
+          // send 1.5 units
+          await target.sendBalanceTx(master, delegate, 1.5);
+        }
 
-      const feedId = await target.sendCreateFeedTx(sourceSigner);
-      const parachainsMap = await createParachainsMap(target, parachains, paraSigners);
+        // check if feed already exists
+        const feedId = await target.getFeedId(sourceSigner);
+        const parachainsMap = await createParachainsMap(target, parachains, paraSigners);
 
-      return new Source({
-        api,
-        chain: chain.toString() as ChainName,
-        parachainsMap,
-        logger,
-        feedId,
-        signer: sourceSigner,
-      });
-    })
-  );
+        return new Source({
+          api,
+          chain: chain.toString() as ChainName,
+          parachainsMap,
+          logger,
+          feedId,
+          signer: sourceSigner,
+        });
+      })
+    );
 
-  const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
+    const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
 
-  target.processSubscriptions(blockSubscriptions).subscribe();
+    target.processSubscriptions(blockSubscriptions).subscribe();
+  } catch (error) {
+    logger.error((error as Error).message);
+  }
 })();
