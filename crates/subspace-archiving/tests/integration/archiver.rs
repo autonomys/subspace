@@ -3,7 +3,7 @@ use std::assert_matches::assert_matches;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
 use subspace_core_primitives::{
-    LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    BlockObjectMapping, LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
@@ -11,17 +11,21 @@ const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
+// TODO: Tests for block object mapping to piece object mapping translation
+
 #[test]
 fn archiver() {
     let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>();
     // There is not enough data to produce archived segment yet
-    assert!(archiver.add_block(block_0.to_vec()).is_empty());
+    assert!(archiver
+        .add_block(block_0.to_vec(), BlockObjectMapping::default())
+        .is_empty());
 
     let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>();
     // This should produce 1 archived segment
-    let archived_segments = archiver.add_block(block_1.to_vec());
+    let archived_segments = archiver.add_block(block_1.to_vec(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
@@ -49,7 +53,7 @@ fn archiver() {
 
     let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>();
     // This should be big enough to produce two archived segments in one go
-    let archived_segments = archiver.add_block(block_2.to_vec());
+    let archived_segments = archiver.add_block(block_2.to_vec(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 2);
 
     // Check that initializing archiver with initial state before last block results in the same
@@ -60,11 +64,12 @@ fn archiver() {
             SEGMENT_SIZE,
             first_archived_segment.root_block,
             block_1.to_vec(),
+            BlockObjectMapping::default(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_2.to_vec()),
+            archiver_with_initial_state.add_block(block_2.to_vec(), BlockObjectMapping::default()),
             archived_segments,
         );
     }
@@ -113,7 +118,7 @@ fn archiver() {
 
     // Add a block such that it fits in the next segment exactly
     let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>();
-    let archived_segments = archiver.add_block(block_3.to_vec());
+    let archived_segments = archiver.add_block(block_3.to_vec(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
     // Check that initializing archiver with initial state before last block results in the same
@@ -124,11 +129,12 @@ fn archiver() {
             SEGMENT_SIZE,
             last_root_block,
             block_2.to_vec(),
+            BlockObjectMapping::default(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_3.to_vec()),
+            archiver_with_initial_state.add_block(block_3.to_vec(), BlockObjectMapping::default()),
             archived_segments,
         );
     }
@@ -171,20 +177,25 @@ fn object_archiver() {
     let block_0 = rand::random::<[u8; SEGMENT_SIZE]>();
 
     let root_block = archiver
-        .add_block(block_0.to_vec())
+        .add_block(block_0.to_vec(), BlockObjectMapping::default())
         .into_iter()
         .next()
         .unwrap()
         .root_block;
 
-    let mut archiver_with_initial_state =
-        BlockArchiver::with_initial_state(RECORD_SIZE, SEGMENT_SIZE, root_block, block_0.to_vec())
-            .unwrap();
+    let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
+        RECORD_SIZE,
+        SEGMENT_SIZE,
+        root_block,
+        block_0.to_vec(),
+        BlockObjectMapping::default(),
+    )
+    .unwrap();
 
     let block_1 = rand::random::<[u8; SEGMENT_SIZE]>();
     assert_eq!(
-        archiver.add_block(block_1.to_vec()),
-        archiver_with_initial_state.add_block(block_1.to_vec()),
+        archiver.add_block(block_1.to_vec(), BlockObjectMapping::default()),
+        archiver_with_initial_state.add_block(block_1.to_vec(), BlockObjectMapping::default()),
     );
 }
 
@@ -228,6 +239,7 @@ fn archiver_invalid_usage() {
                 },
             },
             &vec![0u8; 10],
+            BlockObjectMapping::default(),
         );
 
         assert_matches!(
@@ -254,6 +266,7 @@ fn archiver_invalid_usage() {
                 },
             },
             &vec![0u8; 6],
+            BlockObjectMapping::default(),
         );
 
         assert_matches!(
@@ -285,6 +298,7 @@ fn archiver_invalid_usage() {
                 },
             },
             &vec![0u8; 5],
+            BlockObjectMapping::default(),
         );
 
         assert_matches!(
@@ -302,7 +316,12 @@ fn one_byte_smaller_segment() {
     // but this should already produce archived segment since just enum variant and smallest compact
     // vector length encoding will take 2 bytes to encode, thus it will be impossible to slice
     // internal bytes of the segment item anyway
-    assert_eq!(archiver.add_block(vec![0u8; SEGMENT_SIZE - 7]).len(), 1);
+    assert_eq!(
+        archiver
+            .add_block(vec![0u8; SEGMENT_SIZE - 7], BlockObjectMapping::default())
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -310,11 +329,18 @@ fn spill_over_edge_case() {
     let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     // Carefully compute the block size such that there is just 3 byte left to fill the segment
-    assert!(archiver.add_block(vec![0u8; SEGMENT_SIZE - 8]).is_empty());
+    assert!(archiver
+        .add_block(vec![0u8; SEGMENT_SIZE - 8], BlockObjectMapping::default())
+        .is_empty());
 
     // Here we add one more block with internal length that takes 4 bytes in compact length
     // encoding + one more for enum variant, this should result in new segment being created, but
     // the very first segment item will not include newly added block because it would result in
     // subtracting with overflow when trying to slice internal bytes of the segment item
-    assert_eq!(archiver.add_block(vec![0u8; 2_usize.pow(14)]).len(), 2);
+    assert_eq!(
+        archiver
+            .add_block(vec![0u8; 2_usize.pow(14)], BlockObjectMapping::default())
+            .len(),
+        2
+    );
 }

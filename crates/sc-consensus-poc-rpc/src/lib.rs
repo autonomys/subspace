@@ -41,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::{BlockObjectMapping, RootBlock};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -67,6 +67,15 @@ pub struct FarmerMetadata {
     /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
     /// the history.
     pub pre_genesis_object_seed: Vec<u8>,
+}
+
+/// Encoded block with mapping of objects that it contains
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncodedBlockWithObjectMapping {
+    /// Encoded block
+    pub block: Vec<u8>,
+    /// Mapping of objects inside of the block
+    pub object_mapping: BlockObjectMapping,
 }
 
 /// Information about new slot that just arrived
@@ -131,8 +140,11 @@ pub trait PoCRpcApi {
     fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata>;
 
     /// Get encoded block by given block number
-    #[rpc(name = "subspace_getEncodedBlockByNumber")]
-    fn get_encoded_block_by_number(&self, block_number: u32) -> FutureResult<Option<Vec<u8>>>;
+    #[rpc(name = "subspace_getBlockByNumber")]
+    fn get_block_by_number(
+        &self,
+        block_number: u32,
+    ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
     #[rpc(name = "poc_proposeProofOfSpace")]
     fn propose_proof_of_space(
@@ -283,17 +295,42 @@ where
         })
     }
 
-    fn get_encoded_block_by_number(&self, block_number: u32) -> FutureResult<Option<Vec<u8>>> {
-        let client = Arc::clone(&self.client);
-        Box::pin(async move {
-            client
-                .block(&BlockId::Number(block_number.into()))
-                .map(|maybe_block| maybe_block.map(|block| block.encode()))
-                .map_err(|error| {
-                    error!("Failed to get block by number: {}", error);
-                    RpcError::new(ErrorCode::InternalError)
+    fn get_block_by_number(
+        &self,
+        block_number: u32,
+    ) -> FutureResult<Option<EncodedBlockWithObjectMapping>> {
+        let result = self
+            .client
+            .block(&BlockId::Number(block_number.into()))
+            .map_err(|error| {
+                error!("Failed to get block by number: {}", error);
+                RpcError::new(ErrorCode::InternalError)
+            })
+            .and_then(|block| {
+                Ok(if let Some(block) = block {
+                    let encoded_block = block.encode();
+                    let object_mapping = self
+                        .client
+                        .runtime_api()
+                        .extract_block_object_mapping(
+                            &BlockId::Number(block_number.saturating_sub(1).into()),
+                            block.block,
+                        )
+                        .map_err(|error| {
+                            error!("Failed to extract object mapping: {}", error);
+                            RpcError::new(ErrorCode::InternalError)
+                        })?;
+
+                    Some(EncodedBlockWithObjectMapping {
+                        block: encoded_block,
+                        object_mapping,
+                    })
+                } else {
+                    None
                 })
-        })
+            });
+
+        Box::pin(async move { result })
     }
 
     fn propose_proof_of_space(
