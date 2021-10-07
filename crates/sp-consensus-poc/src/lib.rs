@@ -35,7 +35,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_spartan::Randomness;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
-use subspace_core_primitives::{BlockObjectMapping, RootBlock, Sha256Hash};
+use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::{RootBlock, Sha256Hash};
 
 /// Key type for PoC module.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");

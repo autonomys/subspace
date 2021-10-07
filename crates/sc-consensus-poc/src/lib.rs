@@ -115,7 +115,8 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::{Piece, PieceObjectMapping, RootBlock};
+use subspace_core_primitives::objects::PieceObjectMapping;
+use subspace_core_primitives::{Piece, RootBlock};
 
 pub mod aux_schema;
 pub mod notification;

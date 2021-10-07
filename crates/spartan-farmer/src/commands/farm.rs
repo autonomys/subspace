@@ -22,9 +22,10 @@ use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
-use subspace_core_primitives::{
-    BlockObjectMapping, GlobalObject, Piece, PieceObject, PieceObjectMapping, Sha256Hash,
+use subspace_core_primitives::objects::{
+    BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
+use subspace_core_primitives::{Piece, Sha256Hash};
 
 type SlotNumber = u64;
 

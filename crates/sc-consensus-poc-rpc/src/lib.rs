@@ -41,7 +41,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{BlockObjectMapping, PieceObjectMapping, RootBlock};
+use subspace_core_primitives::objects::{BlockObjectMapping, PieceObjectMapping};
+use subspace_core_primitives::RootBlock;
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 

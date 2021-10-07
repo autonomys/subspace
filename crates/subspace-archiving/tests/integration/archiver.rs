@@ -3,9 +3,9 @@ use std::assert_matches::assert_matches;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
+use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    BlockObject, BlockObjectMapping, LastArchivedBlock, PieceObject, RootBlock, Sha256Hash,
-    PIECE_SIZE, SHA256_HASH_SIZE,
+    LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;

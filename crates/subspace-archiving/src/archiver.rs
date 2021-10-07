@@ -23,9 +23,11 @@ use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
+use subspace_core_primitives::objects::{
+    BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
+};
 use subspace_core_primitives::{
-    crypto, BlockObject, BlockObjectMapping, LastArchivedBlock, Piece, PieceObject,
-    PieceObjectMapping, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 

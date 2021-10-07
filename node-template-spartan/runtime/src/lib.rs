@@ -28,9 +28,8 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{
-    BlockObject, BlockObjectMapping, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
-};
+use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
+use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE};
 
 /// An index to a block.
 pub type BlockNumber = u32;
