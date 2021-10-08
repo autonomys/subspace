@@ -1,4 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+
+use codec::{Compact, CompactLen};
+use core::mem;
 use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -100,6 +103,34 @@ pub mod pallet {
             Self::deposit_event(Event::FeedCreated(feed_id, who));
 
             Ok(())
+        }
+    }
+}
+
+/// Mapping to the object offset and size within an extrinsic
+pub struct CallObjectLocation {
+    /// Offset
+    pub offset: usize,
+    /// Size
+    pub size: usize,
+}
+
+impl<T: Config> Call<T> {
+    /// Extract object location if an extrinsic corresponds to `put` call
+    pub fn extract_object_location(&self) -> Option<CallObjectLocation> {
+        match self {
+            Self::put { data, .. } => {
+                // FeedId is the first field in the extrinsic followed by compact length prefix of
+                // the actual data and data itself.
+                // `+1` corresponds to `Call::put {}` enum variant encoding.
+                Some(CallObjectLocation {
+                    offset: mem::size_of::<FeedId>()
+                        + Compact::compact_len(&(data.len() as u32))
+                        + 1,
+                    size: data.len(),
+                })
+            }
+            _ => None,
         }
     }
 }

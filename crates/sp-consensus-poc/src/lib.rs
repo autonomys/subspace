@@ -35,6 +35,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_spartan::Randomness;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
 use sp_std::vec::Vec;
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{RootBlock, Sha256Hash};
 
 /// Key type for PoC module.
@@ -310,5 +311,8 @@ sp_api::decl_runtime_apis! {
 
         /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;
+
+        /// Extract block object mapping for a given block
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping;
     }
 }

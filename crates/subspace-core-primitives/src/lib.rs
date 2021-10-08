@@ -16,9 +16,11 @@
 //! Core primitives for Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![warn(rust_2018_idioms, missing_docs)]
+#![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 
 pub mod crypto;
+pub mod objects;
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -74,9 +76,11 @@ pub struct LastArchivedBlock {
     Deserialize,
 )]
 #[cfg_attr(feature = "std", derive(Debug))]
+#[serde(rename_all = "camelCase")]
 pub enum RootBlock {
     /// V0 of the root block data structure
     #[codec(index = 0)]
+    #[serde(rename_all = "camelCase")]
     V0 {
         /// Segment index
         segment_index: u64,

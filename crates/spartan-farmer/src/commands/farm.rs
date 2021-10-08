@@ -1,4 +1,5 @@
 use crate::commitments::Commitments;
+use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
 use futures::future;
@@ -21,6 +22,10 @@ use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_codec::SubspaceCodec;
+use subspace_core_primitives::objects::{
+    BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
+};
+use subspace_core_primitives::{Piece, Sha256Hash};
 
 type SlotNumber = u64;
 
@@ -29,19 +34,28 @@ type SlotNumber = u64;
 struct FarmerMetadata {
     /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
     /// to the client-dependent transaction confirmation depth `k`).
-    pub confirmation_depth_k: u32,
+    confirmation_depth_k: u32,
     /// The size of data in one piece (in bytes).
-    pub record_size: u32,
+    record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
-    pub recorded_history_segment_size: u32,
+    recorded_history_segment_size: u32,
     /// This constant defines the size (in bytes) of one pre-genesis object.
-    pub pre_genesis_object_size: u32,
+    pre_genesis_object_size: u32,
     /// This constant defines the number of a pre-genesis objects that will bootstrap the
     /// history.
-    pub pre_genesis_object_count: u32,
+    pre_genesis_object_count: u32,
     /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
     /// the history.
-    pub pre_genesis_object_seed: Vec<u8>,
+    pre_genesis_object_seed: Vec<u8>,
+}
+
+/// Encoded block with mapping of objects that it contains
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EncodedBlockWithObjectMapping {
+    /// Encoded block
+    block: Vec<u8>,
+    /// Mapping of objects inside of the block
+    object_mapping: BlockObjectMapping,
 }
 
 // There are more fields in this struct, but we only care about one
@@ -109,6 +123,14 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     let plot = Plot::open_or_create(&base_directory.clone().into()).await?;
     info!("Opening commitments");
     let commitments = Commitments::new(base_directory.join("commitments").into()).await?;
+    info!("Opening object mapping");
+    let object_mappings = tokio::task::spawn_blocking({
+        let path = base_directory.join("object-mappings");
+
+        move || ObjectMappings::new(&path)
+    })
+    .await
+    .unwrap()?;
 
     match future::select(
         {
@@ -117,9 +139,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
             let commitments = commitments.clone();
             let public_key = keypair.public;
 
-            Box::pin(
-                async move { background_plotting(client, plot, commitments, &public_key).await },
-            )
+            Box::pin(async move {
+                background_plotting(client, plot, commitments, object_mappings, &public_key).await
+            })
         },
         Box::pin(async move {
             subscribe_to_slot_info(&client, &plot, &commitments, &keypair, &ctx).await
@@ -149,6 +171,7 @@ async fn background_plotting(
     client: Arc<WsClient>,
     plot: Plot,
     commitments: Commitments,
+    object_mappings: ObjectMappings,
     public_key: &PublicKey,
 ) -> Result<(), anyhow::Error> {
     let weak_plot = plot.downgrade();
@@ -181,30 +204,33 @@ async fn background_plotting(
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
-        let maybe_last_archived_block: Option<Vec<u8>> = client
+        let maybe_last_archived_block = client
             .request(
-                "subspace_getEncodedBlockByNumber",
+                "subspace_getBlockByNumber",
                 JsonRpcParams::Array(vec![
                     serde_json::to_value(last_archived_block_number).unwrap()
                 ]),
             )
             .await?;
-        let last_archived_block = match maybe_last_archived_block {
-            Some(block) => block,
+
+        match maybe_last_archived_block {
+            Some(EncodedBlockWithObjectMapping {
+                block,
+                object_mapping,
+            }) => BlockArchiver::with_initial_state(
+                record_size as usize,
+                recorded_history_segment_size as usize,
+                last_root_block,
+                &block,
+                object_mapping,
+            )?,
             None => {
                 return Err(anyhow::Error::msg(format!(
                     "Failed to get block {} from the chain, probably need to erase existing plot",
                     last_archived_block_number
                 )));
             }
-        };
-
-        BlockArchiver::with_initial_state(
-            record_size as usize,
-            recorded_history_segment_size as usize,
-            last_root_block,
-            &last_archived_block,
-        )?
+        }
     } else {
         // Starting from genesis
         if !plot.is_empty() {
@@ -221,6 +247,7 @@ async fn background_plotting(
         let maybe_block_archiver_handle = tokio::task::spawn_blocking({
             let weak_plot = weak_plot.clone();
             let commitments = commitments.clone();
+            let object_mappings = object_mappings.clone();
             let subspace_codec = subspace_codec.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
@@ -240,8 +267,15 @@ async fn background_plotting(
                         let ArchivedSegment {
                             root_block,
                             mut pieces,
+                            object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                        let object_mapping = create_global_object_mapping(
+                            piece_index_offset,
+                            &pieces,
+                            object_mapping,
+                        );
 
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
@@ -261,8 +295,9 @@ async fn background_plotting(
                                 plot.write_many(Arc::clone(&pieces), piece_index_offset),
                             )?;
                             runtime_handle.block_on(
-                                commitments.create_for_pieces(pieces, piece_index_offset),
+                                commitments.create_for_pieces(&pieces, piece_index_offset),
                             )?;
+                            object_mappings.store(&object_mapping)?;
                             info!(
                                 "Archived segment {} at object {}",
                                 root_block.segment_index(),
@@ -318,11 +353,17 @@ async fn background_plotting(
 
                 let mut last_root_block = None;
                 for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                    let block_fut = client.request::<'_, '_, '_, Option<Vec<u8>>>(
-                        "subspace_getEncodedBlockByNumber",
-                        JsonRpcParams::Array(vec![serde_json::to_value(block_to_archive).unwrap()]),
-                    );
-                    let block = match runtime_handle.block_on(block_fut) {
+                    let block_fut = client
+                        .request::<'_, '_, '_, Option<EncodedBlockWithObjectMapping>>(
+                            "subspace_getBlockByNumber",
+                            JsonRpcParams::Array(vec![
+                                serde_json::to_value(block_to_archive).unwrap()
+                            ]),
+                        );
+                    let EncodedBlockWithObjectMapping {
+                        block,
+                        object_mapping,
+                    } = match runtime_handle.block_on(block_fut) {
                         Ok(Some(block)) => block,
                         Ok(None) => {
                             error!(
@@ -344,12 +385,19 @@ async fn background_plotting(
                         }
                     };
 
-                    for archived_segment in archiver.add_block(block) {
+                    for archived_segment in archiver.add_block(block, object_mapping) {
                         let ArchivedSegment {
                             root_block,
                             mut pieces,
+                            object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                        let object_mapping = create_global_object_mapping(
+                            piece_index_offset,
+                            &pieces,
+                            object_mapping,
+                        );
 
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
@@ -370,10 +418,13 @@ async fn background_plotting(
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
-                            if let Err(error) = runtime_handle
-                                .block_on(commitments.create_for_pieces(pieces, piece_index_offset))
-                            {
+                            if let Err(error) = runtime_handle.block_on(
+                                commitments.create_for_pieces(&pieces, piece_index_offset),
+                            ) {
                                 error!("Failed to create commitments for pieces: {}", error);
+                            }
+                            if let Err(error) = object_mappings.store(&object_mapping) {
+                                error!("Failed to store object mappings for pieces: {}", error);
                             }
 
                             let segment_index = root_block.segment_index();
@@ -429,6 +480,33 @@ async fn background_plotting(
     }
 
     Ok(())
+}
+
+fn create_global_object_mapping(
+    piece_index_offset: u64,
+    pieces: &[Piece],
+    object_mapping: Vec<PieceObjectMapping>,
+) -> Vec<(Sha256Hash, GlobalObject)> {
+    pieces
+        .iter()
+        .enumerate()
+        .zip(object_mapping.iter())
+        .flat_map(move |((position, piece), object_mapping)| {
+            object_mapping.objects.iter().map(move |piece_object| {
+                let PieceObject::V0 { offset, size } = piece_object;
+                (
+                    subspace_core_primitives::crypto::sha256_hash(
+                        &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
+                    ),
+                    GlobalObject::V0 {
+                        piece_index: piece_index_offset + position as u64,
+                        offset: *offset,
+                        size: *size,
+                    },
+                )
+            })
+        })
+        .collect()
 }
 
 async fn subscribe_to_slot_info(

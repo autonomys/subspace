@@ -105,7 +105,7 @@ use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvid
 use sp_runtime::traits::One;
 use sp_runtime::{
     generic::{BlockId, OpaqueDigestItemId},
-    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Zero},
+    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Saturating, Zero},
 };
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -115,6 +115,7 @@ use std::{
 };
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
+use subspace_core_primitives::objects::PieceObjectMapping;
 use subspace_core_primitives::{Piece, RootBlock};
 
 pub mod aux_schema;
@@ -154,6 +155,10 @@ pub struct ArchivedSegmentNotification {
     pub root_block: RootBlock,
     /// Pieces that correspond to the segment in root block
     pub pieces: Vec<Piece>,
+    /// Mappings for objects stored in corresponding pieces.
+    ///
+    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
+    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 /// PoC epoch information
@@ -2171,11 +2176,20 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .expect("Older blocks should always exist")
             .expect("Older blocks should always exist");
 
+        let block_object_mapping = client
+            .runtime_api()
+            .extract_block_object_mapping(
+                &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
+                last_archived_block.block.clone(),
+            )
+            .expect("Must be able to make runtime call");
+
         BlockArchiver::with_initial_state(
             record_size as usize,
             recorded_history_segment_size as usize,
             last_root_block,
             &last_archived_block.encode(),
+            block_object_mapping,
         )
         .expect("Incorrect parameters for archiver")
     } else {
@@ -2258,13 +2272,21 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
                 let block = client
                     .block(&BlockId::Number(block_to_archive.into()))
-                    .expect("Older block by number should always exist")
-                    .expect("Older block by number should always exist");
+                    .expect("Older block by number must always exist")
+                    .expect("Older block by number must always exist");
+
+                let block_object_mapping = client
+                    .runtime_api()
+                    .extract_block_object_mapping(
+                        &BlockId::Number(block_to_archive.saturating_sub(1).into()),
+                        block.block.clone(),
+                    )
+                    .expect("Must be able to make runtime call");
 
                 // These archived segments were processed before, thus do not need to be sent to
                 // farmers
                 let new_root_blocks = archiver
-                    .add_block(block.encode())
+                    .add_block(block.encode(), block_object_mapping)
                     .into_iter()
                     .map(|archived_segment| archived_segment.root_block)
                     .collect();
@@ -2317,14 +2339,32 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     let block = client
                         .block(&BlockId::Number(block_to_archive))
-                        .expect("Older block by number should always exist")
-                        .expect("Older block by number should always exist");
+                        .expect("Older block by number must always exist")
+                        .expect("Older block by number must always exist");
 
-                    for archived_segment in archiver.add_block(block.encode()) {
-                        let ArchivedSegment { root_block, pieces } = archived_segment;
+                    let block_object_mapping = client
+                        .runtime_api()
+                        .extract_block_object_mapping(
+                            &BlockId::Number(block_to_archive.saturating_sub(One::one())),
+                            block.block.clone(),
+                        )
+                        .expect("Must be able to make runtime call");
 
-                        archived_segment_notification_sender
-                            .notify(move || ArchivedSegmentNotification { root_block, pieces });
+                    for archived_segment in archiver.add_block(block.encode(), block_object_mapping)
+                    {
+                        let ArchivedSegment {
+                            root_block,
+                            pieces,
+                            object_mapping,
+                        } = archived_segment;
+
+                        archived_segment_notification_sender.notify(move || {
+                            ArchivedSegmentNotification {
+                                root_block,
+                                pieces,
+                                object_mapping,
+                            }
+                        });
 
                         let _ = root_block_sender.send(root_block).await;
                     }
