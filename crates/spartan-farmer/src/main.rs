@@ -70,38 +70,30 @@ fn try_remove<P: AsRef<Path>>(
     Ok(())
 }
 
-impl Command {
-    async fn run(self) -> Result<()> {
-        match self {
-            Self::ErasePlot { custom_path } => {
-                let path = utils::get_path(custom_path);
-                info!("Erasing the plot");
-                try_remove(path.join("plot.bin"), fs::remove_file)?;
-                info!("Erasing plot metadata");
-                try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
-                info!("Erasing plot commitments");
-                try_remove(path.join("commitments"), fs::remove_dir_all)?;
-                info!("Erasing identity");
-                try_remove(path.join("identity.bin"), fs::remove_file)?;
-                info!("Done");
-            }
-            Self::Farm {
-                custom_path,
-                ws_server,
-            } => {
-                let path = utils::get_path(custom_path);
-                commands::farm(path, &ws_server).await?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
     let command: Command = Command::parse();
-    command.run().await?;
+    match command {
+        Command::ErasePlot { custom_path } => {
+            let path = utils::get_path(custom_path);
+            info!("Erasing the plot");
+            try_remove(path.join("plot.bin"), fs::remove_file)?;
+            info!("Erasing plot metadata");
+            try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
+            info!("Erasing plot commitments");
+            try_remove(path.join("commitments"), fs::remove_dir_all)?;
+            info!("Erasing identity");
+            try_remove(path.join("identity.bin"), fs::remove_file)?;
+            info!("Done");
+        }
+        Command::Farm {
+            custom_path,
+            ws_server,
+        } => {
+            let path = utils::get_path(custom_path);
+            commands::farm(path, &ws_server).await?;
+        }
+    }
     Ok(())
 }
