@@ -5,9 +5,9 @@ import { concatMap, takeWhile } from "rxjs/operators";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { KeyringPair } from "@polkadot/keyring/types";
-import { ISubmittableResult, Observable, } from "@polkadot/types/types";
+import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
-import { U64, } from "@polkadot/types/primitive";
+import { U64 } from "@polkadot/types/primitive";
 import { TxData } from "./types";
 
 // TODO: remove hardcoded url
