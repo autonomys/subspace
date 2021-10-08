@@ -22,13 +22,13 @@ mod object_mappings;
 mod plot;
 mod utils;
 
-use clap::{Clap, ValueHint};
+use anyhow::Result;
+use clap::{AppSettings, Clap, ValueHint};
 use env_logger::Env;
 use log::info;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use subspace_core_primitives::PIECE_SIZE;
-use tokio::runtime::Runtime;
 
 type Tag = [u8; 8];
 type Salt = [u8; 8];
@@ -41,6 +41,7 @@ const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 
 #[derive(Debug, Clap)]
 #[clap(about, version)]
+#[clap(setting = AppSettings::ColoredHelp)]
 enum Command {
     /// Erase existing plot (including identity)
     ErasePlot {
@@ -53,30 +54,40 @@ enum Command {
         /// Use custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
+        /// Specify WebSocket RPC server TCP port
         #[clap(long, default_value = "ws://127.0.0.1:9944")]
         ws_server: String,
     },
 }
 
-fn main() {
+/// Helper function for ignoring the error that given file/directory does not exist.
+fn try_remove<P: AsRef<Path>>(
+    path: P,
+    remove: impl FnOnce(P) -> std::io::Result<()>,
+) -> Result<()> {
+    if path.as_ref().exists() {
+        remove(path)?;
+    }
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
-
     let command: Command = Command::parse();
-    let runtime = Runtime::new().unwrap();
-
     match command {
         Command::ErasePlot { custom_path } => {
             let path = utils::get_path(custom_path);
             info!("Erasing the plot");
-            let _ = fs::remove_file(path.join("plot.bin"));
+            try_remove(path.join("plot.bin"), fs::remove_file)?;
             info!("Erasing plot metadata");
-            let _ = fs::remove_dir_all(path.join("plot-metadata"));
+            try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
             info!("Erasing plot commitments");
-            let _ = fs::remove_dir_all(path.join("commitments"));
+            try_remove(path.join("commitments"), fs::remove_dir_all)?;
             info!("Erasing object mappings");
-            let _ = fs::remove_dir_all(path.join("object-mappings"));
-            info!("Erasing identify");
-            let _ = fs::remove_file(path.join("identity.bin"));
+            try_remove(path.join("object-mappings"), fs::remove_dir_all)?;
+            info!("Erasing identity");
+            try_remove(path.join("identity.bin"), fs::remove_file)?;
             info!("Done");
         }
         Command::Farm {
@@ -84,7 +95,8 @@ fn main() {
             ws_server,
         } => {
             let path = utils::get_path(custom_path);
-            runtime.block_on(commands::farm(path, &ws_server)).unwrap();
+            commands::farm(path, &ws_server).await?;
         }
     }
+    Ok(())
 }
