@@ -18,6 +18,7 @@
 mod commands;
 mod commitments;
 mod crypto;
+mod object_mappings;
 mod plot;
 mod utils;
 
@@ -72,6 +73,8 @@ fn main() {
             let _ = fs::remove_dir_all(path.join("plot-metadata"));
             info!("Erasing plot commitments");
             let _ = fs::remove_dir_all(path.join("commitments"));
+            info!("Erasing object mappings");
+            let _ = fs::remove_dir_all(path.join("object-mappings"));
             info!("Erasing identify");
             let _ = fs::remove_file(path.join("identity.bin"));
             info!("Done");

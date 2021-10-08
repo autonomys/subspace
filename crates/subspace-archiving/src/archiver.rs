@@ -14,7 +14,7 @@
 // limitations under the License.
 
 use crate::merkle_tree::{MerkleTree, Witness};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -23,6 +23,9 @@ use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
+use subspace_core_primitives::objects::{
+    BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
+};
 use subspace_core_primitives::{
     crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
@@ -70,13 +73,34 @@ pub enum SegmentItem {
     ObjectContinuation(Vec<u8>),
     /// Contains full block inside
     #[codec(index = 3)]
-    Block(Vec<u8>),
+    Block {
+        /// Block bytes
+        bytes: Vec<u8>,
+        /// This is a convenience implementation detail and will not be available on decoding
+        #[doc(hidden)]
+        #[codec(skip)]
+        object_mapping: BlockObjectMapping,
+    },
     /// Contains the beginning of the block inside, remainder will be found in subsequent segments
     #[codec(index = 4)]
-    BlockStart(Vec<u8>),
+    BlockStart {
+        /// Block bytes
+        bytes: Vec<u8>,
+        /// This is a convenience implementation detail and will not be available on decoding
+        #[doc(hidden)]
+        #[codec(skip)]
+        object_mapping: BlockObjectMapping,
+    },
     /// Continuation of the partial block spilled over into the next segment
     #[codec(index = 5)]
-    BlockContinuation(Vec<u8>),
+    BlockContinuation {
+        /// Block bytes
+        bytes: Vec<u8>,
+        /// This is a convenience implementation detail and will not be available on decoding
+        #[doc(hidden)]
+        #[codec(skip)]
+        object_mapping: BlockObjectMapping,
+    },
     /// Root block
     #[codec(index = 6)]
     RootBlock(RootBlock),
@@ -89,6 +113,10 @@ pub struct ArchivedSegment {
     pub root_block: RootBlock,
     /// Pieces that correspond to this segment
     pub pieces: Vec<Piece>,
+    /// Mappings for objects stored in corresponding pieces.
+    ///
+    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
+    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 /// Archiver instantiation error
@@ -201,7 +229,10 @@ impl<State: private::ArchiverState> Archiver<State> {
         segment_size: usize,
     ) -> Result<Self, ArchiverInstantiationError> {
         let tiny_segment = Segment::V0 {
-            items: vec![SegmentItem::Block(vec![0u8])],
+            items: vec![SegmentItem::Block {
+                bytes: vec![0u8],
+                object_mapping: BlockObjectMapping::default(),
+            }],
         };
         if record_size <= tiny_segment.encoded_size() {
             return Err(ArchiverInstantiationError::RecordSizeTooSmall);
@@ -284,11 +315,11 @@ impl<State: private::ArchiverState> Archiver<State> {
                         unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
                     }
                     SegmentItem::ObjectContinuation(bytes) => bytes.len(),
-                    SegmentItem::Block(bytes) => bytes.len(),
-                    SegmentItem::BlockStart(_) => {
+                    SegmentItem::Block { bytes, .. } => bytes.len(),
+                    SegmentItem::BlockStart { .. } => {
                         unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                     }
-                    SegmentItem::BlockContinuation(bytes) => bytes.len(),
+                    SegmentItem::BlockContinuation { bytes, .. } => bytes.len(),
                     SegmentItem::RootBlock(_) => {
                         unreachable!(
                             "SegmentItem::RootBlock is always the first element in the buffer and \
@@ -309,7 +340,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                 | SegmentItem::ObjectContinuation(_) => {
                     // We are not interested in object here
                 }
-                SegmentItem::Block(_) => {
+                SegmentItem::Block { .. } => {
                     // Skip block number increase in case of the very first block
                     if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
                         // Increase archived block number and assume the whole block was
@@ -318,10 +349,10 @@ impl<State: private::ArchiverState> Archiver<State> {
                     }
                     last_archived_block.bytes = None;
                 }
-                SegmentItem::BlockStart(_) => {
+                SegmentItem::BlockStart { .. } => {
                     unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                 }
-                SegmentItem::BlockContinuation(bytes) => {
+                SegmentItem::BlockContinuation { bytes, .. } => {
                     // Same block, but assume for now that the whole block was archived, but
                     // also store the number of bytes as opposed to `None`, we'll transform
                     // it into `None` if needed later
@@ -383,11 +414,34 @@ impl<State: private::ArchiverState> Archiver<State> {
 
                     SegmentItem::ObjectContinuation(bytes)
                 }
-                SegmentItem::Block(mut bytes) => {
+                SegmentItem::Block {
+                    mut bytes,
+                    mut object_mapping,
+                } => {
                     let split_point = bytes.len() - spill_over;
                     let continuation_bytes = bytes[split_point..].to_vec();
 
                     bytes.truncate(split_point);
+
+                    let continuation_object_mapping = BlockObjectMapping {
+                        objects: object_mapping
+                            .objects
+                            .drain_filter(|block_object: &mut BlockObject| {
+                                let current_offset = block_object.offset();
+                                if current_offset > split_point as u32 {
+                                    let BlockObject::V0 { offset, .. } = block_object;
+                                    let new_offset =
+                                        (current_offset - split_point as u32).to_le_bytes();
+
+                                    // Correct offset and remove from original object mapping `Vec`
+                                    *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                    true
+                                } else {
+                                    false
+                                }
+                            })
+                            .collect(),
+                    };
 
                     // Update last archived block to include partial archiving info
                     last_archived_block.bytes.replace(
@@ -396,19 +450,47 @@ impl<State: private::ArchiverState> Archiver<State> {
                     );
 
                     // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::BlockContinuation(continuation_bytes));
+                    self.buffer.push_front(SegmentItem::BlockContinuation {
+                        bytes: continuation_bytes,
+                        object_mapping: continuation_object_mapping,
+                    });
 
-                    SegmentItem::BlockStart(bytes)
+                    SegmentItem::BlockStart {
+                        bytes,
+                        object_mapping,
+                    }
                 }
-                SegmentItem::BlockStart(_) => {
+                SegmentItem::BlockStart { .. } => {
                     unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                 }
-                SegmentItem::BlockContinuation(mut bytes) => {
+                SegmentItem::BlockContinuation {
+                    mut bytes,
+                    mut object_mapping,
+                } => {
                     let split_point = bytes.len() - spill_over;
                     let continuation_bytes = bytes[split_point..].to_vec();
 
                     bytes.truncate(split_point);
+
+                    let continuation_object_mapping = BlockObjectMapping {
+                        objects: object_mapping
+                            .objects
+                            .drain_filter(|block_object: &mut BlockObject| {
+                                let current_offset = block_object.offset();
+                                if current_offset > split_point as u32 {
+                                    let BlockObject::V0 { offset, .. } = block_object;
+                                    let new_offset =
+                                        (current_offset - split_point as u32).to_le_bytes();
+
+                                    // Correct offset and remove from original object mapping `Vec`
+                                    *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                    true
+                                } else {
+                                    false
+                                }
+                            })
+                            .collect(),
+                    };
 
                     // Above code assumed that block was archived fully, now remove spilled-over
                     // bytes from the size
@@ -423,10 +505,15 @@ impl<State: private::ArchiverState> Archiver<State> {
                     );
 
                     // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::BlockContinuation(continuation_bytes));
+                    self.buffer.push_front(SegmentItem::BlockContinuation {
+                        bytes: continuation_bytes,
+                        object_mapping: continuation_object_mapping,
+                    });
 
-                    SegmentItem::BlockContinuation(bytes)
+                    SegmentItem::BlockContinuation {
+                        bytes,
+                        object_mapping,
+                    }
                 }
                 SegmentItem::RootBlock(_) => {
                     unreachable!(
@@ -451,6 +538,60 @@ impl<State: private::ArchiverState> Archiver<State> {
 
     // Take segment as an input, apply necessary transformations and produce archived segment
     fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
+        // Create mappings
+        let object_mapping = {
+            let mut corrected_object_mapping =
+                vec![PieceObjectMapping::default(); self.segment_size / self.record_size];
+            let Segment::V0 { items } = &segment;
+            // `+1` corresponds to enum variant encoding
+            let mut base_offset_in_segment = 1 + Compact::compact_len(&(items.len() as u32));
+            for segment_item in items {
+                match segment_item {
+                    SegmentItem::Object(_)
+                    | SegmentItem::ObjectStart(_)
+                    | SegmentItem::ObjectContinuation(_) => {
+                        // Ignore, no objects mappings here
+                    }
+                    SegmentItem::Block {
+                        bytes,
+                        object_mapping,
+                    }
+                    | SegmentItem::BlockStart {
+                        bytes,
+                        object_mapping,
+                    }
+                    | SegmentItem::BlockContinuation {
+                        bytes,
+                        object_mapping,
+                    } => {
+                        for block_object in &object_mapping.objects {
+                            // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
+                            let offset_in_segment = base_offset_in_segment
+                                + block_object.offset() as usize
+                                + 1
+                                + Compact::compact_len(&(bytes.len() as u32));
+                            let BlockObject::V0 { size, .. } = block_object;
+                            let offset = (offset_in_segment % self.record_size).try_into().expect(
+                                "Offset within piece should always fit in 16-bit integer; qed",
+                            );
+
+                            corrected_object_mapping[offset_in_segment / self.record_size]
+                                .objects
+                                .push(PieceObject::V0 {
+                                    offset,
+                                    size: *size,
+                                })
+                        }
+                    }
+                    SegmentItem::RootBlock(_) => {
+                        // Ignore, no objects mappings here
+                    }
+                }
+
+                base_offset_in_segment += segment_item.encoded_size();
+            }
+            corrected_object_mapping
+        };
         let segment = {
             let mut segment = segment.encode();
             // Add a few bytes of padding if needed to get constant size (caused by compact length
@@ -549,7 +690,11 @@ impl<State: private::ArchiverState> Archiver<State> {
         // segment
         self.buffer.push_front(SegmentItem::RootBlock(root_block));
 
-        ArchivedSegment { root_block, pieces }
+        ArchivedSegment {
+            root_block,
+            pieces,
+            object_mapping,
+        }
     }
 }
 
@@ -602,6 +747,7 @@ impl BlockArchiver {
         segment_size: usize,
         root_block: RootBlock,
         encoded_block: B,
+        mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
             return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
@@ -638,9 +784,26 @@ impl BlockArchiver {
                 Ordering::Greater => {
                     // Take part of the encoded block that wasn't archived yet and push to the
                     // buffer and block continuation
-                    archiver.buffer.push_back(SegmentItem::BlockContinuation(
-                        encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                    ));
+                    object_mapping
+                        .objects
+                        .drain_filter(|block_object: &mut BlockObject| {
+                            let current_offset = block_object.offset();
+                            if current_offset >= archived_block_bytes {
+                                let BlockObject::V0 { offset, .. } = block_object;
+                                let new_offset =
+                                    (current_offset - archived_block_bytes).to_le_bytes();
+
+                                // Correct offset and retain in object mapping `Vec`
+                                *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation {
+                        bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                        object_mapping,
+                    });
                 }
             }
         }
@@ -658,9 +821,16 @@ impl BlockArchiver {
     }
 
     /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub fn add_block(&mut self, block: Vec<u8>) -> Vec<ArchivedSegment> {
+    pub fn add_block(
+        &mut self,
+        bytes: Vec<u8>,
+        object_mapping: BlockObjectMapping,
+    ) -> Vec<ArchivedSegment> {
         // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Block(block));
+        self.buffer.push_back(SegmentItem::Block {
+            bytes,
+            object_mapping,
+        });
 
         let mut archived_segments = Vec::new();
 

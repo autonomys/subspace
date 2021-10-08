@@ -7281,6 +7281,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "lru",
+ "parity-scale-codec",
  "rand 0.8.4",
  "rayon",
  "ring",
