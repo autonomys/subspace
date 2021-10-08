@@ -26,7 +26,7 @@ use clap::{AppSettings, Clap, ValueHint};
 use env_logger::Env;
 use log::info;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use subspace_core_primitives::PIECE_SIZE;
 
 type Tag = [u8; 8];
@@ -59,19 +59,30 @@ enum Command {
     },
 }
 
+/// Helper function for ignoring the error that given file/directory does not exist.
+fn try_remove<P: AsRef<Path>>(
+    path: P,
+    remove: impl FnOnce(P) -> std::io::Result<()>,
+) -> Result<()> {
+    if path.as_ref().exists() {
+        remove(path)?;
+    }
+    Ok(())
+}
+
 impl Command {
     async fn run(self) -> Result<()> {
         match self {
             Self::ErasePlot { custom_path } => {
                 let path = utils::get_path(custom_path);
                 info!("Erasing the plot");
-                fs::remove_file(path.join("plot.bin"))?;
+                try_remove(path.join("plot.bin"), fs::remove_file)?;
                 info!("Erasing plot metadata");
-                fs::remove_dir_all(path.join("plot-metadata"))?;
+                try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
                 info!("Erasing plot commitments");
-                fs::remove_dir_all(path.join("commitments"))?;
+                try_remove(path.join("commitments"), fs::remove_dir_all)?;
                 info!("Erasing identity");
-                fs::remove_file(path.join("identity.bin"))?;
+                try_remove(path.join("identity.bin"), fs::remove_file)?;
                 info!("Done");
             }
             Self::Farm {
