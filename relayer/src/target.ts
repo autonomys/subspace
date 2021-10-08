@@ -132,7 +132,9 @@ class Target {
     const { address } = (signer as KeyringPair);
     this.logger.info(`Checking feed for ${address}`);
 
-    const file = await fs.promises.readFile('./state/feeds.json', 'utf8');
+    const filePath = './state/feeds.json';
+
+    const file = await fs.promises.readFile(filePath, 'utf8');
     const feeds = JSON.parse(file);
 
     if (feeds[address]) {
@@ -154,7 +156,7 @@ class Target {
 
     feeds[address] = feedId.toBn();
 
-    await fs.promises.writeFile('./feeds.json', JSON.stringify(feeds, null, 4));
+    await fs.promises.writeFile(filePath, JSON.stringify(feeds, null, 4));
 
     return feedId;
   }

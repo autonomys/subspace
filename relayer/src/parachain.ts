@@ -1,7 +1,7 @@
 
-import fetch from "node-fetch";
+import fetch, { RequestInit } from "node-fetch";
 import { EMPTY, defer, from, Observable, catchError } from 'rxjs';
-import { retry, shareReplay, timeout } from "rxjs/operators";
+import { retry, shareReplay } from "rxjs/operators";
 import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
@@ -9,6 +9,18 @@ import { Logger } from "pino";
 
 import { ChainName } from './types';
 import { isValidBlock } from './utils';
+
+
+async function fetchWithTimeout(url: string, options: RequestInit) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), options.timeout);
+    const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+}
 
 interface ParachainConstructorParams {
     feedId: U64;
@@ -45,11 +57,12 @@ class Parachain {
                 params: [hash],
             }),
             headers: { "Content-Type": "application/json" },
+            timeout: 8000,
         };
 
         this.logger.info(`Fetching ${this.chain} parablock: ${hash}`);
 
-        return defer(() => from(fetch(this.url, options)
+        return defer(() => from(fetchWithTimeout(this.url, options)
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`Could not fetch ${this.chain} parablock ${hash} from ${this.url}: ${response.statusText}`);
@@ -68,7 +81,6 @@ class Parachain {
                 return data.result;
             })))
             .pipe(
-                timeout(8000),
                 retry(3),
                 catchError((error) => {
                     this.logger.error(error);
