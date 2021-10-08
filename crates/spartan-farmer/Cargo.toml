@@ -35,7 +35,7 @@ subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.24"
-tokio = "1.11.0"
+tokio = { version = "1.11.0", features = ["rt", "macros"] }
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to

@@ -1,6 +1,7 @@
 use crate::commitments::Commitments;
 use crate::plot::Plot;
 use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
+use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
@@ -87,7 +88,7 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(), anyhow::Error> {
+pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     info!("Connecting to RPC server");
     let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
@@ -133,12 +134,9 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
 
                 Ok(())
             }
-            Err(error) => Err(anyhow::Error::msg(format!(
-                "Background plotting error: {}",
-                error
-            ))),
+            Err(error) => Err(anyhow!("Background plotting error: {}", error)),
         },
-        Either::Right((result, _)) => result.map_err(anyhow::Error::from),
+        Either::Right((result, _)) => result.map_err(Into::into),
     }
 }
 
@@ -150,7 +148,7 @@ async fn background_plotting(
     plot: Plot,
     commitments: Commitments,
     public_key: &PublicKey,
-) -> Result<(), anyhow::Error> {
+) -> Result<()> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
@@ -171,9 +169,7 @@ async fn background_plotting(
     let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
         // Continuing from existing initial state
         if plot.is_empty() {
-            return Err(anyhow::Error::msg(
-                "Plot is empty on restart, can't continue",
-            ));
+            return Err(anyhow!("Plot is empty on restart, can't continue",));
         }
 
         drop(plot);
@@ -184,18 +180,16 @@ async fn background_plotting(
         let maybe_last_archived_block: Option<Vec<u8>> = client
             .request(
                 "subspace_getEncodedBlockByNumber",
-                JsonRpcParams::Array(vec![
-                    serde_json::to_value(last_archived_block_number).unwrap()
-                ]),
+                JsonRpcParams::Array(vec![serde_json::to_value(last_archived_block_number)?]),
             )
             .await?;
         let last_archived_block = match maybe_last_archived_block {
             Some(block) => block,
             None => {
-                return Err(anyhow::Error::msg(format!(
+                return Err(anyhow!(
                     "Failed to get block {} from the chain, probably need to erase existing plot",
                     last_archived_block_number
-                )));
+                ));
             }
         };
 
@@ -437,7 +431,7 @@ async fn subscribe_to_slot_info(
     commitments: &Commitments,
     keypair: &Keypair,
     ctx: &SigningContext,
-) -> Result<(), anyhow::Error> {
+) -> Result<()> {
     let public_key_hash = crypto::hash_public_key(&keypair.public);
 
     info!("Subscribing to slot info notifications");
@@ -490,8 +484,7 @@ async fn subscribe_to_slot_info(
                     slot_number: slot_info.slot_number,
                     solution,
                     secret_key: keypair.secret.to_bytes().into(),
-                })
-                .unwrap()]),
+                })?]),
             )
             .await?;
     }

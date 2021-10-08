@@ -21,13 +21,13 @@ mod crypto;
 mod plot;
 mod utils;
 
-use clap::{Clap, ValueHint};
+use anyhow::Result;
+use clap::{AppSettings, Clap, ValueHint};
 use env_logger::Env;
 use log::info;
 use std::fs;
 use std::path::PathBuf;
 use subspace_core_primitives::PIECE_SIZE;
-use tokio::runtime::Runtime;
 
 type Tag = [u8; 8];
 type Salt = [u8; 8];
@@ -40,6 +40,7 @@ const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 
 #[derive(Debug, Clap)]
 #[clap(about, version)]
+#[clap(setting = AppSettings::ColoredHelp)]
 enum Command {
     /// Erase existing plot (including identity)
     ErasePlot {
@@ -52,36 +53,44 @@ enum Command {
         /// Use custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
+        /// Specify WebSocket RPC server TCP port
         #[clap(long, default_value = "ws://127.0.0.1:9944")]
         ws_server: String,
     },
 }
 
-fn main() {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
-
-    let command: Command = Command::parse();
-    let runtime = Runtime::new().unwrap();
-
-    match command {
-        Command::ErasePlot { custom_path } => {
-            let path = utils::get_path(custom_path);
-            info!("Erasing the plot");
-            let _ = fs::remove_file(path.join("plot.bin"));
-            info!("Erasing plot metadata");
-            let _ = fs::remove_dir_all(path.join("plot-metadata"));
-            info!("Erasing plot commitments");
-            let _ = fs::remove_dir_all(path.join("commitments"));
-            info!("Erasing identify");
-            let _ = fs::remove_file(path.join("identity.bin"));
-            info!("Done");
+impl Command {
+    async fn run(self) -> Result<()> {
+        match self {
+            Self::ErasePlot { custom_path } => {
+                let path = utils::get_path(custom_path);
+                info!("Erasing the plot");
+                fs::remove_file(path.join("plot.bin"))?;
+                info!("Erasing plot metadata");
+                fs::remove_dir_all(path.join("plot-metadata"))?;
+                info!("Erasing plot commitments");
+                fs::remove_dir_all(path.join("commitments"))?;
+                info!("Erasing identity");
+                fs::remove_file(path.join("identity.bin"))?;
+                info!("Done");
+            }
+            Self::Farm {
+                custom_path,
+                ws_server,
+            } => {
+                let path = utils::get_path(custom_path);
+                commands::farm(path, &ws_server).await?;
+            }
         }
-        Command::Farm {
-            custom_path,
-            ws_server,
-        } => {
-            let path = utils::get_path(custom_path);
-            runtime.block_on(commands::farm(path, &ws_server)).unwrap();
-        }
+
+        Ok(())
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    let command: Command = Command::parse();
+    command.run().await?;
+    Ok(())
 }
