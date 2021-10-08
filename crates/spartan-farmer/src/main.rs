@@ -18,6 +18,7 @@
 mod commands;
 mod commitments;
 mod crypto;
+mod object_mappings;
 mod plot;
 mod utils;
 
@@ -83,6 +84,8 @@ async fn main() -> Result<()> {
             try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
             info!("Erasing plot commitments");
             try_remove(path.join("commitments"), fs::remove_dir_all)?;
+            info!("Erasing object mappings");
+            try_remove(path.join("object-mappings"), fs::remove_dir_all)?;
             info!("Erasing identity");
             try_remove(path.join("identity.bin"), fs::remove_file)?;
             info!("Done");

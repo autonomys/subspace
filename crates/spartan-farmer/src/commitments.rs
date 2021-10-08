@@ -94,6 +94,7 @@ pub(super) struct Commitments {
 }
 
 impl Commitments {
+    /// Creates new commitments database
     pub(super) async fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
         // Cache size is just enough for last 2 salts to be stored
         let commitment_databases_fut = tokio::task::spawn_blocking({
@@ -279,7 +280,7 @@ impl Commitments {
     /// Create commitments for all salts for specified pieces
     pub(crate) async fn create_for_pieces(
         &self,
-        pieces: Arc<Vec<Piece>>,
+        pieces: &Arc<Vec<Piece>>,
         start_offset: u64,
     ) -> Result<(), CommitmentError> {
         let salts = self
@@ -313,7 +314,7 @@ impl Commitments {
                 }
             };
             let create_commitment_fut = tokio::task::spawn_blocking({
-                let pieces = Arc::clone(&pieces);
+                let pieces = Arc::clone(pieces);
 
                 move || {
                     let tags: Vec<Tag> = pieces
