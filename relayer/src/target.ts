@@ -8,7 +8,6 @@ import { KeyringPair } from "@polkadot/keyring/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
-
 import { TxData } from "./types";
 
 // TODO: remove hardcoded url
@@ -133,13 +132,22 @@ class Target {
     const { address } = (signer as KeyringPair);
     this.logger.info(`Checking feed for ${address}`);
 
-    const file = await fs.promises.readFile('./feeds.json', 'utf8');
+    const file = await fs.promises.readFile('./state/feeds.json', 'utf8');
     const feeds = JSON.parse(file);
 
     if (feeds[address]) {
-      const feedId = this.api.createType("U64", feeds[address]);
-      this.logger.info(`Feed already exists: ${feedId}`);
-      return feedId;
+      // query chain state to check if there is an entry for this feedId
+      const { isEmpty } = await this.api.query.feeds.feeds(feeds[address]);
+
+      // if it's not empty that means feedId exists both locally (in the feeds.json) and on the chain and we can re-use it
+      if (!isEmpty) {
+        const feedId = this.api.createType("U64", feeds[address]);
+        this.logger.info(`Feed already exists: ${feedId}`);
+        return feedId;
+      }
+
+      // if feedId only exists locally, but not on the chain - we have to create a new one
+      this.logger.error('Feed does not exist on the chain');
     }
 
     const feedId = await this.sendCreateFeedTx(signer);
