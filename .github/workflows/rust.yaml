@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - nightly-2021-09-15
+          - nightly
 
     steps:
       - name: Checkout
@@ -51,7 +51,7 @@ jobs:
           - macos-11
           - windows-2019
         rust:
-          - nightly-2021-09-15
+          - nightly
 
     runs-on: ${{ matrix.os }}
 
@@ -111,7 +111,7 @@ jobs:
           - macos-11
           - windows-2019
         rust:
-          - nightly-2021-09-15
+          - nightly
 
     runs-on: ${{ matrix.os }}
 
