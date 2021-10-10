@@ -16,7 +16,7 @@
 
 //! Private implementation details of Proof-of-Capacity (PoC) consensus digests.
 
-use super::{FarmerSignature, PoCEpochConfiguration, Slot, POC_ENGINE_ID};
+use super::{FarmerSignature, Slot, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID};
 use crate::FarmerPublicKey;
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
@@ -91,7 +91,7 @@ pub enum NextConfigDescriptor {
     },
 }
 
-impl From<NextConfigDescriptor> for PoCEpochConfiguration {
+impl From<NextConfigDescriptor> for SubspaceEpochConfiguration {
     fn from(desc: NextConfigDescriptor) -> Self {
         match desc {
             NextConfigDescriptor::V1 { c } => Self { c },
@@ -132,16 +132,16 @@ pub struct NextSaltDescriptor {
 /// A digest item which is usable with PoC consensus.
 pub trait CompatibleDigestItem: Sized {
     /// Construct a digest item which contains a PoC pre-digest.
-    fn poc_pre_digest(seal: PreDigest) -> Self;
+    fn subspace_pre_digest(seal: PreDigest) -> Self;
 
     /// If this item is an PoC pre-digest, return it.
-    fn as_poc_pre_digest(&self) -> Option<PreDigest>;
+    fn as_subspace_pre_digest(&self) -> Option<PreDigest>;
 
     /// Construct a digest item which contains a PoC seal.
-    fn poc_seal(signature: FarmerSignature) -> Self;
+    fn subspace_seal(signature: FarmerSignature) -> Self;
 
     /// If this item is a PoC signature, return the signature.
-    fn as_poc_seal(&self) -> Option<FarmerSignature>;
+    fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
     /// If this item is a PoC epoch descriptor, return it.
     fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor>;
@@ -154,24 +154,24 @@ impl<Hash> CompatibleDigestItem for DigestItem<Hash>
 where
     Hash: Send + Sync + Eq + Clone + Codec + 'static,
 {
-    fn poc_pre_digest(digest: PreDigest) -> Self {
-        DigestItem::PreRuntime(POC_ENGINE_ID, digest.encode())
+    fn subspace_pre_digest(digest: PreDigest) -> Self {
+        DigestItem::PreRuntime(SUBSPACE_ENGINE_ID, digest.encode())
     }
 
-    fn as_poc_pre_digest(&self) -> Option<PreDigest> {
-        self.pre_runtime_try_to(&POC_ENGINE_ID)
+    fn as_subspace_pre_digest(&self) -> Option<PreDigest> {
+        self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
     }
 
-    fn poc_seal(signature: FarmerSignature) -> Self {
-        DigestItem::Seal(POC_ENGINE_ID, signature.encode())
+    fn subspace_seal(signature: FarmerSignature) -> Self {
+        DigestItem::Seal(SUBSPACE_ENGINE_ID, signature.encode())
     }
 
-    fn as_poc_seal(&self) -> Option<FarmerSignature> {
-        self.seal_try_to(&POC_ENGINE_ID)
+    fn as_subspace_seal(&self) -> Option<FarmerSignature> {
+        self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
     fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor> {
-        self.consensus_try_to(&POC_ENGINE_ID)
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID)
             .and_then(|x: super::ConsensusLog| match x {
                 super::ConsensusLog::NextEpochData(n) => Some(n),
                 _ => None,
@@ -179,7 +179,7 @@ where
     }
 
     fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor> {
-        self.consensus_try_to(&POC_ENGINE_ID)
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID)
             .and_then(|x: super::ConsensusLog| match x {
                 super::ConsensusLog::NextConfigData(n) => Some(n),
                 _ => None,

@@ -6,7 +6,7 @@ edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Spartan PoR consensus extension module for PoC consensus. Collects on-chain randomness from PoR outputs and manages epoch transitions."
+description = "Subspace consensus pallet"
 readme = "README.md"
 
 [package.metadata.docs.rs]

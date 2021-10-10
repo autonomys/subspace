@@ -37,8 +37,8 @@ use sp_std::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
-/// Key type for PoC module.
-pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"poc0");
+/// Key type for Subspace pallet.
+pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"sub_");
 
 mod app {
     use super::KEY_TYPE;
@@ -55,7 +55,7 @@ pub type FarmerSignature = app::Signature;
 pub type FarmerPublicKey = app::Public;
 
 /// The `ConsensusEngineId` of PoC.
-pub const POC_ENGINE_ID: ConsensusEngineId = *b"POC_";
+pub const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// How many blocks to wait before running the median algorithm for relative time
 /// This will not vary from chain to chain as it is not dependent on slot duration
@@ -134,7 +134,7 @@ impl sp_consensus::SlotData for PoCGenesisConfiguration {
 /// Configuration data used by the PoC consensus engine.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct PoCEpochConfiguration {
+pub struct SubspaceEpochConfiguration {
     /// A constant value that is used in the threshold calculation formula.
     /// Expressed as a rational where the first member of the tuple is the
     /// numerator and the second is the denominator. The rational should
@@ -159,11 +159,11 @@ where
             .digest()
             .logs()
             .iter()
-            .find_map(|log| log.as_poc_pre_digest())
+            .find_map(|log| log.as_subspace_pre_digest())
     };
 
     let verify_seal_signature = |mut header: H, offender: &FarmerPublicKey| {
-        let seal = header.digest_mut().pop()?.as_poc_seal()?;
+        let seal = header.digest_mut().pop()?.as_subspace_seal()?;
         let pre_hash = header.hash();
 
         if !offender.verify(&pre_hash.as_ref(), &seal) {
@@ -241,7 +241,7 @@ pub struct Epoch {
     /// Randomness for this epoch.
     pub randomness: Randomness,
     /// Configuration of the epoch.
-    pub config: PoCEpochConfiguration,
+    pub config: SubspaceEpochConfiguration,
 }
 
 sp_api::decl_runtime_apis! {

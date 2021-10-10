@@ -48,8 +48,8 @@ frame_support::construct_runtime!(
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        Spartan: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
-        OffencesPoC: pallet_offences_subspace::{Pallet, Storage, Event},
+        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
+        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
     }
 );
@@ -104,7 +104,7 @@ parameter_types! {
 
 impl pallet_timestamp::Config for Test {
     type Moment = u64;
-    type OnTimestampSet = Spartan;
+    type OnTimestampSet = Subspace;
     type MinimumPeriod = MinimumPeriod;
     type WeightInfo = ();
 }
@@ -127,7 +127,7 @@ impl pallet_balances::Config for Test {
 
 impl pallet_offences_subspace::Config for Test {
     type Event = Event;
-    type OnOffenceHandler = Spartan;
+    type OnOffenceHandler = Subspace;
 }
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
@@ -172,7 +172,7 @@ impl Config for Test {
     type EonChangeTrigger = NormalEonChange;
 
     type HandleEquivocation =
-        crate::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
+        crate::equivocation::EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -180,7 +180,7 @@ impl Config for Test {
 pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     use frame_support::traits::OnFinalize;
 
-    Spartan::on_finalize(System::block_number());
+    Subspace::on_finalize(System::block_number());
 
     let parent_hash = if System::block_number() > 1 {
         let hdr = System::finalize();
@@ -194,7 +194,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let piece_index = 0;
     let mut piece: Piece = [0u8; 4096];
     subspace_solving.encode(piece_index, &mut piece).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&piece, Spartan::salt().to_le_bytes());
+    let tag: Tag = subspace_solving::create_tag(&piece, Subspace::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(
         slot.into(),
@@ -209,12 +209,12 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
 
     System::initialize(&block, &parent_hash, &pre_digest, InitKind::Full);
 
-    Spartan::on_initialize(block);
+    Subspace::on_initialize(block);
 }
 
 /// Slots will grow accordingly to blocks
 pub fn progress_to_block(keypair: &Keypair, n: u64) {
-    let mut slot = u64::from(Spartan::current_slot()) + 1;
+    let mut slot = u64::from(Subspace::current_slot()) + 1;
     for i in System::block_number() + 1..=n {
         go_to_block(keypair, i, slot);
         slot += 1;
@@ -223,7 +223,10 @@ pub fn progress_to_block(keypair: &Keypair, n: u64) {
 
 pub fn make_pre_digest(slot: Slot, solution: Solution) -> Digest {
     let digest_data = PreDigest { slot, solution };
-    let log = DigestItem::PreRuntime(sp_consensus_subspace::POC_ENGINE_ID, digest_data.encode());
+    let log = DigestItem::PreRuntime(
+        sp_consensus_subspace::SUBSPACE_ENGINE_ID,
+        digest_data.encode(),
+    );
     Digest { logs: vec![log] }
 }
 
@@ -274,7 +277,7 @@ pub fn generate_equivocation_proof(
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
         let signature = Pair::from(keypair.secret.clone()).sign(prehash.as_ref());
-        let seal = <DigestItem as CompatibleDigestItem>::poc_seal(signature.into());
+        let seal = <DigestItem as CompatibleDigestItem>::subspace_seal(signature.into());
         header.digest_mut().push(seal);
     };
 

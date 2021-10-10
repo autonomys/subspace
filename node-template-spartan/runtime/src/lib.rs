@@ -135,8 +135,8 @@ const EPOCH_DURATION_IN_SLOTS: u64 =
 const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
 
 /// The PoC epoch configuration at genesis.
-pub const POC_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::PoCEpochConfiguration =
-    sp_consensus_subspace::PoCEpochConfiguration {
+pub const POC_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochConfiguration =
+    sp_consensus_subspace::SubspaceEpochConfiguration {
         c: SLOT_PROBABILITY,
     };
 

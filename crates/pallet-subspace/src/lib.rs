@@ -15,8 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Spartan PoR consensus extension module for PoC consensus. Collects on-chain randomness
-//! from PoR outputs and manages epoch transitions.
+//! Subspace consensus pallet.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
@@ -30,7 +29,7 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode};
-use equivocation::{HandleEquivocation, PoCEquivocationOffence};
+use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
     dispatch::DispatchResultWithPostInfo,
     traits::{Get, OnTimestampSet},
@@ -46,7 +45,8 @@ use sp_consensus_subspace::{
         PreDigest, SaltDescriptor, SolutionRangeDescriptor,
     },
     offence::{OffenceDetails, OnOffenceHandler},
-    ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, PoCEpochConfiguration, POC_ENGINE_ID,
+    ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
+    SUBSPACE_ENGINE_ID,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
@@ -71,8 +71,7 @@ pub trait EpochChangeTrigger {
     /// during every block, after initialization is done.
     fn trigger<T: Config>(now: T::BlockNumber);
 }
-/// A type signifying to Spartan that it should perform epoch changes
-/// with an internal trigger.
+/// A type signifying to Subspace that it should perform epoch changes with an internal trigger.
 pub struct NormalEpochChange;
 
 impl EpochChangeTrigger for NormalEpochChange {
@@ -90,7 +89,7 @@ pub trait EraChangeTrigger {
     fn trigger<T: Config>(now: T::BlockNumber);
 }
 
-/// A type signifying to Spartan that it should perform era changes with an internal trigger.
+/// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEraChange;
 
 impl EraChangeTrigger for NormalEraChange {
@@ -108,7 +107,7 @@ pub trait EonChangeTrigger {
     fn trigger<T: Config>(now: T::BlockNumber);
 }
 
-/// A type signifying to Spartan that it should perform era changes with an internal trigger.
+/// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEonChange;
 
 impl EonChangeTrigger for NormalEonChange {
@@ -129,7 +128,7 @@ pub mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
 
-    /// The PoC Pallet
+    /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
@@ -170,11 +169,10 @@ pub mod pallet {
         #[pallet::constant]
         type SlotProbability: Get<(u64, u64)>;
 
-        /// The expected average block time at which PoC should be creating
-        /// blocks. Since PoC is probabilistic it is not trivial to figure out
-        /// what the expected average block time should be based on the slot
-        /// duration and the security parameter `c` (where `1 - c` represents
-        /// the probability of a slot being empty).
+        /// The expected average block time at which Subspace should be creating blocks. Since
+        /// Subspace is probabilistic it is not trivial to figure out what the expected average
+        /// block time should be based on the slot duration and the security parameter `c` (where
+        /// `1 - c` represents the probability of a slot being empty).
         #[pallet::constant]
         type ExpectedBlockTime: Get<Self::Moment>;
 
@@ -212,18 +210,18 @@ pub mod pallet {
         #[pallet::constant]
         type PreGenesisObjectSeed: Get<&'static [u8]>;
 
-        /// Spartan requires some logic to be triggered on every block to query for whether an epoch
+        /// Subspace requires some logic to be triggered on every block to query for whether an epoch
         /// has ended and to perform the transition to the next epoch.
         ///
         /// Typically, the `ExternalTrigger` type should be used. An internal trigger should only be used
         /// when no other module is responsible for changing epochs.
         type EpochChangeTrigger: EpochChangeTrigger;
 
-        /// Spartan requires some logic to be triggered on every block to query for whether an era
+        /// Subspace requires some logic to be triggered on every block to query for whether an era
         /// has ended and to perform the transition to the next era.
         type EraChangeTrigger: EraChangeTrigger;
 
-        /// Spartan requires some logic to be triggered on every block to query for whether an eon
+        /// Subspace requires some logic to be triggered on every block to query for whether an eon
         /// has ended and to perform the transition to the next eon.
         type EonChangeTrigger: EonChangeTrigger;
 
@@ -369,12 +367,12 @@ pub mod pallet {
 
     /// The configuration for the current epoch. Should never be `None` as it is initialized in genesis.
     #[pallet::storage]
-    pub(super) type EpochConfig<T> = StorageValue<_, PoCEpochConfiguration>;
+    pub(super) type EpochConfig<T> = StorageValue<_, SubspaceEpochConfiguration>;
 
     /// The configuration for the next epoch, `None` if the config will not change
     /// (you can fallback to `EpochConfig` instead in that case).
     #[pallet::storage]
-    pub(super) type NextEpochConfig<T> = StorageValue<_, PoCEpochConfiguration>;
+    pub(super) type NextEpochConfig<T> = StorageValue<_, SubspaceEpochConfiguration>;
 
     /// A set of blocked farmers keyed by their public key.
     #[pallet::storage]
@@ -387,7 +385,7 @@ pub mod pallet {
     #[pallet::genesis_config]
     #[cfg_attr(feature = "std", derive(Default))]
     pub struct GenesisConfig {
-        pub epoch_config: Option<PoCEpochConfiguration>,
+        pub epoch_config: Option<SubspaceEpochConfiguration>,
     }
 
     #[pallet::genesis_build]
@@ -501,7 +499,7 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    /// Determine the Spartan slot duration based on the Timestamp module configuration.
+    /// Determine the Subspace slot duration based on the Timestamp module configuration.
     pub fn slot_duration() -> T::Moment {
         // we double the minimum block-period so each author can always propose within
         // the majority of their slot.
@@ -548,7 +546,7 @@ impl<T: Config> Pallet<T> {
 
     /// Return the _best guess_ block number, at which the next epoch change is predicted to happen.
     ///
-    /// Returns None if the prediction is in the past; This implies an error internally in Spartan
+    /// Returns None if the prediction is in the past; This implies an error internally in Subspace
     /// and should not happen under normal circumstances.
     ///
     /// In other words, this is only accurate if no slots are missed. Given missed slots, the slot
@@ -620,7 +618,7 @@ impl<T: Config> Pallet<T> {
         }
 
         if let Some(pending_epoch_config_change) = PendingEpochConfigChange::<T>::take() {
-            let next_epoch_config: PoCEpochConfiguration =
+            let next_epoch_config: SubspaceEpochConfiguration =
                 pending_epoch_config_change.clone().into();
             NextEpochConfig::<T>::put(next_epoch_config);
 
@@ -765,7 +763,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn deposit_consensus<U: Encode>(new: U) {
-        let log: DigestItem<T::Hash> = DigestItem::Consensus(POC_ENGINE_ID, new.encode());
+        let log: DigestItem<T::Hash> = DigestItem::Consensus(SUBSPACE_ENGINE_ID, new.encode());
         <frame_system::Pallet<T>>::deposit_log(log)
     }
 
@@ -790,7 +788,7 @@ impl<T: Config> Pallet<T> {
             .iter()
             .filter_map(|s| s.as_pre_runtime())
             .filter_map(|(id, mut data)| {
-                if id == POC_ENGINE_ID {
+                if id == SUBSPACE_ENGINE_ID {
                     PreDigest::decode(&mut data).ok()
                 } else {
                     None
@@ -884,7 +882,7 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::InvalidEquivocationProof.into());
         }
 
-        let offence = PoCEquivocationOffence { slot, offender };
+        let offence = SubspaceEquivocationOffence { slot, offender };
 
         T::HandleEquivocation::report_offence(offence)
             .map_err(|_| Error::<T>::DuplicateOffenceReport)?;
@@ -955,12 +953,12 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
-                target: "runtime::poc",
+                target: "runtime::subspace",
                 "📦 Submitted Subspace root block with segment index {}.",
                 root_block.segment_index(),
             ),
             Err(e) => log::error!(
-                target: "runtime::poc",
+                target: "runtime::subspace",
                 "Error submitting Subspace root block: {:?}",
                 e,
             ),
@@ -981,7 +979,7 @@ impl<T: Config> Pallet<T> {
                 TransactionSource::Local | TransactionSource::InBlock,
             ) {
                 log::warn!(
-                    target: "runtime::poc",
+                    target: "runtime::subspace",
                     "Rejecting root block extrinsic because it is not local/in-block.",
                 );
 
@@ -1033,7 +1031,7 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
         let slot_duration = Self::slot_duration();
         assert!(
             !slot_duration.is_zero(),
-            "PoC slot duration cannot be zero."
+            "Subspace slot duration cannot be zero."
         );
 
         let timestamp_slot = moment / slot_duration;
@@ -1086,17 +1084,18 @@ fn compute_randomness(
     sp_io::hashing::blake2_256(&s)
 }
 
+// TODO: Is this needed in Subspace?
 pub mod migrations {
     use super::*;
     use frame_support::pallet_prelude::{StorageValue, ValueQuery};
 
-    /// Something that can return the storage prefix of the `PoC` pallet.
-    pub trait PoCPalletPrefix: Config {
+    /// Something that can return the storage prefix of the `Subspace` pallet.
+    pub trait SubspacePalletPrefix: Config {
         fn pallet_prefix() -> &'static str;
     }
 
     struct __OldNextEpochConfig<T>(sp_std::marker::PhantomData<T>);
-    impl<T: PoCPalletPrefix> frame_support::traits::StorageInstance for __OldNextEpochConfig<T> {
+    impl<T: SubspacePalletPrefix> frame_support::traits::StorageInstance for __OldNextEpochConfig<T> {
         fn pallet_prefix() -> &'static str {
             T::pallet_prefix()
         }
@@ -1106,10 +1105,9 @@ pub mod migrations {
     type OldNextEpochConfig<T> =
         StorageValue<__OldNextEpochConfig<T>, Option<NextConfigDescriptor>, ValueQuery>;
 
-    /// A storage migration that adds the current epoch configuration for PoC
-    /// to storage.
-    pub fn add_epoch_configuration<T: PoCPalletPrefix>(
-        epoch_config: PoCEpochConfiguration,
+    /// A storage migration that adds the current epoch configuration for Subspace to storage.
+    pub fn add_epoch_configuration<T: SubspacePalletPrefix>(
+        epoch_config: SubspaceEpochConfiguration,
     ) -> Weight {
         let mut writes = 0;
         let mut reads = 0;

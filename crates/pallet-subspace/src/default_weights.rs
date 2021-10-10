@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Default weights for the PoC Pallet
+//! Default weights for the Subspace Pallet
 //! This file was not auto-generated.
 
 use frame_support::weights::{constants::RocksDbWeight as DbWeight, Weight};

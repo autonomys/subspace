@@ -17,21 +17,19 @@
 //!
 //! An opt-in utility module for reporting equivocations.
 //!
-//! This module defines an offence type for PoC equivocations
-//! and some utility traits to wire together:
+//! This module defines an offence type for Subspace equivocations and some utility traits to wire
+//! together:
 //! - a system for reporting offences;
 //! - a system for submitting unsigned transactions;
 //! - a way to get the current block author;
 //!
-//! These can be used in an offchain context in order to submit equivocation
-//! reporting extrinsics (from the client that's import PoC blocks).
-//! And in a runtime context, so that the PoC pallet can validate the
-//! equivocation proofs in the extrinsic and report the offences.
+//! These can be used in an offchain context in order to submit equivocation reporting extrinsics
+//! (from the client that's import Subspace blocks). And in a runtime context, so that the Subspace
+//! pallet can validate the equivocation proofs in the extrinsic and report the offences.
 //!
 //! IMPORTANT:
-//! When using this module for enabling equivocation reporting it is required
-//! that the `ValidateUnsigned` for the PoC pallet is used in the runtime
-//! definition.
+//! When using this module for enabling equivocation reporting it is required that the
+//! `ValidateUnsigned` for the Subspace pallet is used in the runtime definition.
 //!
 
 use frame_support::traits::Get;
@@ -47,19 +45,19 @@ use sp_std::prelude::*;
 
 use crate::{Call, Config, Pallet};
 
-/// A trait with utility methods for handling equivocation reports in PoC.
-/// The trait provides methods for reporting an offence triggered by a valid
-/// equivocation report, checking the current block author (to declare as the
-/// reporter), and also for creating and submitting equivocation report
-/// extrinsics (useful only in offchain context).
+/// A trait with utility methods for handling equivocation reports in Subspace. The trait provides
+/// methods for reporting an offence triggered by a valid equivocation report, checking the current
+/// block author (to declare as the reporter), and also for creating and submitting equivocation
+/// report extrinsics (useful only in offchain context).
 pub trait HandleEquivocation<T: Config> {
     /// The longevity, in blocks, that the equivocation report is valid for. When using the staking
     /// pallet this should be equal to the bonding duration (in blocks, not eras).
     type ReportLongevity: Get<u64>;
 
     /// Report an offence proved by the given reporters.
-    fn report_offence(offence: PoCEquivocationOffence<FarmerPublicKey>)
-        -> Result<(), OffenceError>;
+    fn report_offence(
+        offence: SubspaceEquivocationOffence<FarmerPublicKey>,
+    ) -> Result<(), OffenceError>;
 
     /// Returns true if all of the offenders at the given time slot have already been reported.
     fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &Slot) -> bool;
@@ -74,7 +72,7 @@ impl<T: Config> HandleEquivocation<T> for () {
     type ReportLongevity = ();
 
     fn report_offence(
-        _offence: PoCEquivocationOffence<FarmerPublicKey>,
+        _offence: SubspaceEquivocationOffence<FarmerPublicKey>,
     ) -> Result<(), OffenceError> {
         Ok(())
     }
@@ -111,7 +109,7 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
     // A system for reporting offences after valid equivocation reports are
     // processed.
-    R: ReportOffence<FarmerPublicKey, PoCEquivocationOffence<FarmerPublicKey>>,
+    R: ReportOffence<FarmerPublicKey, SubspaceEquivocationOffence<FarmerPublicKey>>,
     // The longevity (in blocks) that the equivocation report is valid for. When using the staking
     // pallet this should be the bonding duration.
     L: Get<u64>,
@@ -119,7 +117,7 @@ where
     type ReportLongevity = L;
 
     fn report_offence(
-        offence: PoCEquivocationOffence<FarmerPublicKey>,
+        offence: SubspaceEquivocationOffence<FarmerPublicKey>,
     ) -> Result<(), OffenceError> {
         R::report_offence(offence)
     }
@@ -139,12 +137,12 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
-                target: "runtime::poc",
-                "Submitted PoC equivocation report.",
+                target: "runtime::subspace",
+                "Submitted Subspace equivocation report.",
             ),
             Err(e) => log::error!(
-                target: "runtime::poc",
-                "Error submitting equivocation report: {:?}",
+                target: "runtime::subspace",
+                "Error submitting Subspace equivocation report: {:?}",
                 e,
             ),
         }
@@ -169,7 +167,7 @@ impl<T: Config> Pallet<T> {
                 TransactionSource::Local | TransactionSource::InBlock
             ) {
                 log::warn!(
-                    target: "runtime::poc",
+                    target: "runtime::subspace",
                     "Rejecting report equivocation extrinsic because it is not local/in-block.",
                 );
 
@@ -182,7 +180,7 @@ impl<T: Config> Pallet<T> {
             let longevity =
                 <T::HandleEquivocation as HandleEquivocation<T>>::ReportLongevity::get();
 
-            ValidTransaction::with_tag_prefix("PoCEquivocation")
+            ValidTransaction::with_tag_prefix("SubspaceEquivocation")
                 // We assign the `(maximum - 1)` priority for any equivocation report (`-1` is
                 // to make sure potential root block transactions are always included no matter
                 // what).
@@ -215,8 +213,7 @@ impl<T: Config> Pallet<T> {
 fn is_known_offence<T: Config>(
     equivocation_proof: &EquivocationProof<T::Header>,
 ) -> Result<(), TransactionValidityError> {
-    // check if the offence has already been reported,
-    // and if so then we can discard the report.
+    // Check if the offence has already been reported, and if so then we can discard the report.
     if T::HandleEquivocation::is_known_offence(
         &[equivocation_proof.offender.clone()],
         &equivocation_proof.slot,
@@ -227,20 +224,20 @@ fn is_known_offence<T: Config>(
     }
 }
 
-/// A PoC equivocation offence report.
+/// A Subspace equivocation offence report.
 ///
-/// When a validator released two or more blocks at the same slot.
-pub struct PoCEquivocationOffence<FullIdentification> {
-    /// A PoC slot in which this incident happened.
+/// When a farmer released two or more blocks at the same slot.
+pub struct SubspaceEquivocationOffence<FullIdentification> {
+    /// A Subspace slot in which this incident happened.
     pub slot: Slot,
     /// The authority that produced the equivocation.
     pub offender: FullIdentification,
 }
 
 impl<FullIdentification: Clone> Offence<FullIdentification>
-    for PoCEquivocationOffence<FullIdentification>
+    for SubspaceEquivocationOffence<FullIdentification>
 {
-    const ID: Kind = *b"poc:equivocation";
+    const ID: Kind = *b"sub:equivocation";
     type TimeSlot = Slot;
 
     fn offenders(&self) -> Vec<FullIdentification> {

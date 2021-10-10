@@ -94,8 +94,8 @@ use sp_consensus_subspace::{
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
     inherents::PoCInherentData,
-    ConsensusLog, FarmerPublicKey, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration,
-    POC_ENGINE_ID,
+    ConsensusLog, FarmerPublicKey, PoCApi, PoCGenesisConfiguration, SubspaceEpochConfiguration,
+    SUBSPACE_ENGINE_ID,
 };
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
@@ -170,16 +170,16 @@ pub struct Epoch {
     /// Randomness for this epoch.
     pub randomness: Randomness,
     /// Configuration of the epoch.
-    pub config: PoCEpochConfiguration,
+    pub config: SubspaceEpochConfiguration,
 }
 
 impl EpochT for Epoch {
-    type NextEpochDescriptor = (NextEpochDescriptor, PoCEpochConfiguration);
+    type NextEpochDescriptor = (NextEpochDescriptor, SubspaceEpochConfiguration);
     type Slot = Slot;
 
     fn increment(
         &self,
-        (descriptor, config): (NextEpochDescriptor, PoCEpochConfiguration),
+        (descriptor, config): (NextEpochDescriptor, SubspaceEpochConfiguration),
     ) -> Epoch {
         Epoch {
             epoch_index: self.epoch_index + 1,
@@ -208,7 +208,7 @@ impl Epoch {
             start_slot: slot,
             duration: genesis_config.epoch_length,
             randomness: genesis_config.randomness,
-            config: PoCEpochConfiguration {
+            config: SubspaceEpochConfiguration {
                 c: genesis_config.c,
             },
         }
@@ -897,9 +897,7 @@ where
         _slot: Slot,
         claim: &Self::Claim,
     ) -> Vec<sp_runtime::DigestItem<B::Hash>> {
-        vec![<DigestItemFor<B> as CompatibleDigestItem>::poc_pre_digest(
-            claim.0.clone(),
-        )]
+        vec![<DigestItemFor<B> as CompatibleDigestItem>::subspace_pre_digest(claim.0.clone())]
     }
 
     #[allow(clippy::type_complexity)]
@@ -929,7 +927,7 @@ where
                 // add it to a digest item.
                 let signature = keypair.sign(header_hash.as_ref());
                 let digest_item =
-                    <DigestItemFor<B> as CompatibleDigestItem>::poc_seal(signature.into());
+                    <DigestItemFor<B> as CompatibleDigestItem>::subspace_seal(signature.into());
 
                 let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
                 import_block.post_digests.push(digest_item);
@@ -1022,7 +1020,7 @@ pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error
     let mut pre_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for pre runtime digest", log);
-        match (log.as_poc_pre_digest(), pre_digest.is_some()) {
+        match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
             (Some(_), true) => return Err(poc_err(Error::MultiplePreRuntimeDigests)),
             (None, _) => trace!(target: "poc", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
@@ -1041,7 +1039,7 @@ where
     let mut epoch_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for epoch change digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, epoch_digest.is_some()) {
             (Some(ConsensusLog::NextEpochData(_)), true) => {
                 return Err(poc_err(Error::MultipleEpochChangeDigests))
@@ -1064,7 +1062,7 @@ where
     let mut config_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for epoch change digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, config_digest.is_some()) {
             (Some(ConsensusLog::NextConfigData(_)), true) => {
                 return Err(poc_err(Error::MultipleConfigChangeDigests))
@@ -1087,7 +1085,7 @@ where
     let mut solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for solution range digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, solution_range_digest.is_some()) {
             (Some(ConsensusLog::SolutionRangeData(_)), true) => {
                 return Err(poc_err(Error::MultipleSolutionRangeDigests))
@@ -1112,7 +1110,7 @@ where
     let mut next_solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for next solution range digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_solution_range_digest.is_some()) {
             (Some(ConsensusLog::NextSolutionRangeData(_)), true) => {
                 return Err(poc_err(Error::MultipleNextSolutionRangeDigests))
@@ -1135,7 +1133,7 @@ where
     let mut salt_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for salt digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, salt_digest.is_some()) {
             (Some(ConsensusLog::SaltData(_)), true) => {
                 return Err(poc_err(Error::MultipleSaltDigests))
@@ -1158,7 +1156,7 @@ where
     let mut next_salt_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "poc", "Checking log {:?}, looking for salt digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&POC_ENGINE_ID));
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_salt_digest.is_some()) {
             (Some(ConsensusLog::NextSaltData(_)), true) => {
                 return Err(poc_err(Error::MultipleSaltDigests))
@@ -1498,7 +1496,7 @@ where
             CheckedHeader::Checked(pre_header, verified_info) => {
                 let poc_pre_digest = verified_info
                     .pre_digest
-                    .as_poc_pre_digest()
+                    .as_subspace_pre_digest()
                     .expect("check_header always returns a pre-digest digest item; qed");
                 let slot = poc_pre_digest.slot;
 

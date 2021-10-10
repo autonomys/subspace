@@ -157,7 +157,7 @@ impl DummyProposer {
                 randomness: epoch.randomness.clone(),
             })
             .encode();
-            let digest = DigestItem::Consensus(POC_ENGINE_ID, digest_data);
+            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
             block.header.digest_mut().push(digest)
         }
         {
@@ -165,12 +165,12 @@ impl DummyProposer {
                 solution_range: u64::MAX,
             })
             .encode();
-            let digest = DigestItem::Consensus(POC_ENGINE_ID, digest_data);
+            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
             block.header.digest_mut().push(digest)
         }
         {
             let digest_data = ConsensusLog::SaltData(SaltDescriptor { salt: 0 }).encode();
-            let digest = DigestItem::Consensus(POC_ENGINE_ID, digest_data);
+            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
             block.header.digest_mut().push(digest)
         }
 
@@ -654,7 +654,7 @@ fn rejects_missing_inherent_digest() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| stage == Stage::PostSeal || v.as_poc_pre_digest().is_none())
+            .filter(|v| stage == Stage::PostSeal || v.as_subspace_pre_digest().is_none())
             .collect()
     })
 }
@@ -666,7 +666,7 @@ fn rejects_missing_seals() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| stage == Stage::PreSeal || v.as_poc_seal().is_none())
+            .filter(|v| stage == Stage::PreSeal || v.as_subspace_seal().is_none())
             .collect()
     })
 }
@@ -689,15 +689,15 @@ fn wrong_consensus_engine_id_rejected() {
     let keypair = Keypair::generate();
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let bad_seal: Item = DigestItem::Seal([0; 4], keypair.sign(ctx.bytes(b"")).to_bytes().to_vec());
-    assert!(bad_seal.as_poc_pre_digest().is_none());
-    assert!(bad_seal.as_poc_seal().is_none())
+    assert!(bad_seal.as_subspace_pre_digest().is_none());
+    assert!(bad_seal.as_subspace_seal().is_none())
 }
 
 #[test]
 fn malformed_pre_digest_rejected() {
     sp_tracing::try_init_simple();
-    let bad_seal: Item = DigestItem::Seal(POC_ENGINE_ID, [0; 64].to_vec());
-    assert!(bad_seal.as_poc_pre_digest().is_none());
+    let bad_seal: Item = DigestItem::Seal(SUBSPACE_ENGINE_ID, [0; 64].to_vec());
+    assert!(bad_seal.as_subspace_pre_digest().is_none());
 }
 
 #[test]
@@ -706,11 +706,11 @@ fn sig_is_not_pre_digest() {
     let keypair = Keypair::generate();
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let bad_seal: Item = DigestItem::Seal(
-        POC_ENGINE_ID,
+        SUBSPACE_ENGINE_ID,
         keypair.sign(ctx.bytes(b"")).to_bytes().to_vec(),
     );
-    assert!(bad_seal.as_poc_pre_digest().is_none());
-    assert!(bad_seal.as_poc_seal().is_some())
+    assert!(bad_seal.as_subspace_pre_digest().is_none());
+    assert!(bad_seal.as_subspace_seal().is_some())
 }
 
 /// Claims the given slot number. always returning a dummy block.
@@ -740,7 +740,7 @@ fn can_author_block() {
         randomness: [0; 32],
         epoch_index: 1,
         duration: 100,
-        config: PoCEpochConfiguration { c: (3, 10) },
+        config: SubspaceEpochConfiguration { c: (3, 10) },
     };
 
     let mut _config = crate::PoCGenesisConfiguration {
@@ -787,7 +787,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 
         (
             sp_runtime::generic::Digest {
-                logs: vec![Item::poc_pre_digest(PreDigest {
+                logs: vec![Item::subspace_pre_digest(PreDigest {
                     slot,
                     solution: Solution {
                         public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
@@ -820,7 +820,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
         .unwrap()
         .unwrap();
 
-    let seal = Item::poc_seal(signature.try_into().unwrap());
+    let seal = Item::subspace_seal(signature.try_into().unwrap());
 
     let post_hash = {
         block.header.digest_mut().push(seal.clone());

@@ -92,7 +92,7 @@ where
         .ok_or_else(|| poc_err(Error::HeaderUnsealed(header.hash())))?;
 
     let sig = seal
-        .as_poc_seal()
+        .as_subspace_seal()
         .ok_or_else(|| poc_err(Error::HeaderBadSeal(header.hash())))?;
 
     // the pre-hash of the header doesn't include the seal
@@ -129,7 +129,7 @@ where
     )?;
 
     let info = VerifiedHeaderInfo {
-        pre_digest: CompatibleDigestItem::poc_pre_digest(pre_digest),
+        pre_digest: CompatibleDigestItem::subspace_pre_digest(pre_digest),
         seal,
     };
     Ok(CheckedHeader::Checked(header, info))
