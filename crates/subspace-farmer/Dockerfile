@@ -38,11 +38,11 @@ FROM ubuntu:20.04
 
 COPY --from=0 /code/subspace-farmer /subspace-farmer
 
-ENV SPARTAN_DIR=/var/spartan
+ENV SUBSAPCE_DIR=/var/subspace
 
-RUN mkdir /var/spartan && chown nobody:nogroup /var/spartan
+RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
 
-VOLUME /var/spartan
+VOLUME /var/subspace
 
 USER nobody:nogroup
 

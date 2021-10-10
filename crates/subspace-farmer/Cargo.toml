@@ -1,6 +1,6 @@
 [package]
 name = "subspace-farmer"
-description = "This a bare-bones farmer for the simplified Spartan proof-of-space variant of Subspace"
+description = "Farmer for the Subspace Network Blockchain"
 license = "MIT OR Apache-2.0"
 version = "0.3.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]

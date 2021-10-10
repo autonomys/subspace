@@ -6,11 +6,9 @@
 ## Overview
 **Notes:** The code is un-audited and not production ready, use it at your own risk.
 
-This repo is an implementation of a Farmer, designed to work with a seperate Client that implements [Spartan Proof-of-Capacity (PoC) consensus](https://github.com/subspace/substrate/blob/w3f-spartan-ms-1/frame/spartan/design.md). PoC is a generic term for consensus based on disk space, including proofs of space, storage, space-time, and replication. A farmer is similar to a miner in a proof-of-work blockchain, but instead of wasting CPU cycles, it wastes disk space. Much of this code is based on our earlier implementation, [subspace-core-rust](https://www.github.com/subspace/subspace-core-rust).
+This repo is an implementation of a Farmer for [Subspace Network Blockchain](https://subspace.network).
 
-This work is supported by a [Web 3 Foundation grant](https://github.com/w3f/Open-Grants-Program/blob/master/applications/spartan_poc_consensus_module.md) to develop PoC consensus for the Substrate framework. It is specifically designed to work with [spartan-client](https://github.com/subspace/substrate/tree/w3f-spartan-ms-1/bin/node-template-spartan), a substrate client based on the substrate-node-template. 
-
-Spartan is a stepping stone towards the larger goal of deploying [Subspace](https://www.subspace.network/) as a parachain on the Polkadot Network. Subspace is a proof-of-storage blockchain that resolves the farmer's dilemma, to learn more read our <a href="https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view">white paper</a>.
+Subspace is a proof-of-storage blockchain that resolves the farmer's dilemma, to learn more read our <a href="https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view">white paper</a>.
 
 ## Some Notes on Plotting
 
@@ -18,19 +16,15 @@ Spartan is a stepping stone towards the larger goal of deploying [Subspace](http
 
 Plotting time is roughly linear with respect to number of cores and clock speed of the host system. On average, it takes ~ 1 minute to create a 1GB plot or 18 hours to to create a 1TB plot, though these numbers will depend on the system used. This is largely independent of the storage media used (i.e. HDD, SATA SSD, NVME SSD) as it is largely a CPU-bound task.
 
-### Disk Wear and Tear
-
-Some PoC protocols require several passes over the disk in order to plot. For example, a 100GB plot might actually consume several TB of writes and reduce the expected lifetime of the disk. This is not the case with Spartan. The plot is created in a single pass on startup. 
-
 ### Storage Overhead
 
-In addition the plot, a small Binary Search Tree (BST) is also stored on disk using RocksDB. This adds roughly 1% storage overhead. So creating a 1GB plot will actually consume about 1.01 GB of storage. 
+In addition, the plot, a small Binary Search Tree (BST) is also stored on disk using RocksDB. This adds roughly 1% storage overhead. So creating a 1GB plot will actually consume about 1.01 GB of storage. 
 
 ## Run with Docker
 The simplest way to use subspace-farmer is to use container image:
 ```bash
 docker volume create subspace-farmer
-docker run --rm -it --mount source=subspace-farmer,target=/var/spartan subspacelabs/subspace-farmer --help
+docker run --rm -it --mount source=subspace-farmer,target=/var/subspace subspacelabs/subspace-farmer --help
 ```
 
 `subspace-farmer` is the volume where plot and identity will be stored, it only needs to be created once.
@@ -97,7 +91,7 @@ RUST_LOG=debug subspace-farmer farm
 
 This will connect to local node and will try to solve on every slot notification.
 
-*NOTE: You need to have a spartan-client node running before starting farmer, otherwise it will not be able to start*
+*NOTE: You need to have a subspace-client node running before starting farmer, otherwise it will not be able to start*
 
 
 ## Design
