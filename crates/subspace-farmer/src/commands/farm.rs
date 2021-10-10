@@ -74,7 +74,7 @@ struct Solution {
 
 /// Proposed proof of space consisting of solution and farmer's secret key for block signing
 #[derive(Debug, Serialize)]
-struct ProposedProofOfSpaceResponse {
+struct ProposedProofOfReplicationResponse {
     /// Slot number
     slot_number: SlotNumber,
     /// Solution (if present) from farmer's plot corresponding to slot number above
@@ -513,9 +513,9 @@ async fn subscribe_to_slot_info(
     info!("Subscribing to slot info notifications");
     let mut subscription: Subscription<SlotInfo> = client
         .subscribe(
-            "poc_subscribeSlotInfo",
+            "subspace_subscribeSlotInfo",
             JsonRpcParams::NoParams,
-            "poc_unsubscribeSlotInfo",
+            "subspace_unsubscribeSlotInfo",
         )
         .await?;
 
@@ -556,12 +556,14 @@ async fn subscribe_to_slot_info(
 
         client
             .request(
-                "poc_proposeProofOfSpace",
-                JsonRpcParams::Array(vec![serde_json::to_value(&ProposedProofOfSpaceResponse {
-                    slot_number: slot_info.slot_number,
-                    solution,
-                    secret_key: keypair.secret.to_bytes().into(),
-                })?]),
+                "subspace_proposeProofOfReplication",
+                JsonRpcParams::Array(vec![serde_json::to_value(
+                    &ProposedProofOfReplicationResponse {
+                        slot_number: slot_info.slot_number,
+                        solution,
+                        secret_key: keypair.secret.to_bytes().into(),
+                    },
+                )?]),
             )
             .await?;
     }

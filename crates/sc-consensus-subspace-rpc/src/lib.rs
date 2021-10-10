@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! RPC api for PoC.
+//! RPC api for Subspace.
 #![feature(try_blocks)]
 
 use futures::task::SpawnExt;
@@ -133,15 +133,15 @@ pub struct RpcSolution {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ProposedProofOfSpaceResult {
+pub struct ProposedProofOfReplicationResult {
     pub slot_number: SlotNumber,
     pub solution: Option<RpcSolution>,
     pub secret_key: Vec<u8>,
 }
 
-/// Provides rpc methods for interacting with PoC.
+/// Provides rpc methods for interacting with Subspace.
 #[rpc]
-pub trait PoCRpcApi {
+pub trait SubspaceRpcApi {
     /// RPC metadata
     type Metadata;
 
@@ -156,25 +156,25 @@ pub trait PoCRpcApi {
         block_number: u32,
     ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
-    #[rpc(name = "poc_proposeProofOfSpace")]
-    fn propose_proof_of_space(
+    #[rpc(name = "subspace_proposeProofOfReplication")]
+    fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfSpaceResult,
+        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
     ) -> FutureResult<()>;
 
     /// Slot info subscription
     #[pubsub(
-        subscription = "poc_slot_info",
+        subscription = "subspace_slot_info",
         subscribe,
-        name = "poc_subscribeSlotInfo"
+        name = "subspace_subscribeSlotInfo"
     )]
     fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<RpcNewSlotInfo>);
 
     /// Unsubscribe from slot info subscription.
     #[pubsub(
-        subscription = "poc_slot_info",
+        subscription = "subspace_slot_info",
         unsubscribe,
-        name = "poc_unsubscribeSlotInfo"
+        name = "subspace_unsubscribeSlotInfo"
     )]
     fn unsubscribe_slot_info(
         &self,
@@ -184,9 +184,9 @@ pub trait PoCRpcApi {
 
     /// Archived segment subscription
     #[pubsub(
-        subscription = "poc_archived_segment",
+        subscription = "subspace_archived_segment",
         subscribe,
-        name = "poc_subscribeArchivedSegment"
+        name = "subspace_subscribeArchivedSegment"
     )]
     fn subscribe_archived_segment(
         &self,
@@ -196,9 +196,9 @@ pub trait PoCRpcApi {
 
     /// Unsubscribe from archived segment subscription.
     #[pubsub(
-        subscription = "poc_archived_segment",
+        subscription = "subspace_archived_segment",
         unsubscribe,
-        name = "poc_unsubscribeArchivedSegment"
+        name = "subspace_unsubscribeArchivedSegment"
     )]
     fn unsubscribe_archived_segment(
         &self,
@@ -210,11 +210,11 @@ pub trait PoCRpcApi {
 #[derive(Default)]
 struct ResponseSenders {
     current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<ProposedProofOfSpaceResult>>,
+    senders: Vec<async_oneshot::Sender<ProposedProofOfReplicationResult>>,
 }
 
-/// Implements the PoCRpc trait for interacting with PoC.
-pub struct PoCRpcHandler<Block, Client> {
+/// Implements the SubspaceRpc trait for interacting with Subspace.
+pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -223,14 +223,14 @@ pub struct PoCRpcHandler<Block, Client> {
     _block: PhantomData<Block>,
 }
 
-/// PoCRpcHandler is used for notifying subscribers about arrival of new slots and for submission of
-/// solutions (or lack thereof).
+/// `SubspaceRpcHandler` is used for notifying subscribers about arrival of new slots and for
+/// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
-/// every subscriber, after which RPC server waits for the same number of `poc_proposeProofOfSpace`
-/// requests with `ProposedProofOfSpaceResult` in them or until timeout is exceeded. The first valid
-/// solution for a particular slot wins, others are ignored.
-impl<Block, Client> PoCRpcHandler<Block, Client>
+/// every subscriber, after which RPC server waits for the same number of
+/// `subspace_proposeProofOfReplication` requests with `ProposedProofOfReplicationResult` in them or until
+/// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
+impl<Block, Client> SubspaceRpcHandler<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -241,7 +241,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block>,
 {
-    /// Creates a new instance of the PoCRpc handler.
+    /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new<E>(
         client: Arc<Client>,
         executor: E,
@@ -264,7 +264,7 @@ where
     }
 }
 
-impl<Block, Client> PoCRpcApi for PoCRpcHandler<Block, Client>
+impl<Block, Client> SubspaceRpcApi for SubspaceRpcHandler<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -343,9 +343,9 @@ where
         Box::pin(async move { result })
     }
 
-    fn propose_proof_of_space(
+    fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfSpaceResult,
+        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
     ) -> FutureResult<()> {
         let response_senders = Arc::clone(&self.response_senders);
 
