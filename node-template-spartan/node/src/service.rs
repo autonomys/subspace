@@ -40,8 +40,8 @@ pub fn new_partial(
         sc_consensus::DefaultImportQueue<Block, FullClient>,
         sc_transaction_pool::FullPool<Block, FullClient>,
         (
-            sc_consensus_poc::PoCBlockImport<Block, FullClient, Arc<FullClient>>,
-            sc_consensus_poc::PoCLink<Block>,
+            sc_consensus_subspace::PoCBlockImport<Block, FullClient, Arc<FullClient>>,
+            sc_consensus_subspace::PoCLink<Block>,
             Option<Telemetry>,
         ),
     >,
@@ -87,19 +87,19 @@ pub fn new_partial(
         client.clone(),
     );
 
-    let (block_import, poc_link) = sc_consensus_poc::block_import(
-        sc_consensus_poc::Config::get_or_compute(&*client)?,
+    let (block_import, poc_link) = sc_consensus_subspace::block_import(
+        sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
     )?;
 
-    sc_consensus_poc::start_subspace_archiver(
+    sc_consensus_subspace::start_subspace_archiver(
         &poc_link,
         client.clone(),
         &task_manager.spawn_handle(),
     );
     let slot_duration = poc_link.config().slot_duration();
-    let import_queue = sc_consensus_poc::import_queue(
+    let import_queue = sc_consensus_subspace::import_queue(
         &poc_link,
         block_import.clone(),
         None,
@@ -109,7 +109,7 @@ pub fn new_partial(
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             let slot =
-                sp_consensus_poc::inherents::InherentDataProvider::from_timestamp_and_duration(
+                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
                     *timestamp,
                     slot_duration,
                 );
@@ -193,7 +193,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 
         let client_clone = client.clone();
         let slot_duration = poc_link.config().slot_duration();
-        let poc_config = sc_consensus_poc::PoCParams {
+        let poc_config = sc_consensus_subspace::PoCParams {
             client: client.clone(),
             select_chain,
             env: proposer_factory,
@@ -211,7 +211,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                     let slot =
-						sp_consensus_poc::inherents::InherentDataProvider::from_timestamp_and_duration(
+						sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
 							*timestamp,
 							slot_duration,
 						);
@@ -228,7 +228,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
             telemetry: None,
         };
 
-        let poc = sc_consensus_poc::start_poc(poc_config)?;
+        let poc = sc_consensus_subspace::start_poc(poc_config)?;
 
         // the PoC authoring task is considered essential, i.e. if it fails we take down the service
         // with it.
@@ -315,14 +315,14 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
         on_demand.clone(),
     ));
 
-    let (poc_block_import, poc_link) = sc_consensus_poc::block_import(
-        sc_consensus_poc::Config::get_or_compute(&*client)?,
+    let (poc_block_import, poc_link) = sc_consensus_subspace::block_import(
+        sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
     )?;
 
     let slot_duration = poc_link.config().slot_duration();
-    let import_queue = sc_consensus_poc::import_queue(
+    let import_queue = sc_consensus_subspace::import_queue(
         &poc_link,
         poc_block_import,
         None,
@@ -332,7 +332,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             let slot =
-                sp_consensus_poc::inherents::InherentDataProvider::from_timestamp_and_duration(
+                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
                     *timestamp,
                     slot_duration,
                 );

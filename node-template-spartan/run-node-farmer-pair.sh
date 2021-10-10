@@ -15,17 +15,17 @@ export INSTANCE_ID="$1"
 export COMPOSE_PROJECT_NAME="spartan-$INSTANCE_ID"
 stop() {
   docker-compose down -t 3 || /bin/true
-  docker volume rm spartan-farmer-$INSTANCE_ID
+  docker volume rm subspace-farmer-$INSTANCE_ID
 }
 
 trap 'stop' SIGINT
 
 docker-compose pull
 
-docker volume create spartan-farmer-$INSTANCE_ID
+docker volume create subspace-farmer-$INSTANCE_ID
 docker run --rm -it \
-  --name spartan-farmer-$INSTANCE_ID \
-  --mount source=spartan-farmer-$INSTANCE_ID,target=/var/spartan \
-  subspacelabs/spartan-farmer plot 256000 spartan
+  --name subspace-farmer-$INSTANCE_ID \
+  --mount source=subspace-farmer-$INSTANCE_ID,target=/var/spartan \
+  subspacelabs/subspace-farmer plot 256000 spartan
 
 docker-compose up

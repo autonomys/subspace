@@ -473,8 +473,8 @@ impl From<frame_system::Event<Runtime>> for Event {
 	}
 }
 
-impl From<pallet_spartan::Event> for Event {
-	fn from(_evt: pallet_spartan::Event) -> Self {
+impl From<pallet_subspace::Event> for Event {
+	fn from(_evt: pallet_subspace::Event) -> Self {
 		unimplemented!("Not required in tests!")
 	}
 }
@@ -505,7 +505,7 @@ impl frame_support::traits::PalletInfo for Runtime {
 		if type_id == sp_std::any::TypeId::of::<pallet_babe::Pallet<Runtime>>() {
 			return Some("Babe")
 		}
-		if type_id == sp_std::any::TypeId::of::<pallet_spartan::Pallet<Runtime>>() {
+		if type_id == sp_std::any::TypeId::of::<pallet_subspace::Pallet<Runtime>>() {
 			return Some("Spartan")
 		}
 
@@ -602,7 +602,7 @@ parameter_types! {
 	pub const PreGenesisObjectSeed: &'static [u8] = b"subspace";
 }
 
-impl pallet_spartan::Config for Runtime {
+impl pallet_subspace::Config for Runtime {
 	type Event = Event;
 	type EpochDuration = EpochDuration;
 	type EraDuration = EraDuration;
@@ -616,9 +616,9 @@ impl pallet_spartan::Config for Runtime {
 	type PreGenesisObjectSize = PreGenesisObjectSize;
 	type PreGenesisObjectCount = PreGenesisObjectCount;
 	type PreGenesisObjectSeed = PreGenesisObjectSeed;
-	type EpochChangeTrigger = pallet_spartan::NormalEpochChange;
-	type EraChangeTrigger = pallet_spartan::NormalEraChange;
-	type EonChangeTrigger = pallet_spartan::NormalEonChange;
+	type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
+	type EraChangeTrigger = pallet_subspace::NormalEraChange;
+	type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
 	type HandleEquivocation = ();
 
@@ -877,7 +877,7 @@ cfg_if! {
 				}
 			}
 
-			impl sp_consensus_poc::PoCApi<Block> for Runtime {
+			impl sp_consensus_subspace::PoCApi<Block> for Runtime {
 				fn confirmation_depth_k() -> u32 {
 					ConfirmationDepthK::get()
 				}
@@ -902,56 +902,56 @@ cfg_if! {
 					Vec::from(PreGenesisObjectSeed::get())
 				}
 
-				fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
-					sp_consensus_poc::PoCGenesisConfiguration {
+				fn configuration() -> sp_consensus_subspace::PoCGenesisConfiguration {
+					sp_consensus_subspace::PoCGenesisConfiguration {
 						slot_duration: 1000,
 						epoch_length: EpochDuration::get(),
 						c: (3, 10),
-						randomness: <pallet_spartan::Pallet<Runtime>>::randomness(),
+						randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
 					}
 				}
 
 				fn solution_range() -> u64 {
-					<pallet_spartan::Pallet<Runtime>>::solution_range()
+					<pallet_subspace::Pallet<Runtime>>::solution_range()
 						.unwrap_or_else(InitialSolutionRange::get)
 				}
 
 				fn salt() -> u64 {
-					<pallet_spartan::Pallet<Runtime>>::salt()
+					<pallet_subspace::Pallet<Runtime>>::salt()
 				}
 
 				fn current_epoch_start() -> Slot {
-					<pallet_spartan::Pallet<Runtime>>::current_epoch_start()
+					<pallet_subspace::Pallet<Runtime>>::current_epoch_start()
 				}
 
-				fn current_epoch() -> sp_consensus_poc::Epoch {
-					<pallet_spartan::Pallet<Runtime>>::current_epoch()
+				fn current_epoch() -> sp_consensus_subspace::Epoch {
+					<pallet_subspace::Pallet<Runtime>>::current_epoch()
 				}
 
-				fn next_epoch() -> sp_consensus_poc::Epoch {
-					<pallet_spartan::Pallet<Runtime>>::next_epoch()
+				fn next_epoch() -> sp_consensus_subspace::Epoch {
+					<pallet_subspace::Pallet<Runtime>>::next_epoch()
 				}
 
 				fn submit_report_equivocation_extrinsic(
-					equivocation_proof: sp_consensus_poc::EquivocationProof<
+					equivocation_proof: sp_consensus_subspace::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
 				) -> Option<()> {
-					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
+					<pallet_subspace::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
 				}
 
 				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
-					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
+					<pallet_subspace::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
-				fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
-					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
+				fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
+					<pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
 				}
 
 				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
-					<pallet_spartan::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
+					<pallet_subspace::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
 				}
 
 				fn extract_root_block(
@@ -1219,7 +1219,7 @@ cfg_if! {
 				}
 			}
 
-			impl sp_consensus_poc::PoCApi<Block> for Runtime {
+			impl sp_consensus_subspace::PoCApi<Block> for Runtime {
 				fn confirmation_depth_k() -> u32 {
 					ConfirmationDepthK::get()
 				}
@@ -1244,56 +1244,56 @@ cfg_if! {
 					Vec::from(PreGenesisObjectSeed::get())
 				}
 
-				fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
-					sp_consensus_poc::PoCGenesisConfiguration {
+				fn configuration() -> sp_consensus_subspace::PoCGenesisConfiguration {
+					sp_consensus_subspace::PoCGenesisConfiguration {
 						slot_duration: 1000,
 						epoch_length: EpochDuration::get(),
 						c: (3, 10),
-						randomness: <pallet_spartan::Pallet<Runtime>>::randomness(),
+						randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
 					}
 				}
 
 				fn solution_range() -> u64 {
-					<pallet_spartan::Pallet<Runtime>>::solution_range()
+					<pallet_subspace::Pallet<Runtime>>::solution_range()
 						.unwrap_or_else(InitialSolutionRange::get)
 				}
 
 				fn salt() -> u64 {
-					<pallet_spartan::Pallet<Runtime>>::salt()
+					<pallet_subspace::Pallet<Runtime>>::salt()
 				}
 
 				fn current_epoch_start() -> Slot {
-					<pallet_spartan::Pallet<Runtime>>::current_epoch_start()
+					<pallet_subspace::Pallet<Runtime>>::current_epoch_start()
 				}
 
-				fn current_epoch() -> sp_consensus_poc::Epoch {
-					<pallet_spartan::Pallet<Runtime>>::current_epoch()
+				fn current_epoch() -> sp_consensus_subspace::Epoch {
+					<pallet_subspace::Pallet<Runtime>>::current_epoch()
 				}
 
-				fn next_epoch() -> sp_consensus_poc::Epoch {
-					<pallet_spartan::Pallet<Runtime>>::next_epoch()
+				fn next_epoch() -> sp_consensus_subspace::Epoch {
+					<pallet_subspace::Pallet<Runtime>>::next_epoch()
 				}
 
 				fn submit_report_equivocation_extrinsic(
-					equivocation_proof: sp_consensus_poc::EquivocationProof<
+					equivocation_proof: sp_consensus_subspace::EquivocationProof<
 						<Block as BlockT>::Header,
 					>,
 				) -> Option<()> {
-					<pallet_spartan::Pallet<Runtime>>::submit_test_equivocation_report(
+					<pallet_subspace::Pallet<Runtime>>::submit_test_equivocation_report(
 						equivocation_proof,
 					)
 				}
 
 				fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
-					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
+					<pallet_subspace::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
-				fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
-					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
+				fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
+					<pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
 				}
 
 				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
-					<pallet_spartan::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
+					<pallet_subspace::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
 				}
 
 				fn extract_root_block(

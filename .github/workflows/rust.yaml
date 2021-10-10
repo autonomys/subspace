@@ -93,7 +93,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --features=spartan-farmer/cuda -- -D warnings
+          args: --features=subspace-farmer/cuda -- -D warnings
         if: runner.os != 'macOS'
 
       - name: cargo clippy (macOS)
@@ -153,7 +153,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=spartan-farmer/cuda
+          args: --features=subspace-farmer/cuda
         if: runner.os != 'macOS'
 
       - name: cargo test (macOS)

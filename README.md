@@ -23,8 +23,8 @@ The structure of this repository is the following:
 This is a monorepo with multiple binaries and the workflow is typical for Rust projects:
 
 - `cargo run --bin node-template-spartan -- --dev --tmp` to run [a node](node-template-spartan)
-- `cargo run --release --bin spartan-farmer -- plot 256000 spartan` to [create a 1 GiB plot](crates/spartan-farmer#create-a-new-plot)
-- `cargo run --release --bin spartan-farmer -- farm` to [start farming](crates/spartan-farmer#start-the-farmer)
+- `cargo run --release --bin subspace-farmer -- plot 256000 spartan` to [create a 1 GiB plot](crates/subspace-farmer#create-a-new-plot)
+- `cargo run --release --bin subspace-farmer -- farm` to [start farming](crates/subspace-farmer#start-the-farmer)
 
 NOTE: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.
 

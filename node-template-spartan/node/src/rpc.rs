@@ -7,8 +7,8 @@
 
 use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
 use sc_client_api::BlockBackend;
-use sc_consensus_poc::notification::SubspaceNotificationStream;
-use sc_consensus_poc::{ArchivedSegmentNotification, NewSlotNotification};
+use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -47,7 +47,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + sp_consensus_poc::PoCApi<Block>,
+        + sp_consensus_subspace::PoCApi<Block>,
     P: TransactionPool + 'static,
 {
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};
@@ -73,8 +73,8 @@ where
         client.clone(),
     )));
 
-    io.extend_with(sc_consensus_poc_rpc::PoCRpcApi::to_delegate(
-        sc_consensus_poc_rpc::PoCRpcHandler::new(
+    io.extend_with(sc_consensus_subspace_rpc::PoCRpcApi::to_delegate(
+        sc_consensus_subspace_rpc::PoCRpcHandler::new(
             client,
             subscription_executor,
             new_slot_notification_stream,

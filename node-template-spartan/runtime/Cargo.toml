@@ -18,16 +18,16 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 hex-literal = { version = "0.3.3", optional = true }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crates/pallet-feeds" }
-pallet-offences-poc = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-poc" }
+pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-subspace" }
 pallet-randomness-collective-flip = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-pallet-spartan = { version = "0.1.0", default-features = false, path = "../../crates/pallet-spartan" }
+pallet-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-subspace" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", default-features = false, version = "4.0.0-dev"}
-sp-consensus-poc = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-poc" }
+sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", default-features = false, version = "4.0.0-dev"}
@@ -60,9 +60,9 @@ std = [
 	"frame-system-rpc-runtime-api/std",
 	"pallet-balances/std",
 	"pallet-feeds/std",
-	"pallet-offences-poc/std",
+	"pallet-offences-subspace/std",
 	"pallet-randomness-collective-flip/std",
-	"pallet-spartan/std",
+	"pallet-subspace/std",
 	"pallet-sudo/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
@@ -70,7 +70,7 @@ std = [
 	"scale-info/std",
 	"sp-api/std",
 	"sp-block-builder/std",
-	"sp-consensus-poc/std",
+	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
 	"sp-inherents/std",

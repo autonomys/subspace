@@ -5,8 +5,8 @@ set -e
 setup() {
     echo "Setting up docker Network, Volume, and Pulling Repo..."
     docker network create spartan || /bin/true
-    docker volume create spartan-farmer || /bin/true
-    docker pull subspacelabs/spartan-farmer
+    docker volume create subspace-farmer || /bin/true
+    docker pull subspacelabs/subspace-farmer
     echo "Setup/Update Complete."
 }
 
@@ -14,9 +14,9 @@ run-farm() {
     echo "Starting Farm..."
     docker run --rm --init -it \
     --net spartan \
-    --name spartan-farmer \
-    --mount source=spartan-farmer,target=/var/spartan \
-    subspacelabs/spartan-farmer \
+    --name subspace-farmer \
+    --mount source=subspace-farmer,target=/var/spartan \
+    subspacelabs/subspace-farmer \
         farm \
         --ws-server ws://node-template-spartan-full:9944
 }
@@ -24,22 +24,22 @@ run-farm() {
 plot-1gb() {
     echo "Plotting 1gb..."
     docker run --rm -it \
-    --name spartan-farmer \
-    --mount source=spartan-farmer,target=/var/spartan \
-    subspacelabs/spartan-farmer plot 256000 spartan
+    --name subspace-farmer \
+    --mount source=subspace-farmer,target=/var/spartan \
+    subspacelabs/subspace-farmer plot 256000 spartan
 }
 wipe() {
     echo "Wiping prior installation..."
-    docker container kill spartan-farmer
-    docker volume rm spartan-farmer
+    docker container kill subspace-farmer
+    docker volume rm subspace-farmer
 }
 erase() {
     echo "Erasing plot..."
-    docker container kill spartan-farmer
+    docker container kill subspace-farmer
     docker run --rm -it \
-    --name spartan-farmer \
-    --mount source=spartan-farmer,target=/var/spartan \
-    subspacelabs/spartan-farmer erase-plot
+    --name subspace-farmer \
+    --mount source=subspace-farmer,target=/var/spartan \
+    subspacelabs/subspace-farmer erase-plot
 }
 ##
 # Color  Variables
@@ -63,7 +63,7 @@ menu(){
     echo -ne "
     ----------------------------------
                 F A R M E R
-    -=[Subspace - Spartan Testnet]=- 
+    -=[Subspace - Spartan Testnet]=-
     ----------------------------------
     $(ColorGreen '1)') Setup/Update Farmer
     $(ColorGreen '2)') Plot 1GB of Data
@@ -72,7 +72,7 @@ menu(){
     $(ColorGreen '5)') Erase Plot
     $(ColorGreen '0)') Exit
     $(ColorBlue 'Choose an option:') $clear"
-    
+
 
     read a
     case $a in

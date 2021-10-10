@@ -12,11 +12,11 @@ services:
         "--bootnodes", "/ip4/${BOOTSTRAP_CLIENT_IP}/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
     ]
   farmer:
-    image: subspacelabs/spartan-farmer
+    image: subspacelabs/subspace-farmer
     networks:
       - default
     volumes:
-      - source: spartan-farmer
+      - source: subspace-farmer
         target: /var/spartan
         type: volume
     restart: always
@@ -31,6 +31,6 @@ networks:
     name: spartan
 
 volumes:
-  spartan-farmer:
+  subspace-farmer:
     external: true
-    name: spartan-farmer-${INSTANCE_ID}
+    name: subspace-farmer-${INSTANCE_ID}

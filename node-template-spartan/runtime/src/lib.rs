@@ -135,8 +135,8 @@ const EPOCH_DURATION_IN_SLOTS: u64 =
 const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
 
 /// The PoC epoch configuration at genesis.
-pub const POC_GENESIS_EPOCH_CONFIG: sp_consensus_poc::PoCEpochConfiguration =
-    sp_consensus_poc::PoCEpochConfiguration {
+pub const POC_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::PoCEpochConfiguration =
+    sp_consensus_subspace::PoCEpochConfiguration {
         c: SLOT_PROBABILITY,
     };
 
@@ -251,7 +251,7 @@ parameter_types! {
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
-impl pallet_spartan::Config for Runtime {
+impl pallet_subspace::Config for Runtime {
     type Event = Event;
     type EpochDuration = EpochDuration;
     type EraDuration = EraDuration;
@@ -265,12 +265,12 @@ impl pallet_spartan::Config for Runtime {
     type PreGenesisObjectSize = PreGenesisObjectSize;
     type PreGenesisObjectCount = PreGenesisObjectCount;
     type PreGenesisObjectSeed = PreGenesisObjectSeed;
-    type EpochChangeTrigger = pallet_spartan::NormalEpochChange;
-    type EraChangeTrigger = pallet_spartan::NormalEraChange;
-    type EonChangeTrigger = pallet_spartan::NormalEonChange;
+    type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
+    type EraChangeTrigger = pallet_subspace::NormalEraChange;
+    type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
     type HandleEquivocation =
-        pallet_spartan::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
+        pallet_subspace::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -335,7 +335,7 @@ parameter_types! {
         BlockWeights::get().max_block;
 }
 
-impl pallet_offences_poc::Config for Runtime {
+impl pallet_offences_subspace::Config for Runtime {
     type Event = Event;
     type OnOffenceHandler = PoC;
 }
@@ -354,11 +354,11 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
-        PoC: pallet_spartan::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
+        PoC: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
-        OffencesPoC: pallet_offences_poc::{Pallet, Storage, Event},
+        OffencesPoC: pallet_offences_subspace::{Pallet, Storage, Event},
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>},
     }
 );
@@ -392,7 +392,8 @@ pub type Executive = frame_executive::Executive<
 
 fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
     if let Ok(extrinsic) = UncheckedExtrinsic::decode(&mut encoded_extrinsic.as_slice()) {
-        if let Call::PoC(pallet_spartan::Call::store_root_block { root_block }) = extrinsic.function
+        if let Call::PoC(pallet_subspace::Call::store_root_block { root_block }) =
+            extrinsic.function
         {
             return Some(root_block);
         }
@@ -499,7 +500,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_poc::PoCApi<Block> for Runtime {
+    impl sp_consensus_subspace::PoCApi<Block> for Runtime {
         fn confirmation_depth_k() -> u32 {
             ConfirmationDepthK::get()
         }
@@ -524,13 +525,13 @@ impl_runtime_apis! {
             Vec::from(PreGenesisObjectSeed::get())
         }
 
-        fn configuration() -> sp_consensus_poc::PoCGenesisConfiguration {
+        fn configuration() -> sp_consensus_subspace::PoCGenesisConfiguration {
             // The choice of `c` parameter (where `1 - c` represents the
             // probability of a slot being empty), is done in accordance to the
             // slot duration and expected target block time, for safely
             // resisting network delays of maximum two seconds.
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
-            sp_consensus_poc::PoCGenesisConfiguration {
+            sp_consensus_subspace::PoCGenesisConfiguration {
                 slot_duration: PoC::slot_duration(),
                 epoch_length: EpochDuration::get(),
                 c: SlotProbability::get(),
@@ -550,16 +551,16 @@ impl_runtime_apis! {
             PoC::current_epoch_start()
         }
 
-        fn current_epoch() -> sp_consensus_poc::Epoch {
+        fn current_epoch() -> sp_consensus_subspace::Epoch {
             PoC::current_epoch()
         }
 
-        fn next_epoch() -> sp_consensus_poc::Epoch {
+        fn next_epoch() -> sp_consensus_subspace::Epoch {
             PoC::next_epoch()
         }
 
         fn submit_report_equivocation_extrinsic(
-            equivocation_proof: sp_consensus_poc::EquivocationProof<<Block as BlockT>::Header>,
+            equivocation_proof: sp_consensus_subspace::EquivocationProof<<Block as BlockT>::Header>,
         ) -> Option<()> {
             PoC::submit_equivocation_report(equivocation_proof)
         }
@@ -568,7 +569,7 @@ impl_runtime_apis! {
             PoC::submit_store_root_block(root_block)
         }
 
-        fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
+        fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             PoC::is_in_block_list(farmer_public_key)

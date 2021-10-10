@@ -28,7 +28,7 @@ Based on a fork of Substrate Node Template.
 
 Follow these steps to get started with the Spartan Node Template :hammer_and_wrench:
 
-Note that this repo is for running a spartan-client. In order to run a full node which participates in consensus and produces blocks you must also run a [spartan-farmer](https://github.com/subspace/spartan-farmer/tree/w3f-spartan-ms-1.1) and that farmer must have first created a disk-based plot. For clarity we provide instructions for both repos in the docker guide below. For building and running the farmer in development mode from source, refer to the instructions in the [readme](https://github.com/subspace/spartan-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually).
+Note that this repo is for running a spartan-client. In order to run a full node which participates in consensus and produces blocks you must also run a [subspace-farmer](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1) and that farmer must have first created a disk-based plot. For clarity we provide instructions for both repos in the docker guide below. For building and running the farmer in development mode from source, refer to the instructions in the [readme](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually).
 
 ### Run with Docker
 
@@ -40,12 +40,12 @@ First, install [Docker](https://docs.docker.com/get-docker/).
 
 Create volume for plot, pull latest image and initialize 1 GiB plot (should take a thirty seconds to a few minutes):
 ```bash
-docker volume create spartan-farmer
-docker pull subspacelabs/spartan-farmer
+docker volume create subspace-farmer
+docker pull subspacelabs/subspace-farmer
 docker run --rm -it \
-  --name spartan-farmer \
-  --mount source=spartan-farmer,target=/var/spartan \
-  subspacelabs/spartan-farmer plot 256000 spartan
+  --name subspace-farmer \
+  --mount source=subspace-farmer,target=/var/spartan \
+  subspacelabs/subspace-farmer plot 256000 spartan
 ```
 
 #### Run the Client (Terminal 2)
@@ -73,9 +73,9 @@ Once node is running, you can connect farmer to it by running following in a sep
 ```bash
 docker run --rm --init -it \
   --net spartan \
-  --name spartan-farmer \
-  --mount source=spartan-farmer,target=/var/spartan \
-  subspacelabs/spartan-farmer \
+  --name subspace-farmer \
+  --mount source=subspace-farmer,target=/var/spartan \
+  subspacelabs/subspace-farmer \
     farm \
     --ws-server ws://node-template-spartan:9944
 ```
@@ -148,12 +148,12 @@ On Linux, RocksDB requires Clang
 sudo apt-get install llvm clang gcc make m4
 ```
 
-#### Setup Spartan-Farmer
-Create 1 GiB plot according to following [instructions](https://github.com/subspace/spartan-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually)
+#### Setup subspace-farmer
+Create 1 GiB plot according to following [instructions](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually)
 
 #### Install and Run Node
 
-This will run a node-template-spartan in one terminal and a spartan-farmer farming in a second terminal.
+This will run a node-template-spartan in one terminal and a subspace-farmer farming in a second terminal.
 The node will send slot notification challenges to the farmer.
 If the farmer finds a valid solution it will reply, and the node will produce a new block.
 
@@ -168,7 +168,7 @@ cargo +nightly run --bin node-template-spartan -- --dev --tmp
 # wait for the client to start before continuing...
 
 # Run Farmer (second terminal)
-cd /back/to/spartan-farmer
+cd /back/to/subspace-farmer
 cargo +nightly run farm
 ```
 
@@ -194,24 +194,24 @@ rustup toolchain install nightly
       ```
   2. In another terminal plot with the same identity:
       ```bash
-      docker volume create spartan-farmer-1
+      docker volume create subspace-farmer-1
       docker run --rm -it \
         --entrypoint=/bin/cp \
-        --mount source=spartan-farmer,target=/var/spartan-src \
-        --mount source=spartan-farmer-1,target=/var/spartan \
-        subspacelabs/spartan-farmer cp /var/spartan-src/identity.bin /var/spartan/identity.bin
+        --mount source=subspace-farmer,target=/var/spartan-src \
+        --mount source=subspace-farmer-1,target=/var/spartan \
+        subspacelabs/subspace-farmer cp /var/spartan-src/identity.bin /var/spartan/identity.bin
       docker run --rm -it \
-        --name spartan-farmer-1 \
-        --mount source=spartan-farmer-1,target=/var/spartan \
-        subspacelabs/spartan-farmer plot 256000 spartan
+        --name subspace-farmer-1 \
+        --mount source=subspace-farmer-1,target=/var/spartan \
+        subspacelabs/subspace-farmer plot 256000 spartan
       ```
   3. And start farming while being connected to the full client:
       ```bash
       docker run --rm --init -it \
         --net spartan \
-        --name spartan-farmer-1 \
-        --mount source=spartan-farmer-1,target=/var/spartan \
-        subspacelabs/spartan-farmer \
+        --name subspace-farmer-1 \
+        --mount source=subspace-farmer-1,target=/var/spartan \
+        subspacelabs/subspace-farmer \
           farm \
           --ws-server ws://node-template-spartan-full-1:9944
       ```
@@ -241,7 +241,7 @@ cd substrate/frame/spartan
 cargo +nightly test
 
 # Farmer tests
-cd spartan-farmer
+cd subspace-farmer
 cargo +nightly test
 
 ```

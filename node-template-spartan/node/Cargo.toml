@@ -25,8 +25,8 @@ sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/parity
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sc-consensus-poc = { version = "0.1.0", path = "../../crates/sc-consensus-poc" }
-sc-consensus-poc-rpc = { version = "0.1.0", path = "../../crates/sc-consensus-poc-rpc" }
+sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
+sc-consensus-subspace-rpc = { version = "0.1.0", path = "../../crates/sc-consensus-subspace-rpc" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", features = ["wasmtime"] }
@@ -41,7 +41,7 @@ sp-authorship = { version = "4.0.0-dev", git = "https://github.com/paritytech/su
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-consensus-poc = { version = "0.1.0", path = "../../crates/sp-consensus-poc" }
+sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
