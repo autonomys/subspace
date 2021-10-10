@@ -509,7 +509,7 @@ async fn subscribe_to_slot_info(
     keypair: &Keypair,
     ctx: &SigningContext,
 ) -> Result<()> {
-    let public_key_hash = crypto::sha256_hash(&keypair.public);
+    let farmer_public_key_hash = crypto::sha256_hash(&keypair.public);
 
     info!("Subscribing to slot info notifications");
     let mut subscription: Subscription<SlotInfo> = client
@@ -527,7 +527,7 @@ async fn subscribe_to_slot_info(
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
-        let local_challenge = derive_local_challenge(&slot_info.challenge, &public_key_hash);
+        let local_challenge = derive_local_challenge(&slot_info.challenge, &farmer_public_key_hash);
 
         let solution = match commitments
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
@@ -653,11 +653,12 @@ fn update_commitments(
     }
 }
 
-fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) -> [u8; 8] {
+// TODO: Move into `subspace-solving`
+fn derive_local_challenge(global_challenge: &[u8], farmer_public_key_hash: &[u8]) -> [u8; 8] {
     digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_id.len());
+        let mut data = Vec::with_capacity(global_challenge.len() + farmer_public_key_hash.len());
         data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_id);
+        data.extend_from_slice(farmer_public_key_hash);
         data
     })
     .as_ref()[..8]

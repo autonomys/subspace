@@ -28,9 +28,9 @@ use schnorrkel::Keypair;
 use sp_core::Public;
 use sp_runtime::Perbill;
 
-fn generate_farmer_id() -> FarmerId {
+fn generate_farmer_public_key() -> FarmerPublicKey {
     let keypair = Keypair::generate();
-    FarmerId::from_slice(&keypair.public.to_bytes())
+    FarmerPublicKey::from_slice(&keypair.public.to_bytes())
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn should_report_an_farmer_and_trigger_on_offence() {
 
         let offence = Offence {
             time_slot,
-            offenders: vec![generate_farmer_id()],
+            offenders: vec![generate_farmer_public_key()],
         };
 
         // when
@@ -64,7 +64,7 @@ fn should_not_report_the_same_farmer_twice_in_the_same_slot() {
 
         let offence = Offence {
             time_slot,
-            offenders: vec![generate_farmer_id()],
+            offenders: vec![generate_farmer_public_key()],
         };
         OffencesPoC::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
@@ -95,7 +95,7 @@ fn should_report_in_different_time_slot() {
 
         let mut offence = Offence {
             time_slot,
-            offenders: vec![generate_farmer_id()],
+            offenders: vec![generate_farmer_public_key()],
         };
         OffencesPoC::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
@@ -124,7 +124,7 @@ fn should_deposit_event() {
 
         let offence = Offence {
             time_slot,
-            offenders: vec![generate_farmer_id()],
+            offenders: vec![generate_farmer_public_key()],
         };
 
         // when
@@ -151,7 +151,7 @@ fn doesnt_deposit_event_for_dups() {
 
         let offence = Offence {
             time_slot,
-            offenders: vec![generate_farmer_id()],
+            offenders: vec![generate_farmer_public_key()],
         };
         OffencesPoC::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
@@ -181,14 +181,14 @@ fn doesnt_deposit_event_for_dups() {
 
 #[test]
 fn reports_if_an_offence_is_dup() {
-    type TestOffence = Offence<FarmerId>;
+    type TestOffence = Offence<FarmerPublicKey>;
 
     new_test_ext().execute_with(|| {
         let time_slot = 42;
         assert_eq!(offence_reports(KIND, time_slot), vec![]);
 
-        let farmer_0 = generate_farmer_id();
-        let farmer_1 = generate_farmer_id();
+        let farmer_0 = generate_farmer_public_key();
+        let farmer_1 = generate_farmer_public_key();
 
         let offence = |time_slot, offenders| TestOffence {
             time_slot,
@@ -258,8 +258,8 @@ fn should_properly_count_offences() {
         let time_slot = 42;
         assert_eq!(offence_reports(KIND, time_slot), vec![]);
 
-        let farmer_1 = generate_farmer_id();
-        let farmer_2 = generate_farmer_id();
+        let farmer_1 = generate_farmer_public_key();
+        let farmer_2 = generate_farmer_public_key();
 
         let offence1 = Offence {
             time_slot,
@@ -300,11 +300,11 @@ fn should_properly_sort_offences() {
         let time_slot = 42;
         assert_eq!(offence_reports(KIND, time_slot), vec![]);
 
-        let farmer_5 = generate_farmer_id();
-        let farmer_4 = generate_farmer_id();
-        let farmer_6 = generate_farmer_id();
-        let farmer_7 = generate_farmer_id();
-        let farmer_3 = generate_farmer_id();
+        let farmer_5 = generate_farmer_public_key();
+        let farmer_4 = generate_farmer_public_key();
+        let farmer_6 = generate_farmer_public_key();
+        let farmer_7 = generate_farmer_public_key();
+        let farmer_3 = generate_farmer_public_key();
 
         let offence1 = Offence {
             time_slot,

@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_poc::digests::Solution;
-use sp_consensus_poc::{FarmerId, PoCApi};
+use sp_consensus_poc::{FarmerPublicKey, PoCApi};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::Public;
 use sp_runtime::generic::BlockId;
@@ -402,7 +402,7 @@ where
                         if let Ok(proposed_proof_of_space_result) = response_receiver.await {
                             if let Some(solution) = proposed_proof_of_space_result.solution {
                                 let solution = Solution {
-                                    public_key: FarmerId::from_slice(&solution.public_key),
+                                    public_key: FarmerPublicKey::from_slice(&solution.public_key),
                                     piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,

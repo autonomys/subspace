@@ -45,7 +45,7 @@ use sp_consensus_poc::{
         PreDigest, SaltDescriptor, SolutionRangeDescriptor,
     },
     offence::{OffenceDetails, OnOffenceHandler},
-    ConsensusLog, Epoch, EquivocationProof, FarmerId, PoCEpochConfiguration, POC_ENGINE_ID,
+    ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, PoCEpochConfiguration, POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
 use sp_runtime::transaction_validity::{
@@ -379,7 +379,7 @@ pub mod pallet {
 
     /// A set of blocked farmers keyed by their public key.
     #[pallet::storage]
-    pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerId, ()>;
+    pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerPublicKey, ()>;
 
     /// Mapping from segment index to corresponding Merkle Root.
     #[pallet::storage]
@@ -931,9 +931,9 @@ impl<T: Config> Pallet<T> {
         );
     }
 
-    /// Check if `farmer_id` is in block list (due to equivocation)
-    pub fn is_in_block_list(farmer_id: &FarmerId) -> bool {
-        BlockList::<T>::contains_key(farmer_id)
+    /// Check if `farmer_public_key` is in block list (due to equivocation)
+    pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
+        BlockList::<T>::contains_key(farmer_public_key)
     }
 
     /// Get MerkleRoot for specified segment index
@@ -1055,11 +1055,11 @@ impl<T: Config> frame_support::traits::Lateness<T::BlockNumber> for Pallet<T> {
 }
 
 impl<T: Config> sp_runtime::BoundToRuntimeAppPublic for Pallet<T> {
-    type Public = FarmerId;
+    type Public = FarmerPublicKey;
 }
 
-impl<T: Config> OnOffenceHandler<FarmerId> for Pallet<T> {
-    fn on_offence(offenders: &[OffenceDetails<FarmerId>]) {
+impl<T: Config> OnOffenceHandler<FarmerPublicKey> for Pallet<T> {
+    fn on_offence(offenders: &[OffenceDetails<FarmerPublicKey>]) {
         for offender in offenders {
             BlockList::<T>::insert(offender.offender.clone(), ());
         }

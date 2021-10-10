@@ -53,7 +53,7 @@ pub type FarmerSignature = app::Signature;
 
 /// A PoC farmer identifier. Necessarily equivalent to the schnorrkel public key used in
 /// the main PoC module. If that ever changes, then this must, too.
-pub type FarmerId = app::Public;
+pub type FarmerPublicKey = app::Public;
 
 /// The `ConsensusEngineId` of PoC.
 pub const POC_ENGINE_ID: ConsensusEngineId = *b"POC_";
@@ -64,7 +64,7 @@ pub const POC_ENGINE_ID: ConsensusEngineId = *b"POC_";
 pub const MEDIAN_ALGORITHM_CARDINALITY: usize = 1200; // arbitrary suggestion by w3f-research.
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
-pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerId>;
+pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerPublicKey>;
 
 /// The cumulative weight of a PoC block, i.e. sum of block weights starting
 /// at this block until the genesis block.
@@ -163,7 +163,7 @@ where
             .find_map(|log| log.as_poc_pre_digest())
     };
 
-    let verify_seal_signature = |mut header: H, offender: &FarmerId| {
+    let verify_seal_signature = |mut header: H, offender: &FarmerPublicKey| {
         let seal = header.digest_mut().pop()?.as_poc_seal()?;
         let pre_hash = header.hash();
 
@@ -303,8 +303,8 @@ sp_api::decl_runtime_apis! {
         /// useful in an offchain context.
         fn submit_store_root_block_extrinsic(root_block: RootBlock);
 
-        /// Check if `farmer_id` is in block list (due to equivocation)
-        fn is_in_block_list(farmer_id: &FarmerId) -> bool;
+        /// Check if `farmer_public_key` is in block list (due to equivocation)
+        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
         /// Get MerkleRoot for specified segment index
         fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash>;

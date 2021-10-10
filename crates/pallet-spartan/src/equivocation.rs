@@ -36,7 +36,7 @@
 
 use frame_support::traits::Get;
 use sp_consensus_poc::offence::{Kind, Offence, OffenceError, ReportOffence};
-use sp_consensus_poc::{EquivocationProof, FarmerId};
+use sp_consensus_poc::{EquivocationProof, FarmerPublicKey};
 use sp_consensus_slots::Slot;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
@@ -58,10 +58,11 @@ pub trait HandleEquivocation<T: Config> {
     type ReportLongevity: Get<u64>;
 
     /// Report an offence proved by the given reporters.
-    fn report_offence(offence: PoCEquivocationOffence<FarmerId>) -> Result<(), OffenceError>;
+    fn report_offence(offence: PoCEquivocationOffence<FarmerPublicKey>)
+        -> Result<(), OffenceError>;
 
     /// Returns true if all of the offenders at the given time slot have already been reported.
-    fn is_known_offence(offenders: &[FarmerId], time_slot: &Slot) -> bool;
+    fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &Slot) -> bool;
 
     /// Create and dispatch an equivocation report extrinsic.
     fn submit_equivocation_report(
@@ -72,11 +73,13 @@ pub trait HandleEquivocation<T: Config> {
 impl<T: Config> HandleEquivocation<T> for () {
     type ReportLongevity = ();
 
-    fn report_offence(_offence: PoCEquivocationOffence<FarmerId>) -> Result<(), OffenceError> {
+    fn report_offence(
+        _offence: PoCEquivocationOffence<FarmerPublicKey>,
+    ) -> Result<(), OffenceError> {
         Ok(())
     }
 
-    fn is_known_offence(_offenders: &[FarmerId], _time_slot: &Slot) -> bool {
+    fn is_known_offence(_offenders: &[FarmerPublicKey], _time_slot: &Slot) -> bool {
         true
     }
 
@@ -108,18 +111,20 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
     // A system for reporting offences after valid equivocation reports are
     // processed.
-    R: ReportOffence<FarmerId, PoCEquivocationOffence<FarmerId>>,
+    R: ReportOffence<FarmerPublicKey, PoCEquivocationOffence<FarmerPublicKey>>,
     // The longevity (in blocks) that the equivocation report is valid for. When using the staking
     // pallet this should be the bonding duration.
     L: Get<u64>,
 {
     type ReportLongevity = L;
 
-    fn report_offence(offence: PoCEquivocationOffence<FarmerId>) -> Result<(), OffenceError> {
+    fn report_offence(
+        offence: PoCEquivocationOffence<FarmerPublicKey>,
+    ) -> Result<(), OffenceError> {
         R::report_offence(offence)
     }
 
-    fn is_known_offence(offenders: &[FarmerId], time_slot: &Slot) -> bool {
+    fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &Slot) -> bool {
         R::is_known_offence(offenders, time_slot)
     }
 

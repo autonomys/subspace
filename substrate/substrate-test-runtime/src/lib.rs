@@ -946,8 +946,8 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
-				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
-					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
+					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
 				}
 
 				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
@@ -1288,8 +1288,8 @@ cfg_if! {
 					<pallet_spartan::Pallet<Runtime>>::submit_test_store_root_block(root_block);
 				}
 
-				fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
-					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_id)
+				fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
+					<pallet_spartan::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
 				}
 
 				fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {

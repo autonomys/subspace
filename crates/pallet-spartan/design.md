@@ -48,10 +48,10 @@ Required to derive the `randomness` for an epoch and the local `challenge` for e
 Required to derive a valid commitment or `tag` for each `encoding` and a dynamic `Salt`.
 
 ##### Pseudorandom Permutation (PRP)
-Required to generate and verify each `encoding`, derived from the `public_key_hash`, `nonce`, and `GENESIS_PIECE` for some number of `ENCODE_ROUNDS`.
+Required to generate and verify each `encoding`, derived from the `farmer_public_key_hash`, `nonce`, and `GENESIS_PIECE` for some number of `ENCODE_ROUNDS`.
 We employ a time-asymmetric permutation based on Sloth (Slow timed hash function), parameterized by a `PRIME_SIZE` and `PIECE_SIZE`.
 This has the advantage of allowing decoding (and verification) to be completed much faster than encoding.
-Concretely, the `public_key_hash` serves as a public encoding key, the `nonce` serves as an Initialization Vector, and the `ENCODE_ROUNDS` specifies the number of breadth-first iterations, or layers of the CBC block cipher (parameterizing the encoding delay).
+Concretely, the `farmer_public_key_hash` serves as a public encoding key, the `nonce` serves as an Initialization Vector, and the `ENCODE_ROUNDS` specifies the number of breadth-first iterations, or layers of the CBC block cipher (parameterizing the encoding delay).
 
 ##### Genesis Piece
 A string of random bits of length `PIECE_SIZE` which is deterministically derived from a short seed.
@@ -100,11 +100,11 @@ A more frequent update interval linearly increases the computation required to p
 
 1. Given the above Public Parameters
 2. Generate a keypair `public_key, private_key` under the digital signature scheme.
-3. Derive a `public_key_hash` as `Hash(public_key)`
+3. Derive a `farmer_public_key_hash` as `Hash(public_key)`
 4. Given a disk of size `PLOT_SIZE` bytes.
 5. For a given `ENCODING_COUNT` as `PLOT_SIZE / PIECE_SIZE`
 6. For each `nonce` in the range `0..ENCODING_COUNT`
-7. Create each `encoding` as `Encode(GENESIS_PIECE, public_key_hash, nonce, ENCODE_ROUNDS)`
+7. Create each `encoding` as `Encode(GENESIS_PIECE, farmer_public_key_hash, nonce, ENCODE_ROUNDS)`
 8. Create a `tag` for each `encoding` as `Hmac(encoding, salt)`
 9. Write each `encoding` to persistent storage at offset `nonce`.
 10. Insert each `tag, nonce` pair into a Binary Search Tree (BST).
@@ -118,7 +118,7 @@ A more frequent update interval linearly increases the computation required to p
 1. For each block in the epoch compute the incremental `randomness` as `Hash(Sign(private_key, tag))`.
 2. Compute the `epoch_randomness` as the hash of the concatenation of all incremental `randomness`.
 3. For each `slot` (number), compute the global `challenge` as `Hash(randomness||slot)`.
-2. Each farmer then computes their `local_challenge` as `Hash(challenge||public_key_hash)`.
+2. Each farmer then computes their `local_challenge` as `Hash(challenge||farmer_public_key_hash)`.
 
 ##### Challenge Evaluation & Response
 
@@ -143,10 +143,10 @@ Solution {
 ```
 ##### Verification
 
-1. Compute the `public_key_hash` and `local_challenge` using the `challenge` and `public_key`.
+1. Compute the `farmer_public_key_hash` and `local_challenge` using the `challenge` and `public_key`.
 2. Verify `tag` is within +/- `solution_range` of `local_challenge`.
-3. Verify the `tag` is valid for `encoding` and `public_key_hash`.
-4. Verify the `encoding` decodes back to `GenesisPiece` using `public_key_hash` and `nonce`.
+3. Verify the `tag` is valid for `encoding` and `farmer_public_key_hash`.
+4. Verify the `encoding` decodes back to `GenesisPiece` using `farmer_public_key_hash` and `nonce`.
 
 ### Architectural Design
 

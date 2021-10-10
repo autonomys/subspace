@@ -25,9 +25,8 @@ use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_slots::Slot;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
-use std::mem;
 use subspace_archiving::archiver;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{crypto, Randomness};
 use subspace_core_primitives::{Piece, Salt, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
@@ -200,13 +199,14 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     Ok(())
 }
 
+// TODO: Move at least below functions into `subspace-solving`
 fn is_within_solution_range(
     solution: &Solution,
     global_challenge: [u8; 8],
     solution_range: u64,
 ) -> bool {
-    let public_key_hash = hash_public_key(solution.public_key.as_ref());
-    let local_challenge = derive_local_challenge(&global_challenge, &public_key_hash);
+    let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
+    let local_challenge = derive_local_challenge(&global_challenge, &farmer_public_key_hash);
 
     let target = u64::from_be_bytes(local_challenge);
     let tag = u64::from_be_bytes(solution.tag);
@@ -238,21 +238,17 @@ fn is_signature_valid(signing_context: &SigningContext, solution: &Solution) -> 
         .is_ok()
 }
 
-pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) -> [u8; 8] {
+pub(crate) fn derive_local_challenge(
+    global_challenge: &[u8],
+    farmer_public_key_hash: &[u8],
+) -> [u8; 8] {
     digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_id.len());
+        let mut data = Vec::with_capacity(global_challenge.len() + farmer_public_key_hash.len());
         data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_id);
+        data.extend_from_slice(farmer_public_key_hash);
         data
     })
     .as_ref()[..8]
         .try_into()
         .unwrap()
-}
-
-pub(crate) fn hash_public_key(public_key: &[u8]) -> Sha256Hash {
-    let mut array = [0u8; mem::size_of::<Sha256Hash>()];
-    let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..mem::size_of::<Sha256Hash>()]);
-    array
 }

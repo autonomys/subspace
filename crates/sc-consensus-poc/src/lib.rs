@@ -94,7 +94,8 @@ use sp_consensus_poc::{
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
     inherents::PoCInherentData,
-    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
+    ConsensusLog, FarmerPublicKey, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration,
+    POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
 use sp_core::sr25519::Pair;
@@ -308,7 +309,7 @@ pub enum Error<B: BlockT> {
     MissingSalt(B::Hash),
     /// Farmer in block list
     #[display(fmt = "Farmer {} is in block list", _0)]
-    FarmerInBlockList(FarmerId),
+    FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
     #[display(fmt = "Merkle Root for segment index {} not found", _0)]
     MerkleRootNotFound(u64),
@@ -1279,7 +1280,7 @@ where
         slot_now: Slot,
         slot: Slot,
         header: &Block::Header,
-        author: &FarmerId,
+        author: &FarmerPublicKey,
         origin: &BlockOrigin,
     ) -> Result<(), Error<Block>> {
         // don't report any equivocations during initial sync

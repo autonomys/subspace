@@ -17,8 +17,8 @@
 //! Test utilities
 
 use crate::{
-    self as pallet_spartan, Config, CurrentSlot, FarmerId, NormalEonChange, NormalEpochChange,
-    NormalEraChange,
+    self as pallet_spartan, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
+    NormalEpochChange, NormalEraChange,
 };
 use codec::Encode;
 use frame_support::{parameter_types, traits::OnInitialize};
@@ -199,7 +199,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
-            public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
+            public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
             piece_index: 0,
             encoding: piece.to_vec(),
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
@@ -248,7 +248,7 @@ pub fn generate_equivocation_proof(
     let encoding: Piece = [0u8; 4096];
     let tag: Tag = [(current_block % 8) as u8; 8];
 
-    let public_key = FarmerId::from_slice(&keypair.public.to_bytes());
+    let public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();
 
     let make_header = |piece_index| {

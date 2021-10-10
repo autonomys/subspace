@@ -604,7 +604,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                     let _ = solution_sender
                         .send((
                             Solution {
-                                public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
+                                public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
                                 piece_index,
                                 encoding: piece.to_vec(),
                                 signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
@@ -714,7 +714,7 @@ fn sig_is_not_pre_digest() {
 }
 
 /// Claims the given slot number. always returning a dummy block.
-pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, FarmerId)> {
+pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, FarmerPublicKey)> {
     return Some((
         PreDigest {
             solution: Solution {
@@ -726,7 +726,7 @@ pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, Farmer
             },
             slot,
         },
-        FarmerId::default(),
+        FarmerPublicKey::default(),
     ));
 }
 
@@ -790,7 +790,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                 logs: vec![Item::poc_pre_digest(PreDigest {
                     slot,
                     solution: Solution {
-                        public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
+                        public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
                         piece_index: 0,
                         encoding: encoding.to_vec(),
                         signature: signature.clone(),

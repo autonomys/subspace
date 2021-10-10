@@ -568,10 +568,10 @@ impl_runtime_apis! {
             PoC::submit_store_root_block(root_block)
         }
 
-        fn is_in_block_list(farmer_id: &sp_consensus_poc::FarmerId) -> bool {
+        fn is_in_block_list(farmer_public_key: &sp_consensus_poc::FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
-            PoC::is_in_block_list(farmer_id)
+            PoC::is_in_block_list(farmer_public_key)
         }
 
         fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
