@@ -14,27 +14,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Inherents for Proof-of-Capacity (PoC) consensus
+//! Inherents for Subspace consensus
 
 use sp_inherents::{Error, InherentData, InherentIdentifier};
 
 use sp_std::result::Result;
 
-/// The PoC inherent identifier.
-pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"poc0slot";
+/// The Subspace inherent identifier.
+pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 
-/// The type of the PoC inherent.
+/// The type of the Subspace inherent.
 pub type InherentType = sp_consensus_slots::Slot;
-/// Auxiliary trait to extract PoC inherent data.
+/// Auxiliary trait to extract Subspace inherent data.
 pub trait SubspaceInherentData {
-    /// Get PoC inherent data.
-    fn poc_inherent_data(&self) -> Result<Option<InherentType>, Error>;
-    /// Replace PoC inherent data.
+    /// Get Subspace inherent data.
+    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error>;
+    /// Replace Subspace inherent data.
     fn subspace_replace_inherent_data(&mut self, new: InherentType);
 }
 
 impl SubspaceInherentData for InherentData {
-    fn poc_inherent_data(&self) -> Result<Option<InherentType>, Error> {
+    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error> {
         self.get_data(&INHERENT_IDENTIFIER)
     }
 
@@ -43,7 +43,7 @@ impl SubspaceInherentData for InherentData {
     }
 }
 
-/// Provides the slot duration inherent data for PoC.
+/// Provides the slot duration inherent data for Subspace.
 // TODO: Remove in the future. https://github.com/paritytech/substrate/issues/8029
 #[cfg(feature = "std")]
 pub struct InherentDataProvider {

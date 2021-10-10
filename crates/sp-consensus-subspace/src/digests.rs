@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Private implementation details of Proof-of-Capacity (PoC) consensus digests.
+//! Private implementation details of Subspace consensus digests.
 
 use super::{FarmerSignature, Slot, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID};
 use crate::FarmerPublicKey;
@@ -53,8 +53,8 @@ impl Solution {
     }
 }
 
-/// A PoC pre-runtime digest. This contains all data required to validate a
-/// block and for the PoC runtime module.
+/// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
+/// Subspace runtime module.
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
 pub struct PreDigest {
     /// Slot
@@ -86,7 +86,7 @@ pub enum NextConfigDescriptor {
     /// Version 1.
     #[codec(index = 1)]
     V1 {
-        /// Value of `c` in `PoCEpochConfiguration`.
+        /// Value of `c` in `SubspaceEpochConfiguration`.
         c: (u64, u64),
     },
 }
@@ -129,24 +129,24 @@ pub struct NextSaltDescriptor {
     pub salt: u64,
 }
 
-/// A digest item which is usable with PoC consensus.
+/// A digest item which is usable with Subspace consensus.
 pub trait CompatibleDigestItem: Sized {
-    /// Construct a digest item which contains a PoC pre-digest.
+    /// Construct a digest item which contains a Subspace pre-digest.
     fn subspace_pre_digest(seal: PreDigest) -> Self;
 
-    /// If this item is an PoC pre-digest, return it.
+    /// If this item is an Subspace pre-digest, return it.
     fn as_subspace_pre_digest(&self) -> Option<PreDigest>;
 
-    /// Construct a digest item which contains a PoC seal.
+    /// Construct a digest item which contains a Subspace seal.
     fn subspace_seal(signature: FarmerSignature) -> Self;
 
-    /// If this item is a PoC signature, return the signature.
+    /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
-    /// If this item is a PoC epoch descriptor, return it.
+    /// If this item is a Subspace epoch descriptor, return it.
     fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor>;
 
-    /// If this item is a PoC config descriptor, return it.
+    /// If this item is a Subspace config descriptor, return it.
     fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor>;
 }
 

@@ -2,7 +2,7 @@
 name = "sp-consensus-subspace"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
-description = "Primitives for PoC consensus"
+description = "Primitives for Subspace consensus"
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"

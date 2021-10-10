@@ -22,7 +22,7 @@ use scale_info::TypeInfo;
 use sp_std::vec::Vec;
 
 /// The kind of an offence, is a byte string representing some kind identifier
-/// e.g. `b"poc:equivocation"`
+/// e.g. `b"sub:equivocation"`
 pub type Kind = [u8; 16];
 
 /// A trait implemented by an offence report.

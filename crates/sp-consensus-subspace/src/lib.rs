@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Primitives for Proof-of-Capacity (PoC) Consensus.
+//! Primitives for Subspace consensus.
 #![deny(warnings)]
 #![forbid(unsafe_code, missing_docs, unused_variables, unused_imports)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -47,14 +47,14 @@ mod app {
     app_crypto!(sr25519, KEY_TYPE);
 }
 
-/// A PoC farmer signature.
+/// A Subspace farmer signature.
 pub type FarmerSignature = app::Signature;
 
-/// A PoC farmer identifier. Necessarily equivalent to the schnorrkel public key used in
-/// the main PoC module. If that ever changes, then this must, too.
+/// A Subspace farmer identifier. Necessarily equivalent to the schnorrkel public key used in
+/// the main Subspace module. If that ever changes, then this must, too.
 pub type FarmerPublicKey = app::Public;
 
-/// The `ConsensusEngineId` of PoC.
+/// The `ConsensusEngineId` of Subspace.
 pub const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// How many blocks to wait before running the median algorithm for relative time
@@ -65,14 +65,14 @@ pub const MEDIAN_ALGORITHM_CARDINALITY: usize = 1200; // arbitrary suggestion by
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerPublicKey>;
 
-/// The cumulative weight of a PoC block, i.e. sum of block weights starting
+/// The cumulative weight of a Subspace block, i.e. sum of block weights starting
 /// at this block until the genesis block.
 ///
 /// Primary blocks have a weight of 1 whereas secondary blocks have a weight
 /// of 0 (regardless of whether they are plain or vrf secondary blocks).
 pub type SubspaceBlockWeight = u32;
 
-/// An consensus log item for PoC.
+/// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub enum ConsensusLog {
     /// The epoch has changed. This provides information about the _next_
@@ -98,10 +98,10 @@ pub enum ConsensusLog {
     NextSaltData(NextSaltDescriptor),
 }
 
-/// Configuration data used by the PoC consensus engine.
+/// Configuration data used by the Subspace consensus engine.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
 pub struct SubspaceGenesisConfiguration {
-    /// The slot duration in milliseconds for PoC. Currently, only
+    /// The slot duration in milliseconds for Subspace. Currently, only
     /// the value provided by this type at genesis will be used.
     ///
     /// Dynamic slot duration may be supported in the future.
@@ -128,10 +128,10 @@ impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
         std::time::Duration::from_millis(self.slot_duration)
     }
 
-    const SLOT_KEY: &'static [u8] = b"poc_configuration";
+    const SLOT_KEY: &'static [u8] = b"subspace_configuration";
 }
 
-/// Configuration data used by the PoC consensus engine.
+/// Configuration data used by the Subspace consensus engine.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct SubspaceEpochConfiguration {
@@ -229,7 +229,7 @@ impl OpaqueKeyOwnershipProof {
     }
 }
 
-/// PoC epoch information
+/// Subspace epoch information
 #[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
 pub struct Epoch {
     /// The epoch index.
@@ -245,7 +245,7 @@ pub struct Epoch {
 }
 
 sp_api::decl_runtime_apis! {
-    /// API necessary for block authorship with PoC.
+    /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
@@ -268,7 +268,7 @@ sp_api::decl_runtime_apis! {
         /// the history.
         fn pre_genesis_object_seed() -> Vec<u8>;
 
-        /// Return the genesis configuration for PoC. The configuration is only read on genesis.
+        /// Return the genesis configuration for Subspace. The configuration is only read on genesis.
         fn configuration() -> SubspaceGenesisConfiguration;
 
         /// Current solution range.
