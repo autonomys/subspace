@@ -21,7 +21,7 @@
 use super::*;
 use crate::mock::{
     new_test_ext, offence_reports, report_id, with_on_offence_fractions, Event, Offence,
-    OffencesPoC, System, KIND,
+    OffencesSubspace, System, KIND,
 };
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
@@ -46,7 +46,7 @@ fn should_report_an_farmer_and_trigger_on_offence() {
         };
 
         // when
-        OffencesPoC::report_offence(offence).unwrap();
+        OffencesSubspace::report_offence(offence).unwrap();
 
         // then
         with_on_offence_fractions(|f| {
@@ -66,7 +66,7 @@ fn should_not_report_the_same_farmer_twice_in_the_same_slot() {
             time_slot,
             offenders: vec![generate_farmer_public_key()],
         };
-        OffencesPoC::report_offence(offence.clone()).unwrap();
+        OffencesSubspace::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
             assert_eq!(f.clone(), vec![Perbill::from_percent(25)]);
             f.clear();
@@ -75,7 +75,7 @@ fn should_not_report_the_same_farmer_twice_in_the_same_slot() {
         // when
         // report for the second time
         assert_eq!(
-            OffencesPoC::report_offence(offence),
+            OffencesSubspace::report_offence(offence),
             Err(OffenceError::DuplicateReport)
         );
 
@@ -97,7 +97,7 @@ fn should_report_in_different_time_slot() {
             time_slot,
             offenders: vec![generate_farmer_public_key()],
         };
-        OffencesPoC::report_offence(offence.clone()).unwrap();
+        OffencesSubspace::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
             assert_eq!(f.clone(), vec![Perbill::from_percent(25)]);
             f.clear();
@@ -106,7 +106,7 @@ fn should_report_in_different_time_slot() {
         // when
         // report for the second time
         offence.time_slot += 1;
-        OffencesPoC::report_offence(offence).unwrap();
+        OffencesSubspace::report_offence(offence).unwrap();
 
         // then
         with_on_offence_fractions(|f| {
@@ -128,14 +128,14 @@ fn should_deposit_event() {
         };
 
         // when
-        OffencesPoC::report_offence(offence).unwrap();
+        OffencesSubspace::report_offence(offence).unwrap();
 
         // then
         assert_eq!(
             System::events(),
             vec![EventRecord {
                 phase: Phase::Initialization,
-                event: Event::OffencesPoC(crate::Event::Offence(KIND, time_slot.encode())),
+                event: Event::OffencesSubspace(crate::Event::Offence(KIND, time_slot.encode())),
                 topics: vec![],
             }]
         );
@@ -153,7 +153,7 @@ fn doesnt_deposit_event_for_dups() {
             time_slot,
             offenders: vec![generate_farmer_public_key()],
         };
-        OffencesPoC::report_offence(offence.clone()).unwrap();
+        OffencesSubspace::report_offence(offence.clone()).unwrap();
         with_on_offence_fractions(|f| {
             assert_eq!(f.clone(), vec![Perbill::from_percent(25)]);
             f.clear();
@@ -162,7 +162,7 @@ fn doesnt_deposit_event_for_dups() {
         // when
         // report for the second time
         assert_eq!(
-            OffencesPoC::report_offence(offence),
+            OffencesSubspace::report_offence(offence),
             Err(OffenceError::DuplicateReport)
         );
 
@@ -172,7 +172,7 @@ fn doesnt_deposit_event_for_dups() {
             System::events(),
             vec![EventRecord {
                 phase: Phase::Initialization,
-                event: Event::OffencesPoC(crate::Event::Offence(KIND, time_slot.encode())),
+                event: Event::OffencesSubspace(crate::Event::Offence(KIND, time_slot.encode())),
                 topics: vec![],
             }]
         );
@@ -200,18 +200,18 @@ fn reports_if_an_offence_is_dup() {
         // the report for farmer 0 at time slot 42 should not be a known
         // offence
         assert!(
-            !<OffencesPoC as ReportOffence<_, TestOffence>>::is_known_offence(
+            !<OffencesSubspace as ReportOffence<_, TestOffence>>::is_known_offence(
                 &test_offence.offenders,
                 &test_offence.time_slot
             )
         );
 
         // we report an offence for farmer 0 at time slot 42
-        OffencesPoC::report_offence(test_offence.clone()).unwrap();
+        OffencesSubspace::report_offence(test_offence.clone()).unwrap();
 
         // the same report should be a known offence now
         assert!(
-            <OffencesPoC as ReportOffence<_, TestOffence>>::is_known_offence(
+            <OffencesSubspace as ReportOffence<_, TestOffence>>::is_known_offence(
                 &test_offence.offenders,
                 &test_offence.time_slot
             )
@@ -219,7 +219,7 @@ fn reports_if_an_offence_is_dup() {
 
         // and reporting it again should yield a duplicate report error
         assert_eq!(
-            OffencesPoC::report_offence(test_offence.clone()),
+            OffencesSubspace::report_offence(test_offence.clone()),
             Err(OffenceError::DuplicateReport)
         );
 
@@ -228,20 +228,23 @@ fn reports_if_an_offence_is_dup() {
 
         // it should not be a known offence anymore
         assert!(
-            !<OffencesPoC as ReportOffence<_, TestOffence>>::is_known_offence(
+            !<OffencesSubspace as ReportOffence<_, TestOffence>>::is_known_offence(
                 &test_offence.offenders,
                 &test_offence.time_slot
             )
         );
 
         // and reporting it again should work without any error
-        assert_eq!(OffencesPoC::report_offence(test_offence.clone()), Ok(()));
+        assert_eq!(
+            OffencesSubspace::report_offence(test_offence.clone()),
+            Ok(())
+        );
 
         // creating a new offence for the same farmers on the next slot
         // should be considered a new offence and therefore not known
         let test_offence_next_slot = offence(time_slot + 1, vec![farmer_0, farmer_1]);
         assert!(
-            !<OffencesPoC as ReportOffence<_, TestOffence>>::is_known_offence(
+            !<OffencesSubspace as ReportOffence<_, TestOffence>>::is_known_offence(
                 &test_offence_next_slot.offenders,
                 &test_offence_next_slot.time_slot
             )
@@ -269,7 +272,7 @@ fn should_properly_count_offences() {
             time_slot,
             offenders: vec![farmer_2.clone()],
         };
-        OffencesPoC::report_offence(offence1).unwrap();
+        OffencesSubspace::report_offence(offence1).unwrap();
         with_on_offence_fractions(|f| {
             assert_eq!(f.clone(), vec![Perbill::from_percent(25)]);
             f.clear();
@@ -277,7 +280,7 @@ fn should_properly_count_offences() {
 
         // when
         // report for the second time
-        OffencesPoC::report_offence(offence2).unwrap();
+        OffencesSubspace::report_offence(offence2).unwrap();
 
         // then
         // the 1st farmer should have count 2 and the 2nd one should be reported only once.
@@ -322,7 +325,7 @@ fn should_properly_sort_offences() {
             time_slot: time_slot - 1,
             offenders: vec![farmer_3.clone()],
         };
-        OffencesPoC::report_offence(offence1).unwrap();
+        OffencesSubspace::report_offence(offence1).unwrap();
         with_on_offence_fractions(|f| {
             assert_eq!(f.clone(), vec![Perbill::from_percent(25)]);
             f.clear();
@@ -330,9 +333,9 @@ fn should_properly_sort_offences() {
 
         // when
         // report for the second time
-        OffencesPoC::report_offence(offence2).unwrap();
-        OffencesPoC::report_offence(offence3).unwrap();
-        OffencesPoC::report_offence(offence4).unwrap();
+        OffencesSubspace::report_offence(offence2).unwrap();
+        OffencesSubspace::report_offence(offence3).unwrap();
+        OffencesSubspace::report_offence(offence4).unwrap();
 
         // then
         let same_kind_reports = Vec::<(u128, sp_core::H256)>::decode(

@@ -1,4 +1,4 @@
-# Offences Module (PoC variant)
+# Offences Module (Subspace variant)
 
 Tracks reported offences
 

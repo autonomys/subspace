@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # Offences PoC Pallet
+//! # Offences Subspace Pallet
 //!
 //! Tracks reported offences
 
@@ -102,7 +102,7 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    // TODO: We probably don't need this in PoC
+    // TODO: We probably don't need this in Subspace
     /// Events type.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]

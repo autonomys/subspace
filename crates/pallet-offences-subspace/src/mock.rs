@@ -18,7 +18,7 @@
 
 #![cfg(test)]
 
-use crate as offences_poc;
+use crate as pallet_offences_subspace;
 use crate::Config;
 use codec::Encode;
 use frame_support::{
@@ -67,7 +67,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        OffencesPoC: offences_poc::{Pallet, Storage, Event},
+        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
     }
 );
 
@@ -150,5 +150,5 @@ impl<T: Clone> offence::Offence<T> for Offence<T> {
 
 /// Create the report id for the given `offender` and `time_slot` combination.
 pub fn report_id(time_slot: u128, offender: FarmerPublicKey) -> H256 {
-    OffencesPoC::report_id::<Offence<FarmerPublicKey>>(&time_slot, &offender)
+    OffencesSubspace::report_id::<Offence<FarmerPublicKey>>(&time_slot, &offender)
 }
