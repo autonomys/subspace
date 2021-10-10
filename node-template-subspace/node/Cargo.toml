@@ -1,8 +1,8 @@
 [package]
-name = "node-template-spartan"
+name = "node-template-subspace"
 version = "0.1.0"
 authors = ["Substrate DevHub <https://github.com/substrate-developer-hub>", "Subspace Labs <https://subspace.network>"]
-description = "A fresh FRAME-based Substrate node, modified for Spartan PoC consensus."
+description = "A fresh FRAME-based Substrate node, modified for Subspace consensus."
 edition = "2021"
 license = "Unlicense"
 build = "build.rs"
@@ -13,13 +13,13 @@ repository = "https://github.com/subspace/subspace"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [[bin]]
-name = "node-template-spartan"
+name = "node-template-subspace"
 
 [dependencies]
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 jsonrpc-core = "18.0.0"
-node-template-spartan-runtime = { version = "0.1.0", path = "../runtime" }
+node-template-subspace-runtime = { version = "0.1.0", path = "../runtime" }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", features = ["wasmtime"] }
@@ -54,5 +54,5 @@ substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/pa
 [features]
 default = []
 runtime-benchmarks = [
-	"node-template-spartan-runtime/runtime-benchmarks",
+	"node-template-subspace-runtime/runtime-benchmarks",
 ]

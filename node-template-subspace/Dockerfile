@@ -26,18 +26,18 @@ COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 
 RUN \
-    /root/.cargo/bin/cargo build --bin node-template-spartan --release && \
-    mv target/release/node-template-spartan node-template-spartan && \
+    /root/.cargo/bin/cargo build --bin node-template-subspace --release && \
+    mv target/release/node-template-subspace node-template-subspace && \
     rm -rf target
 
 FROM ubuntu:20.04
 
-COPY --from=0 /code/node-template-spartan /node-template-spartan
+COPY --from=0 /code/node-template-subspace /node-template-subspace
 
-RUN mkdir /var/spartan && chown nobody:nogroup /var/spartan
+RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
 
-VOLUME /var/spartan
+VOLUME /var/subspace
 
 USER nobody:nogroup
 
-ENTRYPOINT ["/node-template-spartan"]
+ENTRYPOINT ["/node-template-subspace"]

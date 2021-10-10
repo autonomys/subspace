@@ -71,7 +71,7 @@ pub mod opaque {
 
     impl_opaque_keys! {
         pub struct SessionKeys {
-            pub poc: PoC,
+            pub subspace: Subspace,
         }
     }
 }
@@ -80,8 +80,8 @@ pub mod opaque {
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("node-template-spartan"),
-    impl_name: create_runtime_str!("node-template-spartan"),
+    spec_name: create_runtime_str!("node-template-subspace"),
+    impl_name: create_runtime_str!("node-template-subspace"),
     authoring_version: 1,
     // The version of the runtime specification. A full node will not attempt to use its native
     //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -96,12 +96,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
-/// Since PoC is probabilistic this is the average expected block time that
+/// Since Subspace is probabilistic this is the average expected block time that
 /// we are targeting. Blocks will be produced at a minimum duration defined
 /// by `SLOT_DURATION`, but some slots will not be allocated to any
 /// farmer and hence no block will be produced. We expect to have this
 /// block time on average following the defined slot duration and the value
-/// of `c` configured for PoC (where `1 - c` represents the probability of
+/// of `c` configured for Subspace (where `1 - c` represents the probability of
 /// a slot being empty).
 /// This value is only used indirectly to define the unit constants below
 /// that are expressed in blocks. The rest of the code should use
@@ -134,8 +134,8 @@ const EPOCH_DURATION_IN_SLOTS: u64 =
 
 const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
 
-/// The PoC epoch configuration at genesis.
-pub const POC_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochConfiguration =
+/// The Subspace epoch configuration at genesis.
+pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochConfiguration =
     sp_consensus_subspace::SubspaceEpochConfiguration {
         c: SLOT_PROBABILITY,
     };
@@ -270,7 +270,7 @@ impl pallet_subspace::Config for Runtime {
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
     type HandleEquivocation =
-        pallet_subspace::equivocation::EquivocationHandler<OffencesPoC, ReportLongevity>;
+        pallet_subspace::equivocation::EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -282,7 +282,7 @@ parameter_types! {
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
-    type OnTimestampSet = PoC;
+    type OnTimestampSet = Subspace;
     type MinimumPeriod = MinimumPeriod;
     type WeightInfo = ();
 }
@@ -337,7 +337,7 @@ parameter_types! {
 
 impl pallet_offences_subspace::Config for Runtime {
     type Event = Event;
-    type OnOffenceHandler = PoC;
+    type OnOffenceHandler = Subspace;
 }
 
 impl pallet_feeds::Config for Runtime {
@@ -354,11 +354,11 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
-        PoC: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
+        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
-        OffencesPoC: pallet_offences_subspace::{Pallet, Storage, Event},
+        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>},
     }
 );
@@ -392,7 +392,7 @@ pub type Executive = frame_executive::Executive<
 
 fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
     if let Ok(extrinsic) = UncheckedExtrinsic::decode(&mut encoded_extrinsic.as_slice()) {
-        if let Call::PoC(pallet_subspace::Call::store_root_block { root_block }) =
+        if let Call::Subspace(pallet_subspace::Call::store_root_block { root_block }) =
             extrinsic.function
         {
             return Some(root_block);
@@ -532,51 +532,51 @@ impl_runtime_apis! {
             // resisting network delays of maximum two seconds.
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
             sp_consensus_subspace::SubspaceGenesisConfiguration {
-                slot_duration: PoC::slot_duration(),
+                slot_duration: Subspace::slot_duration(),
                 epoch_length: EpochDuration::get(),
                 c: SlotProbability::get(),
-                randomness: PoC::randomness(),
+                randomness: Subspace::randomness(),
             }
         }
 
         fn solution_range() -> u64 {
-            PoC::solution_range().unwrap_or_else(InitialSolutionRange::get)
+            Subspace::solution_range().unwrap_or_else(InitialSolutionRange::get)
         }
 
         fn salt() -> u64 {
-            PoC::salt()
+            Subspace::salt()
         }
 
         fn current_epoch_start() -> sp_consensus_slots::Slot {
-            PoC::current_epoch_start()
+            Subspace::current_epoch_start()
         }
 
         fn current_epoch() -> sp_consensus_subspace::Epoch {
-            PoC::current_epoch()
+            Subspace::current_epoch()
         }
 
         fn next_epoch() -> sp_consensus_subspace::Epoch {
-            PoC::next_epoch()
+            Subspace::next_epoch()
         }
 
         fn submit_report_equivocation_extrinsic(
             equivocation_proof: sp_consensus_subspace::EquivocationProof<<Block as BlockT>::Header>,
         ) -> Option<()> {
-            PoC::submit_equivocation_report(equivocation_proof)
+            Subspace::submit_equivocation_report(equivocation_proof)
         }
 
         fn submit_store_root_block_extrinsic(root_block: RootBlock) {
-            PoC::submit_store_root_block(root_block)
+            Subspace::submit_store_root_block(root_block)
         }
 
         fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
-            PoC::is_in_block_list(farmer_public_key)
+            Subspace::is_in_block_list(farmer_public_key)
         }
 
         fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
-            PoC::merkle_tree_for_segment_index(segment_index)
+            Subspace::merkle_tree_for_segment_index(segment_index)
         }
 
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {

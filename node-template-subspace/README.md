@@ -1,24 +1,18 @@
 <div align="center">
 
-  <h1><code>node-template-spartan</code></h1>
+  <h1><code>node-template-subspace</code></h1>
 
-  <strong>A Substrate Node Template which implements Spartan Proof-of-Capacity (PoC) consensus.</strong>
+  <strong>A Substrate Node Template which implements Subspace consensus.</strong>
 
 </div>
 
 # Overview
 
-This repo is an implementation of Spartan Proof-of-Capacity (PoC) consensus for the Substrate framework, organized as a Substrate pallet and several dependencies. It is largely based on a fork of `pallet_babe`, with which it shares many similarities. This work is supported by a [Web 3 Foundation grant](https://github.com/w3f/Open-Grants-Program/blob/master/applications/spartan_poc_consensus_module.md) to develop PoC consensus for Substrate. PoC is a generic term for consensus based on disk space, including proofs of space, storage, space-time, and replication.
+This repo is an implementation of Substrate consensus on Substrate framework.
 
-Spartan is a simple and secure PoC consensus protocol, which replaces 'one-cpu-one-vote' with 'one-disk-one-vote'. This allows for mass participation in consensus by ordinary users with commodity hardware. Since PoC consensus is energy-efficient, widespread adoption is also environmentally sustainable. Spartan retains several key features of Nakamoto Consensus, including: the longest-chain fork-choice rule, dynamic availability (i.e., it is permissionless), and the honest majority assumption. Similar to proof-of-stake protocols, there is no mining delay, so we instead employ a round based notion of time, which is almost identical to the Ouroborous family of protocols and BABE.
+# Node Template Subspace
 
-To learn more about Spartan, read the [design document](https://github.com/subspace/substrate/blob/poc/frame/spartan/design.md).
-
-Spartan is a stepping stone towards the larger goal of deploying [Subspace](https://www.subspace.network/) as a parachain on the Polkadot Network. Subspace is a proof-of-storage blockchain that resolves the farmer's dilemma, to learn more read our <a href="https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view">white paper</a>.
-
-# Node Template Spartan
-
-A fresh FRAME-based [Substrate](https://www.substrate.io/) node, modified for Spartan PoC consensus :rocket:
+A fresh FRAME-based [Substrate](https://www.substrate.io/) node, modified for Subspace consensus :rocket:
 
 Based on a fork of Substrate Node Template.
 
@@ -26,9 +20,9 @@ Based on a fork of Substrate Node Template.
 
 ## Getting Started
 
-Follow these steps to get started with the Spartan Node Template :hammer_and_wrench:
+Follow these steps to get started with the Subspace Node Template :hammer_and_wrench:
 
-Note that this repo is for running a spartan-client. In order to run a full node which participates in consensus and produces blocks you must also run a [subspace-farmer](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1) and that farmer must have first created a disk-based plot. For clarity we provide instructions for both repos in the docker guide below. For building and running the farmer in development mode from source, refer to the instructions in the [readme](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually).
+Note that this repo is for running a Subspace node. In order to run a full node which participates in consensus and produces blocks you must also run a subspace-farmer.
 
 ### Run with Docker
 
@@ -44,23 +38,23 @@ docker volume create subspace-farmer
 docker pull subspacelabs/subspace-farmer
 docker run --rm -it \
   --name subspace-farmer \
-  --mount source=subspace-farmer,target=/var/spartan \
-  subspacelabs/subspace-farmer plot 256000 spartan
+  --mount source=subspace-farmer,target=/var/subspace \
+  subspacelabs/subspace-farmer plot 256000 subspace
 ```
 
 #### Run the Client (Terminal 2)
 
 Create virtual network, pull latest image and start a single node development chain:
 ```bash
-docker network create spartan
-docker pull subspacelabs/node-template-spartan
+docker network create subspace
+docker pull subspacelabs/node-template-subspace
 docker run --rm --init -it \
-  --net spartan \
-  --name node-template-spartan \
+  --net subspace \
+  --name node-template-subspace \
   --publish 127.0.0.1:30333:30333 \
   --publish 127.0.0.1:9944:9944 \
   --publish 127.0.0.1:9933:9933 \
-  subspacelabs/node-template-spartan \
+  subspacelabs/node-template-subspace \
     --dev \
     --tmp \
     --ws-external \
@@ -72,12 +66,12 @@ docker run --rm --init -it \
 Once node is running, you can connect farmer to it by running following in a separate terminal:
 ```bash
 docker run --rm --init -it \
-  --net spartan \
+  --net subspace \
   --name subspace-farmer \
-  --mount source=subspace-farmer,target=/var/spartan \
+  --mount source=subspace-farmer,target=/var/subspace \
   subspacelabs/subspace-farmer \
     farm \
-    --ws-server ws://node-template-spartan:9944
+    --ws-server ws://node-template-subspace:9944
 ```
 
 Now you should see block production in the first terminal where node is running.
@@ -88,18 +82,18 @@ The client container may not respond to kill commands in the same terminal.
 If it happens, run this command in a separate terminal.
 
 ```
-docker kill node-template-spartan
+docker kill node-template-subspace
 ```
 
 #### Running Full Client
 
 We can now run another full client and sync the chain from the client we started earlier:
 ```
-BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.spartan.IPAddress}}" node-template-spartan)
+BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
 docker run --rm --init -it \
-  --net spartan \
-  --name node-template-spartan-full \
-  subspacelabs/node-template-spartan \
+  --net subspace \
+  --name node-template-subspace-full \
+  subspacelabs/node-template-subspace \
     --dev \
     --tmp \
     --ws-external \
@@ -110,11 +104,11 @@ docker run --rm --init -it \
 
 We can also run light client and sync the chain from the client we started earlier:
 ```
-BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.spartan.IPAddress}}" node-template-spartan)
+BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
 docker run --rm --init -it \
-  --net spartan \
-  --name node-template-spartan-light \
-  subspacelabs/node-template-spartan \
+  --net subspace \
+  --name node-template-subspace-light \
+  subspacelabs/node-template-subspace \
     --dev \
     --tmp \
     --light \
@@ -149,11 +143,11 @@ sudo apt-get install llvm clang gcc make m4
 ```
 
 #### Setup subspace-farmer
-Create 1 GiB plot according to following [instructions](https://github.com/subspace/subspace-farmer/tree/w3f-spartan-ms-1.1#install-and-run-manually)
+Create 1 GiB plot according to following [instructions](https://github.com/subspace/subspace-farmer/tree/w3f-subspace-ms-1.1#install-and-run-manually)
 
 #### Install and Run Node
 
-This will run a node-template-spartan in one terminal and a subspace-farmer farming in a second terminal.
+This will run a node-template-subspace in one terminal and a subspace-farmer farming in a second terminal.
 The node will send slot notification challenges to the farmer.
 If the farmer finds a valid solution it will reply, and the node will produce a new block.
 
@@ -163,7 +157,7 @@ git clone https://github.com/subspace/subspace.git
 cd subspace
 
 # Build and run Node (first terminal)
-cargo +nightly run --bin node-template-spartan -- --dev --tmp
+cargo +nightly run --bin node-template-subspace -- --dev --tmp
 
 # wait for the client to start before continuing...
 
@@ -182,11 +176,11 @@ rustup toolchain install nightly
 2. Start the first full client node and farmer with the same identity as the bootstrap client node:
   1. In one terminal run full client:
       ```bash
-      BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.spartan.IPAddress}}" node-template-spartan)
+      BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
       docker run --rm --init -it \
-        --net spartan \
-        --name node-template-spartan-full-1 \
-        subspacelabs/node-template-spartan \
+        --net subspace \
+        --name node-template-subspace-full-1 \
+        subspacelabs/node-template-subspace \
           --dev \
           --tmp \
           --ws-external \
@@ -197,29 +191,29 @@ rustup toolchain install nightly
       docker volume create subspace-farmer-1
       docker run --rm -it \
         --entrypoint=/bin/cp \
-        --mount source=subspace-farmer,target=/var/spartan-src \
-        --mount source=subspace-farmer-1,target=/var/spartan \
-        subspacelabs/subspace-farmer cp /var/spartan-src/identity.bin /var/spartan/identity.bin
+        --mount source=subspace-farmer,target=/var/subspace-src \
+        --mount source=subspace-farmer-1,target=/var/subspace \
+        subspacelabs/subspace-farmer cp /var/subspace-src/identity.bin /var/subspace/identity.bin
       docker run --rm -it \
         --name subspace-farmer-1 \
-        --mount source=subspace-farmer-1,target=/var/spartan \
-        subspacelabs/subspace-farmer plot 256000 spartan
+        --mount source=subspace-farmer-1,target=/var/subspace \
+        subspacelabs/subspace-farmer plot 256000 subspace
       ```
   3. And start farming while being connected to the full client:
       ```bash
       docker run --rm --init -it \
-        --net spartan \
+        --net subspace \
         --name subspace-farmer-1 \
-        --mount source=subspace-farmer-1,target=/var/spartan \
+        --mount source=subspace-farmer-1,target=/var/subspace \
         subspacelabs/subspace-farmer \
           farm \
-          --ws-server ws://node-template-spartan-full-1:9944
+          --ws-server ws://node-template-subspace-full-1:9944
       ```
 3. Repeat 2. with `-1` replaced with `-2` everywhere in order to obtain one more pair of client and farmer
 4. Observe following messages in logs similar to these, also block production will stop:
     ```
     Slot author Public(X (Y...)) is equivocating at slot Z with headers W and A
-    Submitted PoC equivocation report.
+    Submitted Subspace equivocation report.
     Submitted equivocation report for author Public(X (Y...))
     Ignoring solution for slot X provided by farmer in block list: Y
     ```
@@ -228,16 +222,16 @@ rustup toolchain install nightly
 
 ```bash
 
-# PoC tests
-cd substrate/client/consensus/poc
+# Subspace tests
+cd substrate/client/consensus/subspace
 cargo +nightly test
 
-# Offences PoC tests
-cd substrate/frame/offences-poc
+# Offences Subspace tests
+cd substrate/frame/offences-subspace
 cargo +nightly test
 
-# Spartan tests
-cd substrate/frame/spartan
+# Subspace tests
+cd substrate/frame/subspace
 cargo +nightly test
 
 # Farmer tests
@@ -252,7 +246,7 @@ Once the project has been built, the following command can be used to explore al
 subcommands:
 
 ```bash
-cargo +nightly run --bin node-template-spartan -- -h
+cargo +nightly run --bin node-template-subspace -- -h
 ```
 
 ## Run
@@ -266,17 +260,17 @@ node.
 This command will start the single-node development chain with persistent state:
 
 ```bash
-cargo +nightly run --bin node-template-spartan -- --dev
+cargo +nightly run --bin node-template-subspace -- --dev
 ```
 
 Purge the development chain's state:
 
 ```bash
-cargo +nightly run --bin node-template-spartan -- purge-chain --dev
+cargo +nightly run --bin node-template-subspace -- purge-chain --dev
 ```
 
 Start the development chain with detailed logging:
 
 ```bash
-RUST_BACKTRACE=1 cargo +nightly run --bin node-template-spartan -- -ldebug --dev
+RUST_BACKTRACE=1 cargo +nightly run --bin node-template-subspace -- -ldebug --dev
 ```

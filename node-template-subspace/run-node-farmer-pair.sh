@@ -6,13 +6,13 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-BOOTSTRAP_CLIENT_IP=${2:-$(docker inspect -f "{{.NetworkSettings.Networks.spartan.IPAddress}}" node-template-spartan)}
+BOOTSTRAP_CLIENT_IP=${2:-$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)}
 
 cd $(dirname ${BASH_SOURCE[0]})
 
 export BOOTSTRAP_CLIENT_IP
 export INSTANCE_ID="$1"
-export COMPOSE_PROJECT_NAME="spartan-$INSTANCE_ID"
+export COMPOSE_PROJECT_NAME="subspace-$INSTANCE_ID"
 stop() {
   docker-compose down -t 3 || /bin/true
   docker volume rm subspace-farmer-$INSTANCE_ID
@@ -25,7 +25,7 @@ docker-compose pull
 docker volume create subspace-farmer-$INSTANCE_ID
 docker run --rm -it \
   --name subspace-farmer-$INSTANCE_ID \
-  --mount source=subspace-farmer-$INSTANCE_ID,target=/var/spartan \
-  subspacelabs/subspace-farmer plot 256000 spartan
+  --mount source=subspace-farmer-$INSTANCE_ID,target=/var/subspace \
+  subspacelabs/subspace-farmer plot 256000 subspace
 
 docker-compose up

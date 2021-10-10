@@ -3822,13 +3822,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-template-spartan"
+name = "node-template-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "jsonrpc-core",
- "node-template-spartan-runtime",
+ "node-template-subspace-runtime",
  "pallet-transaction-payment-rpc",
  "sc-basic-authorship",
  "sc-cli",
@@ -3860,7 +3860,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-template-spartan-runtime"
+name = "node-template-subspace-runtime"
 version = "0.1.0"
 dependencies = [
  "frame-benchmarking",

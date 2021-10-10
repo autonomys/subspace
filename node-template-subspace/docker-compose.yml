@@ -1,10 +1,10 @@
 version: "3"
 services:
   node:
-    image: subspacelabs/node-template-spartan
+    image: subspacelabs/node-template-subspace
     networks:
       - default
-      - spartan
+      - subspace
     command: [
         "--dev",
         "--tmp",
@@ -17,7 +17,7 @@ services:
       - default
     volumes:
       - source: subspace-farmer
-        target: /var/spartan
+        target: /var/subspace
         type: volume
     restart: always
     command: [
@@ -26,9 +26,9 @@ services:
     ]
 
 networks:
-  spartan:
+  subspace:
     external: true
-    name: spartan
+    name: subspace
 
 volumes:
   subspace-farmer:

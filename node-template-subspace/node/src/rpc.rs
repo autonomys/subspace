@@ -5,7 +5,7 @@
 
 #![warn(missing_docs)]
 
-use node_template_spartan_runtime::{opaque::Block, AccountId, Balance, Index};
+use node_template_subspace_runtime::{opaque::Block, AccountId, Balance, Index};
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};

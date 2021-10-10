@@ -1,5 +1,5 @@
 [package]
-name = "node-template-spartan-runtime"
+name = "node-template-subspace-runtime"
 version = "0.1.0"
 authors = ["Substrate DevHub <https://github.com/substrate-developer-hub>", "Subspace Labs <https://subspace.network>"]
 edition = "2021"

@@ -525,7 +525,7 @@ impl frame_support::traits::PalletInfo for Runtime {
             return Some("Babe");
         }
         if type_id == sp_std::any::TypeId::of::<pallet_subspace::Pallet<Runtime>>() {
-            return Some("Spartan");
+            return Some("Subspace");
         }
 
         None

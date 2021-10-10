@@ -1,6 +1,6 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-use node_template_spartan_runtime::{self, opaque::Block, RuntimeApi};
+use node_template_subspace_runtime::{self, opaque::Block, RuntimeApi};
 use sc_client_api::{ExecutorProvider, RemoteBackend};
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
@@ -16,11 +16,11 @@ impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        node_template_spartan_runtime::api::dispatch(method, data)
+        node_template_subspace_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        node_template_spartan_runtime::native_version()
+        node_template_subspace_runtime::native_version()
     }
 }
 
@@ -193,7 +193,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 
         let client_clone = client.clone();
         let slot_duration = subspace_link.config().slot_duration();
-        let poc_config = sc_consensus_subspace::SubspaceParams {
+        let subspace_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
             select_chain,
             env: proposer_factory,
@@ -228,13 +228,13 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
             telemetry: None,
         };
 
-        let poc = sc_consensus_subspace::start_subspace(poc_config)?;
+        let subspace = sc_consensus_subspace::start_subspace(subspace_config)?;
 
-        // the PoC authoring task is considered essential, i.e. if it fails we take down the service
-        // with it.
+        // Subspace authoring task is considered essential, i.e. if it fails we take down the
+        // service with it.
         task_manager
             .spawn_essential_handle()
-            .spawn_blocking("poc-worker", poc);
+            .spawn_blocking("subspace-worker", subspace);
     }
 
     let rpc_extensions_builder = {
@@ -315,7 +315,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
         on_demand.clone(),
     ));
 
-    let (poc_block_import, subspace_link) = sc_consensus_subspace::block_import(
+    let (subspace_block_import, subspace_link) = sc_consensus_subspace::block_import(
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
@@ -324,7 +324,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
     let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         &subspace_link,
-        poc_block_import,
+        subspace_block_import,
         None,
         client.clone(),
         select_chain,

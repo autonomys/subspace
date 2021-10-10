@@ -4,7 +4,7 @@ set -e
 
 setup() {
     echo "Setting up docker Network, Volume, and Pulling Repo..."
-    docker network create spartan || /bin/true
+    docker network create subspace || /bin/true
     docker volume create subspace-farmer || /bin/true
     docker pull subspacelabs/subspace-farmer
     echo "Setup/Update Complete."
@@ -13,20 +13,20 @@ setup() {
 run-farm() {
     echo "Starting Farm..."
     docker run --rm --init -it \
-    --net spartan \
+    --net subspace \
     --name subspace-farmer \
-    --mount source=subspace-farmer,target=/var/spartan \
+    --mount source=subspace-farmer,target=/var/subspace \
     subspacelabs/subspace-farmer \
         farm \
-        --ws-server ws://node-template-spartan-full:9944
+        --ws-server ws://node-template-subspace-full:9944
 }
 
 plot-1gb() {
     echo "Plotting 1gb..."
     docker run --rm -it \
     --name subspace-farmer \
-    --mount source=subspace-farmer,target=/var/spartan \
-    subspacelabs/subspace-farmer plot 256000 spartan
+    --mount source=subspace-farmer,target=/var/subspace \
+    subspacelabs/subspace-farmer plot 256000 subspace
 }
 wipe() {
     echo "Wiping prior installation..."
@@ -38,7 +38,7 @@ erase() {
     docker container kill subspace-farmer
     docker run --rm -it \
     --name subspace-farmer \
-    --mount source=subspace-farmer,target=/var/spartan \
+    --mount source=subspace-farmer,target=/var/subspace \
     subspacelabs/subspace-farmer erase-plot
 }
 ##
@@ -63,7 +63,7 @@ menu(){
     echo -ne "
     ----------------------------------
                 F A R M E R
-    -=[Subspace - Spartan Testnet]=-
+    -=[Subspace - Subspace Testnet]=-
     ----------------------------------
     $(ColorGreen '1)') Setup/Update Farmer
     $(ColorGreen '2)') Plot 1GB of Data

@@ -1,5 +1,5 @@
-use node_template_spartan_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, PoCConfig, Signature, SudoConfig, SystemConfig,
+use node_template_subspace_runtime::{
+    AccountId, BalancesConfig, GenesisConfig, Signature, SubspaceConfig, SudoConfig, SystemConfig,
     WASM_BINARY,
 };
 use sc_service::ChainType;
@@ -34,7 +34,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
 
     Ok(ChainSpec::from_genesis(
         // Name
-        "Spartan testnet",
+        "Subspace testnet",
         // ID
         "dev",
         ChainType::Development,
@@ -130,8 +130,8 @@ fn testnet_genesis(
                 .map(|k| (k, 1 << 60))
                 .collect(),
         },
-        po_c: PoCConfig {
-            epoch_config: Some(node_template_spartan_runtime::POC_GENESIS_EPOCH_CONFIG),
+        subspace: SubspaceConfig {
+            epoch_config: Some(node_template_subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
         },
         sudo: SudoConfig {
             // Assign network admin rights.
