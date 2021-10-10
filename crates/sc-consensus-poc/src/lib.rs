@@ -97,8 +97,6 @@ use sp_consensus_poc::{
     ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, SIGNING_CONTEXT};
-use sp_consensus_spartan::Randomness;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -114,7 +112,8 @@ use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::PieceObjectMapping;
-use subspace_core_primitives::{Piece, RootBlock};
+use subspace_core_primitives::{Piece, Randomness, RootBlock, Salt};
+use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 pub mod aux_schema;
 pub mod notification;
@@ -514,7 +513,7 @@ where
         backoff_authoring_blocks,
         poc_link: poc_link.clone(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
+        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
@@ -2427,7 +2426,7 @@ where
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
+        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
     };
 
     Ok(BasicQueue::new(
@@ -2439,6 +2438,7 @@ where
     ))
 }
 
+// TODO: Move into `subspace-solving` crate
 pub(crate) fn create_global_challenge(epoch_randomness: &Randomness, slot: Slot) -> [u8; 8] {
     digest::digest(&digest::SHA256, &{
         let mut data = Vec::with_capacity(epoch_randomness.len() + std::mem::size_of::<Slot>());

@@ -23,13 +23,12 @@ use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{self, Salt};
-use sp_consensus_spartan::Randomness;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::mem;
 use subspace_archiving::archiver;
-use subspace_core_primitives::{Piece, Sha256Hash};
+use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Piece, Salt, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
 /// PoC verification parameters
@@ -171,7 +170,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !spartan::is_commitment_valid(&piece, &solution.tag, &salt) {
+    if !subspace_solving::is_commitment_valid(&piece, solution.tag, salt) {
         return Err(Error::InvalidCommitment(slot));
     }
 

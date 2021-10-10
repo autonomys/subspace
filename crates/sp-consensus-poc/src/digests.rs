@@ -20,9 +20,9 @@ use super::{FarmerSignature, PoCEpochConfiguration, Slot, POC_ENGINE_ID};
 use crate::FarmerId;
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
-use sp_consensus_spartan::Randomness;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
+use subspace_core_primitives::Randomness;
 
 // TODO: better documentation here
 /// Solution

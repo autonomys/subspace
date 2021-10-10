@@ -21,7 +21,6 @@ sp-api = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan", default-features = false }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
@@ -40,7 +39,6 @@ std = [
 	"sp-application-crypto/std",
 	"sp-consensus",
 	"sp-consensus-slots/std",
-	"sp-consensus-spartan/std",
 	"sp-core/std",
 	"sp-inherents/std",
 	"sp-runtime/std",

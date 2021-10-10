@@ -21,3 +21,22 @@
 mod codec;
 
 pub use codec::SubspaceCodec;
+use core::mem;
+use subspace_core_primitives::crypto;
+use subspace_core_primitives::{Piece, Salt, Tag};
+
+/// Signing context used for creating solution signatures by farmer
+pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"FARMER";
+
+/// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
+/// Proof-of-Replication
+pub fn is_commitment_valid(piece: &Piece, tag: Tag, salt: Salt) -> bool {
+    create_tag(piece, salt) == tag
+}
+
+/// Create a commitment tag of a piece for a particular salt
+pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
+    crypto::hmac_sha256(salt, piece)[..mem::size_of::<Tag>()]
+        .try_into()
+        .expect("Slice is always of correct size; qed")
+}

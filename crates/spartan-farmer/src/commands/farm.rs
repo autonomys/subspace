@@ -1,7 +1,7 @@
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
+use crate::{Salt, Tag};
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
@@ -24,8 +24,8 @@ use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{
     BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::{Piece, Sha256Hash};
-use subspace_solving::SubspaceCodec;
+use subspace_core_primitives::{crypto, Piece, Sha256Hash};
+use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
 type SlotNumber = u64;
 
@@ -115,7 +115,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
         fs::write(identity_file, keypair.to_bytes())?;
         keypair
     };
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
 
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
@@ -509,7 +509,7 @@ async fn subscribe_to_slot_info(
     keypair: &Keypair,
     ctx: &SigningContext,
 ) -> Result<()> {
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
+    let public_key_hash = crypto::sha256_hash(&keypair.public);
 
     info!("Subscribing to slot info notifications");
     let mut subscription: Subscription<SlotInfo> = client

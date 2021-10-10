@@ -11,7 +11,9 @@ pub fn from_seed<S: AsRef<[u8]>>(seed: S, index: u32, size: u32) -> Vec<u8> {
         hasher.update(seed.as_ref());
         hasher.update(index.to_le_bytes().as_ref());
 
-        hasher.finalize()[..]
+        hasher
+            .finalize()
+            .as_slice()
             .try_into()
             .expect("Sha256 output is always 32 bytes; qed")
     };

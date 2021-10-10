@@ -21,7 +21,6 @@ use super::*;
 use futures::executor::block_on;
 use log::debug;
 use parking_lot::Mutex;
-use ring::hmac;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sc_client_api::{backend::TransactionFor, BlockchainEvents};
 use sc_consensus::{BoxBlockImport, BoxJustificationImport};
@@ -36,7 +35,6 @@ use schnorrkel::Keypair;
 use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
 use sp_consensus_poc::inherents::InherentDataProvider;
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::Tag;
 use sp_core::Public;
 use sp_runtime::{
     generic::DigestItem,
@@ -46,6 +44,7 @@ use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 // use std::sync::mpsc;
 use rand::prelude::*;
 use std::{cell::RefCell, task::Poll, time::Duration};
+use subspace_core_primitives::Tag;
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -404,7 +403,7 @@ impl TestNetFactory for PoCTestNet {
                 can_author_with: AlwaysCanAuthor,
                 root_blocks: Arc::clone(&data.link.root_blocks),
                 telemetry: None,
-                signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
+                signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
         }
@@ -583,7 +582,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let poc_farmer = async move {
             let keypair = Keypair::generate();
             let subspace_solving = SubspaceCodec::new(&keypair.public);
-            let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+            let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
             let (piece_index, mut piece) = archived_pieces_receiver
                 .await
                 .unwrap()
@@ -600,7 +599,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&piece, &new_slot_info.salt);
+                    let tag: Tag = subspace_solving::create_tag(&piece, new_slot_info.salt);
 
                     let _ = solution_sender
                         .send((
@@ -638,13 +637,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             future::join_all(poc_futures),
         ),
     ));
-}
-
-fn create_tag(encoding: &[u8], salt: &[u8]) -> Tag {
-    let key = hmac::Key::new(hmac::HMAC_SHA256, salt);
-    hmac::sign(&key, encoding).as_ref()[0..8]
-        .try_into()
-        .unwrap()
 }
 
 // TODO: Un-ignore once `submit_test_store_root_block()` is working or transactions are supported in
@@ -695,7 +687,7 @@ fn rejects_missing_consensus_digests() {
 fn wrong_consensus_engine_id_rejected() {
     sp_tracing::try_init_simple();
     let keypair = Keypair::generate();
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let bad_seal: Item = DigestItem::Seal([0; 4], keypair.sign(ctx.bytes(b"")).to_bytes().to_vec());
     assert!(bad_seal.as_poc_pre_digest().is_none());
     assert!(bad_seal.as_poc_seal().is_none())
@@ -712,7 +704,7 @@ fn malformed_pre_digest_rejected() {
 fn sig_is_not_pre_digest() {
     sp_tracing::try_init_simple();
     let keypair = Keypair::generate();
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let bad_seal: Item = DigestItem::Seal(
         POC_ENGINE_ID,
         keypair.sign(ctx.bytes(b"")).to_bytes().to_vec(),
@@ -785,7 +777,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     });
 
     let keypair = Keypair::generate();
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
 
     let (pre_digest, signature) = {
         let encoding: Piece = [0u8; 4096];

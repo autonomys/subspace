@@ -4209,7 +4209,6 @@ dependencies = [
  "schnorrkel 0.9.1",
  "sp-consensus-poc",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -5578,7 +5577,6 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-poc",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-io",
@@ -6778,7 +6776,6 @@ dependencies = [
  "sp-application-crypto",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -6796,14 +6793,6 @@ dependencies = [
  "scale-info",
  "sp-arithmetic",
  "sp-runtime",
-]
-
-[[package]]
-name = "sp-consensus-spartan"
-version = "0.1.0"
-dependencies = [
- "ring",
- "subspace-core-primitives",
 ]
 
 [[package]]
@@ -7403,6 +7392,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "hmac 0.11.0",
  "parity-scale-codec",
  "scale-info",
  "serde",

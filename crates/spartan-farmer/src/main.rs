@@ -17,7 +17,6 @@
 
 mod commands;
 mod commitments;
-mod crypto;
 mod object_mappings;
 mod plot;
 mod utils;
@@ -33,8 +32,6 @@ use subspace_core_primitives::PIECE_SIZE;
 type Tag = [u8; 8];
 type Salt = [u8; 8];
 
-const PRIME_SIZE: usize = 32;
-const SIGNING_CONTEXT: &[u8] = b"FARMER";
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 // TODO: Move to codec
 // const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
