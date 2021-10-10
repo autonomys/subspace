@@ -30,8 +30,8 @@ use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use std::convert::TryInto;
 use std::mem;
 use subspace_archiving::archiver;
-use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{Piece, Sha256Hash};
+use subspace_solving::SubspaceCodec;
 
 /// PoC verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -180,10 +180,10 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+    let subspace_solving = SubspaceCodec::new(&solution.public_key);
 
     let mut piece = solution.encoding.clone();
-    if subspace_codec
+    if subspace_solving
         .decode(solution.piece_index, &mut piece)
         .is_err()
     {

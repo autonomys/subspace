@@ -1,6 +1,6 @@
 // TODO: Unlock tests once batching is fixed
 // use std::convert::TryInto;
-// use subspace_codec::SubspaceCodec;
+// use subspace_solving::SubspaceCodec;
 // use subspace_core_primitives::{Piece, PIECE_SIZE};
 //
 // // CUDA accepts multiples of 1024 pieces, and any remainder piece will be handled on CPU
@@ -13,9 +13,9 @@
 //     let nonce: u64 = rand::random();
 //     let nonce_array = vec![nonce; 1026];
 //
-//     let subspace_codec = SubspaceCodec::new(&public_key);
+//     let subspace_solving = SubspaceCodec::new(&public_key);
 //
-//     if !subspace_codec.is_cuda_available() {
+//     if !subspace_solving.is_cuda_available() {
 //         // TODO: This will be unnecessary once we have generic batching instead CUDA-specific API
 //         return;
 //     }
@@ -24,10 +24,10 @@
 //         piece_array.extend_from_slice(&genesis_piece);
 //     }
 //
-//     subspace_codec.cuda_batch_encode(&mut piece_array, nonce_array.as_slice());
+//     subspace_solving.cuda_batch_encode(&mut piece_array, nonce_array.as_slice());
 //
 //     for i in 0..1026 {
-//         assert!(subspace_codec.decode(
+//         assert!(subspace_solving.decode(
 //             piece_array[i * PIECE_SIZE..(i + 1) * PIECE_SIZE]
 //                 .as_ref()
 //                 .try_into()

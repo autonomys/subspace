@@ -34,7 +34,7 @@ pallet-balances = { version = "4.0.0-dev", git = "https://github.com/paritytech/
 pallet-offences-poc = { version = "0.1.0", path = "../pallet-offences-poc" }
 schnorrkel = "0.9.1"
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 
 [features]
 default = ["std"]

@@ -33,7 +33,7 @@ schnorrkel = "0.10.1"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = "1.0.64"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.24"
 tokio = { version = "1.11.0", features = ["macros", "rt-multi-thread"] }
@@ -55,5 +55,5 @@ tempfile = "3.2.0"
 default = []
 # Compile with CUDA support and use it if compatible GPU is available
 cuda = [
-    "subspace-codec/cuda",
+    "subspace-solving/cuda",
 ]

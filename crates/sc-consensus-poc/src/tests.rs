@@ -46,7 +46,7 @@ use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 // use std::sync::mpsc;
 use rand::prelude::*;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_codec::SubspaceCodec;
+use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;
@@ -582,7 +582,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let poc_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_codec = SubspaceCodec::new(&keypair.public);
+            let subspace_solving = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
             let (piece_index, mut piece) = archived_pieces_receiver
                 .await
@@ -592,7 +592,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, piece))
                 .unwrap();
-            subspace_codec.encode(piece_index, &mut piece).unwrap();
+            subspace_solving.encode(piece_index, &mut piece).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,

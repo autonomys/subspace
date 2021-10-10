@@ -22,11 +22,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::objects::{
     BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{Piece, Sha256Hash};
+use subspace_solving::SubspaceCodec;
 
 type SlotNumber = u64;
 
@@ -187,7 +187,7 @@ async fn background_plotting(
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
-    let subspace_codec = SubspaceCodec::new(public_key);
+    let subspace_solving = SubspaceCodec::new(public_key);
 
     let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
         // Continuing from existing initial state
@@ -242,7 +242,7 @@ async fn background_plotting(
             let weak_plot = weak_plot.clone();
             let commitments = commitments.clone();
             let object_mappings = object_mappings.clone();
-            let subspace_codec = subspace_codec.clone();
+            let subspace_solving = subspace_solving.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
                 let runtime_handle = tokio::runtime::Handle::current();
@@ -274,7 +274,7 @@ async fn background_plotting(
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                                subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;
@@ -396,7 +396,7 @@ async fn background_plotting(
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                                subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;

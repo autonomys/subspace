@@ -37,8 +37,8 @@ use sp_runtime::{
     Perbill,
 };
 use std::convert::TryInto;
-use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash};
+use subspace_solving::SubspaceCodec;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -192,11 +192,11 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let subspace_codec = SubspaceCodec::new(&keypair.public);
+    let subspace_solving = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
     let piece_index = 0;
     let mut piece: Piece = [0u8; 4096];
-    subspace_codec.encode(piece_index, &mut piece).unwrap();
+    subspace_solving.encode(piece_index, &mut piece).unwrap();
     let tag: Tag = create_tag(&piece, &Spartan::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(

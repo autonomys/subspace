@@ -4214,8 +4214,8 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
 ]
 
 [[package]]
@@ -5587,8 +5587,8 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "subspace-archiving",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -7290,8 +7290,8 @@ dependencies = [
  "serde",
  "serde_json",
  "subspace-archiving",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
  "tempfile",
  "thiserror",
  "tokio",
@@ -7400,15 +7400,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-codec"
-version = "0.1.0"
-dependencies = [
- "rand 0.8.4",
- "sloth256-189",
- "subspace-core-primitives",
-]
-
-[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
@@ -7416,6 +7407,15 @@ dependencies = [
  "scale-info",
  "serde",
  "sha2 0.9.8",
+]
+
+[[package]]
+name = "subspace-solving"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.4",
+ "sloth256-189",
+ "subspace-core-primitives",
 ]
 
 [[package]]
