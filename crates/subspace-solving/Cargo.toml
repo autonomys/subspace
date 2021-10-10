@@ -16,6 +16,16 @@ include = [
 sloth256-189 = "0.2.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
+features = ["asm"]
+version = "0.9.8"
+
+# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
+# `asm` feature is not supported on Windows except with GNU toolchain
+[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
+version = "0.9.8"
+
 [dev-dependencies]
 rand = "0.8.4"
 

@@ -10,7 +10,6 @@ use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
-use ring::digest;
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
@@ -488,7 +487,7 @@ fn create_global_object_mapping(
             object_mapping.objects.iter().map(move |piece_object| {
                 let PieceObject::V0 { offset, size } = piece_object;
                 (
-                    subspace_core_primitives::crypto::sha256_hash(
+                    crypto::sha256_hash(
                         &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
                     ),
                     GlobalObject::V0 {
@@ -527,7 +526,8 @@ async fn subscribe_to_slot_info(
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
-        let local_challenge = derive_local_challenge(&slot_info.challenge, &farmer_public_key_hash);
+        let local_challenge =
+            subspace_solving::derive_local_challenge(slot_info.challenge, &farmer_public_key_hash);
 
         let solution = match commitments
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
@@ -651,17 +651,4 @@ fn update_commitments(
             });
         }
     }
-}
-
-// TODO: Move into `subspace-solving`
-fn derive_local_challenge(global_challenge: &[u8], farmer_public_key_hash: &[u8]) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_public_key_hash.len());
-        data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_public_key_hash);
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
 }

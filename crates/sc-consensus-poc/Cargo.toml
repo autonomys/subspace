@@ -24,7 +24,6 @@ lru = { version = "0.6.6", default-features = false }
 parking_lot = "0.11.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", version = "0.9.0" }
 rand = "0.8.4"
-ring = "0.16"
 schnorrkel = "0.9.1"
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }

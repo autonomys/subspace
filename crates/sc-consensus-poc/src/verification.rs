@@ -18,7 +18,6 @@
 //! Verification for PoC headers.
 use super::{find_pre_digest, poc_err, BlockT, Epoch, Error};
 use log::{debug, trace};
-use ring::digest;
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
@@ -26,8 +25,7 @@ use sp_consensus_slots::Slot;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use subspace_archiving::archiver;
-use subspace_core_primitives::{crypto, Randomness};
-use subspace_core_primitives::{Piece, Salt, Sha256Hash};
+use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
 /// PoC verification parameters
@@ -157,7 +155,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
         solution,
-        crate::create_global_challenge(epoch_randomness, slot),
+        subspace_solving::derive_global_challenge(epoch_randomness, slot),
         solution_range,
     ) {
         return Err(Error::OutsideOfSolutionRange(slot));
@@ -206,7 +204,8 @@ fn is_within_solution_range(
     solution_range: u64,
 ) -> bool {
     let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
-    let local_challenge = derive_local_challenge(&global_challenge, &farmer_public_key_hash);
+    let local_challenge =
+        subspace_solving::derive_local_challenge(global_challenge, farmer_public_key_hash);
 
     let target = u64::from_be_bytes(local_challenge);
     let tag = u64::from_be_bytes(solution.tag);
@@ -236,19 +235,4 @@ fn is_signature_valid(signing_context: &SigningContext, solution: &Solution) -> 
     public_key
         .verify(signing_context.bytes(&solution.tag), &signature)
         .is_ok()
-}
-
-pub(crate) fn derive_local_challenge(
-    global_challenge: &[u8],
-    farmer_public_key_hash: &[u8],
-) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_public_key_hash.len());
-        data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_public_key_hash);
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
 }

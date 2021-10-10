@@ -57,7 +57,6 @@ use log::{debug, error, info, log, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
-use ring::digest;
 use sc_client_api::{
     backend::AuxStore, BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider,
 };
@@ -763,7 +762,7 @@ where
 
             let new_slot_info = NewSlotInfo {
                 slot,
-                challenge: create_global_challenge(&epoch_randomness, slot),
+                challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
                 salt: salt.to_le_bytes(),
                 // TODO: This will not be the correct way in the future once salt is no longer
                 //  just an incremented number
@@ -2437,17 +2436,4 @@ where
         spawner,
         registry,
     ))
-}
-
-// TODO: Move into `subspace-solving` crate
-pub(crate) fn create_global_challenge(epoch_randomness: &Randomness, slot: Slot) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(epoch_randomness.len() + std::mem::size_of::<Slot>());
-        data.extend_from_slice(epoch_randomness);
-        data.extend_from_slice(&slot.to_le_bytes());
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
 }

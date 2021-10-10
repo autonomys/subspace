@@ -4204,7 +4204,6 @@ dependencies = [
  "pallet-offences-poc",
  "pallet-timestamp",
  "parity-scale-codec",
- "ring",
  "scale-info",
  "schnorrkel 0.9.1",
  "sp-consensus-poc",
@@ -5557,7 +5556,6 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.8.4",
- "ring",
  "sc-block-builder",
  "sc-cli",
  "sc-client-api",
@@ -7273,7 +7271,6 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.4",
  "rayon",
- "ring",
  "rocksdb",
  "schnorrkel 0.10.1",
  "serde",
@@ -7404,6 +7401,7 @@ name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
  "rand 0.8.4",
+ "sha2 0.9.8",
  "sloth256-189",
  "subspace-core-primitives",
 ]

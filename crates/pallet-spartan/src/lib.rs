@@ -57,8 +57,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
-use subspace_core_primitives::RANDOMNESS_LENGTH;
-use subspace_core_primitives::{RootBlock, Sha256Hash};
+use subspace_core_primitives::{RootBlock, Sha256Hash, RANDOMNESS_LENGTH};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;

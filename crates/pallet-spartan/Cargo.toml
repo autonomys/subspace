@@ -28,7 +28,6 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
-ring = "0.16"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 pallet-offences-poc = { version = "0.1.0", path = "../pallet-offences-poc" }
 schnorrkel = "0.9.1"
