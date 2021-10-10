@@ -66,7 +66,7 @@ pub struct PreDigest {
 impl PreDigest {
     /// Returns the weight _added_ by this digest, not the cumulative weight
     /// of the chain.
-    pub fn added_weight(&self) -> crate::PoCBlockWeight {
+    pub fn added_weight(&self) -> crate::SubspaceBlockWeight {
         1
     }
 }

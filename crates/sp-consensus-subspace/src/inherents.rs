@@ -26,19 +26,19 @@ pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"poc0slot";
 /// The type of the PoC inherent.
 pub type InherentType = sp_consensus_slots::Slot;
 /// Auxiliary trait to extract PoC inherent data.
-pub trait PoCInherentData {
+pub trait SubspaceInherentData {
     /// Get PoC inherent data.
     fn poc_inherent_data(&self) -> Result<Option<InherentType>, Error>;
     /// Replace PoC inherent data.
-    fn poc_replace_inherent_data(&mut self, new: InherentType);
+    fn subspace_replace_inherent_data(&mut self, new: InherentType);
 }
 
-impl PoCInherentData for InherentData {
+impl SubspaceInherentData for InherentData {
     fn poc_inherent_data(&self) -> Result<Option<InherentType>, Error> {
         self.get_data(&INHERENT_IDENTIFIER)
     }
 
-    fn poc_replace_inherent_data(&mut self, new: InherentType) {
+    fn subspace_replace_inherent_data(&mut self, new: InherentType) {
         self.replace_data(INHERENT_IDENTIFIER, &new);
     }
 }

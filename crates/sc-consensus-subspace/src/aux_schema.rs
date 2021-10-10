@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Schema for PoC epoch changes in the aux-db.
+//! Schema for Subspace epoch changes in the aux-db.
 
 use codec::{Decode, Encode};
 use log::info;
@@ -24,12 +24,12 @@ use crate::Epoch;
 use sc_client_api::backend::AuxStore;
 use sc_consensus_epochs::{EpochChangesFor, SharedEpochChanges};
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use sp_consensus_subspace::{PoCBlockWeight, PoCGenesisConfiguration};
+use sp_consensus_subspace::{SubspaceBlockWeight, SubspaceGenesisConfiguration};
 use sp_runtime::traits::Block as BlockT;
 
-const POC_EPOCH_CHANGES_VERSION: &[u8] = b"poc_epoch_changes_version";
-const POC_EPOCH_CHANGES_KEY: &[u8] = b"poc_epoch_changes";
-const POC_EPOCH_CHANGES_CURRENT_VERSION: u32 = 1;
+const SUBSPACE_EPOCH_CHANGES_VERSION: &[u8] = b"subspace_epoch_changes_version";
+const SUBSPACE_EPOCH_CHANGES_KEY: &[u8] = b"subspace_epoch_changes";
+const SUBSPACE_EPOCH_CHANGES_CURRENT_VERSION: u32 = 1;
 
 /// The aux storage key used to store the block weight of the given block hash.
 fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
@@ -41,8 +41,9 @@ where
     B: AuxStore,
     T: Decode,
 {
-    let corrupt =
-        |e: codec::Error| ClientError::Backend(format!("PoC DB is corrupted. Decode error: {}", e));
+    let corrupt = |e: codec::Error| {
+        ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {}", e))
+    };
     match backend.get_aux(key)? {
         None => Ok(None),
         Some(t) => T::decode(&mut &t[..]).map(Some).map_err(corrupt),
@@ -52,17 +53,17 @@ where
 /// Load or initialize persistent epoch change data from backend.
 pub fn load_epoch_changes<Block: BlockT, B: AuxStore>(
     backend: &B,
-    _config: &PoCGenesisConfiguration,
+    _config: &SubspaceGenesisConfiguration,
 ) -> ClientResult<SharedEpochChanges<Block, Epoch>> {
-    let version = load_decode::<_, u32>(backend, POC_EPOCH_CHANGES_VERSION)?;
+    let version = load_decode::<_, u32>(backend, SUBSPACE_EPOCH_CHANGES_VERSION)?;
 
     let maybe_epoch_changes = match version {
-        Some(POC_EPOCH_CHANGES_CURRENT_VERSION) => {
-            load_decode::<_, EpochChangesFor<Block, Epoch>>(backend, POC_EPOCH_CHANGES_KEY)?
+        Some(SUBSPACE_EPOCH_CHANGES_CURRENT_VERSION) => {
+            load_decode::<_, EpochChangesFor<Block, Epoch>>(backend, SUBSPACE_EPOCH_CHANGES_KEY)?
         }
         Some(other) => {
             return Err(ClientError::Backend(format!(
-                "Unsupported PoC DB version: {:?}",
+                "Unsupported Subspace DB version: {:?}",
                 other
             )))
         }
@@ -72,8 +73,8 @@ pub fn load_epoch_changes<Block: BlockT, B: AuxStore>(
     let epoch_changes =
         SharedEpochChanges::<Block, Epoch>::new(maybe_epoch_changes.unwrap_or_else(|| {
             info!(
-                target: "poc",
-                "🧑‍🌾 Creating empty PoC epoch changes on what appears to be first startup.",
+                target: "subspace",
+                "🧑‍🌾 Creating empty Subspace epoch changes on what appears to be first startup.",
             );
             EpochChangesFor::<Block, Epoch>::default()
         }));
@@ -95,11 +96,11 @@ pub(crate) fn write_epoch_changes<Block: BlockT, F, R>(
 where
     F: FnOnce(&[(&'static [u8], &[u8])]) -> R,
 {
-    POC_EPOCH_CHANGES_CURRENT_VERSION.using_encoded(|version| {
+    SUBSPACE_EPOCH_CHANGES_CURRENT_VERSION.using_encoded(|version| {
         let encoded_epoch_changes = epoch_changes.encode();
         write_aux(&[
-            (POC_EPOCH_CHANGES_KEY, encoded_epoch_changes.as_slice()),
-            (POC_EPOCH_CHANGES_VERSION, version),
+            (SUBSPACE_EPOCH_CHANGES_KEY, encoded_epoch_changes.as_slice()),
+            (SUBSPACE_EPOCH_CHANGES_VERSION, version),
         ])
     })
 }
@@ -107,7 +108,7 @@ where
 /// Write the cumulative chain-weight of a block ot aux storage.
 pub(crate) fn write_block_weight<H: Encode, F, R>(
     block_hash: H,
-    block_weight: PoCBlockWeight,
+    block_weight: SubspaceBlockWeight,
     write_aux: F,
 ) -> R
 where
@@ -121,6 +122,6 @@ where
 pub fn load_block_weight<H: Encode, B: AuxStore>(
     backend: &B,
     block_hash: H,
-) -> ClientResult<Option<PoCBlockWeight>> {
+) -> ClientResult<Option<SubspaceBlockWeight>> {
     load_decode(backend, block_weight_key(block_hash).as_slice())
 }

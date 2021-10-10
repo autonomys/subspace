@@ -47,7 +47,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + sp_consensus_subspace::PoCApi<Block>,
+        + sp_consensus_subspace::SubspaceApi<Block>,
     P: TransactionPool + 'static,
 {
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};

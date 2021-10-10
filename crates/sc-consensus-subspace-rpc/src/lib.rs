@@ -34,7 +34,7 @@ use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Solution;
-use sp_consensus_subspace::{FarmerPublicKey, PoCApi};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::crypto::Public;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -239,7 +239,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: PoCApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     /// Creates a new instance of the PoCRpc handler.
     pub fn new<E>(
@@ -273,7 +273,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: PoCApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     type Metadata = sc_rpc_api::Metadata;
 

@@ -67,8 +67,8 @@ enum Stage {
 
 type Mutator = Arc<dyn Fn(&mut TestHeader, Stage) + Send + Sync>;
 
-type PoCBlockImport =
-    PanickingBlockImport<crate::PoCBlockImport<TestBlock, TestClient, Arc<TestClient>>>;
+type SubspaceBlockImport =
+    PanickingBlockImport<crate::SubspaceBlockImport<TestBlock, TestClient, Arc<TestClient>>>;
 
 #[derive(Clone)]
 struct DummyFactory {
@@ -211,7 +211,7 @@ thread_local! {
 #[derive(Clone)]
 pub struct PanickingBlockImport<B> {
     block_import: B,
-    link: PoCLink<TestBlock>,
+    link: SubspaceLink<TestBlock>,
 }
 
 #[async_trait::async_trait]
@@ -262,10 +262,10 @@ where
     }
 }
 
-type PoCPeer = Peer<Option<PeerData>, PoCBlockImport>;
+type SubspacePeer = Peer<Option<PeerData>, SubspaceBlockImport>;
 
-pub struct PoCTestNet {
-    peers: Vec<PoCPeer>,
+pub struct SubspaceTestNet {
+    peers: Vec<SubspacePeer>,
 }
 
 type TestHeader = <TestBlock as BlockT>::Header;
@@ -274,7 +274,7 @@ type TestSelectChain =
     substrate_test_runtime_client::LongestChain<substrate_test_runtime_client::Backend, TestBlock>;
 
 pub struct TestVerifier {
-    inner: PoCVerifier<
+    inner: SubspaceVerifier<
         TestBlock,
         PeersFullClient,
         TestSelectChain,
@@ -312,7 +312,7 @@ impl Verifier<TestBlock> for TestVerifier {
 }
 
 pub struct PeerData {
-    link: PoCLink<TestBlock>,
+    link: SubspaceLink<TestBlock>,
     block_import: Mutex<
         Option<
             BoxBlockImport<
@@ -323,15 +323,15 @@ pub struct PeerData {
     >,
 }
 
-impl TestNetFactory for PoCTestNet {
+impl TestNetFactory for SubspaceTestNet {
     type Verifier = TestVerifier;
     type PeerData = Option<PeerData>;
-    type BlockImport = PoCBlockImport;
+    type BlockImport = SubspaceBlockImport;
 
     /// Create new test network with peers and given config.
     fn from_config(_config: &ProtocolConfig) -> Self {
-        debug!(target: "poc", "Creating test network from config");
-        PoCTestNet { peers: Vec::new() }
+        debug!(target: "subspace", "Creating test network from config");
+        SubspaceTestNet { peers: Vec::new() }
     }
 
     fn make_block_import(
@@ -376,17 +376,17 @@ impl TestNetFactory for PoCTestNet {
         let client = client
             .as_full()
             .expect("only full clients are used in test");
-        trace!(target: "poc", "Creating a verifier");
+        trace!(target: "subspace", "Creating a verifier");
 
         // ensure block import and verifier are linked correctly.
         let data = maybe_link
             .as_ref()
-            .expect("poc link always provided to verifier instantiation");
+            .expect("Subspace link always provided to verifier instantiation");
 
         let (_, longest_chain) = TestClientBuilder::new().build_with_longest_chain();
 
         TestVerifier {
-            inner: PoCVerifier {
+            inner: SubspaceVerifier {
                 client: client.clone(),
                 select_chain: longest_chain,
                 create_inherent_data_providers: Box::new(|_, _| async {
@@ -409,17 +409,17 @@ impl TestNetFactory for PoCTestNet {
         }
     }
 
-    fn peer(&mut self, i: usize) -> &mut PoCPeer {
-        trace!(target: "poc", "Retrieving a peer");
+    fn peer(&mut self, i: usize) -> &mut SubspacePeer {
+        trace!(target: "subspace", "Retrieving a peer");
         &mut self.peers[i]
     }
 
-    fn peers(&self) -> &Vec<PoCPeer> {
-        trace!(target: "poc", "Retrieving peers");
+    fn peers(&self) -> &Vec<SubspacePeer> {
+        trace!(target: "subspace", "Retrieving peers");
         &self.peers
     }
 
-    fn mut_peers<F: FnOnce(&mut Vec<PoCPeer>)>(&mut self, closure: F) {
+    fn mut_peers<F: FnOnce(&mut Vec<SubspacePeer>)>(&mut self, closure: F) {
         closure(&mut self.peers);
     }
 }
@@ -428,7 +428,7 @@ impl TestNetFactory for PoCTestNet {
 #[should_panic]
 fn rejects_empty_block() {
     sp_tracing::try_init_simple();
-    let mut net = PoCTestNet::new(3);
+    let mut net = SubspaceTestNet::new(3);
     let block_builder = |builder: BlockBuilder<_, _, _>| builder.build().unwrap().block;
     net.mut_peers(|peer| {
         peer[0].generate_blocks(1, BlockOrigin::NetworkInitialSync, block_builder);
@@ -478,11 +478,11 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
     let mutator = Arc::new(mutator) as Mutator;
 
     MUTATOR.with(|m| *m.borrow_mut() = mutator.clone());
-    let net = PoCTestNet::new(3);
+    let net = SubspaceTestNet::new(3);
 
     let net = Arc::new(Mutex::new(net));
     let mut import_notifications = Vec::new();
-    let mut poc_futures = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
+    let mut subspace_futures = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
     let tokio_runtime = sc_cli::build_runtime().unwrap();
 
     for peer_id in [0, 1, 2_usize].iter() {
@@ -501,7 +501,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let data = peer
             .data
             .as_ref()
-            .expect("poc link set up during initialization");
+            .expect("Subspace link set up during initialization");
 
         let environ = DummyFactory {
             client: client.clone(),
@@ -548,7 +548,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }
         });
 
-        let poc_worker = start_poc(PoCParams {
+        let subspace_worker = start_subspace(SubspaceParams {
             block_import: data
                 .block_import
                 .lock()
@@ -569,17 +569,17 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }),
             force_authoring: false,
             backoff_authoring_blocks: Some(BackoffAuthoringOnFinalizedHeadLagging::default()),
-            poc_link: data.link.clone(),
+            subspace_link: data.link.clone(),
             can_author_with: sp_consensus::AlwaysCanAuthor,
             justification_sync_link: (),
             block_proposal_slot_portion: SlotProportion::new(0.5),
             max_block_proposal_slot_portion: None,
             telemetry: None,
         })
-        .expect("Starts poc");
+        .expect("Starts Subspace");
 
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
-        let poc_farmer = async move {
+        let subspace_farmer = async move {
             let keypair = Keypair::generate();
             let subspace_solving = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
@@ -617,8 +617,8 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }
         };
 
-        poc_futures.push(Box::pin(poc_worker));
-        poc_futures.push(Box::pin(poc_farmer));
+        subspace_futures.push(Box::pin(subspace_worker));
+        subspace_futures.push(Box::pin(subspace_farmer));
     }
     tokio_runtime.block_on(future::select(
         futures::future::poll_fn(move |cx| {
@@ -634,7 +634,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         }),
         future::select(
             future::join_all(import_notifications),
-            future::join_all(poc_futures),
+            future::join_all(subspace_futures),
         ),
     ));
 }
@@ -743,7 +743,7 @@ fn can_author_block() {
         config: SubspaceEpochConfiguration { c: (3, 10) },
     };
 
-    let mut _config = crate::PoCGenesisConfiguration {
+    let mut _config = crate::SubspaceGenesisConfiguration {
         slot_duration: 1000,
         epoch_length: 100,
         c: (3, 10),
@@ -755,14 +755,14 @@ fn can_author_block() {
         match dummy_claim_slot(i.into(), &epoch) {
             None => i += 1,
             Some(s) => {
-                debug!(target: "poc", "Authored block {:?}", s.0);
+                debug!(target: "subspace", "Authored block {:?}", s.0);
                 break;
             }
         }
     }
 }
 
-// Propose and import a new PoC block on top of the given parent.
+// Propose and import a new Subspace block on top of the given parent.
 fn propose_and_import_block<Transaction: Send + 'static>(
     parent: &TestHeader,
     slot: Option<Slot>,
@@ -834,7 +834,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     import.body = Some(block.extrinsics);
     import.intermediates.insert(
         Cow::from(INTERMEDIATE_KEY),
-        Box::new(PoCIntermediate::<TestBlock> { epoch_descriptor }) as Box<_>,
+        Box::new(SubspaceIntermediate::<TestBlock> { epoch_descriptor }) as Box<_>,
     );
     import.fork_choice = Some(ForkChoiceStrategy::LongestChain);
     let import_result = block_on(block_import.import_block(import, Default::default())).unwrap();
@@ -849,13 +849,13 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 
 #[test]
 fn importing_block_one_sets_genesis_epoch() {
-    let mut net = PoCTestNet::new(1);
+    let mut net = SubspaceTestNet::new(1);
 
     let peer = net.peer(0);
     let data = peer
         .data
         .as_ref()
-        .expect("poc link set up during initialization");
+        .expect("Subspace link set up during initialization");
     let client = peer
         .client()
         .as_full()
@@ -905,13 +905,13 @@ fn importing_block_one_sets_genesis_epoch() {
 fn importing_epoch_change_block_prunes_tree() {
     use sc_client_api::Finalizer;
 
-    let mut net = PoCTestNet::new(1);
+    let mut net = SubspaceTestNet::new(1);
 
     let peer = net.peer(0);
     let data = peer
         .data
         .as_ref()
-        .expect("poc link set up during initialization");
+        .expect("Subspace link set up during initialization");
 
     let client = peer
         .client()
@@ -932,7 +932,7 @@ fn importing_epoch_change_block_prunes_tree() {
         mutator: Arc::new(|_, _| ()),
     };
 
-    // This is just boilerplate code for proposing and importing n valid PoC
+    // This is just boilerplate code for proposing and importing n valid Subspace
     // blocks that are built on top of the given parent. The proposer takes care
     // of producing epoch change digests according to the epoch duration (which
     // is set to 6 slots in the test runtime).
@@ -1035,13 +1035,13 @@ fn importing_epoch_change_block_prunes_tree() {
 #[test]
 #[should_panic]
 fn verify_slots_are_strictly_increasing() {
-    let mut net = PoCTestNet::new(1);
+    let mut net = SubspaceTestNet::new(1);
 
     let peer = net.peer(0);
     let data = peer
         .data
         .as_ref()
-        .expect("poc link set up during initialization");
+        .expect("Subspace link set up during initialization");
 
     let client = peer
         .client()
@@ -1088,13 +1088,13 @@ fn verify_slots_are_strictly_increasing() {
 // // Check that block import results in archiving working.
 // #[test]
 // fn archiving_works() {
-//     let mut net = PoCTestNet::new(1);
+//     let mut net = SubspaceTestNet::new(1);
 //
 //     let peer = net.peer(0);
 //     let data = peer
 //         .data
 //         .as_ref()
-//         .expect("poc link set up during initialization");
+//         .expect("Subspace link set up during initialization");
 //     let client = peer
 //         .client()
 //         .as_full()

@@ -15,36 +15,33 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! # Proof-of-Capacity (PoC) Consensus
+//! # Subspace Proof-of-Storage Consensus
 //!
-//! PoC is a slot-based block production mechanism which uses a Proof-of-Capacity to
-//! randomly perform the slot allocation. On every slot, all the farmers evaluate
-//! their disk-based plot. If they have a tag (reflecting a commitment to a valid
-//! encoding) that it is lower than a given threshold (which is proportional to
-//! the total space pledged by the network) they may produce a new block. The
-//! proof of the PoC function execution will be used by other peers to validate
+//! Subspace is a slot-based block production mechanism which uses a Proof-of-Storage to randomly
+//! perform the slot allocation. On every slot, all the farmers evaluate their disk-based plot. If
+//! they have a tag (reflecting a commitment to a valid encoding) that it is lower than a given
+//! threshold (which is proportional to the total space pledged by the network) they may produce a
+//! new block. The proof of the Subspace function execution will be used by other peers to validate
 //! the legitimacy of the slot claim.
 //!
-//! The engine is also responsible for collecting entropy on-chain which will be
-//! used to seed the given PoR challenge. An epoch is a contiguous number of slots
-//! under which we will be using the same base PoR challenge. During an epoch all PoR
-//! outputs produced as a result of block production will be collected into an
-//! on-chain randomness pool. Epoch changes are announced one epoch in advance,
-//! i.e. when ending epoch N, we announce the parameters (i.e, new randomness)
-//! for epoch N+2.
+//! The engine is also responsible for collecting entropy on-chain which will be used to seed the
+//! given PoR (Proof-of-Replication) challenge. An epoch is a contiguous number of slots under which
+//! we will be using the same base PoR challenge. During an epoch all PoR outputs produced as a
+//! result of block production will be collected into an on-chain randomness pool. Epoch changes are
+//! announced one epoch in advance, i.e. when ending epoch N, we announce the parameters (i.e, new
+//! randomness) for epoch N+2.
 //!
-//! Since the slot assignment is randomized, it is possible that a slot is
-//! claimed by multiple farmers, in which case we will have a temporary fork,
-//! or that a slot is not claimed by any farmer, in which case no block is
-//! produced. This means that block times are probabalistic.
+//! Since the slot assignment is randomized, it is possible that a slot is claimed by multiple
+//! farmers, in which case we will have a temporary fork, or that a slot is not claimed by any
+//! farmer, in which case no block is produced. This means that block times are probabilistic.
 //!
-//! The protocol has a parameter `c` [0, 1] for which `1 - c` is the probability
-//! of a slot being empty. The choice of this parameter affects the security of
-//! the protocol relating to maximum tolerable network delays.
+//! The protocol has a parameter `c` [0, 1] for which `1 - c` is the probability of a slot being
+//! empty. The choice of this parameter affects the security of the protocol relating to maximum
+//! tolerable network delays.
 //!
-//! The fork choice rule is weight-based, where weight equals the number of
-//! primary blocks in the chain. We will pick the heaviest chain (more
-//! blocks) and will go with the longest one in case of a tie.
+//! The fork choice rule is weight-based, where weight equals the number of primary blocks in the
+//! chain. We will pick the heaviest chain (more blocks) and will go with the longest one in case of
+//! a tie.
 #![feature(try_blocks)]
 #![feature(int_log)]
 #![forbid(unsafe_code)]
@@ -93,9 +90,9 @@ use sp_consensus_subspace::{
         CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
-    inherents::PoCInherentData,
-    ConsensusLog, FarmerPublicKey, PoCApi, PoCGenesisConfiguration, SubspaceEpochConfiguration,
-    SUBSPACE_ENGINE_ID,
+    inherents::SubspaceInherentData,
+    ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration,
+    SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
 };
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
@@ -158,7 +155,7 @@ pub struct ArchivedSegmentNotification {
     pub object_mapping: Vec<PieceObjectMapping>,
 }
 
-/// PoC epoch information
+/// Subspace epoch information
 #[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
 pub struct Epoch {
     /// The epoch index.
@@ -202,7 +199,7 @@ impl EpochT for Epoch {
 impl Epoch {
     /// Create the genesis epoch (epoch #0). This is defined to start at the slot of
     /// the first block, so that has to be provided.
-    pub fn genesis(genesis_config: &PoCGenesisConfiguration, slot: Slot) -> Epoch {
+    pub fn genesis(genesis_config: &SubspaceGenesisConfiguration, slot: Slot) -> Epoch {
         Epoch {
             epoch_index: 0,
             start_slot: slot,
@@ -215,32 +212,32 @@ impl Epoch {
     }
 }
 
-/// Errors encountered by the poc authorship task.
+/// Errors encountered by the Subspace authorship task.
 #[derive(derive_more::Display, Debug)]
 pub enum Error<B: BlockT> {
-    /// Multiple PoC pre-runtime digests
-    #[display(fmt = "Multiple PoC pre-runtime digests, rejecting!")]
+    /// Multiple Subspace pre-runtime digests
+    #[display(fmt = "Multiple Subspace pre-runtime digests, rejecting!")]
     MultiplePreRuntimeDigests,
-    /// No PoC pre-runtime digest found
-    #[display(fmt = "No PoC pre-runtime digest found")]
+    /// No Subspace pre-runtime digest found
+    #[display(fmt = "No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
-    /// Multiple PoC epoch change digests
-    #[display(fmt = "Multiple PoC epoch change digests, rejecting!")]
+    /// Multiple Subspace epoch change digests
+    #[display(fmt = "Multiple Subspace epoch change digests, rejecting!")]
     MultipleEpochChangeDigests,
-    /// Multiple PoC config change digests
-    #[display(fmt = "Multiple PoC config change digests, rejecting!")]
+    /// Multiple Subspace config change digests
+    #[display(fmt = "Multiple Subspace config change digests, rejecting!")]
     MultipleConfigChangeDigests,
-    /// Multiple PoC solution range digests
-    #[display(fmt = "Multiple PoC solution range digests, rejecting!")]
+    /// Multiple Subspace solution range digests
+    #[display(fmt = "Multiple Subspace solution range digests, rejecting!")]
     MultipleSolutionRangeDigests,
-    /// Multiple PoC next solution range digests
-    #[display(fmt = "Multiple PoC next solution range digests, rejecting!")]
+    /// Multiple Subspace next solution range digests
+    #[display(fmt = "Multiple Subspace next solution range digests, rejecting!")]
     MultipleNextSolutionRangeDigests,
-    /// Multiple PoC salt digests
-    #[display(fmt = "Multiple PoC salt digests, rejecting!")]
+    /// Multiple Subspace salt digests
+    #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
-    /// Multiple PoC next salt digests
-    #[display(fmt = "Multiple PoC next salt digests, rejecting!")]
+    /// Multiple Subspace next salt digests
+    #[display(fmt = "Multiple Subspace next salt digests, rejecting!")]
     MultipleNextSaltDigests,
     /// Could not extract timestamp and slot
     #[display(fmt = "Could not extract timestamp and slot: {:?}", _0)]
@@ -338,26 +335,26 @@ impl<B: BlockT> std::convert::From<Error<B>> for String {
     }
 }
 
-fn poc_err<B: BlockT>(error: Error<B>) -> Error<B> {
-    debug!(target: "poc", "{}", error);
+fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
+    debug!(target: "subspace", "{}", error);
     error
 }
 
 /// Intermediate value passed to block importer.
-pub struct PoCIntermediate<B: BlockT> {
+pub struct SubspaceIntermediate<B: BlockT> {
     /// The epoch descriptor.
     pub epoch_descriptor: ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>,
 }
 
-/// Intermediate key for PoC engine.
-pub static INTERMEDIATE_KEY: &[u8] = b"poc0";
+/// Intermediate key for Subspace engine.
+pub static INTERMEDIATE_KEY: &[u8] = b"sub_";
 
 /// A slot duration. Create with `get_or_compute`.
 // FIXME: Once Rust has higher-kinded types, the duplication between this
-// and `super::poc::Config` can be eliminated.
+// and `super::subspace::Config` can be eliminated.
 // https://github.com/paritytech/substrate/issues/2434
 #[derive(Clone)]
-pub struct Config(sc_consensus_slots::SlotDuration<PoCGenesisConfiguration>);
+pub struct Config(sc_consensus_slots::SlotDuration<SubspaceGenesisConfiguration>);
 
 impl Config {
     /// Either fetch the slot duration from disk or compute it from the genesis
@@ -365,17 +362,17 @@ impl Config {
     pub fn get_or_compute<B: BlockT, C>(client: &C) -> ClientResult<Self>
     where
         C: AuxStore + ProvideRuntimeApi<B> + UsageProvider<B>,
-        C::Api: PoCApi<B>,
+        C::Api: SubspaceApi<B>,
     {
-        trace!(target: "poc", "Getting slot duration");
+        trace!(target: "subspace", "Getting slot duration");
         match sc_consensus_slots::SlotDuration::get_or_compute(client, |a, b| {
-            let has_api_v1 = a.has_api_with::<dyn PoCApi<B>, _>(b, |v| v == 1)?;
+            let has_api_v1 = a.has_api_with::<dyn SubspaceApi<B>, _>(b, |v| v == 1)?;
 
             if has_api_v1 {
                 a.configuration(b).map_err(Into::into)
             } else {
                 Err(sp_blockchain::Error::VersionInvalid(
-                    "Unsupported or invalid PoCApi version".to_string(),
+                    "Unsupported or invalid SubspaceApi version".to_string(),
                 ))
             }
         })
@@ -383,7 +380,7 @@ impl Config {
         {
             Ok(s) => Ok(s),
             Err(s) => {
-                warn!(target: "poc", "Failed to get slot duration");
+                warn!(target: "subspace", "Failed to get slot duration");
                 Err(s)
             }
         }
@@ -396,15 +393,15 @@ impl Config {
 }
 
 impl std::ops::Deref for Config {
-    type Target = PoCGenesisConfiguration;
+    type Target = SubspaceGenesisConfiguration;
 
-    fn deref(&self) -> &PoCGenesisConfiguration {
+    fn deref(&self) -> &SubspaceGenesisConfiguration {
         &*self.0
     }
 }
 
-/// Parameters for PoC.
-pub struct PoCParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
+/// Parameters for Subspace.
+pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     /// The client to use
     pub client: Arc<C>,
 
@@ -415,7 +412,7 @@ pub struct PoCParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     pub env: E,
 
     /// The underlying block-import object to supply our produced blocks to.
-    /// This must be a `PoCBlockImport` or a wrapper of it, otherwise
+    /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
     /// critical consensus logic will be omitted.
     pub block_import: I,
 
@@ -435,7 +432,7 @@ pub struct PoCParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     pub backoff_authoring_blocks: Option<BS>,
 
     /// The source of timestamps for relative slots
-    pub poc_link: PoCLink<B>,
+    pub subspace_link: SubspaceLink<B>,
 
     /// Checks if the current native implementation can author with a runtime at a given block.
     pub can_author_with: CAW,
@@ -455,9 +452,9 @@ pub struct PoCParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     pub telemetry: Option<TelemetryHandle>,
 }
 
-/// Start the PoC worker.
-pub fn start_poc<B, C, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
-    PoCParams {
+/// Start the Subspace worker.
+pub fn start_subspace<B, C, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
+    SubspaceParams {
         client,
         select_chain,
         env,
@@ -467,13 +464,13 @@ pub fn start_poc<B, C, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         create_inherent_data_providers,
         force_authoring,
         backoff_authoring_blocks,
-        poc_link,
+        subspace_link,
         can_author_with,
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-    }: PoCParams<B, C, SC, E, I, SO, L, CIDP, BS, CAW>,
-) -> Result<PoCWorker<B>, sp_consensus::Error>
+    }: SubspaceParams<B, C, SC, E, I, SO, L, CIDP, BS, CAW>,
+) -> Result<SubspaceWorker<B>, sp_consensus::Error>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B>
@@ -485,7 +482,7 @@ where
         + Send
         + Sync
         + 'static,
-    C::Api: PoCApi<B>,
+    C::Api: SubspaceApi<B>,
     SC: SelectChain<B> + 'static,
     E: Environment<B, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
@@ -503,7 +500,7 @@ where
 {
     const HANDLE_BUFFER_SIZE: usize = 1024;
 
-    let worker = PoCSlotWorker {
+    let worker = SubspaceSlotWorker {
         client: client.clone(),
         block_import,
         env,
@@ -511,7 +508,7 @@ where
         justification_sync_link,
         force_authoring,
         backoff_authoring_blocks,
-        poc_link: poc_link.clone(),
+        subspace_link: subspace_link.clone(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
         block_proposal_slot_portion,
@@ -519,9 +516,9 @@ where
         telemetry,
     };
 
-    info!(target: "poc", "🧑‍🌾 Starting PoC Authorship worker");
+    info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
     let inner = sc_consensus_slots::start_slot_worker(
-        poc_link.config.0.clone(),
+        subspace_link.config.0.clone(),
         select_chain,
         worker,
         sync_oracle,
@@ -531,17 +528,21 @@ where
 
     let (worker_tx, worker_rx) = mpsc::channel(HANDLE_BUFFER_SIZE);
 
-    let answer_requests =
-        answer_requests(worker_rx, poc_link.config.0, client, poc_link.epoch_changes);
-    Ok(PoCWorker {
+    let answer_requests = answer_requests(
+        worker_rx,
+        subspace_link.config.0,
+        client,
+        subspace_link.epoch_changes,
+    );
+    Ok(SubspaceWorker {
         inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
-        handle: PoCWorkerHandle(worker_tx),
+        handle: SubspaceWorkerHandle(worker_tx),
     })
 }
 
 async fn answer_requests<B: BlockT, C>(
-    mut request_rx: mpsc::Receiver<PoCRequest<B>>,
-    genesis_config: sc_consensus_slots::SlotDuration<PoCGenesisConfiguration>,
+    mut request_rx: mpsc::Receiver<SubspaceRequest<B>>,
+    genesis_config: sc_consensus_slots::SlotDuration<SubspaceGenesisConfiguration>,
     client: Arc<C>,
     epoch_changes: SharedEpochChanges<B, Epoch>,
 ) where
@@ -557,7 +558,7 @@ async fn answer_requests<B: BlockT, C>(
 {
     while let Some(request) = request_rx.next().await {
         match request {
-            PoCRequest::EpochForChild(parent_hash, parent_number, slot_number, response) => {
+            SubspaceRequest::EpochForChild(parent_hash, parent_number, slot_number, response) => {
                 let lookup = || {
                     let epoch_changes = epoch_changes.shared_data();
                     let epoch_descriptor = epoch_changes
@@ -591,9 +592,9 @@ async fn answer_requests<B: BlockT, C>(
     }
 }
 
-/// Requests to the PoC service.
+/// Requests to the Subspace service.
 #[non_exhaustive]
-pub enum PoCRequest<B: BlockT> {
+pub enum SubspaceRequest<B: BlockT> {
     /// Request the epoch that a child of the given block, with the given slot number would have.
     ///
     /// The parent block is identified by its hash and number.
@@ -605,34 +606,34 @@ pub enum PoCRequest<B: BlockT> {
     ),
 }
 
-/// A handle to the PoC worker for issuing requests.
+/// A handle to the Subspace worker for issuing requests.
 #[derive(Clone)]
-pub struct PoCWorkerHandle<B: BlockT>(mpsc::Sender<PoCRequest<B>>);
+pub struct SubspaceWorkerHandle<B: BlockT>(mpsc::Sender<SubspaceRequest<B>>);
 
-impl<B: BlockT> PoCWorkerHandle<B> {
-    /// Send a request to the PoC service.
-    pub async fn send(&mut self, request: PoCRequest<B>) {
+impl<B: BlockT> SubspaceWorkerHandle<B> {
+    /// Send a request to the Subspace service.
+    pub async fn send(&mut self, request: SubspaceRequest<B>) {
         // Failure to send means that the service is down.
         // This will manifest as the receiver of the request being dropped.
         let _ = self.0.send(request).await;
     }
 }
 
-/// Worker for PoC which implements `Future<Output=()>`. This must be polled.
+/// Worker for Subspace which implements `Future<Output=()>`. This must be polled.
 #[must_use]
-pub struct PoCWorker<B: BlockT> {
+pub struct SubspaceWorker<B: BlockT> {
     inner: Pin<Box<dyn futures::Future<Output = ()> + Send + 'static>>,
-    handle: PoCWorkerHandle<B>,
+    handle: SubspaceWorkerHandle<B>,
 }
 
-impl<B: BlockT> PoCWorker<B> {
+impl<B: BlockT> SubspaceWorker<B> {
     /// Get a handle to the worker.
-    pub fn handle(&self) -> PoCWorkerHandle<B> {
+    pub fn handle(&self) -> SubspaceWorkerHandle<B> {
         self.handle.clone()
     }
 }
 
-impl<B: BlockT> futures::Future for PoCWorker<B> {
+impl<B: BlockT> futures::Future for SubspaceWorker<B> {
     type Output = ();
 
     fn poll(
@@ -643,7 +644,7 @@ impl<B: BlockT> futures::Future for PoCWorker<B> {
     }
 }
 
-struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
+struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     client: Arc<C>,
     block_import: I,
     env: E,
@@ -651,7 +652,7 @@ struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     justification_sync_link: L,
     force_authoring: bool,
     backoff_authoring_blocks: Option<BS>,
-    poc_link: PoCLink<B>,
+    subspace_link: SubspaceLink<B>,
     signing_context: SigningContext,
     block_proposal_slot_portion: SlotProportion,
     max_block_proposal_slot_portion: Option<SlotProportion>,
@@ -659,7 +660,7 @@ struct PoCSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
 }
 
 #[async_trait::async_trait]
-impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for PoCSlotWorker<B, C, E, I, SO, L, BS>
+impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for SubspaceSlotWorker<B, C, E, I, SO, L, BS>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B>
@@ -667,7 +668,7 @@ where
         + HeaderBackend<B>
         + HeaderMetadata<B, Error = ClientError>
         + 'static,
-    C::Api: PoCApi<B>,
+    C::Api: SubspaceApi<B>,
     E: Environment<B, Error = Error> + Send + Sync,
     E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
     I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
@@ -686,7 +687,7 @@ where
     type BlockImport = I;
 
     fn logging_target(&self) -> &'static str {
-        "poc"
+        "subspace"
     }
 
     fn block_import(&mut self) -> &mut Self::BlockImport {
@@ -698,7 +699,7 @@ where
         parent: &B::Header,
         slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
-        self.poc_link
+        self.subspace_link
             .epoch_changes
             .shared_data()
             .epoch_descriptor_for_child_of(
@@ -717,7 +718,7 @@ where
         slot: Slot,
         epoch_descriptor: &Self::EpochData,
     ) -> Option<Self::Claim> {
-        debug!(target: "poc", "Attempting to claim slot {}", slot);
+        debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
         struct PreparedData<B: BlockT> {
             block_id: BlockId<B>,
@@ -729,9 +730,9 @@ where
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let maybe_prepared_data: Option<PreparedData<B>> = try {
-            let epoch_changes = self.poc_link.epoch_changes.shared_data();
+            let epoch_changes = self.subspace_link.epoch_changes.shared_data();
             let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
-                Epoch::genesis(&self.poc_link.config, slot)
+                Epoch::genesis(&self.subspace_link.config, slot)
             })?;
             let epoch_randomness = epoch.as_ref().randomness;
             // Here we always use parent block as the source of information, thus on the edge of the
@@ -770,9 +771,9 @@ where
                 solution_range,
             };
             let (solution_sender, solution_receiver) =
-                tracing_unbounded("poc_slot_solution_stream");
+                tracing_unbounded("subspace_slot_solution_stream");
 
-            self.poc_link
+            self.subspace_link
                 .new_slot_notification_sender
                 .notify(|| NewSlotNotification {
                     new_slot_info,
@@ -808,7 +809,7 @@ where
                 .ok()?
             {
                 warn!(
-                    target: "poc",
+                    target: "subspace",
                     "Ignoring solution for slot {} provided by farmer in block list: {}",
                     slot,
                     solution.public_key,
@@ -839,7 +840,7 @@ where
             // TODO: This is not a very nice hack due to the fact that at the time first block is
             //  produced extrinsics with root blocks are not yet in runtime
             if merkle_root.is_none() && parent_header.number().is_zero() {
-                merkle_root = self.poc_link.root_blocks.lock().iter().find_map(
+                merkle_root = self.subspace_link.root_blocks.lock().iter().find_map(
                     |(_block_number, root_blocks)| {
                         root_blocks.iter().find_map(|root_block| {
                             if root_block.segment_index() == segment_index {
@@ -856,7 +857,7 @@ where
                 Some(merkle_root) => merkle_root,
                 None => {
                     warn!(
-                        target: "poc",
+                        target: "subspace",
                         "Merkle Root segment index {} not found (slot {})",
                         segment_index,
                         slot,
@@ -879,12 +880,12 @@ where
                 &signing_context,
             ) {
                 Ok(_) => {
-                    debug!(target: "poc", "Claimed slot {}", slot);
+                    debug!(target: "subspace", "Claimed slot {}", slot);
 
                     return Some((PreDigest { solution, slot }, secret_key.into()));
                 }
                 Err(error) => {
-                    warn!(target: "poc", "Invalid solution received for slot {}: {:?}", slot, error);
+                    warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
                 }
             }
         }
@@ -937,7 +938,7 @@ where
                 );
                 import_block.intermediates.insert(
                     Cow::from(INTERMEDIATE_KEY),
-                    Box::new(PoCIntermediate::<B> { epoch_descriptor }) as Box<_>,
+                    Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
                 );
 
                 Ok(import_block)
@@ -1005,7 +1006,7 @@ where
     }
 }
 
-/// Extract the PoC pre digest from the given header. Pre-runtime digests are
+/// Extract the Subspace pre digest from the given header. Pre-runtime digests are
 /// mandatory, the function will return `Err` if none is found.
 pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error<B>> {
     // genesis block doesn't contain a pre digest so let's generate a
@@ -1019,17 +1020,17 @@ pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error
 
     let mut pre_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for pre runtime digest", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(poc_err(Error::MultiplePreRuntimeDigests)),
-            (None, _) => trace!(target: "poc", "Ignoring digest not meant for us"),
+            (Some(_), true) => return Err(subspace_err(Error::MultiplePreRuntimeDigests)),
+            (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }
-    pre_digest.ok_or_else(|| poc_err(Error::NoPreRuntimeDigest))
+    pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
 }
 
-/// Extract the PoC epoch change digest from the given header, if it exists.
+/// Extract the Subspace epoch change digest from the given header, if it exists.
 fn find_next_epoch_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextEpochDescriptor>, Error<B>>
@@ -1038,21 +1039,21 @@ where
 {
     let mut epoch_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for epoch change digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, epoch_digest.is_some()) {
             (Some(ConsensusLog::NextEpochData(_)), true) => {
-                return Err(poc_err(Error::MultipleEpochChangeDigests))
+                return Err(subspace_err(Error::MultipleEpochChangeDigests))
             }
             (Some(ConsensusLog::NextEpochData(epoch)), false) => epoch_digest = Some(epoch),
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
     Ok(epoch_digest)
 }
 
-/// Extract the PoC config change digest from the given header, if it exists.
+/// Extract the Subspace config change digest from the given header, if it exists.
 fn find_next_config_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextConfigDescriptor>, Error<B>>
@@ -1061,21 +1062,21 @@ where
 {
     let mut config_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for epoch change digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, config_digest.is_some()) {
             (Some(ConsensusLog::NextConfigData(_)), true) => {
-                return Err(poc_err(Error::MultipleConfigChangeDigests))
+                return Err(subspace_err(Error::MultipleConfigChangeDigests))
             }
             (Some(ConsensusLog::NextConfigData(config)), false) => config_digest = Some(config),
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
     Ok(config_digest)
 }
 
-/// Extract the PoC solution range digest from the given header.
+/// Extract the Subspace solution range digest from the given header.
 fn find_solution_range_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<SolutionRangeDescriptor>, Error<B>>
@@ -1084,23 +1085,23 @@ where
 {
     let mut solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for solution range digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, solution_range_digest.is_some()) {
             (Some(ConsensusLog::SolutionRangeData(_)), true) => {
-                return Err(poc_err(Error::MultipleSolutionRangeDigests))
+                return Err(subspace_err(Error::MultipleSolutionRangeDigests))
             }
             (Some(ConsensusLog::SolutionRangeData(solution_range)), false) => {
                 solution_range_digest = Some(solution_range)
             }
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
     Ok(solution_range_digest)
 }
 
-/// Extract the next PoC solution range digest from the given header if it exists.
+/// Extract the next Subspace solution range digest from the given header if it exists.
 fn find_next_solution_range_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>>
@@ -1109,44 +1110,44 @@ where
 {
     let mut next_solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for next solution range digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_solution_range_digest.is_some()) {
             (Some(ConsensusLog::NextSolutionRangeData(_)), true) => {
-                return Err(poc_err(Error::MultipleNextSolutionRangeDigests))
+                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests))
             }
             (Some(ConsensusLog::NextSolutionRangeData(solution_range)), false) => {
                 next_solution_range_digest = Some(solution_range)
             }
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
     Ok(next_solution_range_digest)
 }
 
-/// Extract the PoC salt digest from the given header.
+/// Extract the Subspace salt digest from the given header.
 fn find_salt_digest<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>>
 where
     DigestItemFor<B>: CompatibleDigestItem,
 {
     let mut salt_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for salt digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, salt_digest.is_some()) {
             (Some(ConsensusLog::SaltData(_)), true) => {
-                return Err(poc_err(Error::MultipleSaltDigests))
+                return Err(subspace_err(Error::MultipleSaltDigests))
             }
             (Some(ConsensusLog::SaltData(salt)), false) => salt_digest = Some(salt),
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
     Ok(salt_digest)
 }
 
-/// Extract the next PoC salt digest from the given header if it exists.
+/// Extract the next Subspace salt digest from the given header if it exists.
 fn find_next_salt_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextSaltDescriptor>, Error<B>>
@@ -1155,14 +1156,14 @@ where
 {
     let mut next_salt_digest: Option<_> = None;
     for log in header.digest().logs() {
-        trace!(target: "poc", "Checking log {:?}, looking for salt digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_salt_digest.is_some()) {
             (Some(ConsensusLog::NextSaltData(_)), true) => {
-                return Err(poc_err(Error::MultipleSaltDigests))
+                return Err(subspace_err(Error::MultipleSaltDigests))
             }
             (Some(ConsensusLog::NextSaltData(salt)), false) => next_salt_digest = Some(salt),
-            _ => trace!(target: "poc", "Ignoring digest not meant for us"),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
@@ -1171,7 +1172,7 @@ where
 
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
-pub struct PoCLink<Block: BlockT> {
+pub struct SubspaceLink<Block: BlockT> {
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
@@ -1185,7 +1186,7 @@ pub struct PoCLink<Block: BlockT> {
     root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
-impl<Block: BlockT> PoCLink<Block> {
+impl<Block: BlockT> SubspaceLink<Block> {
     /// Get the epoch changes of this link.
     pub fn epoch_changes(&self) -> &SharedEpochChanges<Block, Epoch> {
         &self.epoch_changes
@@ -1209,8 +1210,8 @@ impl<Block: BlockT> PoCLink<Block> {
     }
 }
 
-/// A verifier for PoC blocks.
-pub struct PoCVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
+/// A verifier for Subspace blocks.
+pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
     client: Arc<Client>,
     select_chain: SelectChain,
     create_inherent_data_providers: CIDP,
@@ -1224,11 +1225,11 @@ pub struct PoCVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
     signing_context: SigningContext,
 }
 
-impl<Block, Client, SelectChain, CAW, CIDP> PoCVerifier<Block, Client, SelectChain, CAW, CIDP>
+impl<Block, Client, SelectChain, CAW, CIDP> SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + PoCApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
     CAW: CanAuthorWith<Block>,
     CIDP: CreateInherentDataProviders<Block, ()>,
@@ -1243,7 +1244,7 @@ where
     ) -> Result<(), Error<Block>> {
         if let Err(e) = self.can_author_with.can_author_with(&block_id) {
             debug!(
-                target: "poc",
+                target: "subspace",
                 "Skipping `check_inherents` as authoring version is not compatible: {}",
                 e,
             );
@@ -1317,7 +1318,7 @@ where
             .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
             .map_err(Error::RuntimeApi)?;
 
-        info!(target: "poc", "Submitted equivocation report for author {:?}", author);
+        info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
 
         Ok(())
     }
@@ -1333,7 +1334,7 @@ type BlockVerificationResult<Block> = Result<
 
 #[async_trait::async_trait]
 impl<Block, Client, SelectChain, CAW, CIDP> Verifier<Block>
-    for PoCVerifier<Block, Client, SelectChain, CAW, CIDP>
+    for SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
 where
     Block: BlockT,
     Client: HeaderMetadata<Block, Error = sp_blockchain::Error>
@@ -1343,7 +1344,7 @@ where
         + Sync
         + AuxStore
         + ProvideCache<Block>,
-    Client::Api: BlockBuilderApi<Block> + PoCApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync,
@@ -1354,7 +1355,7 @@ where
         mut block: BlockImportParams<Block, ()>,
     ) -> BlockVerificationResult<Block> {
         trace!(
-            target: "poc",
+            target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
             block.origin,
             block.header,
@@ -1366,7 +1367,7 @@ where
         let parent_hash = *block.header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
-        debug!(target: "poc", "We have {:?} logs in this header", block.header.digest().logs().len());
+        debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
         let create_inherent_data_providers = self
             .create_inherent_data_providers
@@ -1411,7 +1412,7 @@ where
                 .map_err(Error::<Block>::RuntimeApi)?
             {
                 warn!(
-                    target: "poc",
+                    target: "subspace",
                     "Ignoring block with solution provided by farmer in block list: {}",
                     pre_digest.solution.public_key
                 );
@@ -1494,11 +1495,11 @@ where
 
         match check_header {
             CheckedHeader::Checked(pre_header, verified_info) => {
-                let poc_pre_digest = verified_info
+                let subspace_pre_digest = verified_info
                     .pre_digest
                     .as_subspace_pre_digest()
                     .expect("check_header always returns a pre-digest digest item; qed");
-                let slot = poc_pre_digest.slot;
+                let slot = subspace_pre_digest.slot;
 
                 // the header is valid but let's check if there was something else already
                 // proposed at the same slot by the given author. if there was, we will
@@ -1508,12 +1509,16 @@ where
                         slot_now,
                         slot,
                         &block.header,
-                        &poc_pre_digest.solution.public_key,
+                        &subspace_pre_digest.solution.public_key,
                         &block.origin,
                     )
                     .await
                 {
-                    warn!(target: "poc", "Error checking/reporting PoC equivocation: {:?}", err);
+                    warn!(
+                        target: "subspace",
+                        "Error checking/reporting Subspace equivocation: {:?}",
+                        err
+                    );
                 }
 
                 // if the body is passed through, we need to use the runtime
@@ -1523,7 +1528,7 @@ where
                     let mut inherent_data = create_inherent_data_providers
                         .create_inherent_data()
                         .map_err(Error::<Block>::CreateInherents)?;
-                    inherent_data.poc_replace_inherent_data(slot);
+                    inherent_data.subspace_replace_inherent_data(slot);
                     let new_block = Block::new(pre_header.clone(), inner_body);
 
                     self.check_inherents(
@@ -1539,11 +1544,11 @@ where
                     block.body = Some(inner_body);
                 }
 
-                trace!(target: "poc", "Checked {:?}; importing.", pre_header);
+                trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
                 telemetry!(
                     self.telemetry;
                     CONSENSUS_TRACE;
-                    "poc.checked_and_importing";
+                    "subspace.checked_and_importing";
                     "pre_header" => ?pre_header,
                 );
 
@@ -1551,18 +1556,18 @@ where
                 block.post_digests.push(verified_info.seal);
                 block.intermediates.insert(
                     Cow::from(INTERMEDIATE_KEY),
-                    Box::new(PoCIntermediate::<Block> { epoch_descriptor }) as Box<_>,
+                    Box::new(SubspaceIntermediate::<Block> { epoch_descriptor }) as Box<_>,
                 );
                 block.post_hash = Some(hash);
 
                 Ok((block, Default::default()))
             }
             CheckedHeader::Deferred(a, b) => {
-                debug!(target: "poc", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
+                debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
                 telemetry!(
                     self.telemetry;
                     CONSENSUS_DEBUG;
-                    "poc.header_too_far_in_future";
+                    "subspace.header_too_far_in_future";
                     "hash" => ?hash, "a" => ?a, "b" => ?b
                 );
                 Err(Error::<Block>::TooFarInFuture(hash).into())
@@ -1571,7 +1576,7 @@ where
     }
 }
 
-/// A block-import handler for PoC.
+/// A block-import handler for Subspace.
 ///
 /// This scans each imported block for epoch change signals. The signals are
 /// tracked in a tree (of all forks), and the import logic validates all epoch
@@ -1579,7 +1584,7 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct PoCBlockImport<Block: BlockT, Client, I> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
     inner: I,
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
@@ -1591,9 +1596,9 @@ pub struct PoCBlockImport<Block: BlockT, Client, I> {
     root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
 }
 
-impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I> {
+impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
     fn clone(&self) -> Self {
-        PoCBlockImport {
+        SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
             epoch_changes: self.epoch_changes.clone(),
@@ -1604,7 +1609,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for PoCBlockImport<Block, Client, I>
     }
 }
 
-impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
+impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
     fn new(
         client: Arc<Client>,
         epoch_changes: SharedEpochChanges<Block, Epoch>,
@@ -1616,7 +1621,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
         )>,
         root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     ) -> Self {
-        PoCBlockImport {
+        SubspaceBlockImport {
             client,
             inner: block_import,
             epoch_changes,
@@ -1628,7 +1633,7 @@ impl<Block: BlockT, Client, I> PoCBlockImport<Block, Client, I> {
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner> BlockImport<Block> for PoCBlockImport<Block, Client, Inner>
+impl<Block, Client, Inner> BlockImport<Block> for SubspaceBlockImport<Block, Client, Inner>
 where
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = sp_api::TransactionFor<Client, Block>> + Send + Sync,
@@ -1640,7 +1645,7 @@ where
         + ProvideCache<Block>
         + Send
         + Sync,
-    Client::Api: PoCApi<Block> + ApiExt<Block>,
+    Client::Api: SubspaceApi<Block> + ApiExt<Block>,
 {
     type Error = ConsensusError;
     type Transaction = sp_api::TransactionFor<Client, Block>;
@@ -1658,7 +1663,7 @@ where
         match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 // When re-importing existing block strip away intermediates.
-                let _ = block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY);
+                let _ = block.take_intermediate::<SubspaceIntermediate<Block>>(INTERMEDIATE_KEY);
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
                 return self
                     .inner
@@ -1671,7 +1676,8 @@ where
         }
 
         let pre_digest = find_pre_digest::<Block>(&block.header).expect(
-            "valid PoC headers must contain a predigest; header has been already verified; qed",
+            "valid Subspace headers must contain a predigest; header has been already verified; \
+            qed",
         );
         let slot = pre_digest.slot;
 
@@ -1682,21 +1688,21 @@ where
             .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
             .ok_or_else(|| {
                 ConsensusError::ChainLookup(
-                    poc_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
+                    subspace_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
                 )
             })?;
 
         let parent_slot = find_pre_digest::<Block>(&parent_header)
             .map(|d| d.slot)
             .expect(
-                "parent is non-genesis; valid PoC headers contain a pre-digest; header has \
+                "parent is non-genesis; valid Subspace headers contain a pre-digest; header has \
                 already been verified; qed",
             );
 
         // make sure that slot number is strictly increasing
         if slot <= parent_slot {
             return Err(ConsensusError::ClientImport(
-                poc_err(Error::<Block>::SlotMustIncrease(parent_slot, slot)).into(),
+                subspace_err(Error::<Block>::SlotMustIncrease(parent_slot, slot)).into(),
             ));
         }
 
@@ -1722,14 +1728,16 @@ where
                         .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                         .ok_or_else(|| {
                             ConsensusError::ClientImport(
-                                poc_err(Error::<Block>::ParentBlockNoAssociatedWeight(block_hash))
-                                    .into(),
+                                subspace_err(Error::<Block>::ParentBlockNoAssociatedWeight(
+                                    block_hash,
+                                ))
+                                .into(),
                             )
                         })?
                 };
 
                 let intermediate =
-                    block.take_intermediate::<PoCIntermediate<Block>>(INTERMEDIATE_KEY)?;
+                    block.take_intermediate::<SubspaceIntermediate<Block>>(INTERMEDIATE_KEY)?;
 
                 let epoch_descriptor = intermediate.epoch_descriptor;
                 let first_in_epoch = parent_slot < epoch_descriptor.start_slot();
@@ -1753,17 +1761,17 @@ where
                 (false, false, false) => {}
                 (false, false, true) => {
                     return Err(ConsensusError::ClientImport(
-                        poc_err(Error::<Block>::UnexpectedConfigChange).into(),
+                        subspace_err(Error::<Block>::UnexpectedConfigChange).into(),
                     ))
                 }
                 (true, false, _) => {
                     return Err(ConsensusError::ClientImport(
-                        poc_err(Error::<Block>::ExpectedEpochChange(block_hash, slot)).into(),
+                        subspace_err(Error::<Block>::ExpectedEpochChange(block_hash, slot)).into(),
                     ))
                 }
                 (false, true, _) => {
                     return Err(ConsensusError::ClientImport(
-                        poc_err(Error::<Block>::UnexpectedEpochChange).into(),
+                        subspace_err(Error::<Block>::UnexpectedEpochChange).into(),
                     ))
                 }
             }
@@ -1790,7 +1798,7 @@ where
                     log::Level::Info
                 };
 
-                log!(target: "poc",
+                log!(target: "subspace",
                      log_level,
                      "🧑‍🌾 New epoch {} launching at block {} (block slot {} >= start slot {}).",
                      viable_epoch.as_ref().epoch_index,
@@ -1801,7 +1809,7 @@ where
 
                 let next_epoch = viable_epoch.increment((next_epoch_descriptor, epoch_config));
 
-                log!(target: "poc",
+                log!(target: "subspace",
                      log_level,
                      "🧑‍🌾 Next epoch starts at slot {}",
                      next_epoch.as_ref().start_slot,
@@ -1831,7 +1839,7 @@ where
                 };
 
                 if let Err(e) = prune_and_import() {
-                    debug!(target: "poc", "Failed to launch next epoch: {:?}", e);
+                    debug!(target: "subspace", "Failed to launch next epoch: {:?}", e);
                     *epoch_changes =
                         old_epoch_changes.expect("set `Some` above and not taken; qed");
                     return Err(e);
@@ -1909,7 +1917,7 @@ where
                             // Some other extrinsic, ignore
                         }
                         Err(error) => {
-                            warn!(target: "poc", "Failed to make runtime API call: {:?}", error);
+                            warn!(target: "subspace", "Failed to make runtime API call: {:?}", error);
                         }
                     }
                 }
@@ -2015,38 +2023,37 @@ where
     Ok(())
 }
 
-/// Produce a PoC block-import object to be used later on in the construction of
-/// an import-queue.
+/// Produce a Subspace block-import object to be used later on in the construction of an
+/// import-queue.
 ///
-/// Also returns a link object used to correctly instantiate the import queue
-/// and background worker.
+/// Also returns a link object used to correctly instantiate the import queue and background worker.
 pub fn block_import<Client, Block: BlockT, I>(
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
-) -> ClientResult<(PoCBlockImport<Block, Client, I>, PoCLink<Block>)>
+) -> ClientResult<(SubspaceBlockImport<Block, Client, I>, SubspaceLink<Block>)>
 where
     Client: ProvideRuntimeApi<Block>
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: PoCApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     let epoch_changes = aux_schema::load_epoch_changes::<Block, _>(&*client, &config)?;
 
     let (new_slot_notification_sender, new_slot_notification_stream) =
-        notification::channel("poc_new_slot_notification_stream");
+        notification::channel("subspace_new_slot_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
-        notification::channel("poc_archived_segment_notification_stream");
+        notification::channel("subspace_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
-        notification::channel("poc_imported_block_notification_stream");
+        notification::channel("subspace_imported_block_notification_stream");
 
     let confirmation_depth_k = client
         .runtime_api()
         .confirmation_depth_k(&BlockId::Number(Zero::zero()))
         .expect("Failed to get `confirmation_depth_k` from runtime API");
 
-    let link = PoCLink {
+    let link = SubspaceLink {
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
         new_slot_notification_sender,
@@ -2062,7 +2069,7 @@ where
     // startup rather than waiting until importing the next epoch change block.
     prune_finalized(client.clone(), &mut epoch_changes.shared_data())?;
 
-    let import = PoCBlockImport::new(
+    let import = SubspaceBlockImport::new(
         client,
         epoch_changes,
         wrapped_block_import,
@@ -2077,7 +2084,7 @@ where
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
 where
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: PoCApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     let mut block_to_check = BlockId::Hash(client.info().best_hash);
     loop {
@@ -2107,7 +2114,7 @@ where
                 }
                 Err(error) => {
                     // TODO: Probably light client, can this even happen?
-                    error!(target: "poc", "Failed to make runtime API call: {:?}", error);
+                    error!(target: "subspace", "Failed to make runtime API call: {:?}", error);
                 }
             }
         }
@@ -2131,7 +2138,7 @@ where
 /// producing pieces and root blocks (root blocks are then added back to the blockchain as
 /// `store_root_block` extrinsic).
 pub fn start_subspace_archiver<Block: BlockT, Client>(
-    poc_link: &PoCLink<Block>,
+    subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
     spawner: &impl sp_core::traits::SpawnNamed,
 ) where
@@ -2141,7 +2148,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + Send
         + Sync
         + 'static,
-    Client::Api: PoCApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     let genesis_block_id = BlockId::Number(Zero::zero());
 
@@ -2162,7 +2169,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         // Continuing from existing initial state
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!(
-            target: "poc",
+            target: "subspace",
             "Last archived block {}",
             last_archived_block_number,
         );
@@ -2207,7 +2214,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
         // These archived segments are a part of the public parameters of network setup, thus do not
         // need to be sent to farmers
-        info!(target: "poc", "Processing pre-genesis objects");
+        info!(target: "subspace", "Processing pre-genesis objects");
         let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
             .map(|index| {
                 object_archiver
@@ -2234,9 +2241,12 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
         // Set list of expected root blocks for the next block after genesis (we can't have
         // extrinsics in genesis block, at least not right now)
-        poc_link.root_blocks.lock().put(One::one(), new_root_blocks);
+        subspace_link
+            .root_blocks
+            .lock()
+            .put(One::one(), new_root_blocks);
 
-        info!(target: "poc", "Finished processing pre-genesis objects");
+        info!(target: "subspace", "Finished processing pre-genesis objects");
 
         object_archiver.into_block_archiver()
     };
@@ -2259,7 +2269,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
-                target: "poc",
+                target: "subspace",
                 "Archiving already produced blocks {}..={}",
                 blocks_to_archive_from,
                 blocks_to_archive_to,
@@ -2288,7 +2298,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                 // Set list of expected root blocks for the block where we expect root block
                 // extrinsic to be included
-                poc_link.root_blocks.lock().put(
+                subspace_link.root_blocks.lock().put(
                     (block_to_archive + confirmation_depth_k + 1).into(),
                     new_root_blocks,
                 );
@@ -2300,9 +2310,9 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         "subspace-archiver",
         Box::pin({
             let mut imported_block_notification_stream =
-                poc_link.imported_block_notification_stream.subscribe();
+                subspace_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =
-                poc_link.archived_segment_notification_sender.clone();
+                subspace_link.archived_segment_notification_sender.clone();
 
             async move {
                 let mut last_archived_block_number =
@@ -2330,7 +2340,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         last_archived_block_number.replace(block_to_archive);
                     }
 
-                    debug!(target: "poc", "Archiving block {:?}", block_to_archive);
+                    debug!(target: "subspace", "Archiving block {:?}", block_to_archive);
 
                     let block = client
                         .block(&BlockId::Number(block_to_archive))
@@ -2369,19 +2379,19 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
     );
 }
 
-/// Start an import queue for the PoC consensus algorithm.
+/// Start an import queue for the Subspace consensus algorithm.
 ///
 /// This method returns the import queue, some data that needs to be passed to the block authoring
-/// logic (`PocLink`), and a future that must be run to
+/// logic (`SubspaceLink`), and a future that must be run to
 /// completion and is responsible for listening to finality notifications and
 /// pruning the epoch changes tree.
 ///
-/// The block import object provided must be the `PocBlockImport` or a wrapper
+/// The block import object provided must be the `SubspaceBlockImport` or a wrapper
 /// of it, otherwise crucial import logic will be omitted.
 // TODO: Create a struct for these parameters
 #[allow(clippy::too_many_arguments)]
 pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
-    poc_link: &PoCLink<Block>,
+    subspace_link: &SubspaceLink<Block>,
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
     client: Arc<Client>,
@@ -2408,19 +2418,19 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: BlockBuilderApi<Block> + PoCApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
 {
-    let verifier = PoCVerifier {
+    let verifier = SubspaceVerifier {
         select_chain,
         create_inherent_data_providers,
-        config: poc_link.config.clone(),
-        epoch_changes: poc_link.epoch_changes.clone(),
+        config: subspace_link.config.clone(),
+        epoch_changes: subspace_link.epoch_changes.clone(),
         can_author_with,
-        root_blocks: Arc::clone(&poc_link.root_blocks),
+        root_blocks: Arc::clone(&subspace_link.root_blocks),
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency

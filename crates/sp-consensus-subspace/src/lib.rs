@@ -70,7 +70,7 @@ pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerP
 ///
 /// Primary blocks have a weight of 1 whereas secondary blocks have a weight
 /// of 0 (regardless of whether they are plain or vrf secondary blocks).
-pub type PoCBlockWeight = u32;
+pub type SubspaceBlockWeight = u32;
 
 /// An consensus log item for PoC.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
@@ -100,7 +100,7 @@ pub enum ConsensusLog {
 
 /// Configuration data used by the PoC consensus engine.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
-pub struct PoCGenesisConfiguration {
+pub struct SubspaceGenesisConfiguration {
     /// The slot duration in milliseconds for PoC. Currently, only
     /// the value provided by this type at genesis will be used.
     ///
@@ -123,7 +123,7 @@ pub struct PoCGenesisConfiguration {
 }
 
 #[cfg(feature = "std")]
-impl sp_consensus::SlotData for PoCGenesisConfiguration {
+impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
     fn slot_duration(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.slot_duration)
     }
@@ -246,7 +246,7 @@ pub struct Epoch {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with PoC.
-    pub trait PoCApi {
+    pub trait SubspaceApi {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         fn confirmation_depth_k() -> u32;
@@ -269,7 +269,7 @@ sp_api::decl_runtime_apis! {
         fn pre_genesis_object_seed() -> Vec<u8>;
 
         /// Return the genesis configuration for PoC. The configuration is only read on genesis.
-        fn configuration() -> PoCGenesisConfiguration;
+        fn configuration() -> SubspaceGenesisConfiguration;
 
         /// Current solution range.
         fn solution_range() -> u64;

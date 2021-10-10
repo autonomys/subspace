@@ -2,7 +2,7 @@
 name = "sc-consensus-subspace"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
-description = "PoC consensus algorithm for substrate"
+description = "Subspace consensus algorithm for substrate"
 edition = "2021"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
 homepage = "https://subspace.network"

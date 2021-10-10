@@ -15,8 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Verification for PoC headers.
-use super::{find_pre_digest, poc_err, BlockT, Epoch, Error};
+//! Verification for Subspace headers.
+use super::{find_pre_digest, subspace_err, BlockT, Epoch, Error};
 use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
@@ -28,7 +28,7 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
-/// PoC verification parameters
+/// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     /// The header being verified.
     pub(super) header: B::Header,
@@ -61,7 +61,7 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
 /// The seal must be the last digest.  Otherwise, the whole header is considered
 /// unsigned.  This is required for security and must not be changed.
 ///
-/// This digest item will always return `Some` when used with `as_poc_pre_digest`.
+/// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
 pub(super) fn check_header<B: BlockT + Sized>(
     params: VerificationParams<B>,
 ) -> Result<CheckedHeader<B::Header, VerifiedHeaderInfo<B>>, Error<B>>
@@ -85,15 +85,15 @@ where
         .map(Ok)
         .unwrap_or_else(|| find_pre_digest::<B>(&header))?;
 
-    trace!(target: "poc", "Checking header");
+    trace!(target: "subspace", "Checking header");
     let seal = header
         .digest_mut()
         .pop()
-        .ok_or_else(|| poc_err(Error::HeaderUnsealed(header.hash())))?;
+        .ok_or_else(|| subspace_err(Error::HeaderUnsealed(header.hash())))?;
 
     let sig = seal
         .as_subspace_seal()
-        .ok_or_else(|| poc_err(Error::HeaderBadSeal(header.hash())))?;
+        .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
 
     // the pre-hash of the header doesn't include the seal
     // and that's what we sign
@@ -104,7 +104,7 @@ where
         return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
     }
 
-    debug!(target: "poc",
+    debug!(target: "subspace",
         "Verifying primary block #{} at slot: {}",
         header.number(),
         pre_digest.slot,
@@ -112,7 +112,7 @@ where
 
     // Verify that block is signed properly
     if !pre_digest.solution.public_key.verify(&pre_hash, &sig) {
-        return Err(poc_err(Error::BadSignature(pre_hash)));
+        return Err(subspace_err(Error::BadSignature(pre_hash)));
     }
 
     // Verify that solution is valid

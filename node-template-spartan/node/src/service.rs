@@ -40,8 +40,8 @@ pub fn new_partial(
         sc_consensus::DefaultImportQueue<Block, FullClient>,
         sc_transaction_pool::FullPool<Block, FullClient>,
         (
-            sc_consensus_subspace::PoCBlockImport<Block, FullClient, Arc<FullClient>>,
-            sc_consensus_subspace::PoCLink<Block>,
+            sc_consensus_subspace::SubspaceBlockImport<Block, FullClient, Arc<FullClient>>,
+            sc_consensus_subspace::SubspaceLink<Block>,
             Option<Telemetry>,
         ),
     >,
@@ -87,20 +87,20 @@ pub fn new_partial(
         client.clone(),
     );
 
-    let (block_import, poc_link) = sc_consensus_subspace::block_import(
+    let (block_import, subspace_link) = sc_consensus_subspace::block_import(
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(
-        &poc_link,
+        &subspace_link,
         client.clone(),
         &task_manager.spawn_handle(),
     );
-    let slot_duration = poc_link.config().slot_duration();
+    let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
-        &poc_link,
+        &subspace_link,
         block_import.clone(),
         None,
         client.clone(),
@@ -133,7 +133,7 @@ pub fn new_partial(
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, poc_link, telemetry),
+        other: (block_import, subspace_link, telemetry),
     })
 }
 
@@ -147,7 +147,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, poc_link, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry),
     } = new_partial(&config)?;
 
     let (network, system_rpc_tx, network_starter) =
@@ -176,8 +176,8 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
     let backoff_authoring_blocks: Option<()> = None;
     let prometheus_registry = config.prometheus_registry().cloned();
 
-    let new_slot_notification_stream = poc_link.new_slot_notification_stream();
-    let archived_segment_notification_stream = poc_link.archived_segment_notification_stream();
+    let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
+    let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -192,8 +192,8 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
             sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone());
 
         let client_clone = client.clone();
-        let slot_duration = poc_link.config().slot_duration();
-        let poc_config = sc_consensus_subspace::PoCParams {
+        let slot_duration = subspace_link.config().slot_duration();
+        let poc_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
             select_chain,
             env: proposer_factory,
@@ -221,14 +221,14 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
             },
             force_authoring,
             backoff_authoring_blocks,
-            poc_link,
+            subspace_link,
             can_author_with,
             block_proposal_slot_portion: SlotProportion::new(2f32 / 3f32),
             max_block_proposal_slot_portion: None,
             telemetry: None,
         };
 
-        let poc = sc_consensus_subspace::start_poc(poc_config)?;
+        let poc = sc_consensus_subspace::start_subspace(poc_config)?;
 
         // the PoC authoring task is considered essential, i.e. if it fails we take down the service
         // with it.
@@ -315,15 +315,15 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
         on_demand.clone(),
     ));
 
-    let (poc_block_import, poc_link) = sc_consensus_subspace::block_import(
+    let (poc_block_import, subspace_link) = sc_consensus_subspace::block_import(
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
     )?;
 
-    let slot_duration = poc_link.config().slot_duration();
+    let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
-        &poc_link,
+        &subspace_link,
         poc_block_import,
         None,
         client.clone(),

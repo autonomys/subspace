@@ -500,7 +500,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_subspace::PoCApi<Block> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
         fn confirmation_depth_k() -> u32 {
             ConfirmationDepthK::get()
         }
@@ -525,13 +525,13 @@ impl_runtime_apis! {
             Vec::from(PreGenesisObjectSeed::get())
         }
 
-        fn configuration() -> sp_consensus_subspace::PoCGenesisConfiguration {
+        fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
             // The choice of `c` parameter (where `1 - c` represents the
             // probability of a slot being empty), is done in accordance to the
             // slot duration and expected target block time, for safely
             // resisting network delays of maximum two seconds.
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
-            sp_consensus_subspace::PoCGenesisConfiguration {
+            sp_consensus_subspace::SubspaceGenesisConfiguration {
                 slot_duration: PoC::slot_duration(),
                 epoch_length: EpochDuration::get(),
                 c: SlotProbability::get(),
