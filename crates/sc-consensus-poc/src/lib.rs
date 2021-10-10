@@ -110,9 +110,7 @@ use sp_runtime::{
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::future::Future;
-use std::{
-    borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
-};
+use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::PieceObjectMapping;

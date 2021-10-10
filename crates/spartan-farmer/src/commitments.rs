@@ -12,7 +12,6 @@ use rayon::prelude::*;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PIECE_SIZE};
 use thiserror::Error;

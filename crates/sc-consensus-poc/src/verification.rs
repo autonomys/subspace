@@ -27,7 +27,6 @@ use sp_consensus_spartan::spartan::{self, Salt};
 use sp_consensus_spartan::Randomness;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
-use std::convert::TryInto;
 use std::mem;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{Piece, Sha256Hash};

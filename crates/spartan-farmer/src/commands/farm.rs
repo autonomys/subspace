@@ -14,7 +14,6 @@ use ring::digest;
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};

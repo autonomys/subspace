@@ -1,5 +1,4 @@
 // TODO: Unlock tests once batching is fixed
-// use std::convert::TryInto;
 // use subspace_solving::SubspaceCodec;
 // use subspace_core_primitives::{Piece, PIECE_SIZE};
 //

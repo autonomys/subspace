@@ -16,7 +16,6 @@
 //! Various cryptographic utilities used across Subspace Network implementation.
 
 use crate::Sha256Hash;
-use core::convert::TryInto;
 use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.

@@ -16,7 +16,6 @@
 //! Spartan-based PoR.
 
 use ring::hmac;
-use std::convert::TryInto;
 use subspace_core_primitives::Piece;
 
 pub const SIGNING_CONTEXT: &[u8] = b"FARMER";

@@ -17,7 +17,6 @@
 
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::convert::TryInto;
 use std::hash::Hasher;
 use std::iter;
 use std::ops::Deref;

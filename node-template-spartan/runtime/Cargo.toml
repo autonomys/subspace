@@ -2,7 +2,7 @@
 name = "node-template-spartan-runtime"
 version = "0.1.0"
 authors = ["Substrate DevHub <https://github.com/substrate-developer-hub>", "Subspace Labs <https://subspace.network>"]
-edition = "2018"
+edition = "2021"
 license = "Unlicense"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"

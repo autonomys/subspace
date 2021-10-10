@@ -36,7 +36,6 @@ use sp_runtime::{
     traits::{Header as _, IdentityLookup},
     Perbill,
 };
-use std::convert::TryInto;
 use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
