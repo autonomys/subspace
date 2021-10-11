@@ -3822,21 +3822,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-template-spartan"
+name = "node-template-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "jsonrpc-core",
- "node-template-spartan-runtime",
+ "node-template-subspace-runtime",
  "pallet-transaction-payment-rpc",
  "sc-basic-authorship",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-poc",
- "sc-consensus-poc-rpc",
  "sc-consensus-slots",
+ "sc-consensus-subspace",
+ "sc-consensus-subspace-rpc",
  "sc-consensus-uncles",
  "sc-executor",
  "sc-rpc",
@@ -3850,7 +3850,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-poc",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-runtime",
  "sp-timestamp",
@@ -3860,7 +3860,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-template-spartan-runtime"
+name = "node-template-subspace-runtime"
 version = "0.1.0"
 dependencies = [
  "frame-benchmarking",
@@ -3872,9 +3872,9 @@ dependencies = [
  "hex-literal",
  "pallet-balances",
  "pallet-feeds",
- "pallet-offences-poc",
+ "pallet-offences-subspace",
  "pallet-randomness-collective-flip",
- "pallet-spartan",
+ "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3883,8 +3883,8 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
  "sp-offchain",
@@ -4141,7 +4141,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-offences-poc"
+name = "pallet-offences-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -4150,7 +4150,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel 0.10.1",
- "sp-consensus-poc",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -4193,7 +4193,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-spartan"
+name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -4201,13 +4201,13 @@ dependencies = [
  "log",
  "num-traits",
  "pallet-balances",
- "pallet-offences-poc",
+ "pallet-offences-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel 0.9.1",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -5544,7 +5544,33 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-poc"
+name = "sc-consensus-slots"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
+dependencies = [
+ "async-trait",
+ "futures 0.3.17",
+ "futures-timer 3.0.2",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-telemetry",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-timestamp",
+ "thiserror",
+]
+
+[[package]]
+name = "sc-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -5573,8 +5599,8 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
  "sp-io",
@@ -5591,7 +5617,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-poc-rpc"
+name = "sc-consensus-subspace-rpc"
 version = "0.1.0"
 dependencies = [
  "async-oneshot",
@@ -5605,42 +5631,16 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "sc-client-api",
- "sc-consensus-poc",
+ "sc-consensus-subspace",
  "sc-rpc-api",
  "serde",
  "sp-api",
  "sp-blockchain",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-runtime",
  "subspace-core-primitives",
-]
-
-[[package]]
-name = "sc-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
-dependencies = [
- "async-trait",
- "futures 0.3.17",
- "futures-timer 3.0.2",
- "log",
- "parity-scale-codec",
- "sc-client-api",
- "sc-consensus",
- "sc-telemetry",
- "sp-api",
- "sp-arithmetic",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
- "sp-state-machine",
- "sp-timestamp",
- "thiserror",
 ]
 
 [[package]]
@@ -6763,7 +6763,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-consensus-poc"
+name = "sp-consensus-slots"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-runtime",
+]
+
+[[package]]
+name = "sp-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -6780,17 +6791,6 @@ dependencies = [
  "sp-std",
  "sp-timestamp",
  "subspace-core-primitives",
-]
-
-[[package]]
-name = "sp-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-arithmetic",
- "sp-runtime",
 ]
 
 [[package]]
@@ -7253,37 +7253,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spartan-farmer"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-lock",
- "async-std",
- "clap 3.0.0-beta.4",
- "dirs",
- "env_logger 0.9.0",
- "futures 0.3.17",
- "hex",
- "indicatif",
- "jsonrpsee",
- "log",
- "lru",
- "parity-scale-codec",
- "rand 0.8.4",
- "rayon",
- "rocksdb",
- "schnorrkel 0.10.1",
- "serde",
- "serde_json",
- "subspace-archiving",
- "subspace-core-primitives",
- "subspace-solving",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7397,6 +7366,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-farmer"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-lock",
+ "async-std",
+ "clap 3.0.0-beta.4",
+ "dirs",
+ "env_logger 0.9.0",
+ "futures 0.3.17",
+ "hex",
+ "indicatif",
+ "jsonrpsee",
+ "log",
+ "lru",
+ "parity-scale-codec",
+ "rand 0.8.4",
+ "rayon",
+ "rocksdb",
+ "schnorrkel 0.10.1",
+ "serde",
+ "serde_json",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-solving",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
@@ -7502,7 +7502,7 @@ dependencies = [
  "log",
  "memory-db",
  "pallet-babe",
- "pallet-spartan",
+ "pallet-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
  "parity-util-mem",
@@ -7517,7 +7517,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-aura",
  "sp-consensus-babe",
- "sp-consensus-poc",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-externalities",
  "sp-finality-grandpa",

@@ -1,0 +1,36 @@
+version: "3"
+services:
+  node:
+    image: subspacelabs/node-template-subspace
+    networks:
+      - default
+      - subspace
+    command: [
+        "--dev",
+        "--tmp",
+        "--ws-external",
+        "--bootnodes", "/ip4/${BOOTSTRAP_CLIENT_IP}/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
+    ]
+  farmer:
+    image: subspacelabs/subspace-farmer
+    networks:
+      - default
+    volumes:
+      - source: subspace-farmer
+        target: /var/subspace
+        type: volume
+    restart: always
+    command: [
+        "farm",
+        "--ws-server", "ws://node:9944"
+    ]
+
+networks:
+  subspace:
+    external: true
+    name: subspace
+
+volumes:
+  subspace-farmer:
+    external: true
+    name: subspace-farmer-${INSTANCE_ID}

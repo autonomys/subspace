@@ -1,0 +1,58 @@
+[package]
+name = "subspace-farmer"
+description = "Farmer for the Subspace Network Blockchain"
+license = "MIT OR Apache-2.0"
+version = "0.3.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.md"
+]
+
+[dependencies]
+anyhow = "1.0.44"
+async-lock = "2.4.0"
+async-std = "1.9.0"
+clap = "3.0.0-beta.4"
+dirs = "4.0.0"
+env_logger = "0.9.0"
+futures = "0.3.13"
+hex = "0.4.3"
+indicatif = "0.16.2"
+jsonrpsee = { version = "0.3.1", features = ["client", "types"] }
+log = "0.4.14"
+lru = "0.6.6"
+parity-scale-codec = "2.3.0"
+rayon = "1.5.0"
+schnorrkel = "0.10.1"
+serde = { version = "1.0.125", features = ["derive"] }
+serde_json = "1.0.64"
+subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+thiserror = "1.0.24"
+tokio = { version = "1.11.0", features = ["macros", "rt-multi-thread"] }
+
+[dependencies.rocksdb]
+# This disables compression algorithms that cause issues during linking due to
+# https://github.com/rust-rocksdb/rust-rocksdb/issues/514
+default-features = false
+# `zstd` causes compilation errors, others are unnecessary for now
+features = ["snappy"]
+version = "0.17.0"
+
+[dev-dependencies]
+async-std = { version = "1.9.0", features = ["attributes"] }
+rand = "0.8.4"
+tempfile = "3.2.0"
+
+[features]
+default = []
+# Compile with CUDA support and use it if compatible GPU is available
+cuda = [
+    "subspace-solving/cuda",
+]
