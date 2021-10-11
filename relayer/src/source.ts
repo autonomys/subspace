@@ -7,11 +7,11 @@ import { BN } from '@polkadot/util';
 import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
 import { from, merge, EMPTY } from 'rxjs';
 import { Logger } from "pino";
-import * as fs from "fs";
 
 import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
+import { saveLastProcessedBlock } from './state';
 
 interface SourceConstructorParams {
   api: ApiPromise;
@@ -137,8 +137,6 @@ class Source {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
-    const filePath = './state/last_processed_block.json';
-
     const relayBlockWithMetadata = relayBlock
       .pipe(map(({ block }) => {
         const blockStr = block.toString();
@@ -152,16 +150,7 @@ class Source {
           signer: this.signer
         });
       }))
-      .pipe(tap(({ metadata }) => {
-        // TODO: extract fs related stuff to separate module
-        return fs.promises.readFile(filePath, 'utf8').then((file) => {
-          const lastProcessedBlockRecord = JSON.parse(file);
-
-          lastProcessedBlockRecord[this.chain] = metadata.number;
-
-          return fs.promises.writeFile(filePath, JSON.stringify(lastProcessedBlockRecord, null, 4));
-        });
-      }));
+      .pipe(tap(({ metadata }) => saveLastProcessedBlock(this.chain, metadata.number)));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
