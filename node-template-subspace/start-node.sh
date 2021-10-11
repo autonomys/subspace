@@ -20,7 +20,8 @@ run-full() {
         --publish 127.0.0.1:9944:9944 \
         --publish 127.0.0.1:9933:9933 \
     subspacelabs/subspace-node \
-        --dev \
+        --validator \
+        --chain testnet \
         --base-path /var/subspace \
         --ws-external \
         --bootnodes /ip4/165.232.157.230/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \

@@ -17,6 +17,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
+#![feature(int_log)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -95,8 +96,8 @@ pub mod opaque {
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("node-template-subspace"),
-    impl_name: create_runtime_str!("node-template-subspace"),
+    spec_name: create_runtime_str!("subspace"),
+    impl_name: create_runtime_str!("subspace"),
     authoring_version: 1,
     // The version of the runtime specification. A full node will not attempt to use its native
     //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
