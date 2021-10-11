@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { ApiPromise } from "@polkadot/api";
 import { Subscription, EMPTY, catchError } from "rxjs";
 import { concatMap, takeWhile } from "rxjs/operators";
@@ -8,7 +7,9 @@ import { KeyringPair } from "@polkadot/keyring/types";
 import { ISubmittableResult, Observable } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
+
 import { TxData } from "./types";
+import State from './state';
 
 // TODO: remove hardcoded url
 const polkadotAppsUrl =
@@ -17,15 +18,18 @@ const polkadotAppsUrl =
 interface TargetConstructorParams {
   api: ApiPromise;
   logger: Logger;
+  state: State;
 }
 
 class Target {
   private readonly api: ApiPromise;
   private readonly logger: Logger;
+  private readonly state: State;
 
-  constructor({ api, logger }: TargetConstructorParams) {
+  constructor({ api, logger, state }: TargetConstructorParams) {
     this.api = api;
     this.logger = logger;
+    this.state = state;
     this.sendBlockTx = this.sendBlockTx.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
   }
@@ -132,33 +136,28 @@ class Target {
     const { address } = (signer as KeyringPair);
     this.logger.info(`Checking feed for ${address}`);
 
-    const filePath = './state/feeds.json';
+    const feedId = await this.state.getFeedIdByAddress(address);
 
-    const file = await fs.promises.readFile(filePath, 'utf8');
-    const feeds = JSON.parse(file);
-
-    if (feeds[address]) {
+    if (feedId) {
       // query chain state to check if there is an entry for this feedId
-      const { isEmpty } = await this.api.query.feeds.feeds(feeds[address]);
+      const { isEmpty } = await this.api.query.feeds.feeds(feedId);
 
       // if it's not empty that means feedId exists both locally (in the feeds.json) and on the chain and we can re-use it
       if (!isEmpty) {
-        const feedId = this.api.createType("U64", feeds[address]);
-        this.logger.info(`Feed already exists: ${feedId}`);
-        return feedId;
+        const feedIdAsU64 = this.api.createType("U64", feedId);
+        this.logger.info(`Feed already exists: ${feedIdAsU64}`);
+        return feedIdAsU64;
       }
 
       // if feedId only exists locally, but not on the chain - we have to create a new one
       this.logger.error('Feed does not exist on the chain');
     }
 
-    const feedId = await this.sendCreateFeedTx(signer);
+    const newFeedId = await this.sendCreateFeedTx(signer);
 
-    feeds[address] = feedId.toBn();
+    await this.state.saveFeedId(address, newFeedId);
 
-    await fs.promises.writeFile(filePath, JSON.stringify(feeds, null, 4));
-
-    return feedId;
+    return newFeedId;
   }
 
   processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {
