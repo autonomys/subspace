@@ -1,32 +1,42 @@
-import * as fs from "fs";
+import * as fsp from "fs/promises";
 import { BN } from '@polkadot/util';
 
-const lastBlockPath = './state/last_processed_block.json';
+import { ChainName } from './types';
 
-export const saveLastProcessedBlock = (chain: string, number: BN) => {
-    return fs.promises.readFile(lastBlockPath, 'utf8').then((file) => {
+// TODO: consider providing fs methods to constructor
+class State {
+    lastBlockPath: string;
+    feedsPath: string;
+
+    constructor({ folder }: { folder: string; }) {
+        this.lastBlockPath = `${folder}/last_processed_block.json`;
+        this.feedsPath = `${folder}/feeds.json`;
+    }
+
+    async saveLastProcessedBlock(chain: ChainName, number: BN): Promise<void> {
+        const file = await fsp.readFile(this.lastBlockPath, 'utf8');
         const lastProcessedBlockRecord = JSON.parse(file);
 
         lastProcessedBlockRecord[chain] = number;
 
-        return fs.promises.writeFile(lastBlockPath, JSON.stringify(lastProcessedBlockRecord, null, 4));
-    });
-};
+        await fsp.writeFile(this.lastBlockPath, JSON.stringify(lastProcessedBlockRecord, null, 4));
+    }
 
-const feedsPath = './state/feeds.json';
+    async getFeedIdByAddress(address: string): Promise<string> {
+        const file = await fsp.readFile(this.feedsPath, 'utf8');
+        const feeds = JSON.parse(file);
 
-export const getFeedIdByAddress = async (address: string) => {
-    const file = await fs.promises.readFile(feedsPath, 'utf8');
-    const feeds = JSON.parse(file);
+        return feeds[address];
+    }
 
-    return feeds[address];
-};
+    async saveFeedId(address: string, feedId: BN): Promise<void> {
+        const file = await fsp.readFile(this.feedsPath, 'utf8');
+        const feeds = JSON.parse(file);
 
-export const saveFeedId = async (address: string, feedId: BN) => {
-    const file = await fs.promises.readFile(feedsPath, 'utf8');
-    const feeds = JSON.parse(file);
+        feeds[address] = feedId.toBn();
 
-    feeds[address] = feedId.toBn();
+        await fsp.writeFile(this.feedsPath, JSON.stringify(feeds, null, 4));
+    }
+}
 
-    await fs.promises.writeFile(feedsPath, JSON.stringify(feeds, null, 4));
-};
+export default State;

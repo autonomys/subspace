@@ -9,7 +9,7 @@ import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 
 import { TxData } from "./types";
-import { getFeedIdByAddress, saveFeedId } from './state';
+import State from './state';
 
 // TODO: remove hardcoded url
 const polkadotAppsUrl =
@@ -18,15 +18,18 @@ const polkadotAppsUrl =
 interface TargetConstructorParams {
   api: ApiPromise;
   logger: Logger;
+  state: State;
 }
 
 class Target {
   private readonly api: ApiPromise;
   private readonly logger: Logger;
+  private readonly state: State;
 
-  constructor({ api, logger }: TargetConstructorParams) {
+  constructor({ api, logger, state }: TargetConstructorParams) {
     this.api = api;
     this.logger = logger;
+    this.state = state;
     this.sendBlockTx = this.sendBlockTx.bind(this);
     this.logTxResult = this.logTxResult.bind(this);
   }
@@ -133,7 +136,7 @@ class Target {
     const { address } = (signer as KeyringPair);
     this.logger.info(`Checking feed for ${address}`);
 
-    const feedId = await getFeedIdByAddress(address);
+    const feedId = await this.state.getFeedIdByAddress(address);
 
     if (feedId) {
       // query chain state to check if there is an entry for this feedId
@@ -152,7 +155,7 @@ class Target {
 
     const newFeedId = await this.sendCreateFeedTx(signer);
 
-    await saveFeedId(address, newFeedId);
+    await this.state.saveFeedId(address, newFeedId);
 
     return newFeedId;
   }

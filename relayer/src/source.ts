@@ -11,7 +11,7 @@ import { Logger } from "pino";
 import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
-import { saveLastProcessedBlock } from './state';
+import State from './state';
 
 interface SourceConstructorParams {
   api: ApiPromise;
@@ -20,6 +20,7 @@ interface SourceConstructorParams {
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
   signer: AddressOrPair;
+  state: State;
 }
 
 interface TxDataInput {
@@ -37,6 +38,7 @@ class Source {
   private readonly feedId: U64;
   private readonly parachainsMap: Map<string, Parachain>;
   private readonly logger: Logger;
+  private readonly state: State;
   public readonly signer: AddressOrPair;
 
   constructor(params: SourceConstructorParams) {
@@ -46,6 +48,7 @@ class Source {
     this.parachainsMap = params.parachainsMap;
     this.logger = params.logger;
     this.signer = params.signer;
+    this.state = params.state;
     this.getBlocksByHash = this.getBlocksByHash.bind(this);
     this.getParablocks = this.getParablocks.bind(this);
   }
@@ -150,7 +153,7 @@ class Source {
           signer: this.signer
         });
       }))
-      .pipe(tap(({ metadata }) => saveLastProcessedBlock(this.chain, metadata.number)));
+      .pipe(tap(({ metadata }) => this.state.saveLastProcessedBlock(this.chain, metadata.number)));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
