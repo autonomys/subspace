@@ -18,21 +18,15 @@ run-farm() {
     --mount source=subspace-farmer,target=/var/subspace \
     subspacelabs/subspace-farmer \
         farm \
-        --ws-server ws://node-template-subspace-full:9944
+        --ws-server ws://subspace-node-full:9944
 }
 
-plot-1gb() {
-    echo "Plotting 1gb..."
-    docker run --rm -it \
-    --name subspace-farmer \
-    --mount source=subspace-farmer,target=/var/subspace \
-    subspacelabs/subspace-farmer plot 256000 subspace
-}
 wipe() {
     echo "Wiping prior installation..."
-    docker container kill subspace-farmer
+    docker container kill subspace-farmer || /bin/true
     docker volume rm subspace-farmer
 }
+
 erase() {
     echo "Erasing plot..."
     docker container kill subspace-farmer
@@ -41,6 +35,7 @@ erase() {
     --mount source=subspace-farmer,target=/var/subspace \
     subspacelabs/subspace-farmer erase-plot
 }
+
 ##
 # Color  Variables
 ##
@@ -66,10 +61,9 @@ menu(){
     -=[Subspace - Subspace Testnet]=-
     ----------------------------------
     $(ColorGreen '1)') Setup/Update Farmer
-    $(ColorGreen '2)') Plot 1GB of Data
-    $(ColorGreen '3)') Run Farmer
-    $(ColorGreen '4)') Wipe Farmer
-    $(ColorGreen '5)') Erase Plot
+    $(ColorGreen '2)') Run Farmer
+    $(ColorGreen '3)') Wipe Farmer
+    $(ColorGreen '4)') Erase Plot
     $(ColorGreen '0)') Exit
     $(ColorBlue 'Choose an option:') $clear"
 
@@ -77,10 +71,9 @@ menu(){
     read a
     case $a in
         1) setup ; menu ;;
-        2) plot-1gb ; menu ;;
-        3) run-farm ; menu ;;
-        4) wipe ; menu ;;
-        5) erase ; menu ;;
+        2) run-farm ; menu ;;
+        3) wipe ; menu ;;
+        4) erase ; menu ;;
         0) exit 0 ;;
         *) echo -e "Not a Valid Option, Try Again..."; menu;;
     esac

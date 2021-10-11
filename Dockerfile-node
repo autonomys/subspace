@@ -1,0 +1,50 @@
+FROM ubuntu:20.04
+
+WORKDIR /code
+
+RUN \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        llvm \
+        clang && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+
+RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
+
+COPY Cargo.lock /code/Cargo.lock
+COPY Cargo.toml /code/Cargo.toml
+
+# Up until this line all Rust images in this repo should be the same to share the same layers
+
+COPY .git /code/.git
+# Just an empty directory for Git to recognize it is indeed a Git repository
+RUN mkdir /code/.git/objects
+COPY crates /code/crates
+COPY substrate /code/substrate
+COPY node-template-subspace /code/node-template-subspace
+
+RUN \
+    /root/.cargo/bin/cargo build --release --bin node-template-subspace && \
+    mv target/release/node-template-subspace subspace-node && \
+    rm -rf target
+
+FROM ubuntu:20.04
+
+RUN \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=0 /code/subspace-node /subspace-node
+
+RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
+
+VOLUME /var/subspace
+
+USER nobody:nogroup
+
+ENTRYPOINT ["/subspace-node"]
