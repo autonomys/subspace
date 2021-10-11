@@ -19,20 +19,27 @@ COPY Cargo.toml /code/Cargo.toml
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
+COPY .git /code/.git
+# Just an empty directory for Git to recognize it is indeed a Git repository
+RUN mkdir /code/.git/objects
 COPY crates /code/crates
 COPY substrate /code/substrate
 COPY node-template-subspace /code/node-template-subspace
 
 RUN \
-    /root/.cargo/bin/cargo build --release --bin subspace-farmer && \
-    mv target/release/subspace-farmer subspace-farmer && \
+    /root/.cargo/bin/cargo build --release --bin node-template-subspace && \
+    mv target/release/node-template-subspace subspace-node && \
     rm -rf target
 
 FROM ubuntu:20.04
 
-COPY --from=0 /code/subspace-farmer /subspace-farmer
+RUN \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV SUBSPACE_DIR=/var/subspace
+COPY --from=0 /code/subspace-node /subspace-node
 
 RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
 
@@ -40,4 +47,4 @@ VOLUME /var/subspace
 
 USER nobody:nogroup
 
-ENTRYPOINT ["/subspace-farmer"]
+ENTRYPOINT ["/subspace-node"]

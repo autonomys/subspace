@@ -37,6 +37,7 @@ const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 // TODO: Move to codec
 // const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
 
+// TODO: Separate commands for erasing the plot and wiping everyting
 #[derive(Debug, Clap)]
 #[clap(about, version)]
 #[clap(setting = AppSettings::ColoredHelp)]
