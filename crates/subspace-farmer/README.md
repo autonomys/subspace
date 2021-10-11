@@ -1,6 +1,6 @@
 <div align="center">
   <h1><code>subspace-farmer</code></h1>
-  <strong>A proof-of-concept farmer for the <a href="https://subspace.network/">Subspace Network Blockchain</a></strong>
+  <strong>Farmer for the <a href="https://subspace.network/">Subspace Network Blockchain</a></strong>
 </div>
 
 ## Overview
@@ -8,7 +8,7 @@
 
 This repo is an implementation of a Farmer for [Subspace Network Blockchain](https://subspace.network).
 
-Subspace is a proof-of-storage blockchain that resolves the farmer's dilemma, to learn more read our <a href="https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view">white paper</a>.
+Subspace is a proof-of-storage blockchain that resolves the farmer's dilemma, to learn more read our [white paper](https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view).
 
 ## Some Notes on Plotting
 
@@ -55,20 +55,14 @@ Use `--help` to find out all available commands and their options:
 subspace-farmer --help
 ```
 
-### Create a New Plot
+### Start the farmer
 ```
-subspace-farmer plot <optional parameters> <piece-count> <seed>
-```
-
-This will create a 1 GB plot:
-```
-subspace-farmer plot 256000 test
+subspace-farmer farm
 ```
 
-For all supported options check help:
-```
-subspace-farmer plot --help
-```
+This will connect to local node and will try to solve on every slot notification, while also plotting all existing and new history of the blockchain in parallel.
+
+*NOTE: You need to have a subspace-client node running before starting farmer, otherwise it will not be able to start*
 
 By default, plots are written to the OS-specific users local data directory.
 
@@ -84,37 +78,25 @@ Windows
 {FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
 ```
 
-### Start the farmer
-```
-RUST_LOG=debug subspace-farmer farm
-```
-
-This will connect to local node and will try to solve on every slot notification.
-
-*NOTE: You need to have a subspace-client node running before starting farmer, otherwise it will not be able to start*
-
-
 ## Design
 
-The farmer has two modes: plotting and farming.
+The farmer typically runs two processes in parallel: plotting and farming.
 
 ### Plotting
-1. A genesis piece is created from a short seed.
-2. A new Schnorr key pair is generated, and the farmer ID is derived from the public key.
-3. New encodings are created by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`
-4. Each encoding is written directly to disk.
-5. A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST).
+0. A new Schnorr key pair is generated, and the farmer ID is derived from the public key.
+1. For every archived piece of the history encoding is created by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`
+2. Each encoding is written directly to disk.
+3. A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST).
 
 This process currently takes ~ 36 hours per TiB on a quad-core machine, but for 1 GiB plotting should take between a few seconds and a few minutes.
 
 ### Solving
-Once plotting is complete the farmer may join the network and participate in consensus.
-
 1. Connect to a client and subscribe to `slot_notifications` via JSON-RPC.
 2. Given a global challenge as `hash(epoch_randomness || slot_index)` and `SOLUTION_RANGE`.
 3. Derive local challenge as `hash(global_challenge || farmer_public_key_hash)`.
 4. Query the BST for the nearest tag to the local challenge.
 5. If it within `SOLUTION_RANGE` return a `SOLUTION` else return `None`
+6. All the above can and will happen in parallel to plotting process, so it is possible to participate right away
 
 
 

@@ -18,7 +18,7 @@ The structure of this repository is the following:
 
 This is a monorepo with multiple binaries and the workflow is typical for Rust projects:
 
-- `cargo run --bin node-template-subspace -- --dev --tmp` to run [a node](node-template-subspace)
+- `cargo run --release --bin node-template-subspace -- --dev --tmp` to run [a node](node-template-subspace)
 - `cargo run --release --bin subspace-farmer -- farm` to [start farming](crates/subspace-farmer#start-the-farmer)
 
 NOTE: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.
