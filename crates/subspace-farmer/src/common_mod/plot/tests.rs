@@ -1,4 +1,5 @@
-use crate::plot::Plot;
+use crate::common_mod::plot::Plot;
+use crate::common_mod::PIECE_SIZE;
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock};
@@ -9,7 +10,7 @@ fn init() {
 }
 
 fn generate_random_piece() -> Piece {
-    let mut bytes = [0u8; crate::PIECE_SIZE];
+    let mut bytes = [0u8; PIECE_SIZE];
     rand::thread_rng().fill(&mut bytes[..]);
     bytes
 }

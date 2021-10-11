@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests;
 
-use crate::plot::Plot;
-use crate::{Salt, Tag, BATCH_SIZE};
+use crate::common_mod::{plot, Salt, Tag, BATCH_SIZE};
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;
 use log::{error, trace};
 use lru::LruCache;
+use plot::Plot;
 use rayon::prelude::*;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};

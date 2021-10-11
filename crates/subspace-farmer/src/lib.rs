@@ -16,21 +16,7 @@
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-mod commitments;
-mod erase_plot;
-mod farm;
-mod object_mappings;
-mod plot;
-mod utils;
+mod common_mod;
 
-use subspace_core_primitives::PIECE_SIZE;
-
-pub use erase_plot::erase_plot;
-pub use farm::farm_caller;
-
-type Tag = [u8; 8];
-type Salt = [u8; 8];
-
-const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
-// TODO: Move to codec
-// const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
+pub use common_mod::erase_plot::erase_plot;
+pub use common_mod::farm::farm_caller;

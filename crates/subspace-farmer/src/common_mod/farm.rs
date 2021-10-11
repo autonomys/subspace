@@ -1,8 +1,8 @@
-use crate::commitments::Commitments;
-use crate::object_mappings::ObjectMappings;
-use crate::plot::Plot;
-use crate::utils::get_path;
-use crate::{Salt, Tag};
+use crate::common_mod::{
+    commitments::Commitments, object_mappings::ObjectMappings, plot::Plot, utils::get_path, Salt,
+    Tag,
+};
+
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;

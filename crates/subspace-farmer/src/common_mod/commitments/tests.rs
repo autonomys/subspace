@@ -1,6 +1,6 @@
-use crate::commitments::Commitments;
-use crate::plot::Plot;
-use crate::{Salt, Tag};
+use crate::common_mod::commitments::Commitments;
+use crate::common_mod::plot::Plot;
+use crate::common_mod::{Salt, Tag, PIECE_SIZE};
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
@@ -59,7 +59,7 @@ async fn find_by_tag() {
         Arc::new(
             (0..1024_usize)
                 .map(|_| {
-                    let mut bytes = [0u8; crate::PIECE_SIZE];
+                    let mut bytes = [0u8; PIECE_SIZE];
                     rng.fill(&mut bytes[..]);
                     bytes
                 })
