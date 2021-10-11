@@ -1,5 +1,6 @@
+use anyhow::Result;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn get_path(custom_path: Option<PathBuf>) -> PathBuf {
     // set storage path
@@ -18,4 +19,15 @@ pub(crate) fn get_path(custom_path: Option<PathBuf>) -> PathBuf {
     }
 
     path
+}
+
+/// Helper function for ignoring the error that given file/directory does not exist.
+pub(crate) fn try_remove<P: AsRef<Path>>(
+    path: P,
+    remove: impl FnOnce(P) -> std::io::Result<()>,
+) -> Result<()> {
+    if path.as_ref().exists() {
+        remove(path)?;
+    }
+    Ok(())
 }

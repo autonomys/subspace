@@ -1,6 +1,7 @@
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::utils::get_path;
 use crate::{Salt, Tag};
 use anyhow::{anyhow, Result};
 use futures::future;
@@ -96,6 +97,14 @@ struct SlotInfo {
     next_salt: Option<Salt>,
     /// Acceptable solution range
     solution_range: u64,
+}
+
+/// Calling the farmer with a custom path, provided by the user
+pub(crate) async fn farm_caller(custom_path: Option<PathBuf>, ws_server: String) -> Result<()> {
+    let path = get_path(custom_path);
+    farm(path, &ws_server).await?;
+
+    Ok(())
 }
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
