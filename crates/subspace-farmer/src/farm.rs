@@ -100,7 +100,7 @@ struct SlotInfo {
 }
 
 /// Calling the farmer with a custom path, provided by the user
-pub(crate) async fn farm_caller(custom_path: Option<PathBuf>, ws_server: String) -> Result<()> {
+pub async fn farm_caller(custom_path: Option<PathBuf>, ws_server: String) -> Result<()> {
     let path = get_path(custom_path);
     farm(path, &ws_server).await?;
 

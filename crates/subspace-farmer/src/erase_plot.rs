@@ -4,7 +4,7 @@ use log::info;
 use std::fs;
 use std::path::PathBuf;
 
-pub(crate) fn erase_plot(custom_path: Option<PathBuf>) -> Result<()> {
+pub fn erase_plot(custom_path: Option<PathBuf>) -> Result<()> {
     let path = get_path(custom_path);
     info!("Erasing the plot");
     try_remove(path.join("plot.bin"), fs::remove_file)?;

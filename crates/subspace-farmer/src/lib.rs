@@ -25,6 +25,9 @@ mod utils;
 
 use subspace_core_primitives::PIECE_SIZE;
 
+pub use erase_plot::erase_plot;
+pub use farm::farm_caller;
+
 type Tag = [u8; 8];
 type Salt = [u8; 8];
 
