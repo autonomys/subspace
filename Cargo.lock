@@ -4204,18 +4204,16 @@ dependencies = [
  "pallet-offences-poc",
  "pallet-timestamp",
  "parity-scale-codec",
- "ring",
  "scale-info",
  "schnorrkel 0.9.1",
  "sp-consensus-poc",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-io",
  "sp-runtime",
  "sp-std",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
 ]
 
 [[package]]
@@ -5558,7 +5556,6 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "rand 0.8.4",
- "ring",
  "sc-block-builder",
  "sc-cli",
  "sc-client-api",
@@ -5578,7 +5575,6 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-poc",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-io",
@@ -5587,8 +5583,8 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "subspace-archiving",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -6778,7 +6774,6 @@ dependencies = [
  "sp-application-crypto",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-consensus-spartan",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -6796,14 +6791,6 @@ dependencies = [
  "scale-info",
  "sp-arithmetic",
  "sp-runtime",
-]
-
-[[package]]
-name = "sp-consensus-spartan"
-version = "0.1.0"
-dependencies = [
- "ring",
- "subspace-core-primitives",
 ]
 
 [[package]]
@@ -7284,14 +7271,13 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.4",
  "rayon",
- "ring",
  "rocksdb",
  "schnorrkel 0.10.1",
  "serde",
  "serde_json",
  "subspace-archiving",
- "subspace-codec",
  "subspace-core-primitives",
+ "subspace-solving",
  "tempfile",
  "thiserror",
  "tokio",
@@ -7400,22 +7386,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-codec"
-version = "0.1.0"
-dependencies = [
- "rand 0.8.4",
- "sloth256-189",
- "subspace-core-primitives",
-]
-
-[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "hmac 0.11.0",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sha2 0.9.8",
+]
+
+[[package]]
+name = "subspace-solving"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.4",
+ "sha2 0.9.8",
+ "sloth256-189",
+ "subspace-core-primitives",
 ]
 
 [[package]]

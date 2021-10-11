@@ -331,13 +331,13 @@ fn report_equivocation_current_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
 
         // generate an equivocation proof. it creates two headers at the given
         // slot with different block hashes and signed by the given key
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
-        assert_eq!(Spartan::is_in_block_list(&farmer_id), false);
+        assert_eq!(Spartan::is_in_block_list(&farmer_public_key), false);
 
         // report the equivocation
         Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
@@ -345,7 +345,7 @@ fn report_equivocation_current_session_works() {
         progress_to_block(&keypair, 2);
 
         // check that farmer was added to block list
-        assert_eq!(Spartan::is_in_block_list(&farmer_id), true);
+        assert_eq!(Spartan::is_in_block_list(&farmer_public_key), true);
     });
 }
 
@@ -356,7 +356,7 @@ fn report_equivocation_old_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
 
         // generate an equivocation proof at the current slot
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
@@ -365,7 +365,7 @@ fn report_equivocation_old_session_works() {
         // from the previous block
         progress_to_block(&keypair, 2);
 
-        assert_eq!(Spartan::is_in_block_list(&farmer_id), false);
+        assert_eq!(Spartan::is_in_block_list(&farmer_public_key), false);
 
         // report the equivocation
         Spartan::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
@@ -373,7 +373,7 @@ fn report_equivocation_old_session_works() {
         progress_to_block(&keypair, 3);
 
         // check that farmer was added to block list
-        assert_eq!(Spartan::is_in_block_list(&farmer_id), true);
+        assert_eq!(Spartan::is_in_block_list(&farmer_public_key), true);
     })
 }
 
@@ -449,7 +449,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_id = FarmerId::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
 
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
@@ -467,7 +467,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
         );
 
         // The transaction is valid when passed as local
-        let tx_tag = (farmer_id, CurrentSlot::<Test>::get());
+        let tx_tag = (farmer_public_key, CurrentSlot::<Test>::get());
         assert_eq!(
             <Spartan as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
                 TransactionSource::Local,

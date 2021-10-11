@@ -17,17 +17,15 @@
 //! Test utilities
 
 use crate::{
-    self as pallet_spartan, Config, CurrentSlot, FarmerId, NormalEonChange, NormalEpochChange,
-    NormalEraChange,
+    self as pallet_spartan, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
+    NormalEpochChange, NormalEraChange,
 };
 use codec::Encode;
 use frame_support::{parameter_types, traits::OnInitialize};
 use frame_system::InitKind;
-use ring::hmac;
 use schnorrkel::Keypair;
 use sp_consensus_poc::digests::{PreDigest, Solution};
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Tag, SIGNING_CONTEXT};
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, Public, H256};
 use sp_io;
@@ -36,9 +34,8 @@ use sp_runtime::{
     traits::{Header as _, IdentityLookup},
     Perbill,
 };
-use std::convert::TryInto;
-use subspace_codec::SubspaceCodec;
-use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash};
+use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash, Tag};
+use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -192,17 +189,17 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let subspace_codec = SubspaceCodec::new(&keypair.public);
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let subspace_solving = SubspaceCodec::new(&keypair.public);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
     let mut piece: Piece = [0u8; 4096];
-    subspace_codec.encode(piece_index, &mut piece).unwrap();
-    let tag: Tag = create_tag(&piece, &Spartan::salt().to_le_bytes());
+    subspace_solving.encode(piece_index, &mut piece).unwrap();
+    let tag: Tag = subspace_solving::create_tag(&piece, Spartan::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
-            public_key: FarmerId::from_slice(&keypair.public.to_bytes()),
+            public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
             piece_index: 0,
             encoding: piece.to_vec(),
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
@@ -213,13 +210,6 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     System::initialize(&block, &parent_hash, &pre_digest, InitKind::Full);
 
     Spartan::on_initialize(block);
-}
-
-fn create_tag(encoding: &[u8], salt: &[u8]) -> Tag {
-    let key = hmac::Key::new(hmac::HMAC_SHA256, salt);
-    hmac::sign(&key, encoding).as_ref()[0..8]
-        .try_into()
-        .unwrap()
 }
 
 /// Slots will grow accordingly to blocks
@@ -254,11 +244,11 @@ pub fn generate_equivocation_proof(
     let current_block = System::block_number();
     let current_slot = CurrentSlot::<Test>::get();
 
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let encoding: Piece = [0u8; 4096];
     let tag: Tag = [(current_block % 8) as u8; 8];
 
-    let public_key = FarmerId::from_slice(&keypair.public.to_bytes());
+    let public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();
 
     let make_header = |piece_index| {

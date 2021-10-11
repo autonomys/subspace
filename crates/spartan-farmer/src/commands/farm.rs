@@ -1,7 +1,7 @@
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::{crypto, Salt, Tag, SIGNING_CONTEXT};
+use crate::{Salt, Tag};
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
@@ -10,11 +10,9 @@ use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
-use ring::digest;
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -22,11 +20,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::objects::{
     BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::{Piece, Sha256Hash};
+use subspace_core_primitives::{crypto, Piece, Sha256Hash};
+use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
 type SlotNumber = u64;
 
@@ -116,7 +114,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
         fs::write(identity_file, keypair.to_bytes())?;
         keypair
     };
-    let ctx = schnorrkel::context::signing_context(SIGNING_CONTEXT);
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
 
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
@@ -187,7 +185,7 @@ async fn background_plotting(
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
-    let subspace_codec = SubspaceCodec::new(public_key);
+    let subspace_solving = SubspaceCodec::new(public_key);
 
     let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
         // Continuing from existing initial state
@@ -242,7 +240,7 @@ async fn background_plotting(
             let weak_plot = weak_plot.clone();
             let commitments = commitments.clone();
             let object_mappings = object_mappings.clone();
-            let subspace_codec = subspace_codec.clone();
+            let subspace_solving = subspace_solving.clone();
 
             move || -> Result<Option<BlockArchiver>, anyhow::Error> {
                 let runtime_handle = tokio::runtime::Handle::current();
@@ -274,7 +272,7 @@ async fn background_plotting(
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                                subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;
@@ -396,7 +394,7 @@ async fn background_plotting(
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                                subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;
@@ -489,7 +487,7 @@ fn create_global_object_mapping(
             object_mapping.objects.iter().map(move |piece_object| {
                 let PieceObject::V0 { offset, size } = piece_object;
                 (
-                    subspace_core_primitives::crypto::sha256_hash(
+                    crypto::sha256_hash(
                         &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
                     ),
                     GlobalObject::V0 {
@@ -510,7 +508,7 @@ async fn subscribe_to_slot_info(
     keypair: &Keypair,
     ctx: &SigningContext,
 ) -> Result<()> {
-    let public_key_hash = crypto::hash_public_key(&keypair.public);
+    let farmer_public_key_hash = crypto::sha256_hash(&keypair.public);
 
     info!("Subscribing to slot info notifications");
     let mut subscription: Subscription<SlotInfo> = client
@@ -528,7 +526,8 @@ async fn subscribe_to_slot_info(
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
-        let local_challenge = derive_local_challenge(&slot_info.challenge, &public_key_hash);
+        let local_challenge =
+            subspace_solving::derive_local_challenge(slot_info.challenge, &farmer_public_key_hash);
 
         let solution = match commitments
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
@@ -652,16 +651,4 @@ fn update_commitments(
             });
         }
     }
-}
-
-fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_id.len());
-        data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_id);
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
 }

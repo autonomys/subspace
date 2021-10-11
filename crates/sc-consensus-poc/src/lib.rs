@@ -57,7 +57,6 @@ use log::{debug, error, info, log, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
-use ring::digest;
 use sc_client_api::{
     backend::AuxStore, BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider,
 };
@@ -94,11 +93,10 @@ use sp_consensus_poc::{
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
     inherents::PoCInherentData,
-    ConsensusLog, FarmerId, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration, POC_ENGINE_ID,
+    ConsensusLog, FarmerPublicKey, PoCApi, PoCEpochConfiguration, PoCGenesisConfiguration,
+    POC_ENGINE_ID,
 };
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{Salt, SIGNING_CONTEXT};
-use sp_consensus_spartan::Randomness;
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -110,13 +108,12 @@ use sp_runtime::{
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::future::Future;
-use std::{
-    borrow::Cow, collections::HashMap, convert::TryInto, pin::Pin, sync::Arc, time::Duration, u64,
-};
+use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::PieceObjectMapping;
-use subspace_core_primitives::{Piece, RootBlock};
+use subspace_core_primitives::{Piece, Randomness, RootBlock, Salt};
+use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 pub mod aux_schema;
 pub mod notification;
@@ -311,7 +308,7 @@ pub enum Error<B: BlockT> {
     MissingSalt(B::Hash),
     /// Farmer in block list
     #[display(fmt = "Farmer {} is in block list", _0)]
-    FarmerInBlockList(FarmerId),
+    FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
     #[display(fmt = "Merkle Root for segment index {} not found", _0)]
     MerkleRootNotFound(u64),
@@ -516,7 +513,7 @@ where
         backoff_authoring_blocks,
         poc_link: poc_link.clone(),
         // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
+        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
@@ -765,7 +762,7 @@ where
 
             let new_slot_info = NewSlotInfo {
                 slot,
-                challenge: create_global_challenge(&epoch_randomness, slot),
+                challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
                 salt: salt.to_le_bytes(),
                 // TODO: This will not be the correct way in the future once salt is no longer
                 //  just an incremented number
@@ -1282,7 +1279,7 @@ where
         slot_now: Slot,
         slot: Slot,
         header: &Block::Header,
-        author: &FarmerId,
+        author: &FarmerPublicKey,
         origin: &BlockOrigin,
     ) -> Result<(), Error<Block>> {
         // don't report any equivocations during initial sync
@@ -2429,7 +2426,7 @@ where
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SIGNING_CONTEXT),
+        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
     };
 
     Ok(BasicQueue::new(
@@ -2439,16 +2436,4 @@ where
         spawner,
         registry,
     ))
-}
-
-pub(crate) fn create_global_challenge(epoch_randomness: &Randomness, slot: Slot) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(epoch_randomness.len() + std::mem::size_of::<Slot>());
-        data.extend_from_slice(epoch_randomness);
-        data.extend_from_slice(&slot.to_le_bytes());
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
 }

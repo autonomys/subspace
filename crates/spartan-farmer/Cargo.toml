@@ -4,7 +4,7 @@ description = "This a bare-bones farmer for the simplified Spartan proof-of-spac
 license = "MIT OR Apache-2.0"
 version = "0.3.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
-edition = "2018"
+edition = "2021"
 include = [
     "/src",
     "/Cargo.toml",
@@ -28,12 +28,11 @@ log = "0.4.14"
 lru = "0.6.6"
 parity-scale-codec = "2.3.0"
 rayon = "1.5.0"
-ring = "0.16.20"
 schnorrkel = "0.10.1"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = "1.0.64"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.24"
 tokio = { version = "1.11.0", features = ["macros", "rt-multi-thread"] }
@@ -55,5 +54,5 @@ tempfile = "3.2.0"
 default = []
 # Compile with CUDA support and use it if compatible GPU is available
 cuda = [
-    "subspace-codec/cuda",
+    "subspace-solving/cuda",
 ]

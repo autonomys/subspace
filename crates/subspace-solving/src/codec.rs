@@ -13,10 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Encoder for the [Subspace Network Blockchain](https://subspace.network) based on the
+//! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
 use sloth256_189::cpu;
 use sloth256_189::cpu::{DecodeError, EncodeError};
@@ -30,26 +28,26 @@ use subspace_core_primitives::{crypto, Sha256Hash};
 // const GPU_PIECE_BLOCK: usize = 1024;
 const ENCODE_ROUNDS: usize = 1;
 
-// TODO: Refactor into Subspace
-/// Spartan struct used to encode and validate
+/// Subspace codec is used to encode pieces of archived history before writing them to disk and also
+/// to decode them after reading from disk.
 #[derive(Debug, Clone)]
 pub struct SubspaceCodec {
-    public_key_hash: Sha256Hash,
+    farmer_public_key_hash: Sha256Hash,
     cuda_available: bool,
 }
 
 impl SubspaceCodec {
     /// New instance with 256-bit prime and 4096-byte genesis piece size
-    pub fn new<P: AsRef<[u8]>>(public_key: &P) -> Self {
+    pub fn new<P: AsRef<[u8]>>(farmer_public_key: &P) -> Self {
         #[cfg(feature = "cuda")]
         let cuda_available = cuda::is_cuda_available();
         #[cfg(not(feature = "cuda"))]
         let cuda_available = false;
 
-        let public_key_hash = crypto::sha256_hash(public_key);
+        let farmer_public_key_hash = crypto::sha256_hash(farmer_public_key);
 
         SubspaceCodec {
-            public_key_hash,
+            farmer_public_key_hash,
             cuda_available,
         }
     }
@@ -65,7 +63,7 @@ impl SubspaceCodec {
     /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
     /// desired number of rounds
     pub fn encode(&self, piece_index: u64, piece: &mut [u8]) -> Result<(), EncodeError> {
-        let mut expanded_iv = self.public_key_hash;
+        let mut expanded_iv = self.farmer_public_key_hash;
 
         // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
         expanded_iv
@@ -96,10 +94,10 @@ impl SubspaceCodec {
     //     let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * PRIME_SIZE);
     //     let mut expanded_iv;
     //     for nonce in nonce_array {
-    //         // same public_key_hash will be used for each expanded_iv
-    //         expanded_iv = self.public_key_hash;
+    //         // same farmer_public_key_hash will be used for each expanded_iv
+    //         expanded_iv = self.farmer_public_key_hash;
     //
-    //         // select the nonce from nonce_array, xor it with the public_key_hash
+    //         // select the nonce from nonce_array, xor it with the farmer_public_key_hash
     //         nonce
     //             .to_le_bytes()
     //             .iter()
@@ -134,7 +132,7 @@ impl SubspaceCodec {
 
     /// Decode piece
     pub fn decode(&self, piece_index: u64, piece: &mut [u8]) -> Result<(), DecodeError> {
-        let mut expanded_iv = self.public_key_hash;
+        let mut expanded_iv = self.farmer_public_key_hash;
 
         // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
         expanded_iv

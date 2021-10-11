@@ -1,6 +1,6 @@
 [package]
-name = "subspace-core-primitives"
-description = "Core primitives for Subspace Network"
+name = "subspace-solving"
+description = "Encoder for the Subspace Network Blockchain based on the SLOTH permutation"
 license = "Apache-2.0"
 version = "0.1.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
@@ -13,10 +13,8 @@ include = [
 ]
 
 [dependencies]
-hmac = { version  = "0.11.0", default-features = false }
-parity-scale-codec = { version = "2.3.0", default-features = false, features = ["derive"] }
-scale-info = { version = "1.0", default-features = false, features = ["derive"] }
-serde = { version = "1.0.130", default-features = false, features = ["alloc", "derive"] }
+sloth256-189 = "0.2.2"
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
@@ -26,15 +24,14 @@ version = "0.9.8"
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 # `asm` feature is not supported on Windows except with GNU toolchain
 [target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
-default-features = false
 version = "0.9.8"
 
+[dev-dependencies]
+rand = "0.8.4"
+
 [features]
-default = ["std"]
-std = [
-    "hmac/std",
-    "parity-scale-codec/std",
-    "scale-info/std",
-    "serde/std",
-    "sha2/std",
+default = []
+# Compile with CUDA support and use it if compatible GPU is available
+cuda = [
+    "sloth256-189/cuda",
 ]

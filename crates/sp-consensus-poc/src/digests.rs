@@ -17,19 +17,19 @@
 //! Private implementation details of Proof-of-Capacity (PoC) consensus digests.
 
 use super::{FarmerSignature, PoCEpochConfiguration, Slot, POC_ENGINE_ID};
-use crate::FarmerId;
+use crate::FarmerPublicKey;
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
-use sp_consensus_spartan::Randomness;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
+use subspace_core_primitives::Randomness;
 
 // TODO: better documentation here
 /// Solution
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
 pub struct Solution {
     /// Public key of the farmer that created solution
-    pub public_key: FarmerId,
+    pub public_key: FarmerPublicKey,
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
@@ -44,7 +44,7 @@ impl Solution {
     /// Dummy solution for the genesis block
     pub fn get_for_genesis() -> Self {
         Self {
-            public_key: FarmerId::default(),
+            public_key: FarmerPublicKey::default(),
             piece_index: 0u64,
             encoding: Vec::new(),
             signature: Vec::new(),

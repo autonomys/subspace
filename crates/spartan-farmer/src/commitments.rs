@@ -2,7 +2,7 @@
 mod tests;
 
 use crate::plot::Plot;
-use crate::{crypto, Salt, Tag, BATCH_SIZE};
+use crate::{Salt, Tag, BATCH_SIZE};
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;
@@ -12,7 +12,6 @@ use rayon::prelude::*;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PIECE_SIZE};
 use thiserror::Error;
@@ -246,7 +245,7 @@ impl Commitments {
 
                 let tags: Vec<Tag> = pieces
                     .par_chunks_exact(PIECE_SIZE)
-                    .map(|piece| crypto::create_tag(piece, &salt))
+                    .map(|piece| subspace_solving::create_tag(piece, salt))
                     .collect();
 
                 for (tag, index) in tags.iter().zip(batch_start..) {
@@ -319,7 +318,7 @@ impl Commitments {
                 move || {
                     let tags: Vec<Tag> = pieces
                         .par_iter()
-                        .map(|piece| crypto::create_tag(piece, &salt))
+                        .map(|piece| subspace_solving::create_tag(piece, salt))
                         .collect();
 
                     for (tag, offset) in tags.iter().zip(start_offset..) {

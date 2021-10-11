@@ -30,12 +30,20 @@ use serde::{Deserialize, Serialize};
 pub const SHA256_HASH_SIZE: usize = 32;
 /// Piece size in Subspace Network (in bytes)
 pub const PIECE_SIZE: usize = 4096;
+/// The length of the Randomness.
+pub const RANDOMNESS_LENGTH: usize = 32;
 
 // TODO: Create new types out of these
 /// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 /// Piece size in Subspace Network
 pub type Piece = [u8; PIECE_SIZE];
+/// Randomness value.
+pub type Randomness = [u8; RANDOMNESS_LENGTH];
+/// Commitment tag for a particular piece.
+pub type Tag = [u8; 8];
+/// Salt used for creating commitment tags for pieces.
+pub type Salt = [u8; 8];
 
 /// Last archived block
 #[derive(

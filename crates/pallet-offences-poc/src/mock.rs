@@ -30,7 +30,7 @@ use frame_support::{
 };
 use sp_consensus_poc::{
     offence::{self, Kind, OffenceDetails},
-    FarmerId,
+    FarmerPublicKey,
 };
 use sp_core::H256;
 use sp_runtime::testing::Header;
@@ -119,7 +119,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 pub const KIND: [u8; 16] = *b"test_report_1234";
 
 /// Returns all offence details for the specific `kind` happened at the specific time slot.
-pub fn offence_reports(kind: Kind, time_slot: u128) -> Vec<OffenceDetails<FarmerId>> {
+pub fn offence_reports(kind: Kind, time_slot: u128) -> Vec<OffenceDetails<FarmerPublicKey>> {
     <crate::ConcurrentReportsIndex<Runtime>>::get(&kind, &time_slot.encode())
         .into_iter()
         .map(|report_id| {
@@ -149,6 +149,6 @@ impl<T: Clone> offence::Offence<T> for Offence<T> {
 }
 
 /// Create the report id for the given `offender` and `time_slot` combination.
-pub fn report_id(time_slot: u128, offender: FarmerId) -> H256 {
-    OffencesPoC::report_id::<Offence<FarmerId>>(&time_slot, &offender)
+pub fn report_id(time_slot: u128, offender: FarmerPublicKey) -> H256 {
+    OffencesPoC::report_id::<Offence<FarmerPublicKey>>(&time_slot, &offender)
 }

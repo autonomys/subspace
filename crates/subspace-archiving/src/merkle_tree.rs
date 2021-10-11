@@ -17,7 +17,6 @@
 
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::convert::TryInto;
 use std::hash::Hasher;
 use std::iter;
 use std::ops::Deref;
@@ -43,7 +42,10 @@ impl Hasher for Sha256Algorithm {
 impl merkletree::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
     #[inline]
     fn hash(&mut self) -> Sha256Hash {
-        self.0.clone().finalize()[..]
+        self.0
+            .clone()
+            .finalize()
+            .as_slice()
             .try_into()
             .expect("Sha256 output is always 32 bytes; qed")
     }
@@ -96,7 +98,9 @@ impl<'a> Witness<'a> {
             // Merkle Tree leaf hash prefix
             hasher.update(&[0x00]);
             hasher.update(leaf_hash);
-            hasher.finalize()[..]
+            hasher
+                .finalize()
+                .as_slice()
                 .try_into()
                 .expect("Sha256 output is always 32 bytes; qed")
         };

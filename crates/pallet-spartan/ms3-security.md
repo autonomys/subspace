@@ -15,7 +15,7 @@ Although similar to a Sybil attack, this is not a direct attack on consensus. Su
 
 ### Solution
 
-To deter lazy farming, we require farmers to compute one local challenge per public key. Precisely, for each slot, a farmer computes the global `challenge` as `Hash(epoch_randomness||slot)`. The farmer then computes their `local_challenge` as `Hash(challenge||public_key_hash)`.
+To deter lazy farming, we require farmers to compute one local challenge per public key. Precisely, for each slot, a farmer computes the global `challenge` as `Hash(epoch_randomness||slot)`. The farmer then computes their `local_challenge` as `Hash(challenge||farmer_public_key_hash)`.
 
 Suppose that a farmer stores *n* encodings on disk. In the honest farming strategy, the farmer computes one local challenge every slot and queries the binary search tree (BST) to find the closest commitment. This requires log(*n*) lookups since the binary seach tree is sorted. In the lazy farming strategy, the farmer computes *n* local challenges (one for each public key) and must compare each challenge with the commitment for the encoding from the corresponding public key (*n* lookups). When the number of encodings stored by the farmer is large, the lazy farming strategy incurs a huge overhead of BST lookups (memory reads) in every slot which will quickly overcome the one-time cost of downloading and plotting distinct pieces. Thus, a rational farmer would prefer to first store one entire replica of the blockchain history with a single public key before using additional storage to store multiple replicas with different public keys
 

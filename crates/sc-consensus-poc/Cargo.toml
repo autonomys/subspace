@@ -3,7 +3,7 @@ name = "sc-consensus-poc"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
 description = "PoC consensus algorithm for substrate"
-edition = "2018"
+edition = "2021"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
@@ -24,7 +24,6 @@ lru = { version = "0.6.6", default-features = false }
 parking_lot = "0.11.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05", version = "0.9.0" }
 rand = "0.8.4"
-ring = "0.16"
 schnorrkel = "0.9.1"
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
@@ -40,13 +39,12 @@ sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/su
 sp-consensus-poc = { version = "0.1.0", path = "../sp-consensus-poc" }
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
-sp-consensus-spartan = { version = "0.1.0", path = "../sp-consensus-spartan" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-io = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 sp-version = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [dev-dependencies]

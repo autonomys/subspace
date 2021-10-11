@@ -19,7 +19,6 @@ use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;

@@ -18,20 +18,15 @@
 //! Verification for PoC headers.
 use super::{find_pre_digest, poc_err, BlockT, Epoch, Error};
 use log::{debug, trace};
-use ring::digest;
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_poc::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_slots::Slot;
-use sp_consensus_spartan::spartan::{self, Salt};
-use sp_consensus_spartan::Randomness;
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
-use std::convert::TryInto;
-use std::mem;
 use subspace_archiving::archiver;
-use subspace_codec::SubspaceCodec;
-use subspace_core_primitives::{Piece, Sha256Hash};
+use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Sha256Hash};
+use subspace_solving::SubspaceCodec;
 
 /// PoC verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -160,7 +155,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
 ) -> Result<(), Error<B>> {
     if !is_within_solution_range(
         solution,
-        crate::create_global_challenge(epoch_randomness, slot),
+        subspace_solving::derive_global_challenge(epoch_randomness, slot),
         solution_range,
     ) {
         return Err(Error::OutsideOfSolutionRange(slot));
@@ -172,7 +167,7 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !spartan::is_commitment_valid(&piece, &solution.tag, &salt) {
+    if !subspace_solving::is_commitment_valid(&piece, solution.tag, salt) {
         return Err(Error::InvalidCommitment(slot));
     }
 
@@ -180,10 +175,10 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         return Err(Error::BadSolutionSignature(slot));
     }
 
-    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+    let subspace_solving = SubspaceCodec::new(&solution.public_key);
 
     let mut piece = solution.encoding.clone();
-    if subspace_codec
+    if subspace_solving
         .decode(solution.piece_index, &mut piece)
         .is_err()
     {
@@ -202,13 +197,15 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     Ok(())
 }
 
+// TODO: Move at least below functions into `subspace-solving`
 fn is_within_solution_range(
     solution: &Solution,
     global_challenge: [u8; 8],
     solution_range: u64,
 ) -> bool {
-    let public_key_hash = hash_public_key(solution.public_key.as_ref());
-    let local_challenge = derive_local_challenge(&global_challenge, &public_key_hash);
+    let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
+    let local_challenge =
+        subspace_solving::derive_local_challenge(global_challenge, farmer_public_key_hash);
 
     let target = u64::from_be_bytes(local_challenge);
     let tag = u64::from_be_bytes(solution.tag);
@@ -238,23 +235,4 @@ fn is_signature_valid(signing_context: &SigningContext, solution: &Solution) -> 
     public_key
         .verify(signing_context.bytes(&solution.tag), &signature)
         .is_ok()
-}
-
-pub(crate) fn derive_local_challenge(global_challenge: &[u8], farmer_id: &[u8]) -> [u8; 8] {
-    digest::digest(&digest::SHA256, &{
-        let mut data = Vec::with_capacity(global_challenge.len() + farmer_id.len());
-        data.extend_from_slice(global_challenge);
-        data.extend_from_slice(farmer_id);
-        data
-    })
-    .as_ref()[..8]
-        .try_into()
-        .unwrap()
-}
-
-pub(crate) fn hash_public_key(public_key: &[u8]) -> Sha256Hash {
-    let mut array = [0u8; mem::size_of::<Sha256Hash>()];
-    let hash = digest::digest(&digest::SHA256, public_key);
-    array.copy_from_slice(&hash.as_ref()[..mem::size_of::<Sha256Hash>()]);
-    array
 }
