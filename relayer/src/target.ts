@@ -132,6 +132,7 @@ class Target {
     const { address } = (signer as KeyringPair);
     this.logger.info(`Checking feed for ${address}`);
 
+    // TODO: extract fs related stuff to separate module
     const filePath = './state/feeds.json';
 
     const file = await fs.promises.readFile(filePath, 'utf8');

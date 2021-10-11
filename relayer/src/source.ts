@@ -7,6 +7,7 @@ import { BN } from '@polkadot/util';
 import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
 import { from, merge, EMPTY } from 'rxjs';
 import { Logger } from "pino";
+import * as fs from "fs";
 
 import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
@@ -120,18 +121,15 @@ class Source {
   }
 
   private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
-    const metadata = {
-      hash,
-      number,
-    };
-
-
     return {
       feedId,
       block,
-      metadata,
       chain,
       signer,
+      metadata: {
+        hash,
+        number,
+      },
     };
   }
 
@@ -139,8 +137,10 @@ class Source {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
-    const relayBlockWithMetadata = relayBlock.pipe(
-      map(({ block }) => {
+    const filePath = './state/last_processed_block.json';
+
+    const relayBlockWithMetadata = relayBlock
+      .pipe(map(({ block }) => {
         const blockStr = block.toString();
         const number = block.header.number.toBn();
         return this.addBlockTxData({
@@ -151,8 +151,17 @@ class Source {
           chain: this.chain,
           signer: this.signer
         });
-      })
-    );
+      }))
+      .pipe(tap(({ metadata }) => {
+        // TODO: extract fs related stuff to separate module
+        return fs.promises.readFile(filePath, 'utf8').then((file) => {
+          const lastProcessedBlockRecord = JSON.parse(file);
+
+          lastProcessedBlockRecord[this.chain] = metadata.number;
+
+          return fs.promises.writeFile(filePath, JSON.stringify(lastProcessedBlockRecord, null, 4));
+        });
+      }));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
