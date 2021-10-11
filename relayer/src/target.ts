@@ -1,10 +1,10 @@
 import { ApiPromise } from "@polkadot/api";
 import { Subscription, EMPTY, catchError } from "rxjs";
-import { concatMap, takeWhile } from "rxjs/operators";
+import { takeWhile } from "rxjs/operators";
 import { Logger } from "pino";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
 import { KeyringPair } from "@polkadot/keyring/types";
-import { ISubmittableResult, Observable } from "@polkadot/types/types";
+import { ISubmittableResult } from "@polkadot/types/types";
 import { EventRecord } from "@polkadot/types/interfaces";
 import { U64 } from "@polkadot/types/primitive";
 
@@ -52,7 +52,7 @@ class Target {
     }
   }
 
-  private async sendBlockTx({ feedId, block, metadata, chain, signer }: TxData) {
+  async sendBlockTx({ feedId, block, metadata, chain, signer }: TxData): Promise<Subscription> {
     this.logger.info(`Sending ${chain} block to feed: ${feedId}`);
     this.logger.debug(`Signer: ${(signer as KeyringPair).address}`);
     // metadata is stored as Vec<u8>
@@ -93,13 +93,14 @@ class Target {
 
           const feedCreatedEvent = result.events.find(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ({ event }: EventRecord) => (event as any)?.isFeeds
+            ({ event }: EventRecord) => this.api.events.feeds.FeedCreated.is(event)
           );
 
+          // TODO: handle case if transaction is included but no event found (may happe if API changes)
           if (feedCreatedEvent) {
             const { event } = feedCreatedEvent;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const feedId = (event as any).asFeeds.asFeedCreated.toJSON()[0];
+            const feedId = (event as any).toJSON().data[0];
             this.logger.info(`New feed created: ${feedId}`);
             const feedIdAsU64 = this.api.createType('u64', feedId);
             resolve(feedIdAsU64);
@@ -158,10 +159,6 @@ class Target {
     await this.state.saveFeedId(address, newFeedId);
 
     return newFeedId;
-  }
-
-  processSubscriptions(subscription: Observable<TxData>): Observable<Subscription> {
-    return subscription.pipe(concatMap(this.sendBlockTx));
   }
 }
 

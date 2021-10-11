@@ -1,8 +1,11 @@
+import * as BN from 'bn.js';
 import { EventRecord, Event } from "@polkadot/types/interfaces/system";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
-import { SignedBlock } from "@polkadot/types/interfaces";
+import { U64 } from "@polkadot/types/primitive";
+import { Hash, SignedBlock } from "@polkadot/types/interfaces";
 
-import { ParaHeadAndId, ParachainConfigType, ChainName } from "./types";
+
+import { ParaHeadAndId, ParachainConfigType, ChainName, TxData } from "./types";
 import Parachain from "./parachain";
 import Target from "./target";
 import logger from "./logger";
@@ -63,3 +66,23 @@ export const createParachainsMap = async (
 export const isValidBlock = (block: SignedBlock): boolean => {
     return block && block.block && block.block.header && Boolean(block.block.extrinsics);
 };
+
+interface TxDataInput {
+    block: string;
+    number: BN;
+    hash: Hash;
+    feedId: U64;
+    chain: ChainName;
+    signer: AddressOrPair;
+  }
+
+export const toBlockTxData = ({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData => ({
+    feedId,
+    block,
+    chain,
+    signer,
+    metadata: {
+        hash,
+        number,
+    },
+});

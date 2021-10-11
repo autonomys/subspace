@@ -3,13 +3,13 @@ import { Observable } from "@polkadot/types/types";
 import { U64 } from "@polkadot/types/primitive";
 import { Header, Hash, SignedBlock, Block } from "@polkadot/types/interfaces";
 import { AddressOrPair } from "@polkadot/api/submittable/types";
-import { BN } from '@polkadot/util';
-import { concatMap, take, map, tap, concatAll } from "rxjs/operators";
-import { from, merge, EMPTY } from 'rxjs';
+import { concatMap, map, tap, concatAll, first, expand } from "rxjs/operators";
+import { from, merge, EMPTY, defer, catchError } from 'rxjs';
 import { Logger } from "pino";
+import * as BN from 'bn.js';
 
 import { ParaHeadAndId, TxData, ChainName } from "./types";
-import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
+import { getParaHeadAndIdFromEvent, isRelevantRecord, toBlockTxData } from './utils';
 import Parachain from "./parachain";
 import State from './state';
 
@@ -21,15 +21,6 @@ interface SourceConstructorParams {
   logger: Logger;
   signer: AddressOrPair;
   state: State;
-}
-
-interface TxDataInput {
-  block: string;
-  number: BN;
-  hash: Hash;
-  feedId: U64;
-  chain: ChainName;
-  signer: AddressOrPair;
 }
 
 class Source {
@@ -51,6 +42,8 @@ class Source {
     this.state = params.state;
     this.getBlocksByHash = this.getBlocksByHash.bind(this);
     this.getParablocks = this.getParablocks.bind(this);
+    this.getLastProcessedBlockNumber = this.getLastProcessedBlockNumber.bind(this);
+    this.getFinalizedHeader = this.getFinalizedHeader.bind(this);
   }
 
   private subscribeHeads(): Observable<Header> {
@@ -58,7 +51,50 @@ class Source {
   }
 
   private getBlock(hash: Hash): Observable<SignedBlock> {
-    return this.api.rx.rpc.chain.getBlock(hash).pipe(take(1));
+    return this.api.rx.rpc.chain.getBlock(hash).pipe(first());
+  }
+
+  private async getFinalizedHeader(): Promise<Header> {
+    const finalizedHash = await this.api.rpc.chain.getFinalizedHead();
+    const finalizedHeader = await this.api.rpc.chain.getHeader(finalizedHash);
+    return finalizedHeader;
+  }
+
+  private async getLastProcessedBlockNumber(): Promise<BN | undefined> {
+    const number = await this.state.getLastProcessedBlockByName(this.chain);
+    this.logger.debug(`Last processed block number in state: ${number}`);
+    return number;
+  }
+
+  resyncBlocks(): Observable<TxData> {
+    this.logger.info('Start queuing resync blocks');
+    return defer(this.getLastProcessedBlockNumber)
+      .pipe(expand(async (blockNumber) => {
+        if (!blockNumber) return new BN(0);
+        const blockNumberAsBn = this.api.createType("BlockNumber", blockNumber).toBn();
+        this.logger.debug(`Last processed block: ${blockNumberAsBn.toString()}`);
+        const nextBlockNumber = blockNumberAsBn.add(new BN(1));
+        const { number: finalizedNumber } = await this.getFinalizedHeader();
+        const diff = finalizedNumber.toBn().sub(nextBlockNumber);
+        this.logger.info(`Processing blocks from ${nextBlockNumber.toString()}`);
+        this.logger.debug(`Finalized block: ${finalizedNumber.toString()}`);
+        this.logger.debug(`Diff: ${diff}`);
+
+        // TODO: currently this works, but there might be more elegant way to terminate
+        if (diff.isZero()) throw new Error("Queuing resync blocks is done");
+
+        return nextBlockNumber;
+      }))
+      .pipe(
+        catchError((error) => {
+          this.logger.error(error);
+          return EMPTY;
+        }))
+      // get block hash for each block number
+      .pipe(concatMap((blockNumber) => this.api.rx.rpc.chain.getBlockHash(blockNumber)
+        .pipe(tap((blockHash) => this.logger.debug(`${blockNumber} : ${blockHash}`)))))
+      // process blocks by source chain block hash
+      .pipe(concatMap(this.getBlocksByHash));
   }
 
   // TODO: refactor to return Observable<ParaHeadAndId>
@@ -110,7 +146,7 @@ class Source {
             .pipe(map(({ block }) => {
               const blockStr = JSON.stringify(block);
               const number = this.api.createType("BlockNumber", block.header.number).toBn();
-              return this.addBlockTxData({
+              return toBlockTxData({
                 block: blockStr,
                 number,
                 hash: paraHead,
@@ -123,19 +159,6 @@ class Source {
       );
   }
 
-  private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
-    return {
-      feedId,
-      block,
-      chain,
-      signer,
-      metadata: {
-        hash,
-        number,
-      },
-    };
-  }
-
   private getBlocksByHash(hash: Hash): Observable<TxData> {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
@@ -144,7 +167,10 @@ class Source {
       .pipe(map(({ block }) => {
         const blockStr = block.toString();
         const number = block.header.number.toBn();
-        return this.addBlockTxData({
+
+        this.logger.info(`${this.chain} - processing block: ${hash}, height: ${number.toString()}`);
+
+        return toBlockTxData({
           block: blockStr,
           number,
           hash,
@@ -153,18 +179,17 @@ class Source {
           signer: this.signer
         });
       }))
+      // TODO: consider saving last processed block after transaction is sent (move to Target)
       .pipe(tap(({ metadata }) => this.state.saveLastProcessedBlock(this.chain, metadata.number)));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());
     // console.log(`Chain ${this.chain}: Finalized block size: ${size / 1024} Kb`);
 
-    this.logger.info(`${this.chain} - finalized block hash: ${hash}`);
-
     return merge(relayBlockWithMetadata, parablocks);
   }
 
-  subscribeBlocks(): Observable<TxData> {
+  subscribeNewBlocks(): Observable<TxData> {
     return this.subscribeHeads().pipe(concatMap(({ hash }) => this.getBlocksByHash(hash)));
   }
 }

@@ -1,5 +1,4 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { merge } from "rxjs";
 
 import { getAccount } from "./account";
 import Config, { sourceChains } from "./config";
@@ -37,12 +36,12 @@ const createApi = async (url: string) => {
       config.sourceChains.map(async ({ url, parachains }) => {
         const api = await createApi(url);
         const chain = await api.rpc.system.chain();
-        const master = getAccount(config.accountSeed);
         const sourceSigner = getAccount(`${config.accountSeed}/${chain}`);
         const paraSigners = parachains.map(({ paraId }) => getAccount(`${config.accountSeed}/${paraId}`));
 
         // TODO: can be optimized by sending batch of txs
         // TODO: master has to delegate spending to sourceSigner and paraSigners
+        const master = getAccount(config.accountSeed);
         for (const delegate of [sourceSigner, ...paraSigners]) {
           // send 1.5 units
           await target.sendBalanceTx(master, delegate, 1.5);
@@ -64,9 +63,20 @@ const createApi = async (url: string) => {
       })
     );
 
-    const blockSubscriptions = merge(...sources.map((source) => source.subscribeBlocks()));
+    sources.forEach(source => {
+      // subscribe resynced block first
+      source.resyncBlocks().subscribe({
+        next: target.sendBlockTx,
+        // after resync is completed subscribe for new blocks
+        complete: () => {
+          logger.info("Processing resynced blocks is completed");
+          source.subscribeNewBlocks().subscribe({
+            next: target.sendBlockTx
+          });
+        }
+      });
+    });
 
-    target.processSubscriptions(blockSubscriptions).subscribe();
   } catch (error) {
     logger.error((error as Error).message);
   }

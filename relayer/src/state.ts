@@ -22,6 +22,13 @@ class State {
         await fsp.writeFile(this.lastBlockPath, JSON.stringify(lastProcessedBlockRecord, null, 4));
     }
 
+    async getLastProcessedBlockByName(chain: ChainName): Promise<BN | undefined> {
+        const file = await fsp.readFile(this.lastBlockPath, 'utf8');
+        const lastProcessedBlockRecord = JSON.parse(file);
+
+        return lastProcessedBlockRecord[chain];
+    }
+
     async getFeedIdByAddress(address: string): Promise<string> {
         const file = await fsp.readFile(this.feedsPath, 'utf8');
         const feeds = JSON.parse(file);
