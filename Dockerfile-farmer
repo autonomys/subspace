@@ -9,28 +9,18 @@ RUN \
         curl \
         gcc \
         llvm \
-        clang \
-        make \
-        m4 && \
+        clang && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
 
 COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 
-# Hack to make Cargo download and cache dependencies
-RUN \
-    mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    /root/.cargo/bin/cargo build --release && \
-    rm -rf src
-
-COPY src /code/src
+COPY crates /code/crates
+COPY substrate /code/substrate
+COPY node-template-subspace /code/node-template-subspace
 
 RUN \
-    # TODO: Next line is a workaround for https://github.com/rust-lang/cargo/issues/7969
-    touch src/main.rs && \
-    /root/.cargo/bin/cargo test --release && \
-    /root/.cargo/bin/cargo build --release && \
+    /root/.cargo/bin/cargo build --release --bin subspace-farmer && \
     mv target/release/subspace-farmer subspace-farmer && \
     rm -rf target
 
