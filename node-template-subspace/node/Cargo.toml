@@ -1,10 +1,10 @@
 [package]
 name = "node-template-subspace"
 version = "0.1.0"
-authors = ["Substrate DevHub <https://github.com/substrate-developer-hub>", "Subspace Labs <https://subspace.network>"]
-description = "A fresh FRAME-based Substrate node, modified for Subspace consensus."
+authors = ["Subspace Labs <https://subspace.network>"]
+description = "A Subspace Network Blockchain node."
 edition = "2021"
-license = "Unlicense"
+license = "GPL-3.0-or-later"
 build = "build.rs"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
