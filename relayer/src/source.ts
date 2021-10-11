@@ -11,6 +11,7 @@ import { Logger } from "pino";
 import { ParaHeadAndId, TxData, ChainName } from "./types";
 import { getParaHeadAndIdFromEvent, isRelevantRecord } from './utils';
 import Parachain from "./parachain";
+import State from './state';
 
 interface SourceConstructorParams {
   api: ApiPromise;
@@ -19,6 +20,7 @@ interface SourceConstructorParams {
   parachainsMap: Map<string, Parachain>;
   logger: Logger;
   signer: AddressOrPair;
+  state: State;
 }
 
 interface TxDataInput {
@@ -36,6 +38,7 @@ class Source {
   private readonly feedId: U64;
   private readonly parachainsMap: Map<string, Parachain>;
   private readonly logger: Logger;
+  private readonly state: State;
   public readonly signer: AddressOrPair;
 
   constructor(params: SourceConstructorParams) {
@@ -45,6 +48,7 @@ class Source {
     this.parachainsMap = params.parachainsMap;
     this.logger = params.logger;
     this.signer = params.signer;
+    this.state = params.state;
     this.getBlocksByHash = this.getBlocksByHash.bind(this);
     this.getParablocks = this.getParablocks.bind(this);
   }
@@ -120,18 +124,15 @@ class Source {
   }
 
   private addBlockTxData({ block, number, hash, feedId, chain, signer }: TxDataInput): TxData {
-    const metadata = {
-      hash,
-      number,
-    };
-
-
     return {
       feedId,
       block,
-      metadata,
       chain,
       signer,
+      metadata: {
+        hash,
+        number,
+      },
     };
   }
 
@@ -139,8 +140,8 @@ class Source {
     const relayBlock = this.getBlock(hash);
     const parablocks = relayBlock.pipe(concatMap(this.getParablocks));
 
-    const relayBlockWithMetadata = relayBlock.pipe(
-      map(({ block }) => {
+    const relayBlockWithMetadata = relayBlock
+      .pipe(map(({ block }) => {
         const blockStr = block.toString();
         const number = block.header.number.toBn();
         return this.addBlockTxData({
@@ -151,8 +152,8 @@ class Source {
           chain: this.chain,
           signer: this.signer
         });
-      })
-    );
+      }))
+      .pipe(tap(({ metadata }) => this.state.saveLastProcessedBlock(this.chain, metadata.number)));
 
     // TODO: check relay block and parablocks size
     // const size = Buffer.byteLength(block.toString());

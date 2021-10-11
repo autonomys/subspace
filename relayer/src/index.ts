@@ -8,6 +8,7 @@ import Target from "./target";
 import logger from "./logger";
 import { createParachainsMap } from './utils';
 import { ChainName } from './types';
+import State from './state';
 
 const config = new Config({
   accountSeed: process.env.ACCOUNT_SEED,
@@ -27,9 +28,10 @@ const createApi = async (url: string) => {
 // TODO: remove IIFE when Eslint is updated to v8.0.0 (will support top-level await)
 (async () => {
   try {
+    const state = new State({ folder: "./state" });
     const targetApi = await createApi(config.targetChainUrl);
 
-    const target = new Target({ api: targetApi, logger });
+    const target = new Target({ api: targetApi, logger, state });
 
     const sources = await Promise.all(
       config.sourceChains.map(async ({ url, parachains }) => {
@@ -57,6 +59,7 @@ const createApi = async (url: string) => {
           logger,
           feedId,
           signer: sourceSigner,
+          state,
         });
       })
     );
