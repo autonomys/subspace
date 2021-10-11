@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "crates/*",
-    "node-template-spartan/node",
-    "node-template-spartan/runtime",
+    "node-template-subspace/node",
+    "node-template-subspace/runtime",
     "substrate/*",
 ]
 
