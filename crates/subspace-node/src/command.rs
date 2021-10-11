@@ -16,9 +16,9 @@
 
 use crate::cli::{Cli, Subcommand};
 use crate::{chain_spec, service};
-use node_template_subspace_runtime::Block;
 use sc_cli::{ChainSpec, Role, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
+use subspace_runtime::Block;
 
 impl SubstrateCli for Cli {
     fn impl_name() -> String {
@@ -57,7 +57,7 @@ impl SubstrateCli for Cli {
     }
 
     fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &node_template_subspace_runtime::VERSION
+        &subspace_runtime::VERSION
     }
 }
 

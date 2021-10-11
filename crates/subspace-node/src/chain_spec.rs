@@ -14,14 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use node_template_subspace_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, Signature, SubspaceConfig, SudoConfig, SystemConfig,
-    WASM_BINARY,
-};
 use sc_service::ChainType;
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use subspace_runtime::{
+    AccountId, BalancesConfig, GenesisConfig, Signature, SubspaceConfig, SudoConfig, SystemConfig,
+    WASM_BINARY,
+};
 
 // The URL for the telemetry server.
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
@@ -186,7 +186,7 @@ fn testnet_genesis(
                 .collect(),
         },
         subspace: SubspaceConfig {
-            epoch_config: Some(node_template_subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
+            epoch_config: Some(subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
         },
         sudo: SudoConfig {
             // Assign network admin rights.

@@ -140,7 +140,7 @@ git clone https://github.com/subspace/subspace.git
 cd subspace
 
 # Build and run Node (first terminal)
-cargo run --bin node-template-subspace -- --dev --tmp
+cargo run --bin subspace-node -- --dev --tmp
 
 # wait for the client to start before continuing...
 

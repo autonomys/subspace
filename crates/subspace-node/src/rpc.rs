@@ -21,7 +21,6 @@
 
 #![warn(missing_docs)]
 
-use node_template_subspace_runtime::{opaque::Block, AccountId, Balance, Index};
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};
@@ -32,6 +31,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
+use subspace_runtime::{opaque::Block, AccountId, Balance, Index};
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
