@@ -23,7 +23,7 @@ run-farm() {
 
 wipe() {
     echo "Wiping prior installation..."
-    docker container kill subspace-farmer
+    docker container kill subspace-farmer || /bin/true
     docker volume rm subspace-farmer
 }
 

@@ -34,7 +34,7 @@ killnode() {
 
 wipe() {
     echo "Wiping prior installation..."
-    docker container kill subspace-node-full
+    docker container kill subspace-node-full || /bin/true
     docker volume rm subspace-node
 }
 ##
