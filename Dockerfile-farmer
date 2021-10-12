@@ -21,7 +21,6 @@ COPY Cargo.toml /code/Cargo.toml
 
 COPY crates /code/crates
 COPY substrate /code/substrate
-COPY node-template-subspace /code/node-template-subspace
 
 RUN \
     /root/.cargo/bin/cargo build --release --bin subspace-farmer && \

@@ -4,7 +4,6 @@
 !/.git/config
 !/.git/HEAD
 !/crates
-!/node-template-subspace
 !/substrate
 !/Cargo.lock
 !/Cargo.toml

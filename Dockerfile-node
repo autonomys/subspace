@@ -19,16 +19,16 @@ COPY Cargo.toml /code/Cargo.toml
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
+# Just enough files for `git rev-parse --short HEAD` to work (used in Substrate node build)
 COPY .git /code/.git
 # Just an empty directory for Git to recognize it is indeed a Git repository
 RUN mkdir /code/.git/objects
 COPY crates /code/crates
 COPY substrate /code/substrate
-COPY node-template-subspace /code/node-template-subspace
 
 RUN \
-    /root/.cargo/bin/cargo build --release --bin node-template-subspace && \
-    mv target/release/node-template-subspace subspace-node && \
+    /root/.cargo/bin/cargo build --release --bin subspace-node && \
+    mv target/release/subspace-node subspace-node && \
     rm -rf target
 
 FROM ubuntu:20.04

@@ -1,8 +1,8 @@
 <div align="center">
 
-  <h1><code>node-template-subspace</code></h1>
+  <h1><code>subspace-node</code></h1>
 
-  <strong>A Substrate Node Template which implements Subspace consensus.</strong>
+  <strong>A Subspace Network Blockchain node.</strong>
 
 </div>
 
@@ -10,17 +10,11 @@
 
 This repo is an implementation of Substrate consensus on Substrate framework.
 
-# Node Template Subspace
-
-A fresh FRAME-based [Substrate](https://www.substrate.io/) node, modified for Subspace consensus :rocket:
-
-Based on a fork of Substrate Node Template.
-
-**Notes:** The code is un-audited and not production ready, use it at your own risk.
+# Subspace node
 
 ## Getting Started
 
-Follow these steps to get started with the Subspace Node Template :hammer_and_wrench:
+Follow these steps to get started with the Subspace Node :hammer_and_wrench:
 
 Note that this repo is for running a Subspace node. In order to run a full node which participates in consensus and produces blocks you must also run a subspace-farmer.
 
@@ -30,70 +24,51 @@ Note that this repo is for running a Subspace node. In order to run a full node 
 
 First, install [Docker](https://docs.docker.com/get-docker/).
 
-#### Initialize Farmer (Terminal 1)
+#### Run the Client (Terminal 1)
 
-Create volume for plot, pull latest image and initialize 1 GiB plot (should take a thirty seconds to a few minutes):
-```bash
-docker volume create subspace-farmer
-docker pull subspacelabs/subspace-farmer
-docker run --rm -it \
-  --name subspace-farmer \
-  --mount source=subspace-farmer,target=/var/subspace \
-  subspacelabs/subspace-farmer plot 256000 subspace
-```
-
-#### Run the Client (Terminal 2)
-
-Create virtual network, pull latest image and start a single node development chain:
+Create virtual network, pull the latest image and start a single node development chain:
 ```bash
 docker network create subspace
-docker pull subspacelabs/node-template-subspace
+docker pull subspacelabs/subspace-node
 docker run --rm --init -it \
   --net subspace \
-  --name node-template-subspace \
+  --name subspace-node \
   --publish 127.0.0.1:30333:30333 \
   --publish 127.0.0.1:9944:9944 \
   --publish 127.0.0.1:9933:9933 \
-  subspacelabs/node-template-subspace \
+  subspacelabs/subspace-node \
     --dev \
     --tmp \
     --ws-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001
 ```
 
-#### Run the Farmer (Terminal 1)
+#### Run the Farmer (Terminal 2)
 
-Once node is running, you can connect farmer to it by running following in a separate terminal:
+Once node is running, create volume for plot, pull the latest image and connect farmer to the node by running following in a separate terminal:
 ```bash
+docker volume create subspace-farmer
+docker pull subspacelabs/subspace-farmer
 docker run --rm --init -it \
   --net subspace \
   --name subspace-farmer \
   --mount source=subspace-farmer,target=/var/subspace \
   subspacelabs/subspace-farmer \
     farm \
-    --ws-server ws://node-template-subspace:9944
+    --ws-server ws://subspace-node:9944
 ```
 
 Now you should see block production in the first terminal where node is running.
-
-#### Stopping the Client
-
-The client container may not respond to kill commands in the same terminal.
-If it happens, run this command in a separate terminal.
-
-```
-docker kill node-template-subspace
-```
 
 #### Running Full Client
 
 We can now run another full client and sync the chain from the client we started earlier:
 ```
-BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
+BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" subspace-node)
 docker run --rm --init -it \
   --net subspace \
-  --name node-template-subspace-full \
-  subspacelabs/node-template-subspace \
+  --name subspace-node-full \
+  subspacelabs/subspace-node \
     --dev \
     --tmp \
     --ws-external \
@@ -104,11 +79,11 @@ docker run --rm --init -it \
 
 We can also run light client and sync the chain from the client we started earlier:
 ```
-BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
+BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" subspace-node)
 docker run --rm --init -it \
   --net subspace \
-  --name node-template-subspace-light \
-  subspacelabs/node-template-subspace \
+  --name subspace-node-light \
+  subspacelabs/subspace-node \
     --dev \
     --tmp \
     --light \
@@ -133,42 +108,44 @@ Use `Ctrl+C` to stop the pair, everything will be stopped and cleaned up automat
 
 #### Install Rust
 
-First, complete the [basic Rust setup instructions](docs/rust-setup.md).
+Install Rust toolchain with [rustup.rs](https://rustup.rs/).
 
-#### Install Dependencies
-On Linux, RocksDB requires Clang
-
+If you didn't re-login yet, make sure configure your shell in the meantime:
 ```bash
-sudo apt-get install llvm clang gcc make m4
+source ~/.cargo/env
 ```
 
-#### Setup subspace-farmer
-Create 1 GiB plot according to following [instructions](https://github.com/subspace/subspace-farmer/tree/w3f-subspace-ms-1.1#install-and-run-manually)
+Install nightly toolchain and wasm32 target for it:
+```bash
+rustup toolchain install nightly
+rustup target add wasm32-unknown-unknown --toolchain nightly
+```
+
+#### Install Dependencies
+
+On Linux, RocksDB requires Clang:
+```bash
+sudo apt-get install llvm clang
+```
 
 #### Install and Run Node
 
-This will run a node-template-subspace in one terminal and a subspace-farmer farming in a second terminal.
+This will run a subspace-node in one terminal and a subspace-farmer farming in a second terminal.
 The node will send slot notification challenges to the farmer.
 If the farmer finds a valid solution it will reply, and the node will produce a new block.
 
 ```bash
-# Install Node
+# Get source code
 git clone https://github.com/subspace/subspace.git
 cd subspace
 
 # Build and run Node (first terminal)
-cargo +nightly run --bin node-template-subspace -- --dev --tmp
+cargo run --bin subspace-node -- --dev --tmp
 
 # wait for the client to start before continuing...
 
 # Run Farmer (second terminal)
-cd /back/to/subspace-farmer
-cargo +nightly run farm
-```
-
-NOTE: Above commands require nightly compiler for now, make sure to install it if you don't have one yet:
-```
-rustup toolchain install nightly
+cargo run --bin subspace-farmer -- farm
 ```
 
 ### Test equivocation behavior
@@ -176,11 +153,11 @@ rustup toolchain install nightly
 2. Start the first full client node and farmer with the same identity as the bootstrap client node:
   1. In one terminal run full client:
       ```bash
-      BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" node-template-subspace)
+      BOOTSTRAP_CLIENT_IP=$(docker inspect -f "{{.NetworkSettings.Networks.subspace.IPAddress}}" subspace-node)
       docker run --rm --init -it \
         --net subspace \
-        --name node-template-subspace-full-1 \
-        subspacelabs/node-template-subspace \
+        --name subspace-node-full-1 \
+        subspacelabs/subspace-node \
           --dev \
           --tmp \
           --ws-external \
@@ -207,7 +184,7 @@ rustup toolchain install nightly
         --mount source=subspace-farmer-1,target=/var/subspace \
         subspacelabs/subspace-farmer \
           farm \
-          --ws-server ws://node-template-subspace-full-1:9944
+          --ws-server ws://subspace-node-full-1:9944
       ```
 3. Repeat 2. with `-1` replaced with `-2` everywhere in order to obtain one more pair of client and farmer
 4. Observe following messages in logs similar to these, also block production will stop:
@@ -221,23 +198,7 @@ rustup toolchain install nightly
 ### Run Tests
 
 ```bash
-
-# Subspace tests
-cd substrate/client/consensus/subspace
-cargo +nightly test
-
-# Offences Subspace tests
-cd substrate/frame/offences-subspace
-cargo +nightly test
-
-# Subspace tests
-cd substrate/frame/subspace
-cargo +nightly test
-
-# Farmer tests
-cd subspace-farmer
-cargo +nightly test
-
+cargo test
 ```
 
 ### Embedded Docs
@@ -246,7 +207,7 @@ Once the project has been built, the following command can be used to explore al
 subcommands:
 
 ```bash
-cargo +nightly run --bin node-template-subspace -- -h
+cargo run --bin subspace-node -- --help
 ```
 
 ## Run
@@ -260,17 +221,17 @@ node.
 This command will start the single-node development chain with persistent state:
 
 ```bash
-cargo +nightly run --bin node-template-subspace -- --dev
+cargo run --bin subspace-node -- --dev
 ```
 
 Purge the development chain's state:
 
 ```bash
-cargo +nightly run --bin node-template-subspace -- purge-chain --dev
+cargo run --bin subspace-node -- purge-chain --dev
 ```
 
 Start the development chain with detailed logging:
 
 ```bash
-RUST_BACKTRACE=1 cargo +nightly run --bin node-template-subspace -- -ldebug --dev
+RUST_BACKTRACE=1 cargo run --bin subspace-node -- -ldebug --dev
 ```

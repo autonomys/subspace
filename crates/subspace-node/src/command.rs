@@ -1,12 +1,28 @@
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 use crate::cli::{Cli, Subcommand};
 use crate::{chain_spec, service};
-use node_template_subspace_runtime::Block;
 use sc_cli::{ChainSpec, Role, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
+use subspace_runtime::Block;
 
 impl SubstrateCli for Cli {
     fn impl_name() -> String {
-        "Substrate Node".into()
+        "Subspace".into()
     }
 
     fn impl_version() -> String {
@@ -22,15 +38,16 @@ impl SubstrateCli for Cli {
     }
 
     fn support_url() -> String {
-        "support.anonymous.an".into()
+        "https://discord.gg/vhKF9w3x".into()
     }
 
     fn copyright_start_year() -> i32 {
-        2017
+        2021
     }
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         Ok(match id {
+            "testnet" => Box::new(chain_spec::testnet_config()?),
             "dev" => Box::new(chain_spec::development_config()?),
             "" | "local" => Box::new(chain_spec::local_testnet_config()?),
             path => Box::new(chain_spec::ChainSpec::from_json_file(
@@ -40,7 +57,7 @@ impl SubstrateCli for Cli {
     }
 
     fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &node_template_subspace_runtime::VERSION
+        &subspace_runtime::VERSION
     }
 }
 
@@ -122,9 +139,11 @@ pub fn run() -> sc_cli::Result<()> {
 
                 runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))
             } else {
-                Err("Benchmarking wasn't enabled when building the node. \
-				You can enable it with `--features runtime-benchmarks`."
-                    .into())
+                Err(
+                    "Benchmarking wasn't enabled when building the node. You can enable it with \
+                    `--features runtime-benchmarks`."
+                        .into(),
+                )
             }
         }
         None => {

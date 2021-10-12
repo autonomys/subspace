@@ -1,13 +1,30 @@
-use node_template_subspace_runtime::{
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+use sc_service::ChainType;
+use sc_telemetry::TelemetryEndpoints;
+use sp_core::{sr25519, Pair, Public};
+use sp_runtime::traits::{IdentifyAccount, Verify};
+use subspace_runtime::{
     AccountId, BalancesConfig, GenesisConfig, Signature, SubspaceConfig, SudoConfig, SystemConfig,
     WASM_BINARY,
 };
-use sc_service::ChainType;
-use sp_core::{sr25519, Pair, Public};
-use sp_runtime::traits::{IdentifyAccount, Verify};
 
 // The URL for the telemetry server.
-// const STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
+const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 
 /// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec<GenesisConfig>;
@@ -29,17 +46,55 @@ where
     AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
 }
 
+pub fn testnet_config() -> Result<ChainSpec, String> {
+    Ok(ChainSpec::from_genesis(
+        // Name
+        "Subspace testnet",
+        // ID
+        "subspace_test",
+        ChainType::Custom("Subspace testnet".to_string()),
+        // TODO: Provide a way for farmer to start with these accounts
+        || {
+            testnet_genesis(
+                WASM_BINARY.expect("Wasm binary must be built for testnet"),
+                // Sudo account
+                get_account_id_from_seed::<sr25519::Public>("Alice"),
+                // Pre-funded accounts
+                vec![
+                    get_account_id_from_seed::<sr25519::Public>("Alice"),
+                    get_account_id_from_seed::<sr25519::Public>("Bob"),
+                    get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
+                    get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                ],
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        Some(
+            TelemetryEndpoints::new(vec![(POLKADOT_TELEMETRY_URL.into(), 0)])
+                .map_err(|error| error.to_string())?,
+        ),
+        // Protocol ID
+        Some("subspace"),
+        // Properties
+        None,
+        // Extensions
+        None,
+    ))
+}
+
 pub fn development_config() -> Result<ChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ChainSpec::from_genesis(
         // Name
-        "Subspace testnet",
+        "Development",
         // ID
         "dev",
         ChainType::Development,
         // TODO: Provide a way for farmer to start with these accounts
-        move || {
+        || {
             testnet_genesis(
                 wasm_binary,
                 // Sudo account
@@ -75,7 +130,7 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
         // ID
         "local_testnet",
         ChainType::Local,
-        move || {
+        || {
             testnet_genesis(
                 wasm_binary,
                 // Sudo account
@@ -131,7 +186,7 @@ fn testnet_genesis(
                 .collect(),
         },
         subspace: SubspaceConfig {
-            epoch_config: Some(node_template_subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
+            epoch_config: Some(subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
         },
         sudo: SudoConfig {
             // Assign network admin rights.

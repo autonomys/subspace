@@ -10,7 +10,8 @@ services:
         target: /var/subspace
         type: volume
     command: [
-        "--dev",
+        "--validator",
+        "--chain", "testnet",
         "--base-path", "/var/subspace",
         "--ws-external",
         "--bootnodes", "/ip4/${BOOTSTRAP_CLIENT_IP}/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
