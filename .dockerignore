@@ -1,0 +1,9 @@
+*
+# Just enough files for `git rev-parse --short HEAD` to work (used in Substrate node build)
+!/.git/refs/heads
+!/.git/config
+!/.git/HEAD
+!/crates
+!/substrate
+!/Cargo.lock
+!/Cargo.toml

@@ -1235,7 +1235,7 @@ dependencies = [
  "convert_case",
  "proc-macro2",
  "quote",
- "rustc_version 0.3.3",
+ "rustc_version",
  "syn",
 ]
 
@@ -3822,82 +3822,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-template-spartan"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking",
- "frame-benchmarking-cli",
- "jsonrpc-core",
- "node-template-spartan-runtime",
- "pallet-transaction-payment-rpc",
- "sc-basic-authorship",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-consensus-poc",
- "sc-consensus-poc-rpc",
- "sc-consensus-slots",
- "sc-consensus-uncles",
- "sc-executor",
- "sc-rpc",
- "sc-rpc-api",
- "sc-service",
- "sc-telemetry",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sp-api",
- "sp-authorship",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-poc",
- "sp-core",
- "sp-runtime",
- "sp-timestamp",
- "structopt",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
-]
-
-[[package]]
-name = "node-template-spartan-runtime"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking",
- "frame-executive",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "pallet-balances",
- "pallet-feeds",
- "pallet-offences-poc",
- "pallet-randomness-collective-flip",
- "pallet-spartan",
- "pallet-sudo",
- "pallet-timestamp",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-consensus-poc",
- "sp-consensus-slots",
- "sp-core",
- "sp-inherents",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-core-primitives",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4141,7 +4065,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-offences-poc"
+name = "pallet-offences-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -4150,23 +4074,9 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel 0.10.1",
- "sp-consensus-poc",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-randomness-collective-flip"
-version = "4.0.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "safe-mix",
- "scale-info",
  "sp-runtime",
  "sp-std",
 ]
@@ -4193,7 +4103,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-spartan"
+name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -4201,13 +4111,13 @@ dependencies = [
  "log",
  "num-traits",
  "pallet-balances",
- "pallet-offences-poc",
+ "pallet-offences-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel 0.9.1",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -5253,15 +5163,6 @@ checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustc_version"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
-dependencies = [
- "semver 0.9.0",
-]
-
-[[package]]
-name = "rustc_version"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0dfe2087c51c460008730de8b57e6a320782fbfb312e1f4d520e6c6fae155ee"
@@ -5310,15 +5211,6 @@ name = "ryu"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
-
-[[package]]
-name = "safe-mix"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d3d055a2582e6b00ed7a31c1524040aa391092bf636328350813f3a0605215c"
-dependencies = [
- "rustc_version 0.2.3",
-]
 
 [[package]]
 name = "salsa20"
@@ -5544,7 +5436,33 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-poc"
+name = "sc-consensus-slots"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
+dependencies = [
+ "async-trait",
+ "futures 0.3.17",
+ "futures-timer 3.0.2",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-telemetry",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-timestamp",
+ "thiserror",
+]
+
+[[package]]
+name = "sc-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -5573,8 +5491,8 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
  "sp-io",
@@ -5591,7 +5509,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-poc-rpc"
+name = "sc-consensus-subspace-rpc"
 version = "0.1.0"
 dependencies = [
  "async-oneshot",
@@ -5605,42 +5523,16 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "sc-client-api",
- "sc-consensus-poc",
+ "sc-consensus-subspace",
  "sc-rpc-api",
  "serde",
  "sp-api",
  "sp-blockchain",
- "sp-consensus-poc",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-runtime",
  "subspace-core-primitives",
-]
-
-[[package]]
-name = "sc-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
-dependencies = [
- "async-trait",
- "futures 0.3.17",
- "futures-timer 3.0.2",
- "log",
- "parity-scale-codec",
- "sc-client-api",
- "sc-consensus",
- "sc-telemetry",
- "sp-api",
- "sp-arithmetic",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
- "sp-state-machine",
- "sp-timestamp",
- "thiserror",
 ]
 
 [[package]]
@@ -6307,15 +6199,6 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
-dependencies = [
- "semver-parser 0.7.0",
-]
-
-[[package]]
-name = "semver"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f301af10236f6df4160f7c3f04eec6dbc70ace82d23326abad5edee88801c6b6"
@@ -6545,7 +6428,7 @@ dependencies = [
  "rand 0.8.4",
  "rand_core 0.6.3",
  "ring",
- "rustc_version 0.3.3",
+ "rustc_version",
  "sha2 0.9.8",
  "subtle",
  "x25519-dalek",
@@ -6763,7 +6646,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-consensus-poc"
+name = "sp-consensus-slots"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-runtime",
+]
+
+[[package]]
+name = "sp-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -6780,17 +6674,6 @@ dependencies = [
  "sp-std",
  "sp-timestamp",
  "subspace-core-primitives",
-]
-
-[[package]]
-name = "sp-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=91b386ff07a85b3dd50ff3ed29c97e6b29d15f05#91b386ff07a85b3dd50ff3ed29c97e6b29d15f05"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-arithmetic",
- "sp-runtime",
 ]
 
 [[package]]
@@ -7253,37 +7136,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spartan-farmer"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-lock",
- "async-std",
- "clap 3.0.0-beta.4",
- "dirs",
- "env_logger 0.9.0",
- "futures 0.3.17",
- "hex",
- "indicatif",
- "jsonrpsee",
- "log",
- "lru",
- "parity-scale-codec",
- "rand 0.8.4",
- "rayon",
- "rocksdb",
- "schnorrkel 0.10.1",
- "serde",
- "serde_json",
- "subspace-archiving",
- "subspace-core-primitives",
- "subspace-solving",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7397,6 +7249,112 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-farmer"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-lock",
+ "async-std",
+ "clap 3.0.0-beta.4",
+ "dirs",
+ "env_logger 0.9.0",
+ "futures 0.3.17",
+ "hex",
+ "indicatif",
+ "jsonrpsee",
+ "log",
+ "lru",
+ "parity-scale-codec",
+ "rand 0.8.4",
+ "rayon",
+ "rocksdb",
+ "schnorrkel 0.10.1",
+ "serde",
+ "serde_json",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-solving",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "subspace-node"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-benchmarking-cli",
+ "jsonrpc-core",
+ "pallet-transaction-payment-rpc",
+ "sc-basic-authorship",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-slots",
+ "sc-consensus-subspace",
+ "sc-consensus-subspace-rpc",
+ "sc-consensus-uncles",
+ "sc-executor",
+ "sc-rpc",
+ "sc-rpc-api",
+ "sc-service",
+ "sc-telemetry",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sp-api",
+ "sp-authorship",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-runtime",
+ "sp-timestamp",
+ "structopt",
+ "subspace-runtime",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+]
+
+[[package]]
+name = "subspace-runtime"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "pallet-balances",
+ "pallet-feeds",
+ "pallet-offences-subspace",
+ "pallet-subspace",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-slots",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-core-primitives",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
@@ -7502,7 +7460,7 @@ dependencies = [
  "log",
  "memory-db",
  "pallet-babe",
- "pallet-spartan",
+ "pallet-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
  "parity-util-mem",
@@ -7517,7 +7475,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-aura",
  "sp-consensus-babe",
- "sp-consensus-poc",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-externalities",
  "sp-finality-grandpa",
