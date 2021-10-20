@@ -200,7 +200,7 @@ async fn background_plotting(
 
         let maybe_last_archived_block = client
             .request(
-                "subspace_getEncodedBlockByNumber",
+                "subspace_getBlockByNumber",
                 JsonRpcParams::Array(vec![serde_json::to_value(last_archived_block_number)?]),
             )
             .await?;
