@@ -1,6 +1,7 @@
 pub(crate) mod commitments;
 pub mod erase_plot;
 pub mod farm;
+pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub(crate) mod utils;

@@ -20,3 +20,4 @@ mod common_mod;
 
 pub use common_mod::erase_plot::erase_plot;
 pub use common_mod::farm::farm_caller;
+pub use common_mod::identity;
