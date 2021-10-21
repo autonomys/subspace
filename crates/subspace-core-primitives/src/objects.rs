@@ -22,6 +22,7 @@
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
+use crate::Sha256Hash;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
@@ -49,12 +50,21 @@ pub enum BlockObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
     V0 {
+        /// Object hash
+        hash: Sha256Hash,
         /// 24-bit little-endian offset of the object
         offset: [u8; 3],
     },
 }
 
 impl BlockObject {
+    /// Object hash
+    pub fn hash(&self) -> Sha256Hash {
+        match self {
+            BlockObject::V0 { hash, .. } => *hash,
+        }
+    }
+
     /// Offset of the object (limited to 24-bit size internally)
     pub fn offset(&self) -> u32 {
         match self {
@@ -107,12 +117,21 @@ pub enum PieceObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
     V0 {
+        /// Object hash
+        hash: Sha256Hash,
         /// Offset of the object
         offset: u16,
     },
 }
 
 impl PieceObject {
+    /// Object hash
+    pub fn hash(&self) -> Sha256Hash {
+        match self {
+            PieceObject::V0 { hash, .. } => *hash,
+        }
+    }
+
     /// Offset of the object
     pub fn offset(&self) -> u16 {
         match self {

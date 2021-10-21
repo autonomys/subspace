@@ -442,6 +442,7 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
 
                 // Block is known to never exceed 16MiB, hence 24-bit addressing
                 block_object_mapping.objects.push(BlockObject::V0 {
+                    hash: call_object_location.hash,
                     offset: [offset[0], offset[1], offset[2]],
                 });
             }

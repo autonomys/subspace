@@ -58,9 +58,11 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
+                    hash: Sha256Hash::default(),
                     offset: size_to_u24(0),
                 },
                 BlockObject::V0 {
+                    hash: Sha256Hash::default(),
                     offset: size_to_u24(7000),
                 },
             ],
@@ -90,12 +92,15 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
+                    hash: Sha256Hash::default(),
                     offset: size_to_u24(100),
                 },
                 BlockObject::V0 {
+                    hash: Sha256Hash::default(),
                     offset: size_to_u24(1000),
                 },
                 BlockObject::V0 {
+                    hash: Sha256Hash::default(),
                     offset: size_to_u24(10000),
                 },
             ],

@@ -575,7 +575,10 @@ impl<State: private::ArchiverState> Archiver<State> {
 
                             corrected_object_mapping[offset_in_segment / self.record_size]
                                 .objects
-                                .push(PieceObject::V0 { offset })
+                                .push(PieceObject::V0 {
+                                    hash: block_object.hash(),
+                                    offset,
+                                })
                         }
                     }
                     SegmentItem::RootBlock(_) => {

@@ -22,6 +22,7 @@
 use core::mem;
 pub use pallet::*;
 use sp_std::vec::Vec;
+use subspace_core_primitives::{crypto, Sha256Hash};
 
 #[frame_support::pallet]
 mod pallet {
@@ -144,6 +145,8 @@ mod pallet {
 /// Mapping to the object offset and size within an extrinsic
 #[derive(Debug)]
 pub struct CallObjectLocation {
+    /// Object hash
+    pub hash: Sha256Hash,
     /// Offset
     pub offset: usize,
 }
@@ -152,10 +155,11 @@ impl<T: Config> Call<T> {
     /// Extract object location if an extrinsic corresponds to `put` call
     pub fn extract_object_location(&self) -> Option<CallObjectLocation> {
         match self {
-            Self::put { .. } => {
+            Self::put { data, .. } => {
                 // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
                 // enum variant encoding.
                 Some(CallObjectLocation {
+                    hash: crypto::sha256_hash(data),
                     offset: 1 + mem::size_of::<FeedId>(),
                 })
             }
