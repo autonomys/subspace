@@ -116,7 +116,7 @@ mod pallet {
             feed_id: FeedId,
             data: PutDataObject,
             metadata: ObjectMetadata,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
             let object_size = data.len() as u64;
@@ -137,7 +137,8 @@ mod pallet {
 
             Self::deposit_event(Event::DataSubmitted(metadata, who, object_size));
 
-            Ok(())
+            // TODO: For now we don't have fees, but we will have them in the future
+            Ok(Pays::No.into())
         }
     }
 }
