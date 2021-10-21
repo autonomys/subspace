@@ -1,10 +1,10 @@
-use crate::common_mod::commitments::Commitments;
-use crate::common_mod::plot::Plot;
-use crate::common_mod::{Salt, Tag, PIECE_SIZE};
+use crate::commitments::Commitments;
+use crate::common::{Salt, Tag};
+use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
-use subspace_core_primitives::Piece;
+use subspace_core_primitives::{Piece, PIECE_SIZE};
 use tempfile::TempDir;
 
 fn init() {

@@ -1,8 +1,8 @@
-use crate::common_mod::{
-    commitments::Commitments, identity::Identity, object_mappings::ObjectMappings, plot::Plot,
-    utils::get_path, Salt, Tag,
-};
-
+use crate::commitments::Commitments;
+use crate::common::{Salt, Tag};
+use crate::identity::Identity;
+use crate::object_mappings::ObjectMappings;
+use crate::plot::Plot;
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
@@ -22,7 +22,7 @@ use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{
     BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::{crypto, Piece, Sha256Hash};
+use subspace_core_primitives::{crypto, Sha256Hash};
 use subspace_solving::SubspaceCodec;
 
 type SlotNumber = u64;
@@ -95,14 +95,6 @@ struct SlotInfo {
     next_salt: Option<Salt>,
     /// Acceptable solution range
     solution_range: u64,
-}
-
-/// Calling the farmer with a custom path, provided by the user
-pub async fn farm_caller(custom_path: Option<PathBuf>, ws_server: String) -> Result<()> {
-    let path = get_path(custom_path);
-    farm(path, &ws_server).await?;
-
-    Ok(())
 }
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
@@ -260,11 +252,8 @@ async fn background_plotting(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
-                        let object_mapping = create_global_object_mapping(
-                            piece_index_offset,
-                            &pieces,
-                            object_mapping,
-                        );
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
 
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
@@ -382,11 +371,8 @@ async fn background_plotting(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
-                        let object_mapping = create_global_object_mapping(
-                            piece_index_offset,
-                            &pieces,
-                            object_mapping,
-                        );
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
 
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
@@ -473,24 +459,19 @@ async fn background_plotting(
 
 fn create_global_object_mapping(
     piece_index_offset: u64,
-    pieces: &[Piece],
     object_mapping: Vec<PieceObjectMapping>,
 ) -> Vec<(Sha256Hash, GlobalObject)> {
-    pieces
+    object_mapping
         .iter()
         .enumerate()
-        .zip(object_mapping.iter())
-        .flat_map(move |((position, piece), object_mapping)| {
+        .flat_map(move |(position, object_mapping)| {
             object_mapping.objects.iter().map(move |piece_object| {
-                let PieceObject::V0 { offset, size } = piece_object;
+                let PieceObject::V0 { hash, offset } = piece_object;
                 (
-                    crypto::sha256_hash(
-                        &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
-                    ),
+                    *hash,
                     GlobalObject::V0 {
                         piece_index: piece_index_offset + position as u64,
                         offset: *offset,
-                        size: *size,
                     },
                 )
             })

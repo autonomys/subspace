@@ -1,8 +1,7 @@
-use crate::common_mod::plot::Plot;
-use crate::common_mod::PIECE_SIZE;
+use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock};
+use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, PIECE_SIZE};
 use tempfile::TempDir;
 
 fn init() {

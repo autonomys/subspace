@@ -11,13 +11,13 @@
 //! During farming we receive a global challenge and need to find a solution, given target and
 //! solution range. In order to find solution we derive local challenge as our target and do range
 //! query in RocksDB. For that we interpret target as 64-bit unsigned integer, and find all of the
-//! keys in tags database that are `target ± solution range` (while also handing overflow/underlow)
+//! keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
 //! converted back to bytes.
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-mod common_mod;
+pub use identity::Identity;
+pub use utils::get_path;
 
-pub use common_mod::erase_plot::erase_plot;
-pub use common_mod::farm::farm_caller;
-pub use common_mod::identity;
+pub(crate) mod identity;
+pub(crate) mod utils;

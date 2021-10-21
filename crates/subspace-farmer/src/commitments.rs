@@ -1,17 +1,18 @@
 #[cfg(test)]
 mod tests;
 
-use crate::common_mod::{plot, Salt, Tag, BATCH_SIZE};
+use crate::common::{Salt, Tag, BATCH_SIZE};
+use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;
 use log::{error, trace};
 use lru::LruCache;
-use plot::Plot;
 use rayon::prelude::*;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PIECE_SIZE};
 use thiserror::Error;

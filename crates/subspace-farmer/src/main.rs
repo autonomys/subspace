@@ -11,19 +11,27 @@
 //! During farming we receive a global challenge and need to find a solution, given target and
 //! solution range. In order to find solution we derive local challenge as our target and do range
 //! query in RocksDB. For that we interpret target as 64-bit unsigned integer, and find all of the
-//! keys in tags database that are `target ± solution range` (while also handing overflow/underlow)
+//! keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
 //! converted back to bytes.
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-mod common_mod;
-use crate::common_mod::{erase_plot::erase_plot, farm::farm_caller};
 use anyhow::Result;
 use clap::{AppSettings, Clap, ValueHint};
 use env_logger::Env;
-use std::path::PathBuf;
+use log::info;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-// TODO: Separate commands for erasing the plot and wiping everything
+mod commands;
+mod commitments;
+mod common;
+mod identity;
+mod object_mappings;
+mod plot;
+mod utils;
+
+// TODO: Separate commands for erasing the plot and wiping everyting
 #[derive(Debug, Clap)]
 #[clap(about, version)]
 #[clap(setting = AppSettings::ColoredHelp)]
@@ -45,16 +53,43 @@ enum Command {
     },
 }
 
+/// Helper function for ignoring the error that given file/directory does not exist.
+fn try_remove<P: AsRef<Path>>(
+    path: P,
+    remove: impl FnOnce(P) -> std::io::Result<()>,
+) -> Result<()> {
+    if path.as_ref().exists() {
+        remove(path)?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
     let command: Command = Command::parse();
     match command {
-        Command::ErasePlot { custom_path } => erase_plot(custom_path)?,
+        Command::ErasePlot { custom_path } => {
+            let path = utils::get_path(custom_path);
+            info!("Erasing the plot");
+            try_remove(path.join("plot.bin"), fs::remove_file)?;
+            info!("Erasing plot metadata");
+            try_remove(path.join("plot-metadata"), fs::remove_dir_all)?;
+            info!("Erasing plot commitments");
+            try_remove(path.join("commitments"), fs::remove_dir_all)?;
+            info!("Erasing object mappings");
+            try_remove(path.join("object-mappings"), fs::remove_dir_all)?;
+            info!("Erasing identity");
+            try_remove(path.join("identity.bin"), fs::remove_file)?;
+            info!("Done");
+        }
         Command::Farm {
             custom_path,
             ws_server,
-        } => farm_caller(custom_path, ws_server).await?,
+        } => {
+            let path = utils::get_path(custom_path);
+            commands::farm(path, &ws_server).await?;
+        }
     }
     Ok(())
 }
