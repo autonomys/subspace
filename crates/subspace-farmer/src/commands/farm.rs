@@ -10,6 +10,7 @@ use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
+use parity_scale_codec::{Compact, Decode};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
@@ -484,19 +485,23 @@ fn create_global_object_mapping(
         .enumerate()
         .zip(object_mapping.iter())
         .flat_map(move |((position, piece), object_mapping)| {
-            object_mapping.objects.iter().map(move |piece_object| {
-                let PieceObject::V0 { offset, size } = piece_object;
-                (
-                    crypto::sha256_hash(
-                        &piece[piece_object.offset() as usize..][..piece_object.size() as usize],
-                    ),
-                    GlobalObject::V0 {
-                        piece_index: piece_index_offset + position as u64,
-                        offset: *offset,
-                        size: *size,
-                    },
-                )
-            })
+            object_mapping
+                .objects
+                .iter()
+                .filter_map(move |piece_object| {
+                    let PieceObject::V0 { offset } = piece_object;
+                    let Compact(size) =
+                        Compact::<u64>::decode(&mut &piece[*offset as usize..]).ok()?;
+                    Some((
+                        crypto::sha256_hash(
+                            &piece[piece_object.offset() as usize..][..size as usize],
+                        ),
+                        GlobalObject::V0 {
+                            piece_index: piece_index_offset + position as u64,
+                            offset: *offset,
+                        },
+                    ))
+                })
         })
         .collect()
 }

@@ -19,7 +19,6 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
-use codec::{Compact, CompactLen};
 use core::mem;
 pub use pallet::*;
 use sp_std::vec::Vec;
@@ -147,23 +146,17 @@ mod pallet {
 pub struct CallObjectLocation {
     /// Offset
     pub offset: usize,
-    /// Size
-    pub size: usize,
 }
 
 impl<T: Config> Call<T> {
     /// Extract object location if an extrinsic corresponds to `put` call
     pub fn extract_object_location(&self) -> Option<CallObjectLocation> {
         match self {
-            Self::put { data, .. } => {
-                // FeedId is the first field in the extrinsic followed by compact length prefix of
-                // the actual data and data itself.
-                // `+1` corresponds to `Call::put {}` enum variant encoding.
+            Self::put { .. } => {
+                // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
+                // enum variant encoding.
                 Some(CallObjectLocation {
-                    offset: mem::size_of::<FeedId>()
-                        + Compact::compact_len(&(data.len() as u32))
-                        + 1,
-                    size: data.len(),
+                    offset: 1 + mem::size_of::<FeedId>(),
                 })
             }
             _ => None,

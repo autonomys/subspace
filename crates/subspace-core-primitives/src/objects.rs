@@ -51,8 +51,6 @@ pub enum BlockObject {
     V0 {
         /// 24-bit little-endian offset of the object
         offset: [u8; 3],
-        /// 24-bit little-endian size of the object
-        size: [u8; 3],
     },
 }
 
@@ -63,13 +61,6 @@ impl BlockObject {
             BlockObject::V0 { offset, .. } => {
                 u32::from_le_bytes([offset[0], offset[1], offset[2], 0])
             }
-        }
-    }
-
-    /// Offset of the object (limited to 24-bit size internally)
-    pub fn size(&self) -> u32 {
-        match self {
-            BlockObject::V0 { size, .. } => u32::from_le_bytes([size[0], size[1], size[2], 0]),
         }
     }
 }
@@ -118,8 +109,6 @@ pub enum PieceObject {
     V0 {
         /// Offset of the object
         offset: u16,
-        /// 24-bit little-endian size of the object
-        size: [u8; 3],
     },
 }
 
@@ -128,13 +117,6 @@ impl PieceObject {
     pub fn offset(&self) -> u16 {
         match self {
             PieceObject::V0 { offset, .. } => *offset,
-        }
-    }
-
-    /// Offset of the object (limited to 24-bit size internally)
-    pub fn size(&self) -> u32 {
-        match self {
-            PieceObject::V0 { size, .. } => u32::from_le_bytes([size[0], size[1], size[2], 0]),
         }
     }
 }
@@ -185,8 +167,6 @@ pub enum GlobalObject {
         piece_index: u64,
         /// Offset of the object
         offset: u16,
-        /// 24-bit little-endian size of the object
-        size: [u8; 3],
     },
 }
 
@@ -202,13 +182,6 @@ impl GlobalObject {
     pub fn offset(&self) -> u16 {
         match self {
             GlobalObject::V0 { offset, .. } => *offset,
-        }
-    }
-
-    /// Offset of the object (limited to 24-bit size internally)
-    pub fn size(&self) -> u32 {
-        match self {
-            GlobalObject::V0 { size, .. } => u32::from_le_bytes([size[0], size[1], size[2], 0]),
         }
     }
 }

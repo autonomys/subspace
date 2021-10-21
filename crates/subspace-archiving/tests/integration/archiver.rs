@@ -1,5 +1,7 @@
+use parity_scale_codec::{Compact, Decode, Encode};
 use rand::Rng;
 use std::assert_matches::assert_matches;
+use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
@@ -18,9 +20,9 @@ fn size_to_u24(size: u32) -> [u8; 3] {
     [size[0], size[1], size[2]]
 }
 
-fn slice_chunk<O: Into<u64>, S: Into<u64>>(data: &[u8], offset: O, size: S) -> &[u8] {
+fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
-    let size: u64 = size.into();
+    let Compact(size) = Compact::<u64>::decode(&mut &data[offset as usize..]).unwrap();
     &data[offset as usize..][..size as usize]
 }
 
@@ -32,16 +34,8 @@ fn compare_block_objects_to_piece_objects<'a>(
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
             assert_eq!(
-                slice_chunk(
-                    piece,
-                    piece_object_mapping.offset(),
-                    piece_object_mapping.size()
-                ),
-                slice_chunk(
-                    block,
-                    block_object_mapping.offset(),
-                    block_object_mapping.size()
-                )
+                extract_data(piece, piece_object_mapping.offset()),
+                extract_data(block, block_object_mapping.offset())
             );
         },
     );
@@ -51,40 +45,62 @@ fn compare_block_objects_to_piece_objects<'a>(
 fn archiver() {
     let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
-    let block_0_object_mapping = BlockObjectMapping {
-        objects: vec![
-            BlockObject::V0 {
-                offset: size_to_u24(0),
-                size: size_to_u24(100),
-            },
-            BlockObject::V0 {
-                offset: size_to_u24(7000),
-                size: size_to_u24(128),
-            },
-        ],
+    let (block_0, block_0_object_mapping) = {
+        let mut block = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
+        block[0..]
+            .as_mut()
+            .write_all(&Compact(100_u64).encode())
+            .unwrap();
+        block[7000..]
+            .as_mut()
+            .write_all(&Compact(128_u64).encode())
+            .unwrap();
+        let object_mapping = BlockObjectMapping {
+            objects: vec![
+                BlockObject::V0 {
+                    offset: size_to_u24(0),
+                },
+                BlockObject::V0 {
+                    offset: size_to_u24(7000),
+                },
+            ],
+        };
+
+        (block, object_mapping)
     };
     // There is not enough data to produce archived segment yet
     assert!(archiver
         .add_block(block_0.clone(), block_0_object_mapping.clone())
         .is_empty());
 
-    let block_1 = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>().to_vec();
-    let block_1_object_mapping = BlockObjectMapping {
-        objects: vec![
-            BlockObject::V0 {
-                offset: size_to_u24(100),
-                size: size_to_u24(100),
-            },
-            BlockObject::V0 {
-                offset: size_to_u24(1000),
-                size: size_to_u24(2048),
-            },
-            BlockObject::V0 {
-                offset: size_to_u24(10000),
-                size: size_to_u24(100),
-            },
-        ],
+    let (block_1, block_1_object_mapping) = {
+        let mut block = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>().to_vec();
+        block[100..]
+            .as_mut()
+            .write_all(&Compact(100_u64).encode())
+            .unwrap();
+        block[1000..]
+            .as_mut()
+            .write_all(&Compact(2048_u64).encode())
+            .unwrap();
+        block[10000..]
+            .as_mut()
+            .write_all(&Compact(100_u64).encode())
+            .unwrap();
+        let object_mapping = BlockObjectMapping {
+            objects: vec![
+                BlockObject::V0 {
+                    offset: size_to_u24(100),
+                },
+                BlockObject::V0 {
+                    offset: size_to_u24(1000),
+                },
+                BlockObject::V0 {
+                    offset: size_to_u24(10000),
+                },
+            ],
+        };
+        (block, object_mapping)
     };
     // This should produce 1 archived segment
     let archived_segments = archiver.add_block(block_1.clone(), block_1_object_mapping.clone());
