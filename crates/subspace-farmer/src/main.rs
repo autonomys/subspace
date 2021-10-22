@@ -11,13 +11,15 @@
 //! During farming we receive a global challenge and need to find a solution, given target and
 //! solution range. In order to find solution we derive local challenge as our target and do range
 //! query in RocksDB. For that we interpret target as 64-bit unsigned integer, and find all of the
-//! keys in tags database that are `target ± solution range` (while also handing overflow/underlow)
+//! keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
 //! converted back to bytes.
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
 mod commands;
 mod commitments;
+mod common;
+mod identity;
 mod object_mappings;
 mod plot;
 mod utils;
@@ -28,14 +30,6 @@ use env_logger::Env;
 use log::info;
 use std::fs;
 use std::path::{Path, PathBuf};
-use subspace_core_primitives::PIECE_SIZE;
-
-type Tag = [u8; 8];
-type Salt = [u8; 8];
-
-const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
-// TODO: Move to codec
-// const CUDA_BATCH_SIZE: u64 = (32 * 1024) as u64;
 
 // TODO: Separate commands for erasing the plot and wiping everyting
 #[derive(Debug, Clap)]

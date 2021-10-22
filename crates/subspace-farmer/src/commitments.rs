@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::common::{Salt, Tag, BATCH_SIZE};
 use crate::plot::Plot;
-use crate::{Salt, Tag, BATCH_SIZE};
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;

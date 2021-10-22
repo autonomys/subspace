@@ -1,7 +1,8 @@
 use crate::commitments::Commitments;
+use crate::common::{Salt, Tag};
+use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::{Salt, Tag};
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
@@ -10,10 +11,7 @@ use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
-use schnorrkel::context::SigningContext;
-use schnorrkel::{Keypair, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -24,7 +22,7 @@ use subspace_core_primitives::objects::{
     BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{crypto, Sha256Hash};
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::SubspaceCodec;
 
 type SlotNumber = u64;
 
@@ -104,17 +102,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
     info!("Connecting to RPC server");
     let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
 
-    let identity_file = base_directory.join("identity.bin");
-    let keypair = if identity_file.exists() {
-        info!("Opening existing keypair");
-        Keypair::from_bytes(&fs::read(identity_file)?).map_err(anyhow::Error::msg)?
-    } else {
-        info!("Generating new keypair");
-        let keypair = Keypair::generate();
-        fs::write(identity_file, keypair.to_bytes())?;
-        keypair
-    };
-    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
+    let identity = Identity::open_or_create(&base_directory)?;
 
     // TODO: This doesn't account for the fact that node can have a completely different history to
     //  what farmer expects
@@ -136,15 +124,15 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
             let client = Arc::clone(&client);
             let plot = plot.clone();
             let commitments = commitments.clone();
-            let public_key = keypair.public;
+            let public_key = identity.public_key();
 
             Box::pin(async move {
                 background_plotting(client, plot, commitments, object_mappings, &public_key).await
             })
         },
-        Box::pin(async move {
-            subscribe_to_slot_info(&client, &plot, &commitments, &keypair, &ctx).await
-        }),
+        Box::pin(
+            async move { subscribe_to_slot_info(&client, &plot, &commitments, &identity).await },
+        ),
     )
     .await
     {
@@ -163,12 +151,12 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting(
+async fn background_plotting<P: AsRef<[u8]>>(
     client: Arc<WsClient>,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
-    public_key: &PublicKey,
+    public_key: &P,
 ) -> Result<()> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {
@@ -494,10 +482,9 @@ async fn subscribe_to_slot_info(
     client: &WsClient,
     plot: &Plot,
     commitments: &Commitments,
-    keypair: &Keypair,
-    ctx: &SigningContext,
+    identity: &Identity,
 ) -> Result<()> {
-    let farmer_public_key_hash = crypto::sha256_hash(&keypair.public);
+    let farmer_public_key_hash = crypto::sha256_hash(&identity.public_key());
 
     info!("Subscribing to slot info notifications");
     let mut subscription: Subscription<SlotInfo> = client
@@ -525,10 +512,10 @@ async fn subscribe_to_slot_info(
             Some((tag, piece_index)) => {
                 let encoding = plot.read(piece_index).await?;
                 let solution = Solution {
-                    public_key: keypair.public.to_bytes(),
+                    public_key: identity.public_key().to_bytes(),
                     piece_index,
                     encoding: encoding.to_vec(),
-                    signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
+                    signature: identity.sign(&tag).to_bytes().to_vec(),
                     tag,
                 };
 
@@ -550,7 +537,7 @@ async fn subscribe_to_slot_info(
                     &ProposedProofOfReplicationResponse {
                         slot_number: slot_info.slot_number,
                         solution,
-                        secret_key: keypair.secret.to_bytes().into(),
+                        secret_key: identity.secret_key().to_bytes().into(),
                     },
                 )?]),
             )
