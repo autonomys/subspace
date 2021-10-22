@@ -439,12 +439,11 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
         if let Call::Feeds(call) = &extrinsic.function {
             if let Some(call_object_location) = call.extract_object_location() {
                 let offset = (base_extrinsic_offset + call_object_location.offset).to_le_bytes();
-                let size = call_object_location.size.to_le_bytes();
 
                 // Block is known to never exceed 16MiB, hence 24-bit addressing
                 block_object_mapping.objects.push(BlockObject::V0 {
+                    hash: call_object_location.hash,
                     offset: [offset[0], offset[1], offset[2]],
-                    size: [size[0], size[1], size[2]],
                 });
             }
         }

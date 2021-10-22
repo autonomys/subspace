@@ -569,7 +569,6 @@ impl<State: private::ArchiverState> Archiver<State> {
                                 + block_object.offset() as usize
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32));
-                            let BlockObject::V0 { size, .. } = block_object;
                             let offset = (offset_in_segment % self.record_size).try_into().expect(
                                 "Offset within piece should always fit in 16-bit integer; qed",
                             );
@@ -577,8 +576,8 @@ impl<State: private::ArchiverState> Archiver<State> {
                             corrected_object_mapping[offset_in_segment / self.record_size]
                                 .objects
                                 .push(PieceObject::V0 {
+                                    hash: block_object.hash(),
                                     offset,
-                                    size: *size,
                                 })
                         }
                     }
