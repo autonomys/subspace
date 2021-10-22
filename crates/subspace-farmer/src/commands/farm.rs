@@ -26,7 +26,7 @@ use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn start_farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
+pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     info!("Connecting to RPC server");
     let client = RpcClient::new(ws_server).await?;
 

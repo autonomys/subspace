@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
             ws_server,
         } => {
             let path = utils::get_path(custom_path);
-            commands::start_farm(path, &ws_server).await?;
+            commands::farm(path, &ws_server).await?;
         }
     }
     Ok(())
