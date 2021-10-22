@@ -1,14 +1,12 @@
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::rpc::RpcClient;
 use crate::{Salt, Tag};
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
-use jsonrpsee::types::traits::{Client, SubscriptionClient};
-use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
-use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
@@ -30,7 +28,7 @@ type SlotNumber = u64;
 
 /// Metadata necessary for farmer operation
 #[derive(Debug, Deserialize)]
-struct FarmerMetadata {
+pub struct FarmerMetadata {
     /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
     /// to the client-dependent transaction confirmation depth `k`).
     confirmation_depth_k: u32,
@@ -50,7 +48,7 @@ struct FarmerMetadata {
 
 /// Encoded block with mapping of objects that it contains
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct EncodedBlockWithObjectMapping {
+pub struct EncodedBlockWithObjectMapping {
     /// Encoded block
     block: Vec<u8>,
     /// Mapping of objects inside of the block
@@ -59,7 +57,7 @@ struct EncodedBlockWithObjectMapping {
 
 // There are more fields in this struct, but we only care about one
 #[derive(Debug, Deserialize)]
-struct NewHead {
+pub struct NewHead {
     number: String,
 }
 
@@ -74,7 +72,7 @@ struct Solution {
 
 /// Proposed proof of space consisting of solution and farmer's secret key for block signing
 #[derive(Debug, Serialize)]
-struct ProposedProofOfReplicationResponse {
+pub struct ProposedProofOfReplicationResponse {
     /// Slot number
     slot_number: SlotNumber,
     /// Solution (if present) from farmer's plot corresponding to slot number above
@@ -85,7 +83,7 @@ struct ProposedProofOfReplicationResponse {
 
 /// Information about new slot that just arrived
 #[derive(Debug, Deserialize)]
-struct SlotInfo {
+pub struct SlotInfo {
     /// Slot number
     slot_number: SlotNumber,
     /// Slot challenge
@@ -100,9 +98,9 @@ struct SlotInfo {
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
+pub(crate) async fn start_farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     info!("Connecting to RPC server");
-    let client = Arc::new(WsClientBuilder::default().build(ws_server).await?);
+    let client = RpcClient::new(ws_server).await?;
 
     let identity_file = base_directory.join("identity.bin");
     let keypair = if identity_file.exists() {
@@ -133,7 +131,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
 
     match future::select(
         {
-            let client = Arc::clone(&client);
+            let client = client.clone();
             let plot = plot.clone();
             let commitments = commitments.clone();
             let public_key = keypair.public;
@@ -164,7 +162,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting(
-    client: Arc<WsClient>,
+    client: RpcClient,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
@@ -178,9 +176,7 @@ async fn background_plotting(
         pre_genesis_object_size,
         pre_genesis_object_count,
         pre_genesis_object_seed,
-    } = client
-        .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
-        .await?;
+    } = client.farmer_metadata().await?;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
@@ -198,12 +194,7 @@ async fn background_plotting(
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
-        let maybe_last_archived_block = client
-            .request(
-                "subspace_getBlockByNumber",
-                JsonRpcParams::Array(vec![serde_json::to_value(last_archived_block_number)?]),
-            )
-            .await?;
+        let maybe_last_archived_block = client.block_by_number(last_archived_block_number).await?;
 
         match maybe_last_archived_block {
             Some(EncodedBlockWithObjectMapping {
@@ -321,9 +312,9 @@ async fn background_plotting(
         .map(|n| n + 1)
         .unwrap_or_default();
 
-    // Erasure coding in archiver and piece encoding are a CPU-intensive operations
+    // Erasure coding in archiver and piece encoding are CPU-intensive operations.
     tokio::task::spawn_blocking({
-        let client = Arc::clone(&client);
+        let client = client.clone();
         let weak_plot = weak_plot.clone();
 
         #[allow(clippy::mut_range_bound)]
@@ -342,17 +333,10 @@ async fn background_plotting(
 
                 let mut last_root_block = None;
                 for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                    let block_fut = client
-                        .request::<'_, '_, '_, Option<EncodedBlockWithObjectMapping>>(
-                            "subspace_getBlockByNumber",
-                            JsonRpcParams::Array(vec![
-                                serde_json::to_value(block_to_archive).unwrap()
-                            ]),
-                        );
                     let EncodedBlockWithObjectMapping {
                         block,
                         object_mapping,
-                    } = match runtime_handle.block_on(block_fut) {
+                    } = match runtime_handle.block_on(client.block_by_number(block_to_archive)) {
                         Ok(Some(block)) => block,
                         Ok(None) => {
                             error!(
@@ -439,15 +423,8 @@ async fn background_plotting(
         }
     });
 
-    info!("Subscribing to new heads notifications");
-
-    let mut subscription: Subscription<NewHead> = client
-        .subscribe(
-            "chain_subscribeNewHead",
-            JsonRpcParams::NoParams,
-            "chain_unsubscribeNewHead",
-        )
-        .await?;
+    info!("Subscribing to new heads");
+    let mut subscription: Subscription<NewHead> = client.subscribe_new_head().await?;
 
     let block_to_archive = Arc::new(AtomicU32::default());
     // Listen for new blocks produced on the network
@@ -491,7 +468,7 @@ fn create_global_object_mapping(
 }
 
 async fn subscribe_to_slot_info(
-    client: &WsClient,
+    client: &RpcClient,
     plot: &Plot,
     commitments: &Commitments,
     keypair: &Keypair,
@@ -500,13 +477,7 @@ async fn subscribe_to_slot_info(
     let farmer_public_key_hash = crypto::sha256_hash(&keypair.public);
 
     info!("Subscribing to slot info notifications");
-    let mut subscription: Subscription<SlotInfo> = client
-        .subscribe(
-            "subspace_subscribeSlotInfo",
-            JsonRpcParams::NoParams,
-            "subspace_unsubscribeSlotInfo",
-        )
-        .await?;
+    let mut subscription: Subscription<SlotInfo> = client.subscribe_slot_info().await?;
 
     let mut salts = Salts::default();
 
@@ -544,16 +515,11 @@ async fn subscribe_to_slot_info(
         };
 
         client
-            .request(
-                "subspace_proposeProofOfReplication",
-                JsonRpcParams::Array(vec![serde_json::to_value(
-                    &ProposedProofOfReplicationResponse {
-                        slot_number: slot_info.slot_number,
-                        solution,
-                        secret_key: keypair.secret.to_bytes().into(),
-                    },
-                )?]),
-            )
+            .propose_proof_of_replication(ProposedProofOfReplicationResponse {
+                slot_number: slot_info.slot_number,
+                solution,
+                secret_key: keypair.secret.to_bytes().into(),
+            })
             .await?;
     }
 

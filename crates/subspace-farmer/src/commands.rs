@@ -1,3 +1,3 @@
-mod farm;
+pub mod farm;
 
-pub(crate) use farm::farm;
+pub(crate) use farm::start_farm;

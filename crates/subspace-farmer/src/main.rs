@@ -20,6 +20,7 @@ mod commands;
 mod commitments;
 mod object_mappings;
 mod plot;
+mod rpc;
 mod utils;
 
 use anyhow::Result;
@@ -94,7 +95,7 @@ async fn main() -> Result<()> {
             ws_server,
         } => {
             let path = utils::get_path(custom_path);
-            commands::farm(path, &ws_server).await?;
+            commands::start_farm(path, &ws_server).await?;
         }
     }
     Ok(())
