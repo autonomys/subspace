@@ -14,14 +14,6 @@ pub struct RpcClient {
     client: Arc<WsClient>,
 }
 
-impl From<WsClient> for RpcClient {
-    fn from(client: WsClient) -> Self {
-        Self {
-            client: Arc::new(client),
-        }
-    }
-}
-
 impl RpcClient {
     /// Create a new instance of [`RpcClient`].
     pub async fn new(url: &str) -> Result<Self, Error> {
