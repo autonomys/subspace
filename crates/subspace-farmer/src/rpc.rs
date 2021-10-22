@@ -2,10 +2,9 @@ use crate::commands::{
     EncodedBlockWithObjectMapping, FarmerMetadata, NewHead, ProposedProofOfReplicationResponse,
     SlotInfo,
 };
-use anyhow::Result;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
-use jsonrpsee::types::Subscription;
+use jsonrpsee::types::{Error, Subscription};
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
 
@@ -25,35 +24,33 @@ impl From<WsClient> for RpcClient {
 
 impl RpcClient {
     /// Create a new instance of [`RpcClient`].
-    pub async fn new(url: &str) -> Result<Self> {
+    pub async fn new(url: &str) -> Result<Self, Error> {
         let client = Arc::new(WsClientBuilder::default().build(url).await?);
         Ok(Self { client })
     }
 
     /// Get farmer metadata.
-    pub async fn farmer_metadata(&self) -> Result<FarmerMetadata> {
+    pub async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error> {
         self.client
             .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
             .await
-            .map_err(Into::into)
     }
 
     /// Get a block by number.
     pub async fn block_by_number(
         &self,
         block_number: u32,
-    ) -> Result<Option<EncodedBlockWithObjectMapping>> {
+    ) -> Result<Option<EncodedBlockWithObjectMapping>, Error> {
         self.client
             .request(
                 "subspace_getBlockByNumber",
                 JsonRpcParams::Array(vec![serde_json::to_value(block_number)?]),
             )
             .await
-            .map_err(Into::into)
     }
 
     /// Subscribe to chain head.
-    pub async fn subscribe_new_head(&self) -> Result<Subscription<NewHead>> {
+    pub async fn subscribe_new_head(&self) -> Result<Subscription<NewHead>, Error> {
         self.client
             .subscribe(
                 "chain_subscribeNewHead",
@@ -61,11 +58,10 @@ impl RpcClient {
                 "chain_unsubscribeNewHead",
             )
             .await
-            .map_err(Into::into)
     }
 
     /// Subscribe to slot.
-    pub async fn subscribe_slot_info(&self) -> Result<Subscription<SlotInfo>> {
+    pub async fn subscribe_slot_info(&self) -> Result<Subscription<SlotInfo>, Error> {
         self.client
             .subscribe(
                 "subspace_subscribeSlotInfo",
@@ -73,20 +69,18 @@ impl RpcClient {
                 "subspace_unsubscribeSlotInfo",
             )
             .await
-            .map_err(Into::into)
     }
 
     /// Propose PoR.
     pub async fn propose_proof_of_replication(
         &self,
         por: ProposedProofOfReplicationResponse,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         self.client
             .request(
                 "subspace_proposeProofOfReplication",
                 JsonRpcParams::Array(vec![serde_json::to_value(&por)?]),
             )
             .await
-            .map_err(Into::into)
     }
 }
