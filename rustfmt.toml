@@ -1,3 +1,4 @@
+edition = "2021"
 ignore = [
     # This is where Substrate sources with custom formatting are, don't touch them
     "/substrate",
