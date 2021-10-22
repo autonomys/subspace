@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-pub fn get_path(custom_path: Option<PathBuf>) -> PathBuf {
+pub(crate) fn get_path(custom_path: Option<PathBuf>) -> PathBuf {
     // set storage path
     let path = custom_path
         .or_else(|| std::env::var("SUBSPACE_DIR").map(PathBuf::from).ok())

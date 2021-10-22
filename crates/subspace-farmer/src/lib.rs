@@ -17,7 +17,5 @@
 #![feature(hash_drain_filter)]
 
 pub use identity::Identity;
-pub use utils::get_path;
 
 pub(crate) mod identity;
-pub(crate) mod utils;
