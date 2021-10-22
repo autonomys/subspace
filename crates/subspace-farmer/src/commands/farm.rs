@@ -1,8 +1,11 @@
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
-use crate::{Salt, Tag};
+use crate::rpc::{
+    EncodedBlockWithObjectMapping, FarmerMetadata, NewHead, ProposedProofOfReplicationResponse,
+    RpcClient, SlotInfo, Solution,
+};
+use crate::Salt;
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
@@ -10,7 +13,6 @@ use jsonrpsee::types::Subscription;
 use log::{debug, error, info, trace};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{Keypair, PublicKey};
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -18,83 +20,9 @@ use std::sync::Arc;
 use std::time::Instant;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::objects::{
-    BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
-};
+use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{crypto, Sha256Hash};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
-
-type SlotNumber = u64;
-
-/// Metadata necessary for farmer operation
-#[derive(Debug, Deserialize)]
-pub struct FarmerMetadata {
-    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
-    /// to the client-dependent transaction confirmation depth `k`).
-    confirmation_depth_k: u32,
-    /// The size of data in one piece (in bytes).
-    record_size: u32,
-    /// Recorded history is encoded and plotted in segments of this size (in bytes).
-    recorded_history_segment_size: u32,
-    /// This constant defines the size (in bytes) of one pre-genesis object.
-    pre_genesis_object_size: u32,
-    /// This constant defines the number of a pre-genesis objects that will bootstrap the
-    /// history.
-    pre_genesis_object_count: u32,
-    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-    /// the history.
-    pre_genesis_object_seed: Vec<u8>,
-}
-
-/// Encoded block with mapping of objects that it contains
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncodedBlockWithObjectMapping {
-    /// Encoded block
-    block: Vec<u8>,
-    /// Mapping of objects inside of the block
-    object_mapping: BlockObjectMapping,
-}
-
-// There are more fields in this struct, but we only care about one
-#[derive(Debug, Deserialize)]
-pub struct NewHead {
-    number: String,
-}
-
-#[derive(Debug, Serialize)]
-struct Solution {
-    public_key: [u8; 32],
-    piece_index: u64,
-    encoding: Vec<u8>,
-    signature: Vec<u8>,
-    tag: Tag,
-}
-
-/// Proposed proof of space consisting of solution and farmer's secret key for block signing
-#[derive(Debug, Serialize)]
-pub struct ProposedProofOfReplicationResponse {
-    /// Slot number
-    slot_number: SlotNumber,
-    /// Solution (if present) from farmer's plot corresponding to slot number above
-    solution: Option<Solution>,
-    // Secret key, used for signing blocks on the client node
-    secret_key: Vec<u8>,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Deserialize)]
-pub struct SlotInfo {
-    /// Slot number
-    slot_number: SlotNumber,
-    /// Slot challenge
-    challenge: [u8; 8],
-    /// Salt
-    salt: Salt,
-    /// Salt for the next eon
-    next_salt: Option<Salt>,
-    /// Acceptable solution range
-    solution_range: u64,
-}
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
@@ -495,14 +423,13 @@ async fn subscribe_to_slot_info(
         {
             Some((tag, piece_index)) => {
                 let encoding = plot.read(piece_index).await?;
-                let solution = Solution {
-                    public_key: keypair.public.to_bytes(),
+                let solution = Solution::new(
+                    keypair.public.to_bytes(),
                     piece_index,
-                    encoding: encoding.to_vec(),
-                    signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
+                    encoding.to_vec(),
+                    keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
                     tag,
-                };
-
+                );
                 debug!("Solution found");
                 trace!("Solution found: {:?}", solution);
 
