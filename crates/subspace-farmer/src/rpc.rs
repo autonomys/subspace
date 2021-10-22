@@ -1,4 +1,4 @@
-use crate::commands::farm::{
+use crate::commands::{
     EncodedBlockWithObjectMapping, FarmerMetadata, NewHead, ProposedProofOfReplicationResponse,
     SlotInfo,
 };
