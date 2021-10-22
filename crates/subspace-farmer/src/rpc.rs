@@ -1,4 +1,4 @@
-use crate::{Salt, Tag};
+use crate::common::{Salt, Tag};
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::{Error, Subscription};
