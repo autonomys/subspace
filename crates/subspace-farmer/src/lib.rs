@@ -16,6 +16,6 @@
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-pub use identity::Identity;
-
 pub(crate) mod identity;
+
+pub use identity::Identity;

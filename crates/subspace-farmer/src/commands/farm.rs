@@ -11,7 +11,6 @@ use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Subscription;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use log::{debug, error, info, trace};
-use schnorrkel::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -152,12 +151,12 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()>
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting(
+async fn background_plotting<P: AsRef<[u8]>>(
     client: Arc<WsClient>,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
-    public_key: &PublicKey,
+    public_key: &P,
 ) -> Result<()> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {

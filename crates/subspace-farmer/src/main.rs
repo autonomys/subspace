@@ -16,13 +16,6 @@
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-use anyhow::Result;
-use clap::{AppSettings, Clap, ValueHint};
-use env_logger::Env;
-use log::info;
-use std::fs;
-use std::path::{Path, PathBuf};
-
 mod commands;
 mod commitments;
 mod common;
@@ -30,6 +23,13 @@ mod identity;
 mod object_mappings;
 mod plot;
 mod utils;
+
+use anyhow::Result;
+use clap::{AppSettings, Clap, ValueHint};
+use env_logger::Env;
+use log::info;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 // TODO: Separate commands for erasing the plot and wiping everyting
 #[derive(Debug, Clap)]
