@@ -19,7 +19,6 @@ use reed_solomon_erasure::galois_16::ReedSolomon;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
 use subspace_core_primitives::objects::{
@@ -644,28 +643,19 @@ impl<State: private::ArchiverState> Archiver<State> {
         // Take records, combine them with witnesses (Merkle proofs) to produce data and parity
         // pieces
         let pieces: Vec<Piece> = records
-            .into_iter()
+            .iter()
             .enumerate()
-            .map(|(position, record)| {
-                let witness = merkle_tree
-                    .get_witness(position)
-                    .expect("We use the same indexes as during Merkle tree creation; qed");
-                let mut piece: Piece = [0u8; PIECE_SIZE];
-
-                piece.as_mut().write_all(&record).expect(
-                    "With correct archiver parameters record is always smaller than \
-                    piece size; qed",
-                );
-                drop(record);
-
-                (&mut piece[self.record_size..]).write_all(&witness).expect(
-                    "Parameters are verified in the archiver constructor to make sure this \
-                    never happens; qed",
-                );
-
-                piece
+            .filter_map(|(position, record)| {
+                merkle_tree.get_witness(position).ok().and_then(|witness| {
+                    let mut piece = Vec::with_capacity(PIECE_SIZE);
+                    piece.extend_from_slice(record);
+                    piece.extend_from_slice(&witness);
+                    piece.try_into().ok()
+                })
             })
             .collect();
+
+        assert!(pieces.len() == records.len());
 
         let segment_index = self.segment_index;
         let merkle_tree_root = merkle_tree.root();
