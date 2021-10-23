@@ -178,12 +178,11 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     let subspace_solving = SubspaceCodec::new(&solution.public_key);
 
     let mut piece = solution.encoding.clone();
-    if subspace_solving
+
+    // Ensure piece is decodable.
+    subspace_solving
         .decode(solution.piece_index, &mut piece)
-        .is_err()
-    {
-        return Err(Error::InvalidEncoding(slot));
-    }
+        .map_err(|_| Error::InvalidEncoding(slot))?;
 
     if !archiver::is_piece_valid(
         &piece,

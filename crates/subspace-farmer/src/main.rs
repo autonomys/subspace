@@ -22,6 +22,7 @@ mod common;
 mod identity;
 mod object_mappings;
 mod plot;
+mod rpc;
 mod utils;
 
 use anyhow::Result;
