@@ -4,13 +4,12 @@ use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, NewHead, ProposedProofOfReplicationResponse,
-    RpcClient, SlotInfo, Solution,
+    EncodedBlockWithObjectMapping, FarmerMetadata, ProposedProofOfReplicationResponse, RpcClient,
+    SlotInfo, Solution,
 };
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::future::Either;
-use jsonrpsee::types::Subscription;
 use log::{debug, error, info, trace};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -25,25 +24,25 @@ use subspace_solving::SubspaceCodec;
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
-    info!("Connecting to RPC server");
-    let client = RpcClient::new(ws_server).await?;
-
-    let identity = Identity::open_or_create(&base_directory)?;
-
-    // TODO: This doesn't account for the fact that node can have a completely different history to
-    //  what farmer expects
+    // TODO: This doesn't account for the fact that node can
+    // have a completely different history to what farmer expects
     info!("Opening plot");
     let plot = Plot::open_or_create(&base_directory.clone().into()).await?;
+
     info!("Opening commitments");
     let commitments = Commitments::new(base_directory.join("commitments").into()).await?;
+
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
         let path = base_directory.join("object-mappings");
-
         move || ObjectMappings::new(&path)
     })
-    .await
-    .unwrap()?;
+    .await??;
+
+    info!("Connecting to RPC server: {}", ws_server);
+    let client = RpcClient::new(ws_server).await?;
+
+    let identity = Identity::open_or_create(&base_directory)?;
 
     match future::select(
         {
@@ -340,14 +339,15 @@ async fn background_plotting<P: AsRef<[u8]>>(
     });
 
     info!("Subscribing to new heads");
-    let mut subscription: Subscription<NewHead> = client.subscribe_new_head().await?;
+    let mut new_head = client.subscribe_new_head().await?;
 
     let block_to_archive = Arc::new(AtomicU32::default());
+
     // Listen for new blocks produced on the network
-    while let Some(new_head) = subscription.next().await? {
+    while let Some(head) = new_head.next().await? {
         // Numbers are in the format `0xabcd`, so strip `0x` prefix and interpret the rest as an
         // integer in hex
-        let block_number = u32::from_str_radix(&new_head.number[2..], 16).unwrap();
+        let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
         debug!("Last block number: {:#?}", block_number);
 
         if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
@@ -391,12 +391,12 @@ async fn subscribe_to_slot_info(
 ) -> Result<()> {
     let farmer_public_key_hash = crypto::sha256_hash(&identity.public_key());
 
-    info!("Subscribing to slot info notifications");
-    let mut subscription: Subscription<SlotInfo> = client.subscribe_slot_info().await?;
+    info!("Subscribing to slot info");
+    let mut new_slots = client.subscribe_slot_info().await?;
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = subscription.next().await? {
+    while let Some(slot_info) = new_slots.next().await? {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
