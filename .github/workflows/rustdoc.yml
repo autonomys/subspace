@@ -1,0 +1,45 @@
+name: rustdoc
+
+on:
+  push:
+   branches:
+   - main
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTFLAGS: "-D warnings -W unreachable-pub"
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  rustdoc:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        target: wasm32-unknown-unknown
+        profile: minimal
+        override: true
+        components: rustfmt, rust-src
+
+      # Build the rust crate docs
+      # Use `RUSTC_BOOTSTRAP` in order to use the `--enable-index-page` flag of rustdoc
+      # This is needed in order to generate a landing page `index.html` for workspaces
+    - name: Build Documentation
+      run: cargo doc --all --no-deps --lib
+      env:
+          RUSTC_BOOTSTRAP: 1
+          RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
+
+    - name: Deploy Docs
+      uses: JamesIves/github-pages-deploy-action@releases/v3
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh-pages
+        FOLDER: target/doc
