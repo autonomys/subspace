@@ -55,12 +55,18 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
         ChainType::Custom("Subspace testnet".to_string()),
         // TODO: Provide a way for farmer to start with these accounts
         || {
+            // st6iwqnxNab6JUawtmqUmftG2oSsKoTaWzbg9PxdWrWw5C6Th
+            let root_account: AccountId =
+                "0x14682f9dea76a4dd47172a118eb29b9cf9976df7ade12f95709a7cd2e3d81d6c"
+                    .parse()
+                    .expect("Wrong root account ID");
             testnet_genesis(
                 WASM_BINARY.expect("Wasm binary must be built for testnet"),
                 // Sudo account
-                get_account_id_from_seed::<sr25519::Public>("Alice"),
+                root_account.clone(),
                 // Pre-funded accounts
                 vec![
+                    root_account,
                     get_account_id_from_seed::<sr25519::Public>("Alice"),
                     get_account_id_from_seed::<sr25519::Public>("Bob"),
                     get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
