@@ -58,7 +58,7 @@ async fn last_root_block() {
         prev_root_block_hash: rand::random(),
         last_archived_block: LastArchivedBlock {
             number: rand::random(),
-            bytes: Some(rand::random()),
+            partial_archived: Some(rand::random()),
         },
     };
 

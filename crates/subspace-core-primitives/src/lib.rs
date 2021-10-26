@@ -14,6 +14,7 @@
 // limitations under the License.
 
 //! Core primitives for Subspace Network.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_docs)]
@@ -76,8 +77,10 @@ pub type Salt = [u8; 8];
 pub struct LastArchivedBlock {
     /// Number of this block.
     pub number: u32,
-    /// `None` if the block was archived fully or number of bytes otherwise
-    pub bytes: Option<u32>,
+    /// Number of paritally archived bytes of a block.
+    ///
+    /// `None` if the block has been fully archived fully.
+    pub partial_archived: Option<u32>,
 }
 
 /// This type represents the digest of a segment.
@@ -130,7 +133,7 @@ impl RootBlock {
         }
     }
 
-    /// Merkle tree root of all pieces within segment
+    /// Merkle root of the records of a segment.
     pub fn record_root(&self) -> Sha256Hash {
         match self {
             Self::V0 { record_root, .. } => *record_root,
