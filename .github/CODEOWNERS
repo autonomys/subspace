@@ -1,14 +1,14 @@
 # Order matters
 # below ones takes precedence over the upper ones
 
-# Nazar & Jeremiah - global owners
+# Global owners
 *                       @nazar-pc @rg3l3dr
 
-# Justin - scripts
+# Scripts
 /scripts/               @ImmaZoni
 
-# Liu-Cheng Xu - Protocol
+# Protocol
 /crates/                @liuchengxu
 
-# Ozgun & Liu-Cheng Xu - farmer
+# Farmer
 /crates/subspace-farmer/ @ozgunozerk @liuchengxu
