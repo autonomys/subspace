@@ -105,7 +105,7 @@ pub struct RpcClient {
 
 impl RpcClient {
     /// Create a new instance of [`RpcClient`].
-    pub(super) async fn new(url: &str) -> Result<Self, Error> {
+    pub async fn new(url: &str) -> Result<Self, Error> {
         let client = Arc::new(WsClientBuilder::default().build(url).await?);
         Ok(Self { client })
     }
