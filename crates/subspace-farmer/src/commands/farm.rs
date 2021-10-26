@@ -23,7 +23,8 @@ use subspace_solving::SubspaceCodec;
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
+pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
+    // TODO: revert this to pub(crate) again (temporarily modified)
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");

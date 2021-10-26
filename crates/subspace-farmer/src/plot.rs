@@ -64,7 +64,7 @@ struct Inner {
 /// cycle repeats. This allows finding solution with as little delay as possible while introducing
 /// changes to the plot at the same time (re-plotting on salt changes or extending plot size).
 #[derive(Clone)]
-pub(crate) struct Plot {
+pub struct Plot {
     inner: Arc<Inner>,
 }
 

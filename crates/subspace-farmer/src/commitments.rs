@@ -88,7 +88,7 @@ struct Inner {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct Commitments {
+pub struct Commitments {
     inner: Arc<Inner>,
 }
 

@@ -16,7 +16,7 @@ pub(crate) enum ObjectMappingError {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ObjectMappings {
+pub struct ObjectMappings {
     db: Arc<DB>,
 }
 
