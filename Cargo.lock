@@ -7244,6 +7244,7 @@ dependencies = [
  "serde",
  "sha2 0.9.8",
  "sp-core",
+ "sp-std",
 ]
 
 [[package]]
