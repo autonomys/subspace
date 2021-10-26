@@ -18,7 +18,7 @@ use thiserror::Error;
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 #[derive(Debug, Error)]
-pub(crate) enum PlotError {
+pub enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
     #[error("Metadata DB open error: {0}")]
@@ -70,7 +70,7 @@ pub struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub(crate) async fn open_or_create(base_directory: &PathBuf) -> Result<Plot, PlotError> {
+    pub async fn open_or_create(base_directory: &PathBuf) -> Result<Plot, PlotError> {
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)

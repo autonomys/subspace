@@ -29,4 +29,5 @@ pub use commitments::Commitments;
 pub use identity::Identity;
 pub use object_mappings::ObjectMappings;
 pub use plot::Plot;
+pub use plot::PlotError;
 pub use rpc::RpcClient;
