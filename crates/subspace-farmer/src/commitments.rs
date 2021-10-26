@@ -20,7 +20,7 @@ const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 
 #[derive(Debug, Error)]
-pub(crate) enum CommitmentError {
+pub enum CommitmentError {
     #[error("Metadata DB error: {0}")]
     MetadataDb(rocksdb::Error),
     #[error("Commitment DB error: {0}")]
@@ -94,7 +94,7 @@ pub struct Commitments {
 
 impl Commitments {
     /// Creates new commitments database
-    pub(super) async fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
+    pub async fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
         // Cache size is just enough for last 2 salts to be stored
         let commitment_databases_fut = tokio::task::spawn_blocking({
             let base_directory = base_directory.clone();

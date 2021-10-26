@@ -25,6 +25,7 @@ pub(crate) mod plot;
 pub(crate) mod rpc;
 
 pub use commands::farm;
+pub use commitments::CommitmentError;
 pub use commitments::Commitments;
 pub use identity::Identity;
 pub use object_mappings::ObjectMappings;
