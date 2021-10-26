@@ -1,0 +1,14 @@
+# Order matters
+# below ones takes precedence over the upper ones
+
+# Global owners
+*                       @nazar-pc @rg3l3dr
+
+# Scripts
+/scripts/               @ImmaZoni @nazar-pc @rg3l3dr
+
+# Protocol
+/crates/                @liuchengxu @nazar-pc @rg3l3dr
+
+# Farmer
+/crates/subspace-farmer/ @ozgunozerk @liuchengxu @nazar-pc @rg3l3dr
