@@ -36,6 +36,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 
 [features]
 default = ["std"]
+no-early-solution-range-updates = []
 std = [
 	"codec/std",
 	"frame-support/std",
