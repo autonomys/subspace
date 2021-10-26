@@ -17,6 +17,7 @@ hmac = { version  = "0.11.0", default-features = false }
 parity-scale-codec = { version = "2.3.0", default-features = false, features = ["derive"] }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.130", default-features = false, features = ["alloc", "derive"] }
+sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "91b386ff07a85b3dd50ff3ed29c97e6b29d15f05" }
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
@@ -37,4 +38,5 @@ std = [
     "scale-info/std",
     "serde/std",
     "sha2/std",
+    "sp-core/std",
 ]

@@ -7243,6 +7243,7 @@ dependencies = [
  "scale-info",
  "serde",
  "sha2 0.9.8",
+ "sp-core",
 ]
 
 [[package]]

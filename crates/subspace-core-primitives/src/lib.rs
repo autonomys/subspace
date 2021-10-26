@@ -25,6 +25,7 @@ pub mod objects;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_core::RuntimeDebug;
 
 /// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
@@ -59,8 +60,8 @@ pub type Salt = [u8; 8];
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 pub struct LastArchivedBlock {
     /// Block number
     pub number: u32,
@@ -82,8 +83,8 @@ pub struct LastArchivedBlock {
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum RootBlock {
     /// V0 of the root block data structure

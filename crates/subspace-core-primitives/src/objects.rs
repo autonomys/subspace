@@ -28,6 +28,7 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_core::RuntimeDebug;
 
 /// Object stored inside of the block
 #[derive(
@@ -43,8 +44,8 @@ use serde::{Deserialize, Serialize};
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum BlockObject {
     /// V0 of object mapping data structure
@@ -89,8 +90,8 @@ impl BlockObject {
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 pub struct BlockObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<BlockObject>,
@@ -110,8 +111,8 @@ pub struct BlockObjectMapping {
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum PieceObject {
     /// V0 of object mapping data structure
@@ -154,8 +155,8 @@ impl PieceObject {
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 pub struct PieceObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<PieceObject>,
@@ -175,8 +176,8 @@ pub struct PieceObjectMapping {
     TypeInfo,
     Serialize,
     Deserialize,
+    RuntimeDebug,
 )]
-#[cfg_attr(feature = "std", derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum GlobalObject {
     /// V0 of object mapping data structure
