@@ -651,7 +651,7 @@ impl<T: Config> Pallet<T> {
         let adjustment_factor =
             (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-        // TODO: Temporary testnet hack, we don't update solution range for the first 15_00 blocks
+        // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
         //  in order to seed the blockchain with data quickly
         #[cfg(all(feature = "no-early-solution-range-updates", not(test)))]
         let solution_range = if block_number < 15_000_u32.into() {
