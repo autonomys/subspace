@@ -54,7 +54,7 @@ async fn last_root_block() {
 
     let root_block = RootBlock::V0 {
         segment_index: rand::random(),
-        merkle_tree_root: rand::random(),
+        record_root: rand::random(),
         prev_root_block_hash: rand::random(),
         last_archived_block: LastArchivedBlock {
             number: rand::random(),

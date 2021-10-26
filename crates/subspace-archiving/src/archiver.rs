@@ -667,22 +667,17 @@ impl<State: private::ArchiverState> Archiver<State> {
             })
             .collect();
 
-        let segment_index = self.segment_index;
-        let merkle_tree_root = merkle_tree.root();
-
         // Now produce root block
         let root_block = RootBlock::V0 {
-            segment_index,
-            merkle_tree_root,
+            segment_index: self.segment_index,
+            record_root: merkle_tree.root(),
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };
 
-        let root_block_hash = root_block.hash();
-
         // Update state
-        self.segment_index = segment_index + 1;
-        self.prev_root_block_hash = root_block_hash;
+        self.segment_index += 1;
+        self.prev_root_block_hash = root_block.hash();
 
         // Add root block to the beginning of the buffer to be the first thing included in the next
         // segment

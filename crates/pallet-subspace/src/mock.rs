@@ -302,7 +302,7 @@ pub fn generate_equivocation_proof(
 pub fn create_root_block(segment_index: u64) -> RootBlock {
     RootBlock::V0 {
         segment_index,
-        merkle_tree_root: Sha256Hash::default(),
+        record_root: Sha256Hash::default(),
         prev_root_block_hash: Sha256Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,

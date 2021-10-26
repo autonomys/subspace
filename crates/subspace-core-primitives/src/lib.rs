@@ -108,8 +108,8 @@ pub enum RootBlock {
     V0 {
         /// Segment index
         segment_index: u64,
-        /// Merkle tree root of all pieces within segment
-        merkle_tree_root: Sha256Hash,
+        /// Merkle root of the records in a segment.
+        record_root: Sha256Hash,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Sha256Hash,
         /// Last archived block
@@ -131,11 +131,9 @@ impl RootBlock {
     }
 
     /// Merkle tree root of all pieces within segment
-    pub fn merkle_tree_root(&self) -> Sha256Hash {
+    pub fn record_root(&self) -> Sha256Hash {
         match self {
-            Self::V0 {
-                merkle_tree_root, ..
-            } => *merkle_tree_root,
+            Self::V0 { record_root, .. } => *record_root,
         }
     }
 
