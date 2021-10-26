@@ -59,16 +59,14 @@ impl BlockObject {
     /// Object hash
     pub fn hash(&self) -> Sha256Hash {
         match self {
-            BlockObject::V0 { hash, .. } => *hash,
+            Self::V0 { hash, .. } => *hash,
         }
     }
 
     /// Offset of the object (limited to 24-bit size internally)
     pub fn offset(&self) -> u32 {
         match self {
-            BlockObject::V0 { offset, .. } => {
-                u32::from_le_bytes([offset[0], offset[1], offset[2], 0])
-            }
+            Self::V0 { offset, .. } => u32::from_le_bytes([offset[0], offset[1], offset[2], 0]),
         }
     }
 }
@@ -126,14 +124,14 @@ impl PieceObject {
     /// Object hash
     pub fn hash(&self) -> Sha256Hash {
         match self {
-            PieceObject::V0 { hash, .. } => *hash,
+            Self::V0 { hash, .. } => *hash,
         }
     }
 
     /// Offset of the object
     pub fn offset(&self) -> u16 {
         match self {
-            PieceObject::V0 { offset, .. } => *offset,
+            Self::V0 { offset, .. } => *offset,
         }
     }
 }
@@ -191,14 +189,14 @@ impl GlobalObject {
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     pub fn piece_index(&self) -> u64 {
         match self {
-            GlobalObject::V0 { piece_index, .. } => *piece_index,
+            Self::V0 { piece_index, .. } => *piece_index,
         }
     }
 
     /// Offset of the object
     pub fn offset(&self) -> u16 {
         match self {
-            GlobalObject::V0 { offset, .. } => *offset,
+            Self::V0 { offset, .. } => *offset,
         }
     }
 }

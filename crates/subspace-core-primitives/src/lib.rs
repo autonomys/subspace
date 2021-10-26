@@ -27,22 +27,33 @@ use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::RuntimeDebug;
 
-/// Size of Sha2-256 hash output (in bytes)
+/// Byte size of `sha2::Sha256Hash` output.
 pub const SHA256_HASH_SIZE: usize = 32;
-/// Piece size in Subspace Network (in bytes)
+
+/// Byte size of a piece in Subspace Network, 4KiB.
+///
+/// This can not changed after the network is launched.
 pub const PIECE_SIZE: usize = 4096;
-/// The length of the Randomness.
+
+/// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
-// TODO: Create new types out of these
-/// Sha2-256 hash output
+/// Type of the output of `sha2::Sha256Hash`.
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
-/// Piece size in Subspace Network
+
+/// Type of a piece in Subspace Network.
+///
+/// TODO: explain the content of a piece somewhere?
 pub type Piece = [u8; PIECE_SIZE];
-/// Randomness value.
+
+/// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
-/// Commitment tag for a particular piece.
+
+/// Type of the commitment for a particular piece.
+///
+/// TODO: why not use `Commitment` directly?
 pub type Tag = [u8; 8];
+
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; 8];
 
@@ -63,13 +74,17 @@ pub type Salt = [u8; 8];
     RuntimeDebug,
 )]
 pub struct LastArchivedBlock {
-    /// Block number
+    /// Number of this block.
     pub number: u32,
     /// `None` if the block was archived fully or number of bytes otherwise
     pub bytes: Option<u32>,
 }
 
-/// Root block for a specific segment
+/// This type represents the digest of a segment.
+///
+/// Each segment will contain a [`RootBlock`].
+///
+/// TODO: explain why `RootBlock` is more appropriate than `SegmentDigest`?
 #[derive(
     Copy,
     Clone,
@@ -111,14 +126,14 @@ impl RootBlock {
     /// Segment index
     pub fn segment_index(&self) -> u64 {
         match self {
-            RootBlock::V0 { segment_index, .. } => *segment_index,
+            Self::V0 { segment_index, .. } => *segment_index,
         }
     }
 
     /// Merkle tree root of all pieces within segment
     pub fn merkle_tree_root(&self) -> Sha256Hash {
         match self {
-            RootBlock::V0 {
+            Self::V0 {
                 merkle_tree_root, ..
             } => *merkle_tree_root,
         }
@@ -127,7 +142,7 @@ impl RootBlock {
     /// Hash of the root block of the previous segment
     pub fn prev_root_block_hash(&self) -> Sha256Hash {
         match self {
-            RootBlock::V0 {
+            Self::V0 {
                 prev_root_block_hash,
                 ..
             } => *prev_root_block_hash,
@@ -137,7 +152,7 @@ impl RootBlock {
     /// Last archived block
     pub fn last_archived_block(&self) -> LastArchivedBlock {
         match self {
-            RootBlock::V0 {
+            Self::V0 {
                 last_archived_block,
                 ..
             } => *last_archived_block,
