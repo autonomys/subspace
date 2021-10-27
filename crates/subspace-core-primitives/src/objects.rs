@@ -23,27 +23,17 @@
 use crate::Sha256Hash;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_core::RuntimeDebug;
 use sp_std::vec::Vec;
 
 /// Object stored inside of the block
 #[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum BlockObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
@@ -73,20 +63,10 @@ impl BlockObject {
 
 /// Mapping of objects stored inside of the block
 #[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct BlockObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<BlockObject>,
@@ -94,21 +74,10 @@ pub struct BlockObjectMapping {
 
 /// Object stored inside of the block
 #[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum PieceObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
@@ -138,20 +107,10 @@ impl PieceObject {
 
 /// Mapping of objects stored inside of the piece
 #[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct PieceObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<PieceObject>,
@@ -159,21 +118,10 @@ pub struct PieceObjectMapping {
 
 /// Object stored inside in the history of the blockchain
 #[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum GlobalObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]

@@ -25,6 +25,7 @@ pub mod objects;
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_core::RuntimeDebug;
 
@@ -60,20 +61,10 @@ pub type Salt = [u8; 8];
 
 /// Last archived block
 #[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
     /// Number of this block.
     pub number: u32,
@@ -89,25 +80,13 @@ pub struct LastArchivedBlock {
 ///
 /// TODO: explain why `RootBlock` is more appropriate than `SegmentDigest`?
 #[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    RuntimeDebug,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum RootBlock {
     /// V0 of the root block data structure
     #[codec(index = 0)]
-    #[serde(rename_all = "camelCase")]
     V0 {
         /// Segment index
         segment_index: u64,
