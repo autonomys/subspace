@@ -18,7 +18,7 @@
 
 use super::{FarmerSignature, Slot, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID};
 use crate::FarmerPublicKey;
-use codec::{Codec, Decode, Encode};
+use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
@@ -81,7 +81,7 @@ pub struct NextEpochDescriptor {
 
 /// Information about the next epoch config, if changed. This is broadcast in the first
 /// block of the epoch, and applies using the same rules as `NextEpochDescriptor`.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, TypeInfo)]
+#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, MaxEncodedLen, TypeInfo)]
 pub enum NextConfigDescriptor {
     /// Version 1.
     #[codec(index = 1)]
