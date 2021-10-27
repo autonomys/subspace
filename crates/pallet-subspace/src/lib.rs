@@ -32,8 +32,9 @@ use codec::{Decode, Encode};
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
     dispatch::DispatchResultWithPostInfo,
-    traits::{Get, OnTimestampSet},
+    traits::{ConstU32, Get, OnTimestampSet},
     weights::{Pays, Weight},
+    BoundedVec,
 };
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
@@ -118,7 +119,7 @@ impl EonChangeTrigger for NormalEonChange {
     }
 }
 
-const UNDER_CONSTRUCTION_SEGMENT_LENGTH: usize = 256;
+const UNDER_CONSTRUCTION_SEGMENT_LENGTH: u32 = 256;
 
 type MaybeRandomness = Option<subspace_core_primitives::Randomness>;
 
@@ -131,6 +132,7 @@ pub mod pallet {
     /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -331,8 +333,16 @@ pub mod pallet {
 
     /// TWOX-NOTE: `SegmentIndex` is an increasing integer, so this is okay.
     #[pallet::storage]
-    pub(super) type UnderConstruction<T> =
-        StorageMap<_, Twox64Concat, u32, Vec<subspace_core_primitives::Randomness>, ValueQuery>;
+    pub(super) type UnderConstruction<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        u32,
+        BoundedVec<
+            subspace_core_primitives::Randomness,
+            ConstU32<UNDER_CONSTRUCTION_SEGMENT_LENGTH>,
+        >,
+        ValueQuery,
+    >;
 
     /// Temporary value (cleared at block finalization) which is `Some`
     /// if per-block initialization has already been called for current block.
@@ -779,14 +789,18 @@ impl<T: Config> Pallet<T> {
     fn deposit_randomness(randomness: &subspace_core_primitives::Randomness) {
         let segment_idx = SegmentIndex::<T>::get();
         let mut segment = UnderConstruction::<T>::get(&segment_idx);
-        if segment.len() < UNDER_CONSTRUCTION_SEGMENT_LENGTH {
+        if segment.try_push(*randomness).is_ok() {
             // push onto current segment: not full.
-            segment.push(*randomness);
             UnderConstruction::<T>::insert(&segment_idx, &segment);
         } else {
             // move onto the next segment and update the index.
             let segment_idx = segment_idx + 1;
-            UnderConstruction::<T>::insert(&segment_idx, &vec![*randomness]);
+            let bounded_randomness =
+                BoundedVec::<_, ConstU32<UNDER_CONSTRUCTION_SEGMENT_LENGTH>>::try_from(vec![
+                    *randomness,
+                ])
+                .expect("UNDER_CONSTRUCTION_SEGMENT_LENGTH >= 1");
+            UnderConstruction::<T>::insert(&segment_idx, bounded_randomness);
             SegmentIndex::<T>::put(&segment_idx);
         }
     }
@@ -868,7 +882,7 @@ impl<T: Config> Pallet<T> {
         let segment_idx: u32 = SegmentIndex::<T>::mutate(|s| sp_std::mem::replace(s, 0));
 
         // overestimate to the segment being full.
-        let rho_size = segment_idx.saturating_add(1) as usize * UNDER_CONSTRUCTION_SEGMENT_LENGTH;
+        let rho_size = (segment_idx.saturating_add(1) * UNDER_CONSTRUCTION_SEGMENT_LENGTH) as usize;
 
         let next_randomness = compute_randomness(
             this_randomness,
