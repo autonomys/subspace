@@ -29,7 +29,7 @@ use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::RuntimeDebug;
 
-/// Byte size of `sha2::Sha256Hash` output.
+/// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
 
 /// Byte size of a piece in Subspace Network, 4KiB.
@@ -40,7 +40,7 @@ pub const PIECE_SIZE: usize = 4096;
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
-/// Type of the output of `sha2::Sha256Hash`.
+/// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 
 /// Type of a piece in Subspace Network.
@@ -66,7 +66,7 @@ pub type Salt = [u8; 8];
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
-    /// Number of this block.
+    /// Block number
     pub number: u32,
     /// Number of paritally archived bytes of a block.
     ///
@@ -113,7 +113,7 @@ impl RootBlock {
         }
     }
 
-    /// Merkle root of the records of a segment.
+    /// Merkle root of the records in a segment.
     pub fn records_root(&self) -> Sha256Hash {
         match self {
             Self::V0 { records_root, .. } => *records_root,
