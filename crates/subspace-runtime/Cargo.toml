@@ -16,6 +16,7 @@ frame-executive = { version = "4.0.0-dev", default-features = false, git = "http
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
 hex-literal = { version = "0.3.3", optional = true }
+orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https://github.com/subspace/open-runtime-module-library", branch = "substrate-monthly-2021-10" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
@@ -57,6 +58,7 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
+	"orml-vesting/std",
 	"pallet-balances/std",
 	"pallet-feeds/std",
 	"pallet-offences-subspace/std",
@@ -86,6 +88,7 @@ runtime-benchmarks = [
 	"frame-system-benchmarking",
 	"frame-system/runtime-benchmarks",
 	"hex-literal",
+	"orml-vesting/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",

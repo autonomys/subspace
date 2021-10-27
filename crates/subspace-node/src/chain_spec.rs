@@ -19,8 +19,8 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, Signature, SubspaceConfig, SudoConfig, SystemConfig,
-    WASM_BINARY,
+    AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, Signature, SubspaceConfig,
+    SudoConfig, SystemConfig, VestingConfig, WASM_BINARY,
 };
 
 // The URL for the telemetry server.
@@ -66,6 +66,7 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
                     get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
                     get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
                 ],
+                vec![],
             )
         },
         // Bootnodes
@@ -106,6 +107,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
                     get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
                     get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
                 ],
+                vec![],
             )
         },
         // Bootnodes
@@ -150,6 +152,7 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
                     get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
                     get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
                 ],
+                vec![],
             )
         },
         // Bootnodes
@@ -170,6 +173,7 @@ fn testnet_genesis(
     wasm_binary: &[u8],
     root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
+    vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -192,5 +196,6 @@ fn testnet_genesis(
             // Assign network admin rights.
             key: root_key,
         },
+        vesting: VestingConfig { vesting },
     }
 }

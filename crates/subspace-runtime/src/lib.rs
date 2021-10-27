@@ -32,6 +32,7 @@ use frame_support::{
     },
 };
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::EnsureNever;
 use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
@@ -318,7 +319,7 @@ impl pallet_timestamp::Config for Runtime {
 
 parameter_types! {
     // TODO: this depends on the value of our native token?
-    pub const ExistentialDeposit: u128 = 500;
+    pub const ExistentialDeposit: Balance = 500;
     pub const MaxLocks: u32 = 50;
 }
 
@@ -369,6 +370,22 @@ impl pallet_feeds::Config for Runtime {
     type Event = Event;
 }
 
+parameter_types! {
+    // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
+    pub const MinVestedTransfer: Balance = 0;
+    pub const MaxVestingSchedules: u32 = 2;
+}
+
+impl orml_vesting::Config for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+    type MinVestedTransfer = MinVestedTransfer;
+    type VestedTransferOrigin = EnsureNever<AccountId>;
+    type WeightInfo = ();
+    type MaxVestingSchedules = MaxVestingSchedules;
+    type BlockNumberProvider = System;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
@@ -379,13 +396,15 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 1,
 
-        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned} = 2,
+        Subspace: pallet_subspace::{Pallet, Call, Config, Storage, Event, ValidateUnsigned} = 2,
         OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event} = 3,
 
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>} = 4,
+        Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>} = 4,
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 5,
 
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
+
+        Vesting: orml_vesting::{Pallet, Call, Config<T>, Storage, Event<T>} = 7,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>} = 100,
