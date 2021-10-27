@@ -670,7 +670,7 @@ impl<State: private::ArchiverState> Archiver<State> {
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
-            record_root: merkle_tree.root(),
+            records_root: merkle_tree.root(),
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };

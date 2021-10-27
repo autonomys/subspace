@@ -149,7 +149,7 @@ fn archiver() {
     for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             piece,
-            first_archived_segment.root_block.record_root(),
+            first_archived_segment.root_block.records_root(),
             position,
             RECORD_SIZE,
         ));
@@ -236,7 +236,7 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
-                archived_segment.root_block.record_root(),
+                archived_segment.root_block.records_root(),
                 position,
                 RECORD_SIZE,
             ));
@@ -279,7 +279,7 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
-                archived_segment.root_block.record_root(),
+                archived_segment.root_block.records_root(),
                 position,
                 RECORD_SIZE,
             ));
@@ -363,7 +363,7 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                record_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -390,7 +390,7 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                record_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -422,7 +422,7 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                record_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
