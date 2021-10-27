@@ -10,19 +10,19 @@ use subspace_core_primitives::Sha256Hash;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub(crate) enum ObjectMappingError {
+pub enum ObjectMappingError {
     #[error("DB error: {0}")]
     Db(rocksdb::Error),
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ObjectMappings {
+pub struct ObjectMappings {
     db: Arc<DB>,
 }
 
 impl ObjectMappings {
     /// Creates a new object mappings database
-    pub(super) fn new(path: &Path) -> Result<Self, ObjectMappingError> {
+    pub fn new(path: &Path) -> Result<Self, ObjectMappingError> {
         let db = DB::open_default(path).map_err(ObjectMappingError::Db)?;
 
         Ok(Self { db: Arc::new(db) })
