@@ -95,7 +95,7 @@ pub struct NormalEraChange;
 impl EraChangeTrigger for NormalEraChange {
     fn trigger<T: Config>(now: T::BlockNumber) {
         if <Pallet<T>>::should_era_change(now) {
-            <Pallet<T>>::enact_era_change();
+            <Pallet<T>>::enact_era_change(now);
         }
     }
 }
@@ -628,7 +628,7 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_era_change() {
+    pub fn enact_era_change(block_number: T::BlockNumber) {
         // PRECONDITION: caller has done initialization and is guaranteed by the session module to
         // be called before this.
         debug_assert!(Self::initialized().is_some());
@@ -651,6 +651,15 @@ impl<T: Config> Pallet<T> {
         let adjustment_factor =
             (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
+        // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
+        //  in order to seed the blockchain with data quickly
+        #[cfg(all(feature = "no-early-solution-range-updates", not(test)))]
+        let solution_range = if block_number < 15_000_u32.into() {
+            previous_solution_range
+        } else {
+            (previous_solution_range as f64 * adjustment_factor).round() as u64
+        };
+        #[cfg(not(all(feature = "no-early-solution-range-updates", not(test))))]
         let solution_range = (previous_solution_range as f64 * adjustment_factor).round() as u64;
 
         SolutionRange::<T>::put(solution_range);
