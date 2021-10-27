@@ -26,13 +26,15 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    crypto, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    crypto, ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE,
+    SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
-    partial_archived: Some(0),
+    // Special case for the genesis block.
+    archived_progress: ArchivedBlockProgress::Partial(0),
 };
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
@@ -346,7 +348,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                         // archived
                         last_archived_block.number += 1;
                     }
-                    last_archived_block.partial_archived = None;
+                    last_archived_block.set_complete();
                 }
                 SegmentItem::BlockStart { .. } => {
                     unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
@@ -355,11 +357,11 @@ impl<State: private::ArchiverState> Archiver<State> {
                     // Same block, but assume for now that the whole block was archived, but
                     // also store the number of bytes as opposed to `None`, we'll transform
                     // it into `None` if needed later
-                    let archived_bytes = last_archived_block.partial_archived.expect(
+                    let archived_bytes = last_archived_block.partial_archived().expect(
                         "Block continuation implies that there are some bytes \
                                 archived already; qed",
                     );
-                    last_archived_block.partial_archived.replace(
+                    last_archived_block.set_partial_archived(
                         archived_bytes
                             + u32::try_from(bytes.len())
                                 .expect("Blocks length is never bigger than u32; qed"),
@@ -443,7 +445,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                     };
 
                     // Update last archived block to include partial archiving info
-                    last_archived_block.partial_archived.replace(
+                    last_archived_block.set_partial_archived(
                         u32::try_from(bytes.len())
                             .expect("Blocks length is never bigger than u32; qed"),
                     );
@@ -493,11 +495,11 @@ impl<State: private::ArchiverState> Archiver<State> {
 
                     // Above code assumed that block was archived fully, now remove spilled-over
                     // bytes from the size
-                    let archived_bytes = last_archived_block.partial_archived.expect(
+                    let archived_bytes = last_archived_block.partial_archived().expect(
                         "Block continuation implies that there are some bytes archived \
                         already; qed",
                     );
-                    last_archived_block.partial_archived.replace(
+                    last_archived_block.set_partial_archived(
                         archived_bytes
                             - u32::try_from(spill_over)
                                 .expect("Blocks length is never bigger than u32; qed"),
@@ -527,7 +529,7 @@ impl<State: private::ArchiverState> Archiver<State> {
         } else {
             // Above code added bytes length even though it was assumed that all continuation bytes
             // fit into the segment, now we need to tweak that
-            last_archived_block.partial_archived.take();
+            last_archived_block.set_complete();
         }
 
         self.last_archived_block = last_archived_block;
@@ -757,7 +759,7 @@ impl BlockArchiver {
             .buffer
             .push_back(SegmentItem::RootBlock(root_block));
 
-        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived {
+        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
             let encoded_block = encoded_block.as_ref();
             let encoded_block_bytes = u32::try_from(encoded_block.len())
                 .expect("Blocks length is never bigger than u32; qed");

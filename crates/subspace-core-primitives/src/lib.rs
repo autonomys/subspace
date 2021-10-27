@@ -59,6 +59,43 @@ pub type Tag = [u8; 8];
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; 8];
 
+/// Progress of an archived block.
+#[derive(
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
+)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub enum ArchivedBlockProgress {
+    /// The block has been fully archived.
+    Complete,
+
+    /// Number of paritally archived bytes of a block.
+    Partial(u32),
+}
+
+impl Default for ArchivedBlockProgress {
+    /// We assume a block can always fit into the segment initially, but it can definitely possible
+    /// to be transitioned into the partial state after some overflow checkings.
+    fn default() -> Self {
+        Self::Complete
+    }
+}
+
+impl ArchivedBlockProgress {
+    /// Return the number of partially archived bytes if the progress is not complete.
+    pub fn partial(&self) -> Option<u32> {
+        match self {
+            Self::Complete => None,
+            Self::Partial(number) => Some(*number),
+        }
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial(&mut self, new_partial: u32) {
+        *self = Self::Partial(new_partial);
+    }
+}
+
 /// Last archived block
 #[derive(
     Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
@@ -68,10 +105,25 @@ pub type Salt = [u8; 8];
 pub struct LastArchivedBlock {
     /// Block number
     pub number: u32,
-    /// Number of paritally archived bytes of a block.
-    ///
-    /// `None` if the block has been fully archived fully.
-    pub partial_archived: Option<u32>,
+    /// Progress of an archived block.
+    pub archived_progress: ArchivedBlockProgress,
+}
+
+impl LastArchivedBlock {
+    /// Returns the number of partially archived bytes for a block.
+    pub fn partial_archived(&self) -> Option<u32> {
+        self.archived_progress.partial()
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial_archived(&mut self, new_partial: u32) {
+        self.archived_progress.set_partial(new_partial);
+    }
+
+    /// Sets the archived state of this block to [`ArchivedBlockProgress::Complete`].
+    pub fn set_complete(&mut self) {
+        self.archived_progress = ArchivedBlockProgress::Complete;
+    }
 }
 
 /// This type represents the digest of a segment.

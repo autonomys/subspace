@@ -1,7 +1,9 @@
 use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, PIECE_SIZE};
+use subspace_core_primitives::{
+    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
+};
 use tempfile::TempDir;
 
 fn init() {
@@ -58,7 +60,7 @@ async fn last_root_block() {
         prev_root_block_hash: rand::random(),
         last_archived_block: LastArchivedBlock {
             number: rand::random(),
-            partial_archived: Some(rand::random()),
+            archived_progress: ArchivedBlockProgress::Partial(rand::random()),
         },
     };
 
