@@ -87,6 +87,7 @@ pub struct LastArchivedBlock {
 pub enum RootBlock {
     /// V0 of the root block data structure
     #[codec(index = 0)]
+    #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
     V0 {
         /// Segment index
         segment_index: u64,
