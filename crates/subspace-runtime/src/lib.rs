@@ -163,7 +163,8 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochCon
 
 // TODO: Proper value here
 const CONFIRMATION_DEPTH_K: u32 = 10;
-// This is a nice power of 2 for Merkle Tree
+/// This is a nice power of 2 for Merkle Tree
+/// TODO: we just pick it randomly?
 const MERKLE_NUM_LEAVES: u32 = 256;
 /// Size of witness for a segment record (in bytes).
 const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
@@ -185,7 +186,7 @@ const INITIAL_SOLUTION_RANGE: u64 = u64::MAX
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
-/// Maximum block length for each kind of extrinsic is 5 MiB.
+/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 parameter_types! {
@@ -195,7 +196,7 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
-    // TODO: claim a real address prefix for Subspace.
+    // TODO: https://github.com/paritytech/ss58-registry/pull/30
     pub const SS58Prefix: u8 = 42;
 }
 
@@ -364,14 +365,18 @@ construct_runtime!(
         NodeBlock = opaque::Block,
         UncheckedExtrinsic = UncheckedExtrinsic
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
-        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
-        Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
-        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
-        Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>},
+        System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
+        Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 1,
+
+        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned} = 2,
+        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event} = 3,
+
+        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>} = 4,
+        TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 5,
+
+        Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
+
+        Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>} = 7,
     }
 );
 
