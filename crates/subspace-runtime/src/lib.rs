@@ -28,9 +28,10 @@ use frame_support::{
     construct_runtime, parameter_types,
     weights::{
         constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-        IdentityFee, Weight,
+        IdentityFee,
     },
 };
+use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
@@ -97,7 +98,7 @@ pub mod opaque {
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
-    impl_name: create_runtime_str!("subspace"),
+    impl_name: create_runtime_str!("subspace-labs"),
     authoring_version: 1,
     // The version of the runtime specification. A full node will not attempt to use its native
     //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -109,6 +110,15 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
 };
+
+/// The version information used to identify this runtime when compiled natively.
+#[cfg(feature = "std")]
+pub fn native_version() -> NativeVersion {
+    NativeVersion {
+        runtime_version: VERSION,
+        can_author_with: Default::default(),
+    }
+}
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
@@ -132,17 +142,12 @@ const MILLISECS_PER_BLOCK: u64 = 6000;
 //       Attempting to do so will brick block production.
 const SLOT_DURATION: u64 = 1000;
 
-// Time is measured by number of blocks.
-// pub const MINUTES: BlockNumber = 3_200 / (MILLISECS_PER_BLOCK as BlockNumber);
-// pub const HOURS: BlockNumber = MINUTES * 60;
-// pub const DAYS: BlockNumber = HOURS * 24;
-
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
 const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
 /// Era duration in blocks.
-const ERA_DURATION_IN_BLOCKS: u32 = 2016;
+const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
 const EPOCH_DURATION_IN_SLOTS: u64 =
@@ -156,23 +161,15 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochCon
         c: SLOT_PROBABILITY,
     };
 
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
-
-const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
-
 // TODO: Proper value here
 const CONFIRMATION_DEPTH_K: u32 = 10;
 // This is a nice power of 2 for Merkle Tree
 const MERKLE_NUM_LEAVES: u32 = 256;
+/// Size of witness for a segment record (in bytes).
 const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
+/// Size of a segment record given the global piece size (in bytes).
 const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+/// TODO: explain the formula a bit?
 const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 const PRE_GENESIS_OBJECT_SIZE: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
 const PRE_GENESIS_OBJECT_COUNT: u32 = 10;
@@ -181,18 +178,24 @@ const PRE_GENESIS_OBJECT_SEED: &[u8] = b"subspace";
 // We assume initial plot size starts with the size of pre-genesis history (roughly, there is some
 // overhead in archiving process)
 const INITIAL_SOLUTION_RANGE: u64 = u64::MAX
-    / (PRE_GENESIS_OBJECT_SIZE * PRE_GENESIS_OBJECT_COUNT / PIECE_SIZE as u32) as u64
+    / (PRE_GENESIS_OBJECT_SIZE * PRE_GENESIS_OBJECT_COUNT / PIECE_SIZE as u32) as u64 // number of total pieces in pre-genesis.
     * SLOT_PROBABILITY.0
     / SLOT_PROBABILITY.1;
+
+/// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
+const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
+
+/// Maximum block length for each kind of extrinsic is 5 MiB.
+const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub BlockWeights: frame_system::limits::BlockWeights = frame_system::limits::BlockWeights
-        ::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
-    pub BlockLength: frame_system::limits::BlockLength = frame_system::limits::BlockLength
-        ::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
+    /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
+    pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    // TODO: claim a real address prefix for Subspace.
     pub const SS58Prefix: u8 = 42;
 }
 
@@ -202,9 +205,9 @@ impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
     type BaseCallFilter = frame_support::traits::Everything;
     /// Block & extrinsics weights: base values and limits.
-    type BlockWeights = BlockWeights;
+    type BlockWeights = SubspaceBlockWeights;
     /// The maximum length of a block (in bytes).
-    type BlockLength = BlockLength;
+    type BlockLength = SubspaceBlockLength;
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
@@ -220,7 +223,7 @@ impl frame_system::Config for Runtime {
     /// The hashing algorithm used.
     type Hashing = BlakeTwo256;
     /// The header type.
-    type Header = generic::Header<BlockNumber, BlakeTwo256>;
+    type Header = Header;
     /// The ubiquitous event type.
     type Event = Event;
     /// The ubiquitous origin type.
@@ -302,6 +305,7 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 parameter_types! {
+    // TODO: this depends on the value of our native token?
     pub const ExistentialDeposit: u128 = 500;
     pub const MaxLocks: u32 = 50;
 }
@@ -342,11 +346,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type OverarchingCall = Call;
-}
-
-parameter_types! {
-    pub OffencesWeightSoftLimit: Weight = Perbill::from_percent(60) *
-        BlockWeights::get().max_block;
 }
 
 impl pallet_offences_subspace::Config for Runtime {
