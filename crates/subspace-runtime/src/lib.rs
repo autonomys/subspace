@@ -376,7 +376,8 @@ construct_runtime!(
 
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
 
-        Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>} = 7,
+        // Reserve some room for other pallets as we'll remove sudo pallet eventually.
+        Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>} = 100,
     }
 );
 
