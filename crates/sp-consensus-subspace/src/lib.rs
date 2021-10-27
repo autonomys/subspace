@@ -27,7 +27,7 @@ use crate::digests::{
     NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
     SaltDescriptor, SolutionRangeDescriptor,
 };
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,7 @@ impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
 }
 
 /// Configuration data used by the Subspace consensus engine.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, MaxEncodedLen, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct SubspaceEpochConfiguration {
     /// A constant value that is used in the threshold calculation formula.
