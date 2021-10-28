@@ -90,7 +90,7 @@ use sp_consensus_subspace::{
         CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
         NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
     },
-    inherents::SubspaceInherentData,
+    inherents::SubspaceInherentDataTrait,
     ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
 };
@@ -1014,7 +1014,7 @@ pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error
     if header.number().is_zero() {
         return Ok(PreDigest {
             slot: Slot::from(0),
-            solution: Solution::get_for_genesis(),
+            solution: Solution::genesis_solution(),
         });
     }
 
@@ -1528,7 +1528,7 @@ where
                     let mut inherent_data = create_inherent_data_providers
                         .create_inherent_data()
                         .map_err(Error::<Block>::CreateInherents)?;
-                    inherent_data.subspace_replace_inherent_data(slot);
+                    inherent_data.replace_subspace_inherent_data(slot);
                     let new_block = Block::new(pre_header.clone(), inner_body);
 
                     self.check_inherents(

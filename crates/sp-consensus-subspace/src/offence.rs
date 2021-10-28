@@ -15,7 +15,7 @@
 // limitations under the License.
 
 //! Common traits and types that are useful for describing offences for usage in environments
-//! that use staking.
+//! that use subspace consensus.
 
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;

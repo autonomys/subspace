@@ -51,7 +51,7 @@ fn first_block_epoch_zero_start() {
 
     ext.execute_with(|| {
         let genesis_slot = Slot::from(100);
-        let solution = Solution::get_for_genesis();
+        let solution = Solution::genesis_solution();
         let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
         let pre_digest = make_pre_digest(genesis_slot, solution);
 
@@ -94,7 +94,7 @@ fn author_por_output() {
 
     ext.execute_with(|| {
         let genesis_slot = Slot::from(10);
-        let solution = Solution::get_for_genesis();
+        let solution = Solution::genesis_solution();
         let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
         let pre_digest = make_pre_digest(genesis_slot, solution);
 
