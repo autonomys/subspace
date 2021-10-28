@@ -22,6 +22,7 @@ pub(crate) mod common;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
+pub mod plotting;
 pub(crate) mod rpc;
 
 pub use commands::farm;
