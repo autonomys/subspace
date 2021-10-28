@@ -126,11 +126,12 @@ impl LastArchivedBlock {
     }
 }
 
-/// This type represents the digest of a segment.
+/// Root block for a specific segment.
 ///
-/// Each segment will contain a [`RootBlock`].
-///
-/// TODO: explain why `RootBlock` is more appropriate than `SegmentDigest`?
+/// Each segment will have corresponding [`RootBlock`] included as the first item in the next
+/// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
+/// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
+/// the actual archival history of the blockchain.
 #[derive(
     Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
 )]
