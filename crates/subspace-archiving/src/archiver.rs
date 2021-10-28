@@ -34,6 +34,11 @@ use thiserror::Error;
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
     // Special case for the genesis block.
+    //
+    // When we start archiving process with pre-genesis objects, we do not yet have any blocks
+    // archived, but `LastArchivedBlock` is required for `RootBlock`s to be produced, so
+    // `ArchivedBlockProgress::Partial(0)` indicates that we have archived 0 bytes of block `0` (see
+    // field above), meaning we did not in fact archive actual blocks yet.
     archived_progress: ArchivedBlockProgress::Partial(0),
 };
 
