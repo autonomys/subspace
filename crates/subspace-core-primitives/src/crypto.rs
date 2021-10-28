@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Various cryptographic utilities used across Subspace Network implementation.
+//! Various cryptographic utilities used across Subspace Network.
 
 use crate::Sha256Hash;
 use hmac::{Hmac, Mac, NewMac};

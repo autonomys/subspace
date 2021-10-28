@@ -7,7 +7,7 @@ use subspace_archiving::archiver;
 use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    ArchivedBlockProgress, LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
@@ -121,7 +121,7 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(last_archived_block.bytes, Some(7992));
+        assert_eq!(last_archived_block.partial_archived(), Some(7992));
     }
 
     // 4 objects fit into the first segment
@@ -149,7 +149,7 @@ fn archiver() {
     for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             piece,
-            first_archived_segment.root_block.merkle_tree_root(),
+            first_archived_segment.root_block.records_root(),
             position,
             RECORD_SIZE,
         ));
@@ -209,13 +209,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(13233));
+        assert_eq!(last_archived_block.partial_archived(), Some(13233));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.bytes, Some(29143));
+        assert_eq!(last_archived_block.partial_archived(), Some(29143));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -236,7 +236,7 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
-                archived_segment.root_block.merkle_tree_root(),
+                archived_segment.root_block.records_root(),
                 position,
                 RECORD_SIZE,
             ));
@@ -274,12 +274,12 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 3);
-        assert_eq!(last_archived_block.bytes, None);
+        assert_eq!(last_archived_block.partial_archived(), None);
 
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
-                archived_segment.root_block.merkle_tree_root(),
+                archived_segment.root_block.records_root(),
                 position,
                 RECORD_SIZE,
             ));
@@ -363,11 +363,11 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                merkle_tree_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
-                    bytes: Some(10),
+                    archived_progress: ArchivedBlockProgress::Partial(10),
                 },
             },
             &vec![0u8; 10],
@@ -390,11 +390,11 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                merkle_tree_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
-                    bytes: Some(10),
+                    archived_progress: ArchivedBlockProgress::Partial(10),
                 },
             },
             &vec![0u8; 6],
@@ -422,11 +422,11 @@ fn archiver_invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                merkle_tree_root: Sha256Hash::default(),
+                records_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
-                    bytes: Some(0),
+                    archived_progress: ArchivedBlockProgress::Partial(0),
                 },
             },
             &vec![0u8; 5],

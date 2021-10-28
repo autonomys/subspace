@@ -917,7 +917,7 @@ impl<T: Config> Pallet<T> {
     fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
         MerkleRootsBySegmentIndex::<T>::insert(
             root_block.segment_index(),
-            root_block.merkle_tree_root(),
+            root_block.records_root(),
         );
 
         Self::deposit_event(Event::RootBlockStored(root_block));
@@ -947,7 +947,7 @@ impl<T: Config> Pallet<T> {
     pub fn submit_test_store_root_block(root_block: RootBlock) {
         MerkleRootsBySegmentIndex::<T>::insert(
             root_block.segment_index(),
-            root_block.merkle_tree_root(),
+            root_block.records_root(),
         );
     }
 

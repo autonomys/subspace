@@ -844,7 +844,7 @@ where
                     |(_block_number, root_blocks)| {
                         root_blocks.iter().find_map(|root_block| {
                             if root_block.segment_index() == segment_index {
-                                Some(root_block.merkle_tree_root())
+                                Some(root_block.records_root())
                             } else {
                                 None
                             }
@@ -1457,7 +1457,7 @@ where
                         .find_map(|(_block_number, root_blocks)| {
                             root_blocks.iter().find_map(|root_block| {
                                 if root_block.segment_index() == segment_index {
-                                    Some(root_block.merkle_tree_root())
+                                    Some(root_block.records_root())
                                 } else {
                                     None
                                 }

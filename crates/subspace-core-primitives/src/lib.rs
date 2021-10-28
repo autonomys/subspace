@@ -14,6 +14,7 @@
 // limitations under the License.
 
 //! Core primitives for Subspace Network.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_docs)]
@@ -24,76 +25,125 @@ pub mod objects;
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
 /// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
-/// Piece size in Subspace Network (in bytes)
+
+/// Byte size of a piece in Subspace Network, 4KiB.
+///
+/// This can not changed after the network is launched.
 pub const PIECE_SIZE: usize = 4096;
-/// The length of the Randomness.
+
+/// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
-// TODO: Create new types out of these
 /// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
-/// Piece size in Subspace Network
+
+/// A piece of archival history in Subspace Network.
+///
+/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
+/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
+/// archival history of the blockchain.
 pub type Piece = [u8; PIECE_SIZE];
-/// Randomness value.
+
+/// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
-/// Commitment tag for a particular piece.
+
+/// Type of the commitment for a particular piece.
+///
+/// TODO: why not use `Commitment` directly?
 pub type Tag = [u8; 8];
+
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; 8];
 
-/// Last archived block
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+/// Progress of an archived block.
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub enum ArchivedBlockProgress {
+    /// The block has been fully archived.
+    Complete,
+
+    /// Number of paritally archived bytes of a block.
+    Partial(u32),
+}
+
+impl Default for ArchivedBlockProgress {
+    /// We assume a block can always fit into the segment initially, but it can definitely possible
+    /// to be transitioned into the partial state after some overflow checkings.
+    fn default() -> Self {
+        Self::Complete
+    }
+}
+
+impl ArchivedBlockProgress {
+    /// Return the number of partially archived bytes if the progress is not complete.
+    pub fn partial(&self) -> Option<u32> {
+        match self {
+            Self::Complete => None,
+            Self::Partial(number) => Some(*number),
+        }
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial(&mut self, new_partial: u32) {
+        *self = Self::Partial(new_partial);
+    }
+}
+
+/// Last archived block
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
     /// Block number
     pub number: u32,
-    /// `None` if the block was archived fully or number of bytes otherwise
-    pub bytes: Option<u32>,
+    /// Progress of an archived block.
+    pub archived_progress: ArchivedBlockProgress,
 }
 
-/// Root block for a specific segment
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+impl LastArchivedBlock {
+    /// Returns the number of partially archived bytes for a block.
+    pub fn partial_archived(&self) -> Option<u32> {
+        self.archived_progress.partial()
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial_archived(&mut self, new_partial: u32) {
+        self.archived_progress.set_partial(new_partial);
+    }
+
+    /// Sets the archived state of this block to [`ArchivedBlockProgress::Complete`].
+    pub fn set_complete(&mut self) {
+        self.archived_progress = ArchivedBlockProgress::Complete;
+    }
+}
+
+/// Root block for a specific segment.
+///
+/// Each segment will have corresponding [`RootBlock`] included as the first item in the next
+/// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
+/// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
+/// the actual archival history of the blockchain.
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum RootBlock {
     /// V0 of the root block data structure
     #[codec(index = 0)]
-    #[serde(rename_all = "camelCase")]
+    #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
     V0 {
         /// Segment index
         segment_index: u64,
-        /// Merkle tree root of all pieces within segment
-        merkle_tree_root: Sha256Hash,
+        /// Merkle root of the records in a segment.
+        records_root: Sha256Hash,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Sha256Hash,
         /// Last archived block
@@ -110,23 +160,21 @@ impl RootBlock {
     /// Segment index
     pub fn segment_index(&self) -> u64 {
         match self {
-            RootBlock::V0 { segment_index, .. } => *segment_index,
+            Self::V0 { segment_index, .. } => *segment_index,
         }
     }
 
-    /// Merkle tree root of all pieces within segment
-    pub fn merkle_tree_root(&self) -> Sha256Hash {
+    /// Merkle root of the records in a segment.
+    pub fn records_root(&self) -> Sha256Hash {
         match self {
-            RootBlock::V0 {
-                merkle_tree_root, ..
-            } => *merkle_tree_root,
+            Self::V0 { records_root, .. } => *records_root,
         }
     }
 
     /// Hash of the root block of the previous segment
     pub fn prev_root_block_hash(&self) -> Sha256Hash {
         match self {
-            RootBlock::V0 {
+            Self::V0 {
                 prev_root_block_hash,
                 ..
             } => *prev_root_block_hash,
@@ -136,7 +184,7 @@ impl RootBlock {
     /// Last archived block
     pub fn last_archived_block(&self) -> LastArchivedBlock {
         match self {
-            RootBlock::V0 {
+            Self::V0 {
                 last_archived_block,
                 ..
             } => *last_archived_block,

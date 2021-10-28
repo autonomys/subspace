@@ -27,25 +27,14 @@ use crate::Sha256Hash;
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
 /// Object stored inside of the block
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum BlockObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
@@ -61,58 +50,33 @@ impl BlockObject {
     /// Object hash
     pub fn hash(&self) -> Sha256Hash {
         match self {
-            BlockObject::V0 { hash, .. } => *hash,
+            Self::V0 { hash, .. } => *hash,
         }
     }
 
     /// Offset of the object (limited to 24-bit size internally)
     pub fn offset(&self) -> u32 {
         match self {
-            BlockObject::V0 { offset, .. } => {
-                u32::from_le_bytes([offset[0], offset[1], offset[2], 0])
-            }
+            Self::V0 { offset, .. } => u32::from_le_bytes([offset[0], offset[1], offset[2], 0]),
         }
     }
 }
 
 /// Mapping of objects stored inside of the block
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct BlockObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<BlockObject>,
 }
 
 /// Object stored inside of the block
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum PieceObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
@@ -128,56 +92,33 @@ impl PieceObject {
     /// Object hash
     pub fn hash(&self) -> Sha256Hash {
         match self {
-            PieceObject::V0 { hash, .. } => *hash,
+            Self::V0 { hash, .. } => *hash,
         }
     }
 
     /// Offset of the object
     pub fn offset(&self) -> u16 {
         match self {
-            PieceObject::V0 { offset, .. } => *offset,
+            Self::V0 { offset, .. } => *offset,
         }
     }
 }
 
 /// Mapping of objects stored inside of the piece
-#[derive(
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct PieceObjectMapping {
     /// Objects stored inside of the block
     pub objects: Vec<PieceObject>,
 }
 
 /// Object stored inside in the history of the blockchain
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum GlobalObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
@@ -193,14 +134,14 @@ impl GlobalObject {
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     pub fn piece_index(&self) -> u64 {
         match self {
-            GlobalObject::V0 { piece_index, .. } => *piece_index,
+            Self::V0 { piece_index, .. } => *piece_index,
         }
     }
 
     /// Offset of the object
     pub fn offset(&self) -> u16 {
         match self {
-            GlobalObject::V0 { offset, .. } => *offset,
+            Self::V0 { offset, .. } => *offset,
         }
     }
 }

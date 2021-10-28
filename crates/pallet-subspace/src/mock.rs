@@ -34,7 +34,9 @@ use sp_runtime::{
     traits::{Header as _, IdentityLookup},
     Perbill,
 };
-use subspace_core_primitives::{LastArchivedBlock, Piece, RootBlock, Sha256Hash, Tag};
+use subspace_core_primitives::{
+    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, Tag,
+};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -302,11 +304,11 @@ pub fn generate_equivocation_proof(
 pub fn create_root_block(segment_index: u64) -> RootBlock {
     RootBlock::V0 {
         segment_index,
-        merkle_tree_root: Sha256Hash::default(),
+        records_root: Sha256Hash::default(),
         prev_root_block_hash: Sha256Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,
-            bytes: None,
+            archived_progress: ArchivedBlockProgress::Complete,
         },
     }
 }
