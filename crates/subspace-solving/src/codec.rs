@@ -46,7 +46,7 @@ impl SubspaceCodec {
 
         let farmer_public_key_hash = crypto::sha256_hash(farmer_public_key);
 
-        SubspaceCodec {
+        Self {
             farmer_public_key_hash,
             cuda_available,
         }

@@ -167,8 +167,8 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !subspace_solving::is_commitment_valid(&piece, solution.tag, salt) {
-        return Err(Error::InvalidCommitment(slot));
+    if !subspace_solving::is_tag_valid(&piece, solution.tag, salt) {
+        return Err(Error::InvalidTag(slot));
     }
 
     if !is_signature_valid(signing_context, solution) {
