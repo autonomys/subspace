@@ -43,9 +43,11 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 /// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 
-/// Type of a piece in Subspace Network.
+/// A piece of archival history in Subspace Network.
 ///
-/// TODO: explain the content of a piece somewhere?
+/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
+/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
+/// archival history of the blockchain.
 pub type Piece = [u8; PIECE_SIZE];
 
 /// Type of randomness.
