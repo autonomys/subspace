@@ -27,7 +27,6 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_core::RuntimeDebug;
 
 /// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
@@ -62,9 +61,8 @@ pub type Tag = [u8; 8];
 pub type Salt = [u8; 8];
 
 /// Progress of an archived block.
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum ArchivedBlockProgress {
@@ -99,9 +97,8 @@ impl ArchivedBlockProgress {
 }
 
 /// Last archived block
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
@@ -134,9 +131,8 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum RootBlock {

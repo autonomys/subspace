@@ -20,18 +20,19 @@
 //! * for objects within a piece
 //! * for global objects in the global history of the blockchain
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 use crate::Sha256Hash;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_core::RuntimeDebug;
-use sp_std::vec::Vec;
 
 /// Object stored inside of the block
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum BlockObject {
@@ -62,9 +63,8 @@ impl BlockObject {
 }
 
 /// Mapping of objects stored inside of the block
-#[derive(
-    Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct BlockObjectMapping {
@@ -73,9 +73,8 @@ pub struct BlockObjectMapping {
 }
 
 /// Object stored inside of the block
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum PieceObject {
@@ -106,9 +105,8 @@ impl PieceObject {
 }
 
 /// Mapping of objects stored inside of the piece
-#[derive(
-    Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct PieceObjectMapping {
@@ -117,9 +115,8 @@ pub struct PieceObjectMapping {
 }
 
 /// Object stored inside in the history of the blockchain
-#[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, RuntimeDebug,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum GlobalObject {
