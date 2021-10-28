@@ -114,6 +114,7 @@ pub fn new_partial(
         client.clone(),
         &task_manager.spawn_handle(),
     );
+
     let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         &subspace_link,
@@ -227,10 +228,10 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                     let slot =
-						sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
-							*timestamp,
-							slot_duration,
-						);
+                        sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
+                        *timestamp,
+                        slot_duration,
+                    );
 
                     Ok((timestamp, slot, uncles))
                 }

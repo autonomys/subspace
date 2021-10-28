@@ -279,9 +279,9 @@ pub enum Error<B: BlockT> {
     /// Invalid encoding of a piece
     #[display(fmt = "Invalid encoding for slot {}", _0)]
     InvalidEncoding(Slot),
-    /// Invalid commitment for salt
-    #[display(fmt = "Invalid commitment for salt for slot {}", _0)]
-    InvalidCommitment(Slot),
+    /// Invalid tag for salt
+    #[display(fmt = "Invalid tag for salt for slot {}", _0)]
+    InvalidTag(Slot),
     /// Could not fetch parent header
     #[display(fmt = "Could not fetch parent header: {:?}", _0)]
     FetchParentHeader(sp_blockchain::Error),

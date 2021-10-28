@@ -15,28 +15,31 @@
 
 //! Set of modules that implement utilities for solving and verifying of solutions in
 //! [Subspace Network Blockchain](https://subspace.network).
+
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
 mod codec;
 
 pub use codec::SubspaceCodec;
-use core::mem;
 use sha2::{Digest, Sha256};
 use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Tag};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"FARMER";
 
+/// Size of `Tag` in bytes.
+pub const TAG_SIZE: usize = core::mem::size_of::<Tag>();
+
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication
-pub fn is_commitment_valid(piece: &Piece, tag: Tag, salt: Salt) -> bool {
+pub fn is_tag_valid(piece: &Piece, tag: Tag, salt: Salt) -> bool {
     create_tag(piece, salt) == tag
 }
 
 /// Create a commitment tag of a piece for a particular salt
 pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
-    crypto::hmac_sha256(salt, piece)[..mem::size_of::<Tag>()]
+    crypto::hmac_sha256(salt, piece)[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
@@ -46,7 +49,7 @@ pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, s
     let mut hasher = Sha256::new();
     hasher.update(epoch_randomness);
     hasher.update(&Into::<u64>::into(slot).to_le_bytes());
-    hasher.finalize()[..mem::size_of::<Tag>()]
+    hasher.finalize()[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
@@ -59,7 +62,7 @@ pub fn derive_local_challenge<C: AsRef<[u8]>, H: AsRef<[u8]>>(
     let mut hasher = Sha256::new();
     hasher.update(global_challenge.as_ref());
     hasher.update(farmer_public_key_hash.as_ref());
-    hasher.finalize()[..mem::size_of::<Tag>()]
+    hasher.finalize()[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
