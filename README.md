@@ -1,6 +1,7 @@
 # Subspace Network Monorepo
 
 [![Rust](https://github.com/subspace/subspace/actions/workflows/rust.yaml/badge.svg)](https://github.com/subspace/subspace/actions/workflows/rust.yaml)
+[![rustdoc](https://github.com/subspace/subspace/actions/workflows/rustdoc.yml/badge.svg)](https://subspace.github.io/subspace)
 
 This is a mono repository for [Subspace Network](https://www.subspace.network/) implementation, primarily containing
 Subspace node/client using Substrate framework and farmer app implementations.
