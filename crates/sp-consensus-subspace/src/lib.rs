@@ -15,6 +15,7 @@
 // limitations under the License.
 
 //! Primitives for Subspace consensus.
+
 #![deny(warnings)]
 #![forbid(unsafe_code, missing_docs, unused_variables, unused_imports)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -24,15 +25,15 @@ pub mod inherents;
 pub mod offence;
 
 use crate::digests::{
-    NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
-    SaltDescriptor, SolutionRangeDescriptor,
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
+    NextSolutionRangeDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_consensus_slots::Slot;
-use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeDebug};
+use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
@@ -151,9 +152,6 @@ pub fn check_equivocation_proof<H>(proof: EquivocationProof<H>) -> bool
 where
     H: Header,
 {
-    use digests::*;
-    use sp_application_crypto::RuntimeAppPublic;
-
     let find_pre_digest = |header: &H| {
         header
             .digest()

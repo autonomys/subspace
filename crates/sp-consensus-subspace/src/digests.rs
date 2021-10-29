@@ -16,10 +16,13 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use super::{FarmerSignature, Slot, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID};
-use crate::FarmerPublicKey;
+use crate::{
+    FarmerPublicKey, FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration,
+    SUBSPACE_ENGINE_ID,
+};
 use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
@@ -28,7 +31,7 @@ use subspace_core_primitives::Randomness;
 /// Solution
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
 pub struct Solution {
-    /// Public key of the farmer that created solution
+    /// Public key of the farmer that created the solution
     pub public_key: FarmerPublicKey,
     /// Index of encoded piece
     pub piece_index: u64,
@@ -42,7 +45,7 @@ pub struct Solution {
 
 impl Solution {
     /// Dummy solution for the genesis block
-    pub fn get_for_genesis() -> Self {
+    pub fn genesis_solution() -> Self {
         Self {
             public_key: FarmerPublicKey::default(),
             piece_index: 0u64,
@@ -66,7 +69,7 @@ pub struct PreDigest {
 impl PreDigest {
     /// Returns the weight _added_ by this digest, not the cumulative weight
     /// of the chain.
-    pub fn added_weight(&self) -> crate::SubspaceBlockWeight {
+    pub fn added_weight(&self) -> SubspaceBlockWeight {
         1
     }
 }

@@ -23,22 +23,24 @@ use sp_std::result::Result;
 /// The Subspace inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 
-/// The type of the Subspace inherent.
-pub type InherentType = sp_consensus_slots::Slot;
+/// The type of the Subspace inherent data.
+pub type SubspaceInherentData = sp_consensus_slots::Slot;
+
 /// Auxiliary trait to extract Subspace inherent data.
-pub trait SubspaceInherentData {
+pub trait SubspaceInherentDataTrait {
     /// Get Subspace inherent data.
-    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error>;
+    fn subspace_inherent_data(&self) -> Result<Option<SubspaceInherentData>, Error>;
+
     /// Replace Subspace inherent data.
-    fn subspace_replace_inherent_data(&mut self, new: InherentType);
+    fn replace_subspace_inherent_data(&mut self, new: SubspaceInherentData);
 }
 
-impl SubspaceInherentData for InherentData {
-    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error> {
+impl SubspaceInherentDataTrait for InherentData {
+    fn subspace_inherent_data(&self) -> Result<Option<SubspaceInherentData>, Error> {
         self.get_data(&INHERENT_IDENTIFIER)
     }
 
-    fn subspace_replace_inherent_data(&mut self, new: InherentType) {
+    fn replace_subspace_inherent_data(&mut self, new: SubspaceInherentData) {
         self.replace_data(INHERENT_IDENTIFIER, &new);
     }
 }
@@ -47,13 +49,13 @@ impl SubspaceInherentData for InherentData {
 // TODO: Remove in the future. https://github.com/paritytech/substrate/issues/8029
 #[cfg(feature = "std")]
 pub struct InherentDataProvider {
-    slot: InherentType,
+    slot: SubspaceInherentData,
 }
 
 #[cfg(feature = "std")]
 impl InherentDataProvider {
     /// Create new inherent data provider from the given `slot`.
-    pub fn new(slot: InherentType) -> Self {
+    pub fn new(slot: SubspaceInherentData) -> Self {
         Self { slot }
     }
 
@@ -63,21 +65,22 @@ impl InherentDataProvider {
         timestamp: sp_timestamp::Timestamp,
         duration: std::time::Duration,
     ) -> Self {
-        let slot =
-            InherentType::from((timestamp.as_duration().as_millis() / duration.as_millis()) as u64);
+        let slot = SubspaceInherentData::from(
+            (timestamp.as_duration().as_millis() / duration.as_millis()) as u64,
+        );
 
         Self { slot }
     }
 
     /// Returns the `slot` of this inherent data provider.
-    pub fn slot(&self) -> InherentType {
+    pub fn slot(&self) -> SubspaceInherentData {
         self.slot
     }
 }
 
 #[cfg(feature = "std")]
 impl sp_std::ops::Deref for InherentDataProvider {
-    type Target = InherentType;
+    type Target = SubspaceInherentData;
 
     fn deref(&self) -> &Self::Target {
         &self.slot
