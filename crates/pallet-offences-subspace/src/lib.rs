@@ -25,7 +25,6 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode};
-use frame_support::weights::Weight;
 use sp_consensus_subspace::{
     offence::{Kind, Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence},
     FarmerPublicKey,
@@ -40,16 +39,6 @@ type OpaqueTimeSlot = Vec<u8>;
 
 /// A type alias for a report identifier.
 type ReportIdOf<T> = <T as frame_system::Config>::Hash;
-
-pub trait WeightInfo {
-    fn on_initialize(d: u32) -> Weight;
-}
-
-impl WeightInfo for () {
-    fn on_initialize(_d: u32) -> Weight {
-        1_000_000_000
-    }
-}
 
 #[frame_support::pallet]
 pub mod pallet {
