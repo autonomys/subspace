@@ -104,6 +104,7 @@ pub fn new_partial(
     );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
+        config.role.is_authority(),
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
@@ -333,6 +334,7 @@ pub fn new_light(config: Configuration) -> Result<TaskManager, ServiceError> {
     ));
 
     let (subspace_block_import, subspace_link) = sc_consensus_subspace::block_import(
+        config.role.is_authority(),
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),

@@ -1173,6 +1173,8 @@ where
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
+    /// `true` if this node is expected to try to produce blocks on its own
+    authoring_enabled: bool,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
@@ -1585,6 +1587,8 @@ where
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
 pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
+    /// `true` if this node is expected to try to produce blocks on its own
+    authoring_enabled: bool,
     inner: I,
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
@@ -1599,6 +1603,7 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
 impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
     fn clone(&self) -> Self {
         SubspaceBlockImport {
+            authoring_enabled: self.authoring_enabled,
             inner: self.inner.clone(),
             client: self.client.clone(),
             epoch_changes: self.epoch_changes.clone(),
@@ -1611,6 +1616,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
 
 impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
     fn new(
+        authoring_enabled: bool,
         client: Arc<Client>,
         epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
@@ -1622,6 +1628,7 @@ impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
         root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     ) -> Self {
         SubspaceBlockImport {
+            authoring_enabled,
             client,
             inner: block_import,
             epoch_changes,
@@ -1950,16 +1957,21 @@ where
                         }
                     }
 
-                    // Submit store root block extrinsic at the current block.
-                    self.client
-                        .runtime_api()
-                        .submit_store_root_block_extrinsic(&BlockId::Hash(block_hash), root_block)
-                        .map_err(|error| {
-                            ConsensusError::ClientImport(format!(
-                                "Failed to submit store root block extrinsic: {}",
-                                error
-                            ))
-                        })?;
+                    if self.authoring_enabled {
+                        // Submit store root block extrinsic at the current block.
+                        self.client
+                            .runtime_api()
+                            .submit_store_root_block_extrinsic(
+                                &BlockId::Hash(block_hash),
+                                root_block,
+                            )
+                            .map_err(|error| {
+                                ConsensusError::ClientImport(format!(
+                                    "Failed to submit store root block extrinsic: {}",
+                                    error
+                                ))
+                            })?;
+                    }
                 }
 
                 Ok(import_result)
@@ -2028,6 +2040,7 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 pub fn block_import<Client, Block: BlockT, I>(
+    authoring_enabled: bool,
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
@@ -2054,6 +2067,7 @@ where
         .expect("Failed to get `confirmation_depth_k` from runtime API");
 
     let link = SubspaceLink {
+        authoring_enabled,
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
         new_slot_notification_sender,
@@ -2070,6 +2084,7 @@ where
     prune_finalized(client.clone(), &mut epoch_changes.shared_data())?;
 
     let import = SubspaceBlockImport::new(
+        authoring_enabled,
         client,
         epoch_changes,
         wrapped_block_import,
@@ -2229,14 +2244,16 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .map(|archived_segment| archived_segment.root_block)
             .collect();
 
-        // TODO: Block size will not be enough in case number of root blocks it too large; not a
-        //  problem for now though. Also RAM usage will be very significant with current approach.
-        // Submit store root block extrinsic at genesis block.
-        for root_block in new_root_blocks.iter().copied() {
-            client
-                .runtime_api()
-                .submit_store_root_block_extrinsic(&genesis_block_id, root_block)
-                .expect("Failed to submit `store_root_block` extrinsic at genesis block");
+        if subspace_link.authoring_enabled {
+            // TODO: Block size will not be enough in case number of root blocks it too large; not a
+            //  problem for now though. Also RAM usage will be very significant with current approach.
+            // Submit store root block extrinsic at genesis block.
+            for root_block in new_root_blocks.iter().copied() {
+                client
+                    .runtime_api()
+                    .submit_store_root_block_extrinsic(&genesis_block_id, root_block)
+                    .expect("Failed to submit `store_root_block` extrinsic at genesis block");
+            }
         }
 
         // Set list of expected root blocks for the next block after genesis (we can't have

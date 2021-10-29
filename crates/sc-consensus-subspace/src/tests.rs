@@ -345,8 +345,9 @@ impl TestNetFactory for SubspaceTestNet {
         let client = client.as_full().expect("only full clients are tested");
 
         let config = Config::get_or_compute(&*client).expect("config available");
-        let (block_import, link) = crate::block_import(config, client.clone(), client.clone())
-            .expect("can initialize block-import");
+        let (block_import, link) =
+            crate::block_import(false, config, client.clone(), client.clone())
+                .expect("can initialize block-import");
 
         let block_import = PanickingBlockImport {
             block_import,
