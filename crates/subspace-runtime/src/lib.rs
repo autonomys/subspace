@@ -168,7 +168,7 @@ pub fn native_version() -> NativeVersion {
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 // TODO: Proper value here
-const CONFIRMATION_DEPTH_K: u32 = 10;
+const CONFIRMATION_DEPTH_K: u32 = 100;
 // This is a nice power of 2 for Merkle Tree
 const MERKLE_NUM_LEAVES: u32 = 256;
 const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
