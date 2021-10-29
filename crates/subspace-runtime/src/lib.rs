@@ -162,7 +162,7 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochCon
     };
 
 // TODO: Proper value here
-const CONFIRMATION_DEPTH_K: u32 = 10;
+const CONFIRMATION_DEPTH_K: u32 = 100;
 /// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
 /// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
 ///
