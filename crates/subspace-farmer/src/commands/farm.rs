@@ -247,7 +247,6 @@ async fn background_plotting<P: AsRef<[u8]>>(
                     );
                 }
 
-                let mut last_root_block = None;
                 for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
                     let EncodedBlockWithObjectMapping {
                         block,
@@ -274,6 +273,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
                         }
                     };
 
+                    let mut last_root_block = None;
                     for archived_segment in archiver.add_block(block, object_mapping) {
                         let ArchivedSegment {
                             root_block,
@@ -322,14 +322,14 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             );
                         }
                     }
-                }
 
-                if let Some(last_root_block) = last_root_block {
-                    if let Some(plot) = weak_plot.upgrade() {
-                        if let Err(error) =
-                            runtime_handle.block_on(plot.set_last_root_block(&last_root_block))
-                        {
-                            error!("Failed to store last root block: {:?}", error);
+                    if let Some(last_root_block) = last_root_block {
+                        if let Some(plot) = weak_plot.upgrade() {
+                            if let Err(error) =
+                                runtime_handle.block_on(plot.set_last_root_block(&last_root_block))
+                            {
+                                error!("Failed to store last root block: {:?}", error);
+                            }
                         }
                     }
                 }

@@ -434,7 +434,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                             .objects
                             .drain_filter(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
-                                if current_offset > split_point as u32 {
+                                if current_offset >= split_point as u32 {
                                     let BlockObject::V0 { offset, .. } = block_object;
                                     let new_offset =
                                         (current_offset - split_point as u32).to_le_bytes();
@@ -483,7 +483,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                             .objects
                             .drain_filter(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
-                                if current_offset > split_point as u32 {
+                                if current_offset >= split_point as u32 {
                                     let BlockObject::V0 { offset, .. } = block_object;
                                     let new_offset =
                                         (current_offset - split_point as u32).to_le_bytes();
@@ -573,9 +573,9 @@ impl<State: private::ArchiverState> Archiver<State> {
                         for block_object in &object_mapping.objects {
                             // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
                             let offset_in_segment = base_offset_in_segment
-                                + block_object.offset() as usize
                                 + 1
-                                + Compact::compact_len(&(bytes.len() as u32));
+                                + Compact::compact_len(&(bytes.len() as u32))
+                                + block_object.offset() as usize;
                             let offset = (offset_in_segment % self.record_size).try_into().expect(
                                 "Offset within piece should always fit in 16-bit integer; qed",
                             );

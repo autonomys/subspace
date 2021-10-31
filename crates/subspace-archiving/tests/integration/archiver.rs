@@ -476,3 +476,79 @@ fn spill_over_edge_case() {
         2
     );
 }
+
+#[test]
+fn object_on_the_edge_of_segment() {
+    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    assert_eq!(
+        archiver
+            .add_block(vec![0u8; SEGMENT_SIZE], BlockObjectMapping::default())
+            .len(),
+        1
+    );
+    let archived_segment = archiver.add_block(
+        vec![0u8; SEGMENT_SIZE * 2],
+        BlockObjectMapping {
+            objects: vec![BlockObject::V0 {
+                hash: Sha256Hash::default(),
+                // Offset is designed to fall exactly on the edge of the segment and is equal to
+                // segment size minus:
+                // * one byte for segment enum variant
+                // * compact length of number of segment items
+                // * one byte root block segment item enum variant
+                // * root block segment item
+                // * one byte for block continuation segment item enum variant
+                // * compact length of block continuation segment item bytes length
+                // * block continuation segment item bytes
+                // * one byte for segment item enum variant
+                // * compact length of bytes length
+                offset: size_to_u24(
+                    SEGMENT_SIZE as u32
+                        - 1
+                        - 1
+                        - 1
+                        - RootBlock::V0 {
+                            segment_index: 0,
+                            records_root: Default::default(),
+                            prev_root_block_hash: Default::default(),
+                            last_archived_block: LastArchivedBlock {
+                                number: 0,
+                                archived_progress: Default::default(),
+                            },
+                        }
+                        .encoded_size() as u32
+                        - 1
+                        - 4
+                        - 6
+                        - 1
+                        - 4,
+                ),
+            }],
+        },
+    );
+
+    assert_eq!(archived_segment.len(), 2);
+    assert_eq!(
+        archived_segment[0]
+            .object_mapping
+            .iter()
+            .filter(|o| !o.objects.is_empty())
+            .count(),
+        0
+    );
+    // Object should fall in the next archived segment
+    assert_eq!(
+        archived_segment[1]
+            .object_mapping
+            .iter()
+            .filter(|o| !o.objects.is_empty())
+            .count(),
+        1
+    );
+
+    // This will only need to be adjusted when implementation changes
+    assert_eq!(
+        archived_segment[1].object_mapping[0].objects[0].offset(),
+        88
+    );
+}
