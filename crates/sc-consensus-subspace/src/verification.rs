@@ -26,7 +26,7 @@ use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use subspace_archiving::archiver;
 use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Sha256Hash};
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{derive_global_challenge, derive_local_challenge, SubspaceCodec};
 
 /// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -140,47 +140,51 @@ pub(super) struct VerifiedHeaderInfo<B: BlockT> {
     pub(super) seal: DigestItemFor<B>,
 }
 
-/// TODO: Probably a struct for arguments
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn verify_solution<B: BlockT + Sized>(
+/// Check the solution signature validity.
+fn check_signature(
+    signing_context: &SigningContext,
     solution: &Solution,
-    epoch_randomness: &Randomness,
-    solution_range: u64,
+) -> Result<(), schnorrkel::SignatureError> {
+    let public_key = schnorrkel::PublicKey::from_bytes(solution.public_key.as_slice())?;
+    let signature = schnorrkel::Signature::from_bytes(&solution.signature)?;
+    public_key.verify(signing_context.bytes(&solution.tag), &signature)
+}
+
+/// Check if the tag of a solution's piece is valid.
+fn check_piece_tag<B: BlockT>(
     slot: Slot,
     salt: Salt,
-    merkle_root: &Sha256Hash,
-    position: u64,
-    record_size: u32,
-    signing_context: &SigningContext,
+    solution: &Solution,
 ) -> Result<(), Error<B>> {
-    if !is_within_solution_range(
-        solution,
-        subspace_solving::derive_global_challenge(epoch_randomness, slot),
-        solution_range,
-    ) {
-        return Err(Error::OutsideOfSolutionRange(slot));
-    }
-
     let piece: Piece = solution
         .encoding
         .as_slice()
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !subspace_solving::is_tag_valid(&piece, solution.tag, salt) {
+    if !subspace_solving::is_tag_valid(&piece, salt, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
 
-    if !is_signature_valid(signing_context, solution) {
-        return Err(Error::BadSolutionSignature(slot));
-    }
+    Ok(())
+}
 
-    let subspace_solving = SubspaceCodec::new(&solution.public_key);
+/// Check piece validity.
+fn check_piece<B: BlockT>(
+    slot: Slot,
+    salt: Salt,
+    merkle_root: &Sha256Hash,
+    position: u64,
+    record_size: u32,
+    solution: &Solution,
+) -> Result<(), Error<B>> {
+    check_piece_tag(slot, salt, solution)?;
 
     let mut piece = solution.encoding.clone();
 
     // Ensure piece is decodable.
-    subspace_solving
+    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+    subspace_codec
         .decode(solution.piece_index, &mut piece)
         .map_err(|_| Error::InvalidEncoding(slot))?;
 
@@ -196,6 +200,45 @@ pub(crate) fn verify_solution<B: BlockT + Sized>(
     Ok(())
 }
 
+fn check_solution_range<B: BlockT>(
+    epoch_randomness: &Randomness,
+    slot: Slot,
+    solution_range: u64,
+    solution: &Solution,
+) -> Result<(), Error<B>> {
+    if !is_within_solution_range(
+        solution,
+        derive_global_challenge(epoch_randomness, slot),
+        solution_range,
+    ) {
+        return Err(Error::OutsideOfSolutionRange(slot));
+    }
+
+    Ok(())
+}
+
+/// TODO: Probably a struct for arguments
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_solution<B: BlockT>(
+    solution: &Solution,
+    epoch_randomness: &Randomness,
+    solution_range: u64,
+    slot: Slot,
+    salt: Salt,
+    merkle_root: &Sha256Hash,
+    position: u64,
+    record_size: u32,
+    signing_context: &SigningContext,
+) -> Result<(), Error<B>> {
+    check_solution_range(epoch_randomness, slot, solution_range, solution)?;
+
+    check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
+
+    check_piece(slot, salt, merkle_root, position, record_size, solution)?;
+
+    Ok(())
+}
+
 // TODO: Move at least below functions into `subspace-solving`
 fn is_within_solution_range(
     solution: &Solution,
@@ -203,35 +246,17 @@ fn is_within_solution_range(
     solution_range: u64,
 ) -> bool {
     let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
-    let local_challenge =
-        subspace_solving::derive_local_challenge(global_challenge, farmer_public_key_hash);
+    let local_challenge = derive_local_challenge(global_challenge, farmer_public_key_hash);
 
     let target = u64::from_be_bytes(local_challenge);
-    let tag = u64::from_be_bytes(solution.tag);
-
     let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
     let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
-    if is_lower_overflowed || is_upper_overflowed {
-        upper <= tag || tag <= lower
-    } else {
-        lower <= tag && tag <= upper
-    }
-}
 
-fn is_signature_valid(signing_context: &SigningContext, solution: &Solution) -> bool {
-    let public_key = match schnorrkel::PublicKey::from_bytes(solution.public_key.as_slice()) {
-        Ok(public_key) => public_key,
-        Err(_) => {
-            return false;
-        }
-    };
-    let signature = match schnorrkel::Signature::from_bytes(&solution.signature) {
-        Ok(signature) => signature,
-        Err(_) => {
-            return false;
-        }
-    };
-    public_key
-        .verify(signing_context.bytes(&solution.tag), &signature)
-        .is_ok()
+    let solution_tag = u64::from_be_bytes(solution.tag);
+
+    if is_lower_overflowed || is_upper_overflowed {
+        upper <= solution_tag || solution_tag <= lower
+    } else {
+        lower <= solution_tag && solution_tag <= upper
+    }
 }

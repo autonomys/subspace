@@ -268,8 +268,8 @@ pub enum Error<B: BlockT> {
     #[display(fmt = "Bad signature on {:?}", _0)]
     BadSignature(B::Hash),
     /// Bad solution signature
-    #[display(fmt = "Bad solution signature")]
-    BadSolutionSignature(Slot),
+    #[display(fmt = "Bad solution signature on slot {:?}: {:?}", _0, _1)]
+    BadSolutionSignature(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
     #[display(fmt = "Solution is outside of solution range for slot {}", _0)]
     OutsideOfSolutionRange(Slot),
