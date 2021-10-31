@@ -33,14 +33,14 @@ pub const TAG_SIZE: usize = core::mem::size_of::<Tag>();
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication
-pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
-    create_tag(piece, salt) == tag
+pub fn is_tag_valid(salt: Salt, piece: &Piece, tag: Tag) -> bool {
+    create_tag(salt, piece) == tag
 }
 
 /// Create a commitment tag of a piece for a particular salt
 ///
 /// Formula: `hmac_sha256(salt ++ piece)`
-pub fn create_tag(piece: impl AsRef<[u8]>, salt: Salt) -> Tag {
+pub fn create_tag(salt: Salt, piece: impl AsRef<[u8]>) -> Tag {
     crypto::hmac_sha256(salt, piece.as_ref())[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")

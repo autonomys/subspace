@@ -151,18 +151,14 @@ fn check_signature(
 }
 
 /// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<B: BlockT>(
-    slot: Slot,
-    salt: Salt,
-    solution: &Solution,
-) -> Result<(), Error<B>> {
+fn check_piece_tag<B: BlockT>(slot: Slot, salt: Salt, solution: &Solution) -> Result<(), Error<B>> {
     let piece: Piece = solution
         .encoding
         .as_slice()
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !subspace_solving::is_tag_valid(&piece, salt, solution.tag) {
+    if !subspace_solving::is_tag_valid(salt, &piece, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
 
