@@ -545,4 +545,10 @@ fn object_on_the_edge_of_segment() {
             .count(),
         1
     );
+
+    // This will only need to be adjusted when implementation changes
+    assert_eq!(
+        archived_segment[1].object_mapping[0].objects[0].offset(),
+        88
+    );
 }
