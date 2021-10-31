@@ -37,7 +37,7 @@ pub fn is_tag_valid(salt: Salt, piece: &Piece, tag: Tag) -> bool {
     create_tag(salt, piece) == tag
 }
 
-/// Create a commitment tag of a piece for a particular salt
+/// Create a commitment tag of a piece for a particular salt.
 ///
 /// Formula: `hmac_sha256(salt ++ piece)`
 pub fn create_tag(salt: Salt, piece: impl AsRef<[u8]>) -> Tag {
@@ -46,7 +46,7 @@ pub fn create_tag(salt: Salt, piece: impl AsRef<[u8]>) -> Tag {
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive global slot challenge from epoch randomness
+/// Derive global slot challenge from epoch randomness.
 ///
 /// Formula: `sha256(epoch_randomness ++ slot)`
 pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, slot: Slot) -> Tag {
@@ -58,7 +58,7 @@ pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, s
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive local challenge for farmer's public key hash from the global challenge
+/// Derive local challenge for farmer's public key hash from the global challenge.
 ///
 /// Formula: `sha256(global_challenge ++ farmer_public_key_hash)`
 pub fn derive_local_challenge<C: AsRef<[u8]>, H: AsRef<[u8]>>(

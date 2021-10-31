@@ -870,14 +870,16 @@ where
 
             match verification::verify_solution::<B>(
                 &solution,
-                &epoch_randomness,
-                solution_range,
-                slot,
-                salt,
-                &merkle_root,
-                position,
-                record_size,
-                &signing_context,
+                verification::VerifySolutionParams {
+                    epoch_randomness: &epoch_randomness,
+                    solution_range,
+                    slot,
+                    salt,
+                    merkle_root: &merkle_root,
+                    position,
+                    record_size,
+                    signing_context: &signing_context,
+                },
             ) {
                 Ok(_) => {
                     debug!(target: "subspace", "Claimed slot {}", slot);

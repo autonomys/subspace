@@ -118,14 +118,16 @@ where
     // Verify that solution is valid
     verify_solution(
         &pre_digest.solution,
-        &epoch.randomness,
-        solution_range,
-        pre_digest.slot,
-        salt,
-        merkle_root,
-        position,
-        record_size,
-        signing_context,
+        VerifySolutionParams {
+            epoch_randomness: &epoch.randomness,
+            solution_range,
+            slot: pre_digest.slot,
+            salt,
+            merkle_root,
+            position,
+            record_size,
+            signing_context,
+        },
     )?;
 
     let info = VerifiedHeaderInfo {
@@ -196,6 +198,7 @@ fn check_piece<B: BlockT>(
     Ok(())
 }
 
+/// Check solution range validity.
 fn check_solution_range<B: BlockT>(
     epoch_randomness: &Randomness,
     slot: Slot,
@@ -213,19 +216,32 @@ fn check_solution_range<B: BlockT>(
     Ok(())
 }
 
-/// TODO: Probably a struct for arguments
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct VerifySolutionParams<'a> {
+    pub(crate) epoch_randomness: &'a Randomness,
+    pub(crate) solution_range: u64,
+    pub(crate) slot: Slot,
+    pub(crate) salt: Salt,
+    pub(crate) merkle_root: &'a Sha256Hash,
+    pub(crate) position: u64,
+    pub(crate) record_size: u32,
+    pub(crate) signing_context: &'a SigningContext,
+}
+
 pub(crate) fn verify_solution<B: BlockT>(
     solution: &Solution,
-    epoch_randomness: &Randomness,
-    solution_range: u64,
-    slot: Slot,
-    salt: Salt,
-    merkle_root: &Sha256Hash,
-    position: u64,
-    record_size: u32,
-    signing_context: &SigningContext,
+    params: VerifySolutionParams,
 ) -> Result<(), Error<B>> {
+    let VerifySolutionParams {
+        epoch_randomness,
+        solution_range,
+        slot,
+        salt,
+        merkle_root,
+        position,
+        record_size,
+        signing_context,
+    } = params;
+
     check_solution_range(epoch_randomness, slot, solution_range, solution)?;
 
     check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
