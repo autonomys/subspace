@@ -1798,13 +1798,13 @@ where
             .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
             .expect(
                 "best finalized hash was given by client; \
-				 finalized headers must exist in db; qed",
+                 finalized headers must exist in db; qed",
             );
 
         find_pre_digest::<Block>(&finalized_header)
             .expect(
                 "finalized header must be valid; \
-					 valid blocks have a pre-digest; qed",
+                 valid blocks have a pre-digest; qed",
             )
             .slot
     };
