@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use sc_service::ChainType;
+use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -79,7 +79,16 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
         // Protocol ID
         Some("subspace"),
         // Properties
-        None,
+        Some(Properties::from_iter([
+            (
+                "tokenDecimals".to_string(),
+                serde_json::to_value(18_u8).expect("u8 is always serializable; qed"),
+            ),
+            (
+                "tokenSymbol".to_string(),
+                serde_json::to_value("tSSC").expect("&str is always serializable; qed"),
+            ),
+        ])),
         // Extensions
         None,
     ))
