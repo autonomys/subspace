@@ -251,7 +251,6 @@ pub(crate) fn verify_solution<B: BlockT>(
     Ok(())
 }
 
-// TODO: Move at least below functions into `subspace-solving`
 fn is_within_solution_range(
     solution: &Solution,
     global_challenge: [u8; 8],

@@ -119,10 +119,10 @@ mod archiver;
 mod authorship;
 pub mod aux_schema;
 pub mod notification;
+mod slot_worker;
 #[cfg(test)]
 mod tests;
 mod verification;
-mod slot_worker;
 
 pub use self::archiver::start_subspace_archiver;
 
