@@ -142,7 +142,7 @@ pub const SSC: Balance = (10 * SHANNON).pow(18);
 ///
 /// Based on:
 /// <https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html#-6.-practical-results>
-const MILLISECS_PER_BLOCK: u64 = 6000;
+pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.

@@ -3960,7 +3960,7 @@ checksum = "28988d872ab76095a6e6ac88d99b54fd267702734fd7ffe610ca27f533ddb95a"
 [[package]]
 name = "orml-vesting"
 version = "0.4.1-dev"
-source = "git+https://github.com/subspace/open-runtime-module-library?branch=substrate-monthly-2021-10#facfee924f3c49f3400c64a36c5d8884744ddb33"
+source = "git+https://github.com/subspace/open-runtime-module-library?branch=multiple-genesis-schedules-substrate-monthly-2021-10#9a46de0955238bcbc8a8d3584279a29640bf89bb"
 dependencies = [
  "frame-support",
  "frame-system",
