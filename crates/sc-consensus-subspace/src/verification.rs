@@ -198,22 +198,26 @@ fn check_piece<B: BlockT>(
     Ok(())
 }
 
-/// Check solution range validity.
-fn check_solution_range<B: BlockT>(
-    epoch_randomness: &Randomness,
-    slot: Slot,
-    solution_range: u64,
+/// Returns true if `solution.tag` is within the solution range.
+fn is_within_solution_range(
     solution: &Solution,
-) -> Result<(), Error<B>> {
-    if !is_within_solution_range(
-        solution,
-        derive_global_challenge(epoch_randomness, slot),
-        solution_range,
-    ) {
-        return Err(Error::OutsideOfSolutionRange(slot));
-    }
+    global_challenge: [u8; 8],
+    solution_range: u64,
+) -> bool {
+    let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
+    let local_challenge = derive_local_challenge(global_challenge, farmer_public_key_hash);
 
-    Ok(())
+    let target = u64::from_be_bytes(local_challenge);
+    let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
+    let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
+
+    let solution_tag = u64::from_be_bytes(solution.tag);
+
+    if is_lower_overflowed || is_upper_overflowed {
+        upper <= solution_tag || solution_tag <= lower
+    } else {
+        lower <= solution_tag && solution_tag <= upper
+    }
 }
 
 pub(crate) struct VerifySolutionParams<'a> {
@@ -242,32 +246,17 @@ pub(crate) fn verify_solution<B: BlockT>(
         signing_context,
     } = params;
 
-    check_solution_range(epoch_randomness, slot, solution_range, solution)?;
+    if !is_within_solution_range(
+        solution,
+        derive_global_challenge(epoch_randomness, slot),
+        solution_range,
+    ) {
+        return Err(Error::OutsideOfSolutionRange(slot));
+    }
 
     check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
 
     check_piece(slot, salt, merkle_root, position, record_size, solution)?;
 
     Ok(())
-}
-
-fn is_within_solution_range(
-    solution: &Solution,
-    global_challenge: [u8; 8],
-    solution_range: u64,
-) -> bool {
-    let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
-    let local_challenge = derive_local_challenge(global_challenge, farmer_public_key_hash);
-
-    let target = u64::from_be_bytes(local_challenge);
-    let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
-    let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
-
-    let solution_tag = u64::from_be_bytes(solution.tag);
-
-    if is_lower_overflowed || is_upper_overflowed {
-        upper <= solution_tag || solution_tag <= lower
-    } else {
-        lower <= solution_tag && solution_tag <= upper
-    }
 }
