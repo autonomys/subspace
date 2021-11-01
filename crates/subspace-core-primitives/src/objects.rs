@@ -41,8 +41,8 @@ pub enum BlockObject {
     V0 {
         /// Object hash
         hash: Sha256Hash,
-        /// 24-bit little-endian offset of the object
-        offset: [u8; 3],
+        /// Offset of the object.
+        offset: u32,
     },
 }
 
@@ -54,10 +54,19 @@ impl BlockObject {
         }
     }
 
-    /// Offset of the object (limited to 24-bit size internally)
+    /// Offset of the object.
     pub fn offset(&self) -> u32 {
         match self {
-            Self::V0 { offset, .. } => u32::from_le_bytes([offset[0], offset[1], offset[2], 0]),
+            Self::V0 { offset, .. } => *offset,
+        }
+    }
+
+    /// Sets new offset.
+    pub fn set_offset(&mut self, new_offset: u32) {
+        match self {
+            Self::V0 { offset, .. } => {
+                *offset = new_offset;
+            }
         }
     }
 }

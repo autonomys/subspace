@@ -435,12 +435,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                             .drain_filter(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
                                 if current_offset >= split_point as u32 {
-                                    let BlockObject::V0 { offset, .. } = block_object;
-                                    let new_offset =
-                                        (current_offset - split_point as u32).to_le_bytes();
-
-                                    // Correct offset and remove from original object mapping `Vec`
-                                    *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                    block_object.set_offset(current_offset - split_point as u32);
                                     true
                                 } else {
                                     false
@@ -484,12 +479,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                             .drain_filter(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
                                 if current_offset >= split_point as u32 {
-                                    let BlockObject::V0 { offset, .. } = block_object;
-                                    let new_offset =
-                                        (current_offset - split_point as u32).to_le_bytes();
-
-                                    // Correct offset and remove from original object mapping `Vec`
-                                    *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                    block_object.set_offset(current_offset - split_point as u32);
                                     true
                                 } else {
                                     false
@@ -789,12 +779,7 @@ impl BlockArchiver {
                         .drain_filter(|block_object: &mut BlockObject| {
                             let current_offset = block_object.offset();
                             if current_offset >= archived_block_bytes {
-                                let BlockObject::V0 { offset, .. } = block_object;
-                                let new_offset =
-                                    (current_offset - archived_block_bytes).to_le_bytes();
-
-                                // Correct offset and retain in object mapping `Vec`
-                                *offset = [new_offset[0], new_offset[1], new_offset[2]];
+                                block_object.set_offset(current_offset - archived_block_bytes);
                                 false
                             } else {
                                 true

@@ -149,7 +149,7 @@ pub struct CallObjectLocation {
     /// Object hash
     pub hash: Sha256Hash,
     /// Offset
-    pub offset: usize,
+    pub offset: u32,
 }
 
 impl<T: Config> Call<T> {
@@ -161,7 +161,7 @@ impl<T: Config> Call<T> {
                 // enum variant encoding.
                 Some(CallObjectLocation {
                     hash: crypto::sha256_hash(data),
-                    offset: 1 + mem::size_of::<FeedId>(),
+                    offset: 1 + mem::size_of::<FeedId>() as u32,
                 })
             }
             _ => None,
