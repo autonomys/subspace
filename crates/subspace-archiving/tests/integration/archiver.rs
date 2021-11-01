@@ -15,11 +15,6 @@ const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
-fn size_to_u24(size: u32) -> [u8; 3] {
-    let size = size.to_le_bytes();
-    [size[0], size[1], size[2]]
-}
-
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
     let Compact(size) = Compact::<u64>::decode(&mut &data[offset as usize..]).unwrap();
@@ -59,11 +54,11 @@ fn archiver() {
             objects: vec![
                 BlockObject::V0 {
                     hash: Sha256Hash::default(),
-                    offset: size_to_u24(0),
+                    offset: 0u32,
                 },
                 BlockObject::V0 {
                     hash: Sha256Hash::default(),
-                    offset: size_to_u24(7000),
+                    offset: 7000u32,
                 },
             ],
         };
@@ -93,15 +88,15 @@ fn archiver() {
             objects: vec![
                 BlockObject::V0 {
                     hash: Sha256Hash::default(),
-                    offset: size_to_u24(100),
+                    offset: 100u32,
                 },
                 BlockObject::V0 {
                     hash: Sha256Hash::default(),
-                    offset: size_to_u24(1000),
+                    offset: 1000u32,
                 },
                 BlockObject::V0 {
                     hash: Sha256Hash::default(),
-                    offset: size_to_u24(10000),
+                    offset: 10000u32,
                 },
             ],
         };
@@ -502,27 +497,25 @@ fn object_on_the_edge_of_segment() {
                 // * block continuation segment item bytes
                 // * one byte for segment item enum variant
                 // * compact length of bytes length
-                offset: size_to_u24(
-                    SEGMENT_SIZE as u32
-                        - 1
-                        - 1
-                        - 1
-                        - RootBlock::V0 {
-                            segment_index: 0,
-                            records_root: Default::default(),
-                            prev_root_block_hash: Default::default(),
-                            last_archived_block: LastArchivedBlock {
-                                number: 0,
-                                archived_progress: Default::default(),
-                            },
-                        }
-                        .encoded_size() as u32
-                        - 1
-                        - 4
-                        - 6
-                        - 1
-                        - 4,
-                ),
+                offset: SEGMENT_SIZE as u32
+                    - 1
+                    - 1
+                    - 1
+                    - RootBlock::V0 {
+                        segment_index: 0,
+                        records_root: Default::default(),
+                        prev_root_block_hash: Default::default(),
+                        last_archived_block: LastArchivedBlock {
+                            number: 0,
+                            archived_progress: Default::default(),
+                        },
+                    }
+                    .encoded_size() as u32
+                    - 1
+                    - 4
+                    - 6
+                    - 1
+                    - 4,
             }],
         },
     );
