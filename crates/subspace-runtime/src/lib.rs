@@ -121,6 +121,11 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
+/// The smallest unit of the token is called Shannon.
+pub const SHANNON: Balance = 1;
+/// One Subspace Credit has 18 decimal places.
+pub const SSC: Balance = (10 * SHANNON).pow(18);
+
 // TODO: Many of below constants should probably be updatable but currently they are not
 
 /// Since Subspace is probabilistic this is the average expected block time that
@@ -319,7 +324,7 @@ impl pallet_timestamp::Config for Runtime {
 
 parameter_types! {
     // TODO: this depends on the value of our native token?
-    pub const ExistentialDeposit: Balance = 500;
+    pub const ExistentialDeposit: Balance = 500 * SHANNON;
     pub const MaxLocks: u32 = 50;
 }
 

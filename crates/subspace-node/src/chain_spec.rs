@@ -20,7 +20,7 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
     AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, Signature, SubspaceConfig,
-    SudoConfig, SystemConfig, VestingConfig, WASM_BINARY,
+    SudoConfig, SystemConfig, VestingConfig, SSC, WASM_BINARY,
 };
 
 // The URL for the telemetry server.
@@ -60,17 +60,21 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
                 "0x14682f9dea76a4dd47172a118eb29b9cf9976df7ade12f95709a7cd2e3d81d6c"
                     .parse()
                     .expect("Wrong root account ID");
-            testnet_genesis(
+            create_genesis_config(
                 WASM_BINARY.expect("Wasm binary must be built for testnet"),
                 // Sudo account
                 root_account.clone(),
                 // Pre-funded accounts
                 vec![
-                    root_account,
-                    get_account_id_from_seed::<sr25519::Public>("Alice"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob"),
-                    get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                    (root_account, 1_000 * SSC),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Alice"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Bob"),
+                        1_000 * SSC,
+                    ),
                 ],
                 vec![],
             )
@@ -111,16 +115,28 @@ pub fn development_config() -> Result<ChainSpec, String> {
         ChainType::Development,
         // TODO: Provide a way for farmer to start with these accounts
         || {
-            testnet_genesis(
+            create_genesis_config(
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed::<sr25519::Public>("Alice"),
                 // Pre-funded accounts
                 vec![
-                    get_account_id_from_seed::<sr25519::Public>("Alice"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob"),
-                    get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Alice"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Bob"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                        1_000 * SSC,
+                    ),
                 ],
                 vec![],
             )
@@ -148,24 +164,60 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
         "local_testnet",
         ChainType::Local,
         || {
-            testnet_genesis(
+            create_genesis_config(
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed::<sr25519::Public>("Alice"),
                 // Pre-funded accounts
                 vec![
-                    get_account_id_from_seed::<sr25519::Public>("Alice"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob"),
-                    get_account_id_from_seed::<sr25519::Public>("Charlie"),
-                    get_account_id_from_seed::<sr25519::Public>("Dave"),
-                    get_account_id_from_seed::<sr25519::Public>("Eve"),
-                    get_account_id_from_seed::<sr25519::Public>("Ferdie"),
-                    get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
-                    get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Alice"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Bob"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Charlie"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Dave"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Eve"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Ferdie"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
+                        1_000 * SSC,
+                    ),
+                    (
+                        get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
+                        1_000 * SSC,
+                    ),
                 ],
                 vec![],
             )
@@ -184,10 +236,10 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 }
 
 /// Configure initial storage state for FRAME modules.
-fn testnet_genesis(
+fn create_genesis_config(
     wasm_binary: &[u8],
     root_key: AccountId,
-    endowed_accounts: Vec<AccountId>,
+    balances: Vec<(AccountId, Balance)>,
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> GenesisConfig {
     GenesisConfig {
@@ -196,14 +248,7 @@ fn testnet_genesis(
             code: wasm_binary.to_vec(),
             changes_trie_config: Default::default(),
         },
-        balances: BalancesConfig {
-            // Configure endowed accounts with initial balance of 1 << 60.
-            balances: endowed_accounts
-                .iter()
-                .cloned()
-                .map(|k| (k, 1 << 60))
-                .collect(),
-        },
+        balances: BalancesConfig { balances },
         subspace: SubspaceConfig {
             epoch_config: Some(subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
         },
