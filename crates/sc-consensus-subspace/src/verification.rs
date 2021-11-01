@@ -160,7 +160,7 @@ fn check_piece_tag<B: BlockT>(slot: Slot, salt: Salt, solution: &Solution) -> Re
         .try_into()
         .map_err(|_error| Error::EncodingOfWrongSize)?;
 
-    if !subspace_solving::is_tag_valid(salt, &piece, solution.tag) {
+    if !subspace_solving::is_tag_valid(&piece, salt, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
 

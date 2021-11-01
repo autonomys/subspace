@@ -245,7 +245,7 @@ impl Commitments {
 
                 let tags: Vec<Tag> = pieces
                     .par_chunks_exact(PIECE_SIZE)
-                    .map(|piece| subspace_solving::create_tag(salt, piece))
+                    .map(|piece| subspace_solving::create_tag(piece, salt))
                     .collect();
 
                 for (tag, index) in tags.iter().zip(batch_start..) {
@@ -318,7 +318,7 @@ impl Commitments {
                 move || {
                     let tags: Vec<Tag> = pieces
                         .par_iter()
-                        .map(|piece| subspace_solving::create_tag(salt, piece))
+                        .map(|piece| subspace_solving::create_tag(piece, salt))
                         .collect();
 
                     for (tag, offset) in tags.iter().zip(start_offset..) {

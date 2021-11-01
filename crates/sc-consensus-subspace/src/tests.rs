@@ -600,7 +600,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = subspace_solving::create_tag(new_slot_info.salt, &piece);
+                    let tag: Tag = subspace_solving::create_tag(&piece, new_slot_info.salt);
 
                     let _ = solution_sender
                         .send((
