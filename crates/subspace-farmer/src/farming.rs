@@ -1,5 +1,4 @@
 use crate::commitments::Commitments;
-use crate::common::Salt;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc::{ProposedProofOfReplicationResponse, RpcClient, SlotInfo, Solution};
@@ -7,7 +6,7 @@ use anyhow::Result;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
-use subspace_core_primitives::crypto;
+use subspace_core_primitives::{crypto, Salt};
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
