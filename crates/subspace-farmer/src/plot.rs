@@ -134,7 +134,7 @@ impl Plot {
                                             .await?;
                                         let mut buffer = [0u8; PIECE_SIZE];
                                         plot_file.read_exact(&mut buffer).await?;
-                                        buffer
+                                        buffer.into()
                                     },
                                 );
                             }
