@@ -14,18 +14,18 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 log = { version = "0.4.14", default-features = false }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
-sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
+sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
 serde = "1.0.127"
-sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
-sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "bf9683eee40f82cc4e01a05cd375b0e8bba3c8ef" }
+sp-io = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 
 [features]
 default = ["std"]

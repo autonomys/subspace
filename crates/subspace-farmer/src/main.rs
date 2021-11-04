@@ -26,16 +26,15 @@ mod rpc;
 mod utils;
 
 use anyhow::Result;
-use clap::{AppSettings, Clap, ValueHint};
+use clap::{Parser, ValueHint};
 use env_logger::Env;
 use log::info;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// TODO: Separate commands for erasing the plot and wiping everyting
-#[derive(Debug, Clap)]
+// TODO: Separate commands for erasing the plot and wiping everything
+#[derive(Debug, Parser)]
 #[clap(about, version)]
-#[clap(setting = AppSettings::ColoredHelp)]
 enum Command {
     /// Erase existing plot (including identity)
     ErasePlot {
