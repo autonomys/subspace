@@ -42,11 +42,14 @@
 //! The fork choice rule is weight-based, where weight equals the number of primary blocks in the
 //! chain. We will pick the heaviest chain (more blocks) and will go with the longest one in case of
 //! a tie.
+
 #![feature(try_blocks)]
 #![feature(int_log)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
+use crate::slot_worker::SubspaceSlotWorker;
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
 use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
@@ -112,11 +115,16 @@ use subspace_core_primitives::objects::PieceObjectMapping;
 use subspace_core_primitives::{Piece, Randomness, RootBlock, Salt};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
+mod archiver;
+mod authorship;
 pub mod aux_schema;
 pub mod notification;
+mod slot_worker;
 #[cfg(test)]
 mod tests;
 mod verification;
+
+pub use self::archiver::start_subspace_archiver;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -268,8 +276,8 @@ pub enum Error<B: BlockT> {
     #[display(fmt = "Bad signature on {:?}", _0)]
     BadSignature(B::Hash),
     /// Bad solution signature
-    #[display(fmt = "Bad solution signature")]
-    BadSolutionSignature(Slot),
+    #[display(fmt = "Bad solution signature on slot {:?}: {:?}", _0, _1)]
+    BadSolutionSignature(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
     #[display(fmt = "Solution is outside of solution range for slot {}", _0)]
     OutsideOfSolutionRange(Slot),
@@ -534,6 +542,7 @@ where
         client,
         subspace_link.epoch_changes,
     );
+
     Ok(SubspaceWorker {
         inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
         handle: SubspaceWorkerHandle(worker_tx),
@@ -644,368 +653,6 @@ impl<B: BlockT> futures::Future for SubspaceWorker<B> {
     }
 }
 
-struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
-    client: Arc<C>,
-    block_import: I,
-    env: E,
-    sync_oracle: SO,
-    justification_sync_link: L,
-    force_authoring: bool,
-    backoff_authoring_blocks: Option<BS>,
-    subspace_link: SubspaceLink<B>,
-    signing_context: SigningContext,
-    block_proposal_slot_portion: SlotProportion,
-    max_block_proposal_slot_portion: Option<SlotProportion>,
-    telemetry: Option<TelemetryHandle>,
-}
-
-#[async_trait::async_trait]
-impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for SubspaceSlotWorker<B, C, E, I, SO, L, BS>
-where
-    B: BlockT,
-    C: ProvideRuntimeApi<B>
-        + ProvideCache<B>
-        + HeaderBackend<B>
-        + HeaderMetadata<B, Error = ClientError>
-        + 'static,
-    C::Api: SubspaceApi<B>,
-    E: Environment<B, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
-    I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
-    SO: SyncOracle + Send + Sync + Clone,
-    L: sc_consensus::JustificationSyncLink<B>,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
-{
-    type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
-    type Claim = (PreDigest, Pair);
-    type SyncOracle = SO;
-    type JustificationSyncLink = L;
-    type CreateProposer =
-        Pin<Box<dyn Future<Output = Result<E::Proposer, sp_consensus::Error>> + Send + 'static>>;
-    type Proposer = E::Proposer;
-    type BlockImport = I;
-
-    fn logging_target(&self) -> &'static str {
-        "subspace"
-    }
-
-    fn block_import(&mut self) -> &mut Self::BlockImport {
-        &mut self.block_import
-    }
-
-    fn epoch_data(
-        &self,
-        parent: &B::Header,
-        slot: Slot,
-    ) -> Result<Self::EpochData, ConsensusError> {
-        self.subspace_link
-            .epoch_changes
-            .shared_data()
-            .epoch_descriptor_for_child_of(
-                descendent_query(&*self.client),
-                &parent.hash(),
-                *parent.number(),
-                slot,
-            )
-            .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
-            .ok_or(sp_consensus::Error::InvalidAuthoritiesSet)
-    }
-
-    async fn claim_slot(
-        &self,
-        parent_header: &B::Header,
-        slot: Slot,
-        epoch_descriptor: &Self::EpochData,
-    ) -> Option<Self::Claim> {
-        debug!(target: "subspace", "Attempting to claim slot {}", slot);
-
-        struct PreparedData<B: BlockT> {
-            block_id: BlockId<B>,
-            solution_range: u64,
-            epoch_randomness: Randomness,
-            salt: Salt,
-            solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
-        }
-
-        let parent_block_id = BlockId::Hash(parent_header.hash());
-        let maybe_prepared_data: Option<PreparedData<B>> = try {
-            let epoch_changes = self.subspace_link.epoch_changes.shared_data();
-            let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
-                Epoch::genesis(&self.subspace_link.config, slot)
-            })?;
-            let epoch_randomness = epoch.as_ref().randomness;
-            // Here we always use parent block as the source of information, thus on the edge of the
-            // era the very first block of the era still uses solution range from the previous one,
-            // but the block after it uses "next" solution range deposited in the first block.
-            let solution_range = find_next_solution_range_digest::<B>(parent_header)
-                .ok()?
-                .map(|d| d.solution_range)
-                .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when
-                    // there is no solution range stored yet
-                    self.client
-                        .runtime_api()
-                        .solution_range(&parent_block_id)
-                        .ok()
-                })?;
-            // Here we always use parent block as the source of information, thus on the edge of the
-            // eon the very first block of the eon still uses salt from the previous one, but the
-            // block after it uses "next" salt deposited in the first block.
-            let salt = find_next_salt_digest::<B>(parent_header)
-                .ok()?
-                .map(|d| d.salt)
-                .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when
-                    // there is no salt stored yet
-                    self.client.runtime_api().salt(&parent_block_id).ok()
-                })?;
-
-            let new_slot_info = NewSlotInfo {
-                slot,
-                challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
-                salt: salt.to_le_bytes(),
-                // TODO: This will not be the correct way in the future once salt is no longer
-                //  just an incremented number
-                next_salt: Some((salt + 1).to_le_bytes()),
-                solution_range,
-            };
-            let (solution_sender, solution_receiver) =
-                tracing_unbounded("subspace_slot_solution_stream");
-
-            self.subspace_link
-                .new_slot_notification_sender
-                .notify(|| NewSlotNotification {
-                    new_slot_info,
-                    solution_sender,
-                });
-
-            PreparedData {
-                block_id: parent_block_id,
-                solution_range,
-                epoch_randomness,
-                salt: salt.to_le_bytes(),
-                solution_receiver,
-            }
-        };
-
-        let client = self.client.clone();
-        let signing_context = self.signing_context.clone();
-
-        let PreparedData {
-            block_id,
-            solution_range,
-            epoch_randomness,
-            salt,
-            mut solution_receiver,
-        } = maybe_prepared_data?;
-
-        while let Some((solution, secret_key)) = solution_receiver.next().await {
-            // TODO: We need also need to check for equivocation of farmers connected to *this node*
-            //  during block import, currently farmers connected to this node are considered trusted
-            if client
-                .runtime_api()
-                .is_in_block_list(&block_id, &solution.public_key)
-                .ok()?
-            {
-                warn!(
-                    target: "subspace",
-                    "Ignoring solution for slot {} provided by farmer in block list: {}",
-                    slot,
-                    solution.public_key,
-                );
-
-                continue;
-            }
-
-            let record_size = self
-                .client
-                .runtime_api()
-                .record_size(&parent_block_id)
-                .ok()?;
-            let recorded_history_segment_size = self
-                .client
-                .runtime_api()
-                .recorded_history_segment_size(&parent_block_id)
-                .ok()?;
-            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-            let segment_index = solution.piece_index / merkle_num_leaves;
-            let position = solution.piece_index % merkle_num_leaves;
-            let mut merkle_root = self
-                .client
-                .runtime_api()
-                .merkle_tree_for_segment_index(&parent_block_id, segment_index)
-                .ok()?;
-
-            // TODO: This is not a very nice hack due to the fact that at the time first block is
-            //  produced extrinsics with root blocks are not yet in runtime
-            if merkle_root.is_none() && parent_header.number().is_zero() {
-                merkle_root = self.subspace_link.root_blocks.lock().iter().find_map(
-                    |(_block_number, root_blocks)| {
-                        root_blocks.iter().find_map(|root_block| {
-                            if root_block.segment_index() == segment_index {
-                                Some(root_block.records_root())
-                            } else {
-                                None
-                            }
-                        })
-                    },
-                );
-            }
-
-            let merkle_root = match merkle_root {
-                Some(merkle_root) => merkle_root,
-                None => {
-                    warn!(
-                        target: "subspace",
-                        "Merkle Root segment index {} not found (slot {})",
-                        segment_index,
-                        slot,
-                    );
-                    continue;
-                }
-            };
-
-            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
-
-            match verification::verify_solution::<B>(
-                &solution,
-                &epoch_randomness,
-                solution_range,
-                slot,
-                salt,
-                &merkle_root,
-                position,
-                record_size,
-                &signing_context,
-            ) {
-                Ok(_) => {
-                    debug!(target: "subspace", "Claimed slot {}", slot);
-
-                    return Some((PreDigest { solution, slot }, secret_key.into()));
-                }
-                Err(error) => {
-                    warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
-                }
-            }
-        }
-
-        None
-    }
-
-    fn pre_digest_data(
-        &self,
-        _slot: Slot,
-        claim: &Self::Claim,
-    ) -> Vec<sp_runtime::DigestItem<B::Hash>> {
-        vec![<DigestItemFor<B> as CompatibleDigestItem>::subspace_pre_digest(claim.0.clone())]
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn block_import_params(
-        &self,
-    ) -> Box<
-        dyn Fn(
-                B::Header,
-                &B::Hash,
-                Vec<B::Extrinsic>,
-                StorageChanges<I::Transaction, B>,
-                Self::Claim,
-                Self::EpochData,
-            )
-                -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, sp_consensus::Error>
-            + Send
-            + 'static,
-    > {
-        Box::new(
-            move |header,
-                  header_hash,
-                  body,
-                  storage_changes,
-                  (_pre_digest, keypair),
-                  epoch_descriptor| {
-                // sign the pre-sealed hash of the block and then
-                // add it to a digest item.
-                let signature = keypair.sign(header_hash.as_ref());
-                let digest_item =
-                    <DigestItemFor<B> as CompatibleDigestItem>::subspace_seal(signature.into());
-
-                let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
-                import_block.post_digests.push(digest_item);
-                import_block.body = Some(body);
-                import_block.state_action = StateAction::ApplyChanges(
-                    sc_consensus::StorageChanges::Changes(storage_changes),
-                );
-                import_block.intermediates.insert(
-                    Cow::from(INTERMEDIATE_KEY),
-                    Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
-                );
-
-                Ok(import_block)
-            },
-        )
-    }
-
-    fn force_authoring(&self) -> bool {
-        self.force_authoring
-    }
-
-    fn should_backoff(&self, slot: Slot, chain_head: &B::Header) -> bool {
-        if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = find_pre_digest::<B>(chain_head).map(|digest| digest.slot)
-            {
-                return strategy.should_backoff(
-                    *chain_head.number(),
-                    chain_head_slot,
-                    self.client.info().finalized_number,
-                    slot,
-                    self.logging_target(),
-                );
-            }
-        }
-        false
-    }
-
-    fn sync_oracle(&mut self) -> &mut Self::SyncOracle {
-        &mut self.sync_oracle
-    }
-
-    fn justification_sync_link(&mut self) -> &mut Self::JustificationSyncLink {
-        &mut self.justification_sync_link
-    }
-
-    fn proposer(&mut self, block: &B::Header) -> Self::CreateProposer {
-        Box::pin(
-            self.env
-                .init(block)
-                .map_err(|e| sp_consensus::Error::ClientImport(format!("{:?}", e))),
-        )
-    }
-
-    fn telemetry(&self) -> Option<TelemetryHandle> {
-        self.telemetry.clone()
-    }
-
-    fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> std::time::Duration {
-        let parent_slot = find_pre_digest::<B>(&slot_info.chain_head)
-            .ok()
-            .map(|d| d.slot);
-
-        sc_consensus_slots::proposing_remaining_duration(
-            parent_slot,
-            slot_info,
-            &self.block_proposal_slot_portion,
-            self.max_block_proposal_slot_portion.as_ref(),
-            sc_consensus_slots::SlotLenienceType::Exponential,
-            self.logging_target(),
-        )
-    }
-
-    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
-        None
-    }
-}
-
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are
 /// mandatory, the function will return `Err` if none is found.
 pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error<B>> {
@@ -1101,31 +748,6 @@ where
     Ok(solution_range_digest)
 }
 
-/// Extract the next Subspace solution range digest from the given header if it exists.
-fn find_next_solution_range_digest<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
-    let mut next_solution_range_digest: Option<_> = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, next_solution_range_digest.is_some()) {
-            (Some(ConsensusLog::NextSolutionRangeData(_)), true) => {
-                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests))
-            }
-            (Some(ConsensusLog::NextSolutionRangeData(solution_range)), false) => {
-                next_solution_range_digest = Some(solution_range)
-            }
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(next_solution_range_digest)
-}
-
 /// Extract the Subspace salt digest from the given header.
 fn find_salt_digest<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>>
 where
@@ -1145,29 +767,6 @@ where
     }
 
     Ok(salt_digest)
-}
-
-/// Extract the next Subspace salt digest from the given header if it exists.
-fn find_next_salt_digest<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<NextSaltDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
-    let mut next_salt_digest: Option<_> = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, next_salt_digest.is_some()) {
-            (Some(ConsensusLog::NextSaltData(_)), true) => {
-                return Err(subspace_err(Error::MultipleSaltDigests))
-            }
-            (Some(ConsensusLog::NextSaltData(salt)), false) => next_salt_digest = Some(salt),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(next_salt_digest)
 }
 
 /// State that must be shared between the import queue and the authoring logic.
@@ -2012,13 +1611,13 @@ where
             .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
             .expect(
                 "best finalized hash was given by client; \
-				 finalized headers must exist in db; qed",
+                 finalized headers must exist in db; qed",
             );
 
         find_pre_digest::<Block>(&finalized_header)
             .expect(
                 "finalized header must be valid; \
-					 valid blocks have a pre-digest; qed",
+                 valid blocks have a pre-digest; qed",
             )
             .slot
     };
@@ -2094,306 +1693,6 @@ where
     );
 
     Ok((import, link))
-}
-
-fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
-where
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceApi<Block>,
-{
-    let mut block_to_check = BlockId::Hash(client.info().best_hash);
-    loop {
-        let block = client
-            .block(&block_to_check)
-            .expect("Older blocks should always exist")
-            .expect("Older blocks should always exist");
-        let mut latest_root_block: Option<RootBlock> = None;
-
-        for extrinsic in block.block.extrinsics() {
-            match client
-                .runtime_api()
-                .extract_root_block(&block_to_check, extrinsic.encode())
-            {
-                Ok(Some(root_block)) => match &mut latest_root_block {
-                    Some(latest_root_block) => {
-                        if latest_root_block.segment_index() < root_block.segment_index() {
-                            *latest_root_block = root_block;
-                        }
-                    }
-                    None => {
-                        latest_root_block.replace(root_block);
-                    }
-                },
-                Ok(None) => {
-                    // Some other extrinsic, ignore
-                }
-                Err(error) => {
-                    // TODO: Probably light client, can this even happen?
-                    error!(target: "subspace", "Failed to make runtime API call: {:?}", error);
-                }
-            }
-        }
-
-        if latest_root_block.is_some() {
-            break latest_root_block;
-        }
-
-        let parent_block_hash = *block.block.header().parent_hash();
-
-        if parent_block_hash == Block::Hash::default() {
-            // Genesis block, nothing else to check
-            break None;
-        }
-
-        block_to_check = BlockId::Hash(parent_block_hash);
-    }
-}
-
-/// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
-/// producing pieces and root blocks (root blocks are then added back to the blockchain as
-/// `store_root_block` extrinsic).
-pub fn start_subspace_archiver<Block: BlockT, Client>(
-    subspace_link: &SubspaceLink<Block>,
-    client: Arc<Client>,
-    spawner: &impl sp_core::traits::SpawnNamed,
-) where
-    Client: ProvideRuntimeApi<Block>
-        + BlockBackend<Block>
-        + HeaderBackend<Block>
-        + Send
-        + Sync
-        + 'static,
-    Client::Api: SubspaceApi<Block>,
-{
-    let genesis_block_id = BlockId::Number(Zero::zero());
-
-    let confirmation_depth_k = client
-        .runtime_api()
-        .confirmation_depth_k(&genesis_block_id)
-        .expect("Failed to get `confirmation_depth_k` from runtime API");
-    let record_size = client
-        .runtime_api()
-        .record_size(&genesis_block_id)
-        .expect("Failed to get `record_size` from runtime API");
-    let recorded_history_segment_size = client
-        .runtime_api()
-        .recorded_history_segment_size(&genesis_block_id)
-        .expect("Failed to get `recorded_history_segment_size` from runtime API");
-
-    let mut archiver = if let Some(last_root_block) = find_last_root_block(client.as_ref()) {
-        // Continuing from existing initial state
-        let last_archived_block_number = last_root_block.last_archived_block().number;
-        info!(
-            target: "subspace",
-            "Last archived block {}",
-            last_archived_block_number,
-        );
-        let last_archived_block = client
-            .block(&BlockId::Number(last_archived_block_number.into()))
-            .expect("Older blocks should always exist")
-            .expect("Older blocks should always exist");
-
-        let block_object_mapping = client
-            .runtime_api()
-            .extract_block_object_mapping(
-                &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
-                last_archived_block.block.clone(),
-            )
-            .expect("Must be able to make runtime call");
-
-        BlockArchiver::with_initial_state(
-            record_size as usize,
-            recorded_history_segment_size as usize,
-            last_root_block,
-            &last_archived_block.encode(),
-            block_object_mapping,
-        )
-        .expect("Incorrect parameters for archiver")
-    } else {
-        // Starting from genesis
-        let runtime_api = client.runtime_api();
-
-        let mut object_archiver =
-            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
-                .expect("Incorrect parameters for archiver");
-
-        let pre_genesis_object_size = runtime_api
-            .pre_genesis_object_size(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_size` from runtime API");
-        let pre_genesis_object_count = runtime_api
-            .pre_genesis_object_count(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_count` from runtime API");
-        let pre_genesis_object_seed = runtime_api
-            .pre_genesis_object_seed(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_seed` from runtime API");
-
-        // These archived segments are a part of the public parameters of network setup, thus do not
-        // need to be sent to farmers
-        info!(target: "subspace", "Processing pre-genesis objects");
-        let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
-            .map(|index| {
-                object_archiver
-                    .add_object(pre_genesis_data::from_seed(
-                        &pre_genesis_object_seed,
-                        index,
-                        pre_genesis_object_size,
-                    ))
-                    .into_iter()
-            })
-            .flatten()
-            .map(|archived_segment| archived_segment.root_block)
-            .collect();
-
-        if subspace_link.authoring_enabled {
-            // TODO: Block size will not be enough in case number of root blocks it too large; not a
-            //  problem for now though. Also RAM usage will be very significant with current approach.
-            // Submit store root block extrinsic at genesis block.
-            for root_block in new_root_blocks.iter().copied() {
-                client
-                    .runtime_api()
-                    .submit_store_root_block_extrinsic(&genesis_block_id, root_block)
-                    .expect("Failed to submit `store_root_block` extrinsic at genesis block");
-            }
-        }
-
-        // Set list of expected root blocks for the next block after genesis (we can't have
-        // extrinsics in genesis block, at least not right now)
-        subspace_link
-            .root_blocks
-            .lock()
-            .put(One::one(), new_root_blocks);
-
-        info!(target: "subspace", "Finished processing pre-genesis objects");
-
-        object_archiver.into_block_archiver()
-    };
-
-    // Process blocks since last fully archived block (or genesis) up to the current head minus K
-    {
-        let blocks_to_archive_from = archiver
-            .last_archived_block_number()
-            .map(|n| n + 1)
-            .unwrap_or_default();
-        let best_number = client.info().best_number;
-        let blocks_to_archive_to = TryInto::<u32>::try_into(best_number)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Best block number {} can't be converted into u32",
-                    best_number,
-                );
-            })
-            .checked_sub(confirmation_depth_k);
-
-        if let Some(blocks_to_archive_to) = blocks_to_archive_to {
-            info!(
-                target: "subspace",
-                "Archiving already produced blocks {}..={}",
-                blocks_to_archive_from,
-                blocks_to_archive_to,
-            );
-            for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                let block = client
-                    .block(&BlockId::Number(block_to_archive.into()))
-                    .expect("Older block by number must always exist")
-                    .expect("Older block by number must always exist");
-
-                let block_object_mapping = client
-                    .runtime_api()
-                    .extract_block_object_mapping(
-                        &BlockId::Number(block_to_archive.saturating_sub(1).into()),
-                        block.block.clone(),
-                    )
-                    .expect("Must be able to make runtime call");
-
-                // These archived segments were processed before, thus do not need to be sent to
-                // farmers
-                let new_root_blocks = archiver
-                    .add_block(block.encode(), block_object_mapping)
-                    .into_iter()
-                    .map(|archived_segment| archived_segment.root_block)
-                    .collect();
-
-                // Set list of expected root blocks for the block where we expect root block
-                // extrinsic to be included
-                subspace_link.root_blocks.lock().put(
-                    (block_to_archive + confirmation_depth_k + 1).into(),
-                    new_root_blocks,
-                );
-            }
-        }
-    }
-
-    spawner.spawn_blocking(
-        "subspace-archiver",
-        Box::pin({
-            let mut imported_block_notification_stream =
-                subspace_link.imported_block_notification_stream.subscribe();
-            let archived_segment_notification_sender =
-                subspace_link.archived_segment_notification_sender.clone();
-
-            async move {
-                let mut last_archived_block_number =
-                    archiver.last_archived_block_number().map(Into::into);
-
-                while let Some((block_number, mut root_block_sender)) =
-                    imported_block_notification_stream.next().await
-                {
-                    let block_to_archive =
-                        match block_number.checked_sub(&confirmation_depth_k.into()) {
-                            Some(block_to_archive) => block_to_archive,
-                            None => {
-                                continue;
-                            }
-                        };
-
-                    if let Some(last_archived_block) = &mut last_archived_block_number {
-                        if *last_archived_block >= block_to_archive {
-                            // This block was already archived, skip
-                            continue;
-                        }
-
-                        *last_archived_block = block_to_archive;
-                    } else {
-                        last_archived_block_number.replace(block_to_archive);
-                    }
-
-                    debug!(target: "subspace", "Archiving block {:?}", block_to_archive);
-
-                    let block = client
-                        .block(&BlockId::Number(block_to_archive))
-                        .expect("Older block by number must always exist")
-                        .expect("Older block by number must always exist");
-
-                    let block_object_mapping = client
-                        .runtime_api()
-                        .extract_block_object_mapping(
-                            &BlockId::Number(block_to_archive.saturating_sub(One::one())),
-                            block.block.clone(),
-                        )
-                        .expect("Must be able to make runtime call");
-
-                    for archived_segment in archiver.add_block(block.encode(), block_object_mapping)
-                    {
-                        let ArchivedSegment {
-                            root_block,
-                            pieces,
-                            object_mapping,
-                        } = archived_segment;
-
-                        archived_segment_notification_sender.notify(move || {
-                            ArchivedSegmentNotification {
-                                root_block,
-                                pieces,
-                                object_mapping,
-                            }
-                        });
-
-                        let _ = root_block_sender.send(root_block).await;
-                    }
-                }
-            }
-        }),
-    );
 }
 
 /// Start an import queue for the Subspace consensus algorithm.

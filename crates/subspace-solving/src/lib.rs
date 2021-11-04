@@ -33,18 +33,18 @@ pub const TAG_SIZE: usize = core::mem::size_of::<Tag>();
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication
-pub fn is_tag_valid(piece: &Piece, tag: Tag, salt: Salt) -> bool {
+pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
     create_tag(piece, salt) == tag
 }
 
-/// Create a commitment tag of a piece for a particular salt
-pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
-    crypto::hmac_sha256(salt, piece)[..TAG_SIZE]
+/// Create a commitment tag of a piece for a particular salt.
+pub fn create_tag(piece: impl AsRef<[u8]>, salt: Salt) -> Tag {
+    crypto::hmac_sha256(salt, piece.as_ref())[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive global slot challenge from epoch randomness
+/// Derive global slot challenge from epoch randomness.
 pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, slot: Slot) -> Tag {
     let mut hasher = Sha256::new();
     hasher.update(epoch_randomness);
@@ -54,7 +54,7 @@ pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, s
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive local challenge for farmer's public key hash from global challenge
+/// Derive local challenge for farmer's public key hash from the global challenge.
 pub fn derive_local_challenge<C: AsRef<[u8]>, H: AsRef<[u8]>>(
     global_challenge: C,
     farmer_public_key_hash: H,
