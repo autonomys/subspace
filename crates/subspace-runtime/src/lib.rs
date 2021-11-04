@@ -355,6 +355,12 @@ impl pallet_transaction_payment::Config for Runtime {
     type FeeMultiplierUpdate = ();
 }
 
+impl pallet_utility::Config for Runtime {
+    type Event = Event;
+    type Call = Call;
+    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
 impl pallet_sudo::Config for Runtime {
     type Event = Event;
     type Call = Call;
@@ -409,6 +415,7 @@ construct_runtime!(
 
         Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>} = 4,
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 5,
+        Utility: pallet_utility::{Pallet, Call, Event} = 8,
 
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
 
@@ -690,6 +697,7 @@ impl_runtime_apis! {
             list_benchmark!(list, extra, frame_system, SystemBench::<Runtime>);
             list_benchmark!(list, extra, pallet_balances, Balances);
             list_benchmark!(list, extra, pallet_timestamp, Timestamp);
+            list_benchmark!(params, batches, pallet_utility, Utility);
             list_benchmark!(list, extra, pallet_template, TemplateModule);
 
             let storage_info = AllPalletsWithSystem::storage_info();
@@ -728,6 +736,7 @@ impl_runtime_apis! {
             add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
             add_benchmark!(params, batches, pallet_balances, Balances);
             add_benchmark!(params, batches, pallet_timestamp, Timestamp);
+            add_benchmark!(params, batches, pallet_utility, Utility);
             add_benchmark!(params, batches, pallet_template, TemplateModule);
 
             Ok(batches)
