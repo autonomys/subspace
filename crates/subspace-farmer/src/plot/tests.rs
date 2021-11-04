@@ -13,7 +13,7 @@ fn init() {
 fn generate_random_piece() -> Piece {
     let mut bytes = [0u8; PIECE_SIZE];
     rand::thread_rng().fill(&mut bytes[..]);
-    bytes
+    bytes.into()
 }
 
 #[tokio::test(flavor = "multi_thread")]

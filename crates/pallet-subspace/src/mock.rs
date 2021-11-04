@@ -194,7 +194,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let subspace_solving = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
-    let mut piece: Piece = [0u8; 4096];
+    let mut piece: Piece = [0u8; 4096].into();
     subspace_solving.encode(piece_index, &mut piece).unwrap();
     let tag: Tag = subspace_solving::create_tag(&piece, Subspace::salt().to_le_bytes());
 
@@ -250,7 +250,7 @@ pub fn generate_equivocation_proof(
     let current_slot = CurrentSlot::<Test>::get();
 
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
-    let encoding: Piece = [0u8; 4096];
+    let encoding: Piece = [0u8; 4096].into();
     let tag: Tag = [(current_block % 8) as u8; 8];
 
     let public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
