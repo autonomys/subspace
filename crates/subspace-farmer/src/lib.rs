@@ -18,7 +18,6 @@
 
 pub(crate) mod commands; // TODO: remove this again (temporarily inserted)
 pub(crate) mod commitments;
-pub(crate) mod common;
 pub(crate) mod farming;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
