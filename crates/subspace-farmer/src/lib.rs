@@ -27,6 +27,7 @@ pub(crate) mod rpc;
 
 pub use commands::farm;
 pub use commitments::{CommitmentError, Commitments};
+pub use farming::Farming;
 pub use identity::Identity;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};

@@ -4188,6 +4188,7 @@ name = "pallet-utility"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=26d69bcbe26f6b463e9374e1b1c54c3067fb6131#26d69bcbe26f6b463e9374e1b1c54c3067fb6131"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -7229,6 +7230,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-lock",
+ "async-oneshot",
  "async-std",
  "clap 3.0.0-beta.5",
  "dirs",

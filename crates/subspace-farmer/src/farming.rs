@@ -4,9 +4,79 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc::{ProposedProofOfReplicationResponse, RpcClient, SlotInfo, Solution};
 use anyhow::Result;
+use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
 use subspace_core_primitives::crypto;
+
+/// Farming Instance to store the necessary information for the farming operations,
+/// and also a channel to stop/pause the background farming task
+pub struct Farming {
+    sender: Option<async_oneshot::Sender<()>>,
+}
+
+impl Farming {
+    /// returns an instance of farming, and also starts a concurrent background farming task
+    pub fn start(
+        plot: Plot,
+        commitments: Commitments,
+        client: RpcClient,
+        identity: Identity,
+    ) -> Self {
+        let (sender, receiver) = async_oneshot::oneshot();
+
+        let farming = Farming {
+            sender: Some(sender),
+        };
+
+        tokio::spawn(background_farming(
+            client,
+            plot,
+            commitments,
+            identity,
+            receiver,
+        ));
+
+        farming
+    }
+}
+
+impl Drop for Farming {
+    fn drop(&mut self) {
+        // we don't have to do anything in here
+        // this is for clarity and verbosity
+        let _ = self.sender.take().unwrap().send(());
+    }
+}
+
+async fn background_farming(
+    client: RpcClient,
+    plot: Plot,
+    commitments: Commitments,
+    identity: Identity,
+    receiver: async_oneshot::Receiver<()>,
+) {
+    match future::select(
+        Box::pin(
+            async move { subscribe_to_slot_info(&client, &plot, &commitments, &identity).await },
+        ),
+        receiver,
+    )
+    .await
+    {
+        Either::Left((farming_result, _)) => {
+            if let Err(val) = farming_result {
+                error!("Farming process ended with error: {}", val)
+            }
+        }
+        Either::Right((channel_result, _)) => match channel_result {
+            Ok(_) => {
+                info!("Farming stopped!");
+            }
+            Err(_) => error!("Unable to receive messages: Sender was dropped."),
+        },
+    }
+}
 
 #[derive(Default)]
 struct Salts {
@@ -14,7 +84,7 @@ struct Salts {
     next: Option<Salt>,
 }
 
-pub(crate) async fn subscribe_to_slot_info(
+async fn subscribe_to_slot_info(
     client: &RpcClient,
     plot: &Plot,
     commitments: &Commitments,

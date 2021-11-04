@@ -1,11 +1,10 @@
 use crate::commitments::Commitments;
+use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::{EncodedBlockWithObjectMapping, FarmerMetadata, RpcClient};
 use anyhow::{anyhow, Result};
-use futures::future;
-use futures::future::Either;
 use log::{debug, error, info};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -40,32 +39,29 @@ pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
 
     let identity = Identity::open_or_create(&base_directory)?;
 
-    match future::select(
-        {
-            let client = client.clone();
-            let plot = plot.clone();
-            let commitments = commitments.clone();
-            let public_key = identity.public_key();
+    // start the farming task
+    // right now the instance is unused, however, if we want to call stop the process
+    // we can just drop the instance, and it will be stopped magically :)
+    let _farming_instance = Farming::start(
+        plot.clone(),
+        commitments.clone(),
+        client.clone(),
+        identity.clone(),
+    );
 
-            Box::pin(async move {
-                background_plotting(client, plot, commitments, object_mappings, &public_key).await
-            })
-        },
-        Box::pin(async move {
-            crate::farming::subscribe_to_slot_info(&client, &plot, &commitments, &identity).await
-        }),
-    )
-    .await
-    {
-        Either::Left((result, _)) => match result {
-            Ok(()) => {
-                info!("Background plotting shutdown gracefully");
+    // start the background plotting
+    // NOTE: THIS WILL CHANGE IN THE UPCOMING PR
+    let public_key = identity.public_key();
+    let plotting_result =
+        background_plotting(client, plot, commitments, object_mappings, &public_key).await;
 
-                Ok(())
-            }
-            Err(error) => Err(anyhow!("Background plotting error: {}", error)),
-        },
-        Either::Right((result, _)) => result.map_err(Into::into),
+    match plotting_result {
+        Ok(()) => {
+            info!("Background plotting shutdown gracefully");
+
+            Ok(())
+        }
+        Err(error) => Err(anyhow!("Background plotting error: {}", error)),
     }
 }
 
