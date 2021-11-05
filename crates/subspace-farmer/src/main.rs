@@ -19,6 +19,7 @@
 mod commands;
 mod commitments;
 mod common;
+mod farming;
 mod identity;
 mod object_mappings;
 mod plot;
