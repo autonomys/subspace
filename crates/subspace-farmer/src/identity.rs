@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
+#[derive(Clone)]
 pub struct Identity {
     keypair: Keypair,
     ctx: SigningContext,

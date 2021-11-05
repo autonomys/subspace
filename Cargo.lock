@@ -7240,6 +7240,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-lock",
+ "async-oneshot",
  "async-std",
  "clap 3.0.0-beta.5",
  "dirs",
