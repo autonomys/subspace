@@ -1,10 +1,9 @@
 use crate::commitments::Commitments;
-use crate::common::{Salt, Tag};
 use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
-use subspace_core_primitives::Piece;
+use subspace_core_primitives::{Piece, Salt, Tag};
 use tempfile::TempDir;
 
 fn init() {

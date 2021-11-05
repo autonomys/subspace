@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-use crate::common::{Salt, Tag, BATCH_SIZE};
 use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
@@ -13,9 +12,10 @@ use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PIECE_SIZE};
+use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
+const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 

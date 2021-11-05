@@ -1,4 +1,3 @@
-use crate::common::{Salt, Tag};
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
@@ -7,6 +6,7 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::{Salt, Tag};
 
 type SlotNumber = u64;
 
