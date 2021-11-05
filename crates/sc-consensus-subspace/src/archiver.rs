@@ -225,10 +225,17 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     )
                     .expect("Must be able to make runtime call");
 
+                let encoded_block = block.encode();
+                debug!(
+                    target: "subspace",
+                    "Encoded block {} has size of {:.2} kiB",
+                    block_to_archive,
+                    encoded_block.len() as f32 / 1024.0
+                );
                 // These archived segments were processed before, thus do not need to be sent to
                 // farmers
                 let new_root_blocks = archiver
-                    .add_block(block.encode(), block_object_mapping)
+                    .add_block(encoded_block, block_object_mapping)
                     .into_iter()
                     .map(|archived_segment| archived_segment.root_block)
                     .collect();
@@ -292,7 +299,14 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         )
                         .expect("Must be able to make runtime call");
 
-                    for archived_segment in archiver.add_block(block.encode(), block_object_mapping)
+                    let encoded_block = block.encode();
+                    debug!(
+                        target: "subspace",
+                        "Encoded block {} has size of {:.2} kiB",
+                        block_to_archive,
+                        encoded_block.len() as f32 / 1024.0
+                    );
+                    for archived_segment in archiver.add_block(encoded_block, block_object_mapping)
                     {
                         let ArchivedSegment {
                             root_block,
