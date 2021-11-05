@@ -23,6 +23,8 @@
 pub mod crypto;
 pub mod objects;
 
+use core::convert::AsRef;
+use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -42,13 +44,6 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 /// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 
-/// A piece of archival history in Subspace Network.
-///
-/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
-/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
-/// archival history of the blockchain.
-pub type Piece = [u8; PIECE_SIZE];
-
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
 
@@ -59,6 +54,64 @@ pub type Tag = [u8; 8];
 
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; 8];
+
+/// A piece of archival history in Subspace Network.
+///
+/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
+/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
+/// archival history of the blockchain.
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub struct Piece(#[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; PIECE_SIZE]);
+
+impl Default for Piece {
+    fn default() -> Self {
+        Self([0u8; PIECE_SIZE])
+    }
+}
+
+impl From<[u8; PIECE_SIZE]> for Piece {
+    fn from(inner: [u8; PIECE_SIZE]) -> Self {
+        Self(inner)
+    }
+}
+
+impl TryFrom<&[u8]> for Piece {
+    type Error = &'static str;
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        slice
+            .try_into()
+            .map(Self)
+            .map_err(|_| "Wrong piece size, expected: 4096")
+    }
+}
+
+impl Deref for Piece {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Piece {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl AsRef<[u8]> for Piece {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for Piece {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
 
 /// Progress of an archived block.
 #[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]

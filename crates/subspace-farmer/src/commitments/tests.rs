@@ -4,7 +4,7 @@ use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PIECE_SIZE};
+use subspace_core_primitives::Piece;
 use tempfile::TempDir;
 
 fn init() {
@@ -16,7 +16,7 @@ async fn create() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let piece: Piece = [9u8; 4096];
+    let piece: Piece = [9u8; 4096].into();
     let salt: Salt = [1u8; 8];
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
@@ -59,9 +59,9 @@ async fn find_by_tag() {
         Arc::new(
             (0..1024_usize)
                 .map(|_| {
-                    let mut bytes = [0u8; PIECE_SIZE];
-                    rng.fill(&mut bytes[..]);
-                    bytes
+                    let mut piece = Piece::default();
+                    rng.fill(&mut piece[..]);
+                    piece
                 })
                 .collect(),
         ),
