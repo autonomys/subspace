@@ -1,9 +1,7 @@
 use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
-};
+use subspace_core_primitives::{ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock};
 use tempfile::TempDir;
 
 fn init() {
@@ -11,9 +9,9 @@ fn init() {
 }
 
 fn generate_random_piece() -> Piece {
-    let mut bytes = [0u8; PIECE_SIZE];
-    rand::thread_rng().fill(&mut bytes[..]);
-    bytes
+    let mut piece = Piece::default();
+    rand::thread_rng().fill(&mut piece[..]);
+    piece
 }
 
 #[tokio::test(flavor = "multi_thread")]

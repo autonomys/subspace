@@ -1,11 +1,11 @@
 use std::iter;
 use subspace_archiving::merkle_tree::{MerkleTree, MerkleTreeWitnessError};
-use subspace_core_primitives::{crypto, Piece, Sha256Hash};
+use subspace_core_primitives::{crypto, Piece, Sha256Hash, PIECE_SIZE};
 
 #[test]
 fn merkle_tree() {
     let number_of_pieces = 16_usize;
-    let pieces: Vec<Piece> = iter::repeat_with(rand::random)
+    let pieces: Vec<Piece> = iter::repeat_with(|| rand::random::<[u8; PIECE_SIZE]>().into())
         .take(number_of_pieces)
         .collect();
     let hashes: Vec<Sha256Hash> = pieces.iter().map(crypto::sha256_hash).collect();
