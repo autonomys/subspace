@@ -29,7 +29,7 @@ use parity_scale_codec::Encode;
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};
+use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
 use serde::{Deserialize, Serialize};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -42,8 +42,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::objects::{BlockObjectMapping, PieceObjectMapping};
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::objects::BlockObjectMapping;
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -94,35 +93,6 @@ pub struct RpcNewSlotInfo {
     pub next_salt: Option<[u8; 8]>,
     /// Acceptable solution range
     pub solution_range: u64,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcArchivedSegment {
-    /// Root block
-    pub root_block: RootBlock,
-    /// Pieces that correspond to the segment in root block
-    pub pieces: Vec<Vec<u8>>,
-    /// Mappings for objects stored in corresponding pieces.
-    ///
-    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
-    pub object_mapping: Vec<PieceObjectMapping>,
-}
-
-impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
-    fn from(archived_segment_notification: ArchivedSegmentNotification) -> Self {
-        let ArchivedSegmentNotification {
-            root_block,
-            pieces,
-            object_mapping,
-        } = archived_segment_notification;
-
-        Self {
-            root_block,
-            pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
-            object_mapping,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -193,7 +163,7 @@ pub trait SubspaceRpcApi {
     fn subscribe_archived_segment(
         &self,
         metadata: Self::Metadata,
-        subscriber: Subscriber<RpcArchivedSegment>,
+        subscriber: Subscriber<ArchivedSegment>,
     );
 
     /// Unsubscribe from archived segment subscription.
@@ -220,7 +190,7 @@ pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     response_senders: Arc<Mutex<ResponseSenders>>,
     _block: PhantomData<Block>,
 }
@@ -248,9 +218,7 @@ where
         client: Arc<Client>,
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-        archived_segment_notification_stream: SubspaceNotificationStream<
-            ArchivedSegmentNotification,
-        >,
+        archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     ) -> Self
     where
         E: Spawn + Send + Sync + 'static,
@@ -452,14 +420,14 @@ where
     fn subscribe_archived_segment(
         &self,
         _metadata: Self::Metadata,
-        subscriber: Subscriber<RpcArchivedSegment>,
+        subscriber: Subscriber<ArchivedSegment>,
     ) {
         self.subscription_manager.add(subscriber, |sink| {
             self.archived_segment_notification_stream
                 .subscribe()
                 .map(|archived_segment_notification| {
                     // This will be sent to the farmer
-                    Ok(Ok(archived_segment_notification.into()))
+                    Ok(Ok(archived_segment_notification))
                 })
                 .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
                 .map(|_| ())

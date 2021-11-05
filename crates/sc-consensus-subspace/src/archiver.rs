@@ -314,12 +314,10 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                             object_mapping,
                         } = archived_segment;
 
-                        archived_segment_notification_sender.notify(move || {
-                            ArchivedSegmentNotification {
-                                root_block,
-                                pieces,
-                                object_mapping,
-                            }
+                        archived_segment_notification_sender.notify(move || ArchivedSegment {
+                            root_block,
+                            pieces,
+                            object_mapping,
                         });
 
                         let _ = root_block_sender.send(root_block).await;

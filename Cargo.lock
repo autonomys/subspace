@@ -7227,6 +7227,7 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.4",
  "reed-solomon-erasure",
+ "serde",
  "sha2 0.9.8",
  "subspace-core-primitives",
  "thiserror",
