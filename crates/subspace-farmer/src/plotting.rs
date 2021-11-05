@@ -12,10 +12,11 @@ use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_solving::SubspaceCodec;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 pub struct Plotting {
     sender: Option<mpsc::Sender<()>>,
+    handle: Option<JoinHandle<Result<()>>>,
 }
 
 impl Plotting {
@@ -28,7 +29,7 @@ impl Plotting {
     ) -> Self {
         let (sender, receiver) = mpsc::channel(1);
 
-        tokio::spawn(async move {
+        let plotting_handle = tokio::spawn(async move {
             background_plotting(
                 client,
                 plot,
@@ -42,7 +43,12 @@ impl Plotting {
 
         Plotting {
             sender: Some(sender),
+            handle: Some(plotting_handle),
         }
+    }
+
+    pub async fn wait(mut self) -> Result<()> {
+        self.handle.take().unwrap().await?
     }
 }
 
@@ -338,6 +344,8 @@ async fn background_plotting<P: AsRef<[u8]>>(
                 debug!("Last block number: {:#?}", block_number);
 
                 if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
+                    // We send block that should be archived over channel that doesn't have a buffer, atomic
+                    // integer is used to make sure archiving process always read up to date value
                     block_to_archive.store(block, Ordering::Relaxed);
                     let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
                 }

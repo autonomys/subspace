@@ -25,6 +25,7 @@ mod plot;
 mod plotting;
 mod rpc;
 mod utils;
+
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use env_logger::Env;

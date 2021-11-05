@@ -8,11 +8,13 @@ use log::{debug, error, info, trace};
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
+use tokio::task::JoinHandle;
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
 pub struct Farming {
     sender: Option<async_oneshot::Sender<()>>,
+    handle: Option<JoinHandle<Result<()>>>,
 }
 
 impl Farming {
@@ -25,11 +27,7 @@ impl Farming {
     ) -> Self {
         let (sender, receiver) = async_oneshot::oneshot();
 
-        let farming = Farming {
-            sender: Some(sender),
-        };
-
-        tokio::spawn(background_farming(
+        let farming_handle = tokio::spawn(background_farming(
             client,
             plot,
             commitments,
@@ -37,7 +35,14 @@ impl Farming {
             receiver,
         ));
 
-        farming
+        Farming {
+            sender: Some(sender),
+            handle: Some(farming_handle),
+        }
+    }
+
+    pub async fn wait(mut self) -> Result<()> {
+        self.handle.take().unwrap().await?
     }
 }
 
@@ -55,7 +60,7 @@ async fn background_farming(
     commitments: Commitments,
     identity: Identity,
     receiver: async_oneshot::Receiver<()>,
-) {
+) -> Result<()> {
     match future::select(
         Box::pin(
             async move { subscribe_to_slot_info(&client, &plot, &commitments, &identity).await },
@@ -66,16 +71,19 @@ async fn background_farming(
     {
         Either::Left((farming_result, _)) => {
             if let Err(val) = farming_result {
-                error!("Farming process ended with error: {}", val)
+                return Err(anyhow!("Farming process ended with error: {}", val));
             }
         }
         Either::Right((channel_result, _)) => match channel_result {
             Ok(_) => {
                 info!("Farming stopped!");
             }
-            Err(_) => error!("Unable to receive messages: Sender was dropped."),
+            Err(_) => {
+                return Err(anyhow!("Unable to receive messages: Sender was dropped."));
+            }
         },
     }
+    Ok(())
 }
 
 #[derive(Default)]

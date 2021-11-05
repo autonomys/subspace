@@ -11,8 +11,7 @@ use std::path::PathBuf;
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
-pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
-    // TODO: revert this to pub(crate) again (temporarily modified)
+pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");
@@ -34,9 +33,7 @@ pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     let identity = Identity::open_or_create(&base_directory)?;
 
     // start the farming task
-    // right now the instance is unused, however, if we want to call stop the process
-    // we can just drop the instance, and it will be stopped magically :)
-    let _farming_instance = Farming::start(
+    let farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
         client.clone(),
@@ -44,8 +41,12 @@ pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     );
 
     // start the background plotting
-    let _plotting_instance = Plotting::start(plot, commitments, object_mappings, client, identity);
+    let plotting_instance = Plotting::start(plot, commitments, object_mappings, client, identity);
 
-    Ok(()) // this is a placeholder at the moment, needs to wait on the instances in order to
-           // detect errors. Will be present in the next commit for modularity
+    tokio::select! {
+        _ = plotting_instance.wait() => {},
+        _ = farming_instance.wait() => {},
+    }
+
+    Ok(())
 }
