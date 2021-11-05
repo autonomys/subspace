@@ -3,8 +3,9 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::plotting::Plotting;
 use crate::rpc::RpcClient;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use log::info;
 use std::path::PathBuf;
 
@@ -43,23 +44,8 @@ pub async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<()> {
     );
 
     // start the background plotting
-    // NOTE: THIS WILL CHANGE IN THE UPCOMING PR
-    let public_key = identity.public_key();
-    let plotting_result = crate::plotting::background_plotting(
-        client,
-        plot,
-        commitments,
-        object_mappings,
-        &public_key,
-    )
-    .await;
+    let _plotting_instance = Plotting::start(plot, commitments, object_mappings, client, identity);
 
-    match plotting_result {
-        Ok(()) => {
-            info!("Background plotting shutdown gracefully");
-
-            Ok(())
-        }
-        Err(error) => Err(anyhow!("Background plotting error: {}", error)),
-    }
+    Ok(()) // this is a placeholder at the moment, needs to wait on the instances in order to
+           // detect errors. Will be present in the next commit for modularity
 }

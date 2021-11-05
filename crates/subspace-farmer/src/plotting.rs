@@ -1,4 +1,5 @@
 use crate::commitments::Commitments;
+use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::{EncodedBlockWithObjectMapping, FarmerMetadata, RpcClient};
@@ -11,16 +12,59 @@ use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_solving::SubspaceCodec;
+use tokio::sync::mpsc;
+
+pub struct Plotting {
+    sender: Option<mpsc::Sender<()>>,
+}
+
+impl Plotting {
+    pub fn start(
+        plot: Plot,
+        commitments: Commitments,
+        object_mappings: ObjectMappings,
+        client: RpcClient,
+        identity: Identity,
+    ) -> Self {
+        let (sender, receiver) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            background_plotting(
+                client,
+                plot,
+                commitments,
+                object_mappings,
+                &identity.public_key(),
+                receiver,
+            )
+            .await
+        });
+
+        Plotting {
+            sender: Some(sender),
+        }
+    }
+}
+
+impl Drop for Plotting {
+    fn drop(&mut self) {
+        // we don't have to do anything in here
+        // these are for clarity and verbosity
+        let _ = self.sender.take().unwrap().send(());
+        info!("Plotting stopped!");
+    }
+}
 
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
+async fn background_plotting<P: AsRef<[u8]>>(
     client: RpcClient,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
     public_key: &P,
+    mut receiver: mpsc::Receiver<()>,
 ) -> Result<()> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {
@@ -116,7 +160,7 @@ pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) =
                                 subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
-                                error!("Failed to encode a piece: error: {}", error);
+                                error!("Failed to encode a piece: error: {:?}", error);
                                 continue;
                             }
                         }
@@ -202,7 +246,7 @@ pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
                         }
                         Err(error) => {
                             error!(
-                                "Failed to get block #{} from RPC: {}",
+                                "Failed to get block #{} from RPC: {:?}",
                                 block_to_archive, error,
                             );
 
@@ -228,7 +272,7 @@ pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) =
                                 subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
-                                error!("Failed to encode a piece: error: {}", error);
+                                error!("Failed to encode a piece: error: {:?}", error);
                                 continue;
                             }
                         }
@@ -245,10 +289,10 @@ pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) = runtime_handle.block_on(
                                 commitments.create_for_pieces(&pieces, piece_index_offset),
                             ) {
-                                error!("Failed to create commitments for pieces: {}", error);
+                                error!("Failed to create commitments for pieces: {:?}", error);
                             }
                             if let Err(error) = object_mappings.store(&object_mapping) {
-                                error!("Failed to store object mappings for pieces: {}", error);
+                                error!("Failed to store object mappings for pieces: {:?}", error);
                             }
 
                             let segment_index = root_block.segment_index();
@@ -283,17 +327,21 @@ pub(crate) async fn background_plotting<P: AsRef<[u8]>>(
     let block_to_archive = Arc::new(AtomicU32::default());
 
     // Listen for new blocks produced on the network
-    while let Some(head) = new_head.next().await? {
-        // Numbers are in the format `0xabcd`, so strip `0x` prefix and interpret the rest as an
-        // integer in hex
-        let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
-        debug!("Last block number: {:#?}", block_number);
+    loop {
+        tokio::select! {
+            Some(_) = receiver.recv() => {
+                info!("plotting stopped!");
+                break;
+            }
+            Ok(Some(head)) = new_head.next() => {
+                let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
+                debug!("Last block number: {:#?}", block_number);
 
-        if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
-            // We send block that should be archived over channel that doesn't have a buffer, atomic
-            // integer is used to make sure archiving process always read up to date value
-            block_to_archive.store(block, Ordering::Relaxed);
-            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
+                    block_to_archive.store(block, Ordering::Relaxed);
+                    let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                }
+            }
         }
     }
 
