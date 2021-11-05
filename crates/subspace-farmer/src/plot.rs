@@ -132,9 +132,9 @@ impl Plot {
                                         plot_file
                                             .seek(SeekFrom::Start(index * PIECE_SIZE as u64))
                                             .await?;
-                                        let mut buffer = [0u8; PIECE_SIZE];
+                                        let mut buffer = Piece::default();
                                         plot_file.read_exact(&mut buffer).await?;
-                                        buffer.into()
+                                        buffer
                                     },
                                 );
                             }

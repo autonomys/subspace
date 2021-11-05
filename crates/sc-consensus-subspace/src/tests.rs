@@ -781,7 +781,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
 
     let (pre_digest, signature) = {
-        let encoding: Piece = [0u8; 4096].into();
+        let encoding = Piece::default();
         let tag: Tag = [0u8; 8];
 
         let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();

@@ -647,7 +647,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                 let witness = merkle_tree
                     .get_witness(position)
                     .expect("We use the same indexes as during Merkle tree creation; qed");
-                let mut piece = [0u8; PIECE_SIZE];
+                let mut piece = Piece::default();
 
                 piece.as_mut().write_all(&record).expect(
                     "With correct archiver parameters record is always smaller than \
@@ -660,7 +660,7 @@ impl<State: private::ArchiverState> Archiver<State> {
                     never happens; qed",
                 );
 
-                piece.into()
+                piece
             })
             .collect();
 

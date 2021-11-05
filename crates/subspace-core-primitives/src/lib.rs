@@ -66,6 +66,12 @@ pub type Salt = [u8; 8];
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct Piece(#[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; PIECE_SIZE]);
 
+impl Default for Piece {
+    fn default() -> Self {
+        Self([0u8; PIECE_SIZE])
+    }
+}
+
 impl From<[u8; PIECE_SIZE]> for Piece {
     fn from(inner: [u8; PIECE_SIZE]) -> Self {
         Self(inner)
@@ -98,6 +104,12 @@ impl DerefMut for Piece {
 impl AsRef<[u8]> for Piece {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl AsMut<[u8]> for Piece {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
     }
 }
 
