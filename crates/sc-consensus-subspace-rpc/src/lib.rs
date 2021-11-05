@@ -20,6 +20,7 @@
 
 use futures::task::SpawnExt;
 use futures::{future, task::Spawn, FutureExt, SinkExt, StreamExt};
+use hex_buffer_serde::{Hex, HexForm};
 use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
@@ -74,6 +75,7 @@ pub struct FarmerMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncodedBlockWithObjectMapping {
     /// Encoded block
+    #[serde(with = "HexForm")]
     pub block: Vec<u8>,
     /// Mapping of objects inside of the block
     pub object_mapping: BlockObjectMapping,

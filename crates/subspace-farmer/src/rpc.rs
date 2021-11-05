@@ -1,4 +1,5 @@
 use crate::common::{Salt, Tag};
+use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::{Error, Subscription};
@@ -33,6 +34,7 @@ pub(super) struct FarmerMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct EncodedBlockWithObjectMapping {
     /// Encoded block
+    #[serde(with = "HexForm")]
     pub block: Vec<u8>,
     /// Mapping of objects inside of the block
     pub object_mapping: BlockObjectMapping,

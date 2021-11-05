@@ -2123,6 +2123,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hex-buffer-serde"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08f52012c160668b4494727f3588045aa00429849fcae51de70d68fa98228039"
+dependencies = [
+ "hex",
+ "serde",
+]
+
+[[package]]
 name = "hex-literal"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5480,6 +5490,7 @@ dependencies = [
  "async-oneshot",
  "futures 0.3.17",
  "futures-timer 3.0.2",
+ "hex-buffer-serde",
  "jsonrpc-core",
  "jsonrpc-core-client",
  "jsonrpc-derive",
@@ -7247,6 +7258,7 @@ dependencies = [
  "env_logger 0.9.0",
  "futures 0.3.17",
  "hex",
+ "hex-buffer-serde",
  "indicatif",
  "jsonrpsee",
  "log",
@@ -7988,7 +8000,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f559b464de2e2bdabcac6a210d12e9b5a5973c251e102c44c585c71d51bd78e"
 dependencies = [
  "cfg-if 1.0.0",
- "rand 0.4.6",
+ "rand 0.8.4",
  "static_assertions",
 ]
 
