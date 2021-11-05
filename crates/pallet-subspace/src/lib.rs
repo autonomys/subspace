@@ -442,7 +442,7 @@ pub mod pallet {
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
         /// will be defined as the equivocation reporter.
-        #[pallet::weight(<T as Config>::WeightInfo::report_equivocation())]
+        #[pallet::weight((<T as Config>::WeightInfo::report_equivocation(), DispatchClass::Operational))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]
@@ -474,7 +474,7 @@ pub mod pallet {
         ///
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`).
-        #[pallet::weight(<T as Config>::WeightInfo::store_root_block())]
+        #[pallet::weight((<T as Config>::WeightInfo::store_root_block(), DispatchClass::Mandatory, Pays::No))]
         pub fn store_root_block(
             origin: OriginFor<T>,
             root_block: RootBlock,
