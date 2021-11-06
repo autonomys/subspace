@@ -48,6 +48,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub use self::archiver::start_subspace_archiver;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 use codec::{Decode, Encode};
@@ -109,6 +110,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::future::Future;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
+pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_archiving::archiver::{BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{Randomness, RootBlock, Salt};
@@ -122,9 +124,6 @@ mod slot_worker;
 #[cfg(test)]
 mod tests;
 mod verification;
-
-pub use self::archiver::start_subspace_archiver;
-pub use subspace_archiving::archiver::ArchivedSegment;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]

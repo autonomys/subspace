@@ -15,10 +15,10 @@ include = [
 [dependencies]
 merkletree = "0.21.0"
 parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
-thiserror = "1.0.29"
-typenum = "1.14.0"
 serde = { version = "1.0.130", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+thiserror = "1.0.29"
+typenum = "1.14.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(not(all(target_os = "macos", target_arch = "aarch64")))'.dependencies.reed-solomon-erasure]
@@ -49,7 +49,7 @@ rand = { version = "0.8.4", features = ["min_const_gen"] }
 default = ["std"]
 std = [
     "parity-scale-codec/std",
-    "sha2/std",
     "serde",
+    "sha2/std",
     "subspace-core-primitives/std",
 ]
