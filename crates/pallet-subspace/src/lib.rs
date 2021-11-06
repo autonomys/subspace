@@ -1018,7 +1018,7 @@ impl<T: Config> Pallet<T> {
                 // Only one root block for every segment index.
                 .and_provides(root_block.segment_index())
                 // Should be included immediately into the upcoming block with no exceptions.
-                .longevity(0)
+                .longevity(1)
                 // We don't propagate this. This can never be included on a remote node.
                 .propagate(false)
                 .build()

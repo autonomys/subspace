@@ -613,7 +613,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
                 priority: TransactionPriority::MAX,
                 requires: vec![],
                 provides: vec![("SubspaceRootBlock", segment_index).encode()],
-                longevity: 0,
+                longevity: 1,
                 propagate: false,
             })
         );
