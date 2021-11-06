@@ -16,6 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! RPC api for Subspace.
+
 #![feature(try_blocks)]
 
 use futures::task::SpawnExt;
@@ -33,7 +34,7 @@ use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Solution;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::Public;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -50,7 +51,7 @@ type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc]
-pub trait SubspaceRpcApi {
+pub trait SubspaceApi {
     /// RPC metadata
     type Metadata;
 
@@ -122,24 +123,24 @@ struct ResponseSenders {
     senders: Vec<async_oneshot::Sender<ProofOfReplication>>,
 }
 
-/// Implements the SubspaceRpc trait for interacting with Subspace.
-pub struct SubspaceRpcHandler<Block, Client> {
+/// Implements the [`SubspaceApi`] trait for interacting with Subspace.
+pub struct Subspace<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     response_senders: Arc<Mutex<ResponseSenders>>,
-    _block: PhantomData<Block>,
+    _phantom: PhantomData<Block>,
 }
 
-/// `SubspaceRpcHandler` is used for notifying subscribers about arrival of new slots and for
+/// `Subspace` is used for notifying subscribers about arrival of new slots and for
 /// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
-/// `subspace_proposeProofOfReplication` requests with `ProposedProofOfReplicationResponse` in them or until
+/// `subspace_proposeProofOfReplication` requests with `ProofOfReplication` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client> SubspaceRpcHandler<Block, Client>
+impl<Block, Client> Subspace<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -148,7 +149,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block>,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new<E>(
@@ -166,12 +167,12 @@ where
             new_slot_notification_stream,
             archived_segment_notification_stream,
             response_senders: Arc::default(),
-            _block: PhantomData::default(),
+            _phantom: PhantomData::default(),
         }
     }
 }
 
-impl<Block, Client> SubspaceRpcApi for SubspaceRpcHandler<Block, Client>
+impl<Block, Client> SubspaceApi for Subspace<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -180,7 +181,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block>,
 {
     type Metadata = sc_rpc_api::Metadata;
 
