@@ -41,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::EncodedBlockWithObjectMapping;
+use subspace_core_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -49,26 +49,6 @@ type SlotNumber = u64;
 type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
 
 // TODO: Move RPC types into separate crate shared with farmer
-/// Metadata necessary for farmer operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FarmerMetadata {
-    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
-    /// to the client-dependent transaction confirmation depth `k`).
-    pub confirmation_depth_k: u32,
-    /// The size of data in one piece (in bytes).
-    pub record_size: u32,
-    /// Recorded history is encoded and plotted in segments of this size (in bytes).
-    pub recorded_history_segment_size: u32,
-    /// This constant defines the size (in bytes) of one pre-genesis object.
-    pub pre_genesis_object_size: u32,
-    /// This constant defines the number of a pre-genesis objects that will bootstrap the
-    /// history.
-    pub pre_genesis_object_count: u32,
-    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-    /// the history.
-    pub pre_genesis_object_seed: Vec<u8>,
-}
-
 /// Information about new slot that just arrived
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcNewSlotInfo {

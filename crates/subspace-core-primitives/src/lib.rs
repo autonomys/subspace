@@ -264,3 +264,26 @@ pub struct EncodedBlockWithObjectMapping {
     /// Mapping of objects inside of the block
     pub object_mapping: BlockObjectMapping,
 }
+
+/// Metadata necessary for farmer operation
+#[derive(Clone)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub struct FarmerMetadata {
+    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
+    /// to the client-dependent transaction confirmation depth `k`).
+    pub confirmation_depth_k: u32,
+    /// The size of data in one piece (in bytes).
+    pub record_size: u32,
+    /// Recorded history is encoded and plotted in segments of this size (in bytes).
+    pub recorded_history_segment_size: u32,
+    /// This constant defines the size (in bytes) of one pre-genesis object.
+    pub pre_genesis_object_size: u32,
+    /// This constant defines the number of a pre-genesis objects that will bootstrap the
+    /// history.
+    pub pre_genesis_object_count: u32,
+    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
+    /// the history.
+    pub pre_genesis_object_seed: Vec<u8>,
+}
