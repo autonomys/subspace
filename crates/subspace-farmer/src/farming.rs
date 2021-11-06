@@ -7,7 +7,7 @@ use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
 use subspace_core_primitives::{crypto, Salt};
-use subspace_rpc_primitives::{ProposedProofOfReplicationResponse, SlotInfo, Solution};
+use subspace_rpc_primitives::{ProofOfReplication, SlotInfo, Solution};
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
@@ -130,7 +130,7 @@ async fn subscribe_to_slot_info(
         };
 
         client
-            .propose_proof_of_replication(ProposedProofOfReplicationResponse {
+            .propose_proof_of_replication(ProofOfReplication {
                 slot_number: slot_info.slot_number,
                 solution,
                 secret_key: identity.secret_key().to_bytes().into(),

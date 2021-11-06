@@ -71,7 +71,7 @@ pub struct SlotInfo {
 
 /// Proposed proof of space consisting of solution and farmer's secret key for block signing
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProposedProofOfReplicationResponse {
+pub struct ProofOfReplication {
     /// Slot number
     pub slot_number: SlotNumber,
     /// Solution (if present) from farmer's plot corresponding to slot number above

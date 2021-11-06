@@ -41,7 +41,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, ProposedProofOfReplicationResponse, SlotInfo,
+    EncodedBlockWithObjectMapping, FarmerMetadata, ProofOfReplication, SlotInfo,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -68,7 +68,7 @@ pub trait SubspaceRpcApi {
     #[rpc(name = "subspace_proposeProofOfReplication")]
     fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResponse,
+        proof_of_replication: ProofOfReplication,
     ) -> FutureResult<()>;
 
     /// Slot info subscription
@@ -119,7 +119,7 @@ pub trait SubspaceRpcApi {
 #[derive(Default)]
 struct ResponseSenders {
     current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<ProposedProofOfReplicationResponse>>,
+    senders: Vec<async_oneshot::Sender<ProofOfReplication>>,
 }
 
 /// Implements the SubspaceRpc trait for interacting with Subspace.
@@ -252,7 +252,7 @@ where
 
     fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResponse,
+        proof_of_replication: ProofOfReplication,
     ) -> FutureResult<()> {
         let response_senders = Arc::clone(&self.response_senders);
 
@@ -261,9 +261,9 @@ where
         Box::pin(async move {
             let mut response_senders = response_senders.lock();
 
-            if *response_senders.current_slot == proposed_proof_of_space_result.slot_number {
+            if *response_senders.current_slot == proof_of_replication.slot_number {
                 if let Some(mut sender) = response_senders.senders.pop() {
-                    let _ = sender.send(proposed_proof_of_space_result);
+                    let _ = sender.send(proof_of_replication);
                 }
             }
 
@@ -302,8 +302,8 @@ where
                     // Wait for solutions and transform proposed proof of space solutions into
                     // data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
-                        if let Ok(proposed_proof_of_space_result) = response_receiver.await {
-                            if let Some(solution) = proposed_proof_of_space_result.solution {
+                        if let Ok(proof_of_replication) = response_receiver.await {
+                            if let Some(solution) = proof_of_replication.solution {
                                 let solution = Solution {
                                     public_key: FarmerPublicKey::from_slice(&solution.public_key),
                                     piece_index: solution.piece_index,
@@ -313,7 +313,7 @@ where
                                 };
 
                                 let _ = solution_sender
-                                    .send((solution, proposed_proof_of_space_result.secret_key))
+                                    .send((solution, proof_of_replication.secret_key))
                                     .await;
                             }
                         }
