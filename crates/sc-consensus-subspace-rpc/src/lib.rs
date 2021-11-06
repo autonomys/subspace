@@ -41,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 

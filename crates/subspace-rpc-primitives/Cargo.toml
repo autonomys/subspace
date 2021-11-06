@@ -1,0 +1,9 @@
+[package]
+name = "subspace-rpc-primitives"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hex-buffer-serde = "0.3.0"
+serde = { version = "1.0.125", features = ["derive"] }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

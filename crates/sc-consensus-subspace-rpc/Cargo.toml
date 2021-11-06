@@ -34,3 +34,4 @@ sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/su
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }

@@ -12,7 +12,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata, Sha256Hash};
+use subspace_core_primitives::Sha256Hash;
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified

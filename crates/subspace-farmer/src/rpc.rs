@@ -4,7 +4,8 @@ use jsonrpsee::types::{Error, Subscription};
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use subspace_core_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata, Salt, Tag};
+use subspace_core_primitives::{Salt, Tag};
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 
 type SlotNumber = u64;
 
