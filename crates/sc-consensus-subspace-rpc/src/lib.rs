@@ -29,7 +29,6 @@ use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
-use serde::{Deserialize, Serialize};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -41,44 +40,13 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
+use subspace_rpc_primitives::{
+    EncodedBlockWithObjectMapping, FarmerMetadata, ProposedProofOfReplicationResponse, SlotInfo,
+};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
-type SlotNumber = u64;
 type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
-
-// TODO: Move RPC types into separate crate shared with farmer
-/// Information about new slot that just arrived
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcNewSlotInfo {
-    /// Slot number
-    pub slot_number: SlotNumber,
-    /// Slot challenge
-    pub challenge: [u8; 8],
-    /// Salt
-    pub salt: [u8; 8],
-    /// Salt for the next eon
-    pub next_salt: Option<[u8; 8]>,
-    /// Acceptable solution range
-    pub solution_range: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RpcSolution {
-    pub public_key: [u8; 32],
-    pub piece_index: u64,
-    pub encoding: Vec<u8>,
-    pub signature: Vec<u8>,
-    pub tag: [u8; 8],
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProposedProofOfReplicationResult {
-    pub slot_number: SlotNumber,
-    pub solution: Option<RpcSolution>,
-    pub secret_key: Vec<u8>,
-}
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc]
@@ -100,7 +68,7 @@ pub trait SubspaceRpcApi {
     #[rpc(name = "subspace_proposeProofOfReplication")]
     fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
+        proposed_proof_of_space_result: ProposedProofOfReplicationResponse,
     ) -> FutureResult<()>;
 
     /// Slot info subscription
@@ -109,7 +77,7 @@ pub trait SubspaceRpcApi {
         subscribe,
         name = "subspace_subscribeSlotInfo"
     )]
-    fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<RpcNewSlotInfo>);
+    fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>);
 
     /// Unsubscribe from slot info subscription.
     #[pubsub(
@@ -151,7 +119,7 @@ pub trait SubspaceRpcApi {
 #[derive(Default)]
 struct ResponseSenders {
     current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<ProposedProofOfReplicationResult>>,
+    senders: Vec<async_oneshot::Sender<ProposedProofOfReplicationResponse>>,
 }
 
 /// Implements the SubspaceRpc trait for interacting with Subspace.
@@ -169,7 +137,7 @@ pub struct SubspaceRpcHandler<Block, Client> {
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
-/// `subspace_proposeProofOfReplication` requests with `ProposedProofOfReplicationResult` in them or until
+/// `subspace_proposeProofOfReplication` requests with `ProposedProofOfReplicationResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
 impl<Block, Client> SubspaceRpcHandler<Block, Client>
 where
@@ -284,7 +252,7 @@ where
 
     fn propose_proof_of_replication(
         &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
+        proposed_proof_of_space_result: ProposedProofOfReplicationResponse,
     ) -> FutureResult<()> {
         let response_senders = Arc::clone(&self.response_senders);
 
@@ -303,11 +271,7 @@ where
         })
     }
 
-    fn subscribe_slot_info(
-        &self,
-        _metadata: Self::Metadata,
-        subscriber: Subscriber<RpcNewSlotInfo>,
-    ) {
+    fn subscribe_slot_info(&self, _metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>) {
         self.subscription_manager.add(subscriber, |sink| {
             let executor = self.subscription_manager.executor().clone();
             let response_senders = Arc::clone(&self.response_senders);
@@ -365,7 +329,7 @@ where
                     );
 
                     // This will be sent to the farmer
-                    Ok(Ok(RpcNewSlotInfo {
+                    Ok(Ok(SlotInfo {
                         slot_number: new_slot_info.slot.into(),
                         challenge: new_slot_info.challenge,
                         salt: new_slot_info.salt,

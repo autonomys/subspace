@@ -2,70 +2,16 @@ use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::{Error, Subscription};
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
-use subspace_core_primitives::{Salt, Tag};
-use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
-
-type SlotNumber = u64;
+use subspace_rpc_primitives::{
+    EncodedBlockWithObjectMapping, FarmerMetadata, ProposedProofOfReplicationResponse, SlotInfo,
+};
 
 // There are more fields in this struct, but we only care about one
 #[derive(Debug, Deserialize)]
 pub(super) struct NewHead {
     pub number: String,
-}
-
-/// Proposed proof of space consisting of solution and farmer's secret key for block signing
-#[derive(Debug, Serialize)]
-pub(super) struct ProposedProofOfReplicationResponse {
-    /// Slot number
-    pub slot_number: SlotNumber,
-    /// Solution (if present) from farmer's plot corresponding to slot number above
-    pub solution: Option<Solution>,
-    /// Secret key, used for signing blocks on the client node
-    pub secret_key: Vec<u8>,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Deserialize)]
-pub(super) struct SlotInfo {
-    /// Slot number
-    pub slot_number: SlotNumber,
-    /// Slot challenge
-    pub challenge: [u8; 8],
-    /// Salt
-    pub salt: Salt,
-    /// Salt for the next eon
-    pub next_salt: Option<Salt>,
-    /// Acceptable solution range
-    pub solution_range: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct Solution {
-    public_key: [u8; 32],
-    piece_index: u64,
-    encoding: Vec<u8>,
-    signature: Vec<u8>,
-    tag: Tag,
-}
-
-impl Solution {
-    pub(super) fn new(
-        public_key: [u8; 32],
-        piece_index: u64,
-        encoding: Vec<u8>,
-        signature: Vec<u8>,
-        tag: Tag,
-    ) -> Self {
-        Self {
-            public_key,
-            piece_index,
-            encoding,
-            signature,
-            tag,
-        }
-    }
 }
 
 /// `WsClient` wrapper.

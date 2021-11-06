@@ -5500,7 +5500,6 @@ dependencies = [
  "sc-client-api",
  "sc-consensus-subspace",
  "sc-rpc-api",
- "serde",
  "sp-api",
  "sp-blockchain",
  "sp-consensus-slots",
