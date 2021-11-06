@@ -20,7 +20,6 @@
 
 use futures::task::SpawnExt;
 use futures::{future, task::Spawn, FutureExt, SinkExt, StreamExt};
-use hex_buffer_serde::{Hex, HexForm};
 use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
@@ -42,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::EncodedBlockWithObjectMapping;
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -68,16 +67,6 @@ pub struct FarmerMetadata {
     /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
     /// the history.
     pub pre_genesis_object_seed: Vec<u8>,
-}
-
-/// Encoded block with mapping of objects that it contains
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncodedBlockWithObjectMapping {
-    /// Encoded block
-    #[serde(with = "HexForm")]
-    pub block: Vec<u8>,
-    /// Mapping of objects inside of the block
-    pub object_mapping: BlockObjectMapping,
 }
 
 /// Information about new slot that just arrived

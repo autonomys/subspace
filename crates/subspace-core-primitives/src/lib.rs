@@ -23,8 +23,15 @@
 pub mod crypto;
 pub mod objects;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+use crate::objects::BlockObjectMapping;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
+#[cfg(feature = "std")]
+use hex_buffer_serde::{Hex, HexForm};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -243,4 +250,17 @@ impl RootBlock {
             } => *last_archived_block,
         }
     }
+}
+
+/// Encoded block with mapping of objects that it contains
+#[derive(Clone)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub struct EncodedBlockWithObjectMapping {
+    /// Encoded block
+    #[cfg_attr(feature = "std", serde(with = "HexForm"))]
+    pub block: Vec<u8>,
+    /// Mapping of objects inside of the block
+    pub object_mapping: BlockObjectMapping,
 }

@@ -1,12 +1,10 @@
-use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::{Error, Subscription};
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{Salt, Tag};
+use subspace_core_primitives::{EncodedBlockWithObjectMapping, Salt, Tag};
 
 type SlotNumber = u64;
 
@@ -28,16 +26,6 @@ pub(super) struct FarmerMetadata {
     /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
     /// the history.
     pub pre_genesis_object_seed: Vec<u8>,
-}
-
-/// Encoded block with mapping of objects that it contains
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct EncodedBlockWithObjectMapping {
-    /// Encoded block
-    #[serde(with = "HexForm")]
-    pub block: Vec<u8>,
-    /// Mapping of objects inside of the block
-    pub object_mapping: BlockObjectMapping,
 }
 
 // There are more fields in this struct, but we only care about one

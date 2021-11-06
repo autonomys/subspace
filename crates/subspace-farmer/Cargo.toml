@@ -23,7 +23,6 @@ dirs = "4.0.0"
 env_logger = "0.9.0"
 futures = "0.3.13"
 hex = "0.4.3"
-hex-buffer-serde = "0.3.0"
 indicatif = "0.16.2"
 jsonrpsee = { version = "0.3.1", features = ["client", "types"] }
 log = "0.4.14"

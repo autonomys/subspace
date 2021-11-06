@@ -44,10 +44,10 @@ use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 // use std::sync::mpsc;
 use rand::prelude::*;
 use std::{cell::RefCell, task::Poll, time::Duration};
+use subspace_core_primitives::Piece;
 use subspace_core_primitives::Tag;
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
-use subspace_core_primitives::Piece;
 
 type Item = DigestItem<Hash>;
 

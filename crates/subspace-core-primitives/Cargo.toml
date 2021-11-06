@@ -13,6 +13,7 @@ include = [
 ]
 
 [dependencies]
+hex-buffer-serde = { version = "0.3.0", optional = true }
 hmac = { version  = "0.11.0", default-features = false }
 parity-scale-codec = { version = "2.3.0", default-features = false, features = ["derive"] }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
@@ -33,6 +34,7 @@ version = "0.9.8"
 [features]
 default = ["std"]
 std = [
+    "hex-buffer-serde",
     "hmac/std",
     "parity-scale-codec/std",
     "scale-info/std",

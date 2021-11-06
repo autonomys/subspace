@@ -16,7 +16,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-oneshot = "0.5.0"
 futures = "0.3.17"
 futures-timer = "3.0.2"
-hex-buffer-serde = "0.3.0"
 jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
