@@ -42,7 +42,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, ProofOfReplication, SlotInfo,
+    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -66,11 +66,8 @@ pub trait SubspaceRpcApi {
         block_number: u32,
     ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
-    #[rpc(name = "subspace_proposeProofOfReplication")]
-    fn propose_proof_of_replication(
-        &self,
-        proof_of_replication: ProofOfReplication,
-    ) -> FutureResult<()>;
+    #[rpc(name = "subspace_submitSolutionResponse")]
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()>;
 
     /// Slot info subscription
     #[pubsub(
@@ -118,9 +115,9 @@ pub trait SubspaceRpcApi {
 }
 
 #[derive(Default)]
-struct ResponseSenders {
+struct SolutionResponseSenders {
     current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<ProofOfReplication>>,
+    senders: Vec<async_oneshot::Sender<SolutionResponse>>,
 }
 
 /// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
@@ -129,7 +126,7 @@ pub struct SubspaceRpcHandler<Block, Client> {
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
-    response_senders: Arc<Mutex<ResponseSenders>>,
+    solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     _phantom: PhantomData<Block>,
 }
 
@@ -138,7 +135,7 @@ pub struct SubspaceRpcHandler<Block, Client> {
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
-/// `subspace_proposeProofOfReplication` requests with `ProofOfReplication` in them or until
+/// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
 impl<Block, Client> SubspaceRpcHandler<Block, Client>
 where
@@ -166,7 +163,7 @@ where
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
             archived_segment_notification_stream,
-            response_senders: Arc::default(),
+            solution_response_senders: Arc::default(),
             _phantom: PhantomData::default(),
         }
     }
@@ -251,20 +248,17 @@ where
         Box::pin(async move { result })
     }
 
-    fn propose_proof_of_replication(
-        &self,
-        proof_of_replication: ProofOfReplication,
-    ) -> FutureResult<()> {
-        let response_senders = Arc::clone(&self.response_senders);
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()> {
+        let solution_response_senders = self.solution_response_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
         Box::pin(async move {
-            let mut response_senders = response_senders.lock();
+            let mut solution_response_senders = solution_response_senders.lock();
 
-            if *response_senders.current_slot == proof_of_replication.slot_number {
-                if let Some(mut sender) = response_senders.senders.pop() {
-                    let _ = sender.send(proof_of_replication);
+            if *solution_response_senders.current_slot == solution_response.slot_number {
+                if let Some(mut sender) = solution_response_senders.senders.pop() {
+                    let _ = sender.send(solution_response);
                 }
             }
 
@@ -275,7 +269,7 @@ where
     fn subscribe_slot_info(&self, _metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>) {
         self.subscription_manager.add(subscriber, |sink| {
             let executor = self.subscription_manager.executor().clone();
-            let response_senders = Arc::clone(&self.response_senders);
+            let solution_response_senders = self.solution_response_senders.clone();
 
             self.new_slot_notification_stream
                 .subscribe()
@@ -290,21 +284,21 @@ where
                     // Store solution sender so that we can retrieve it when solution comes from
                     // the farmer
                     {
-                        let mut response_senders = response_senders.lock();
+                        let mut solution_response_senders = solution_response_senders.lock();
 
-                        if response_senders.current_slot != new_slot_info.slot {
-                            response_senders.current_slot = new_slot_info.slot;
-                            response_senders.senders.clear();
+                        if solution_response_senders.current_slot != new_slot_info.slot {
+                            solution_response_senders.current_slot = new_slot_info.slot;
+                            solution_response_senders.senders.clear();
                         }
 
-                        response_senders.senders.push(response_sender);
+                        solution_response_senders.senders.push(response_sender);
                     }
 
                     // Wait for solutions and transform proposed proof of space solutions into
                     // data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
-                        if let Ok(proof_of_replication) = response_receiver.await {
-                            if let Some(solution) = proof_of_replication.solution {
+                        if let Ok(solution_response) = response_receiver.await {
+                            if let Some(solution) = solution_response.maybe_solution {
                                 let solution = Solution {
                                     public_key: FarmerPublicKey::from_slice(&solution.public_key),
                                     piece_index: solution.piece_index,
@@ -314,7 +308,7 @@ where
                                 };
 
                                 let _ = solution_sender
-                                    .send((solution, proof_of_replication.secret_key))
+                                    .send((solution, solution_response.secret_key))
                                     .await;
                             }
                         }

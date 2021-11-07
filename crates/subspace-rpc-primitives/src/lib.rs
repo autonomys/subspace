@@ -69,14 +69,19 @@ pub struct SlotInfo {
     pub solution_range: u64,
 }
 
-/// Proposed proof of space consisting of solution and farmer's secret key for block signing
+/// Response of a slot challenge consisting of an optional solution and
+/// the submitter(farmer)'s secret key for block signing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProofOfReplication {
-    /// Slot number
+pub struct SolutionResponse {
+    /// Slot number.
     pub slot_number: SlotNumber,
-    /// Solution (if present) from farmer's plot corresponding to slot number above
-    pub solution: Option<Solution>,
-    /// Secret key, used for signing blocks on the client node
+    /// Optional solution.
+    ///
+    /// Derived from the farmer's plot corresponding to `slot_number` above.
+    pub maybe_solution: Option<Solution>,
+    /// Secret key.
+    ///
+    /// Used by the farmer to sign blocks on the client node.
     pub secret_key: Vec<u8>,
 }
 

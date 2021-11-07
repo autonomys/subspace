@@ -5,7 +5,7 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde::Deserialize;
 use std::sync::Arc;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, ProofOfReplication, SlotInfo,
+    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
 };
 
 // There are more fields in this struct, but we only care about one
@@ -69,15 +69,15 @@ impl RpcClient {
             .await
     }
 
-    /// Propose PoR.
-    pub(super) async fn propose_proof_of_replication(
+    /// Submit a slot solution.
+    pub(super) async fn submit_solution_response(
         &self,
-        por: ProofOfReplication,
+        solution_response: SolutionResponse,
     ) -> Result<(), Error> {
         self.client
             .request(
-                "subspace_proposeProofOfReplication",
-                JsonRpcParams::Array(vec![serde_json::to_value(&por)?]),
+                "subspace_submitSolutionResponse",
+                JsonRpcParams::Array(vec![serde_json::to_value(&solution_response)?]),
             )
             .await
     }

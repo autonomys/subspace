@@ -7,7 +7,7 @@ use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
 use subspace_core_primitives::{crypto, Salt};
-use subspace_rpc_primitives::{ProofOfReplication, SlotInfo, Solution};
+use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
@@ -105,7 +105,7 @@ async fn subscribe_to_slot_info(
         let local_challenge =
             subspace_solving::derive_local_challenge(slot_info.challenge, &farmer_public_key_hash);
 
-        let solution = match commitments
+        let maybe_solution = match commitments
             .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
             .await
         {
@@ -130,9 +130,9 @@ async fn subscribe_to_slot_info(
         };
 
         client
-            .propose_proof_of_replication(ProofOfReplication {
+            .submit_solution_response(SolutionResponse {
                 slot_number: slot_info.slot_number,
-                solution,
+                maybe_solution,
                 secret_key: identity.secret_key().to_bytes().into(),
             })
             .await?;
