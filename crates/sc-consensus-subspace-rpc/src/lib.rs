@@ -16,11 +16,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! RPC api for Subspace.
+
 #![feature(try_blocks)]
 
 use futures::task::SpawnExt;
 use futures::{future, task::Spawn, FutureExt, SinkExt, StreamExt};
-use hex_buffer_serde::{Hex, HexForm};
 use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
@@ -29,117 +29,25 @@ use parity_scale_codec::Encode;
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};
-use serde::{Deserialize, Serialize};
+use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Solution;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::Public;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::objects::{BlockObjectMapping, PieceObjectMapping};
-use subspace_core_primitives::RootBlock;
+use subspace_rpc_primitives::{
+    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
+};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
-type SlotNumber = u64;
 type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
-
-// TODO: Move RPC types into separate crate shared with farmer
-/// Metadata necessary for farmer operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FarmerMetadata {
-    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
-    /// to the client-dependent transaction confirmation depth `k`).
-    pub confirmation_depth_k: u32,
-    /// The size of data in one piece (in bytes).
-    pub record_size: u32,
-    /// Recorded history is encoded and plotted in segments of this size (in bytes).
-    pub recorded_history_segment_size: u32,
-    /// This constant defines the size (in bytes) of one pre-genesis object.
-    pub pre_genesis_object_size: u32,
-    /// This constant defines the number of a pre-genesis objects that will bootstrap the
-    /// history.
-    pub pre_genesis_object_count: u32,
-    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-    /// the history.
-    pub pre_genesis_object_seed: Vec<u8>,
-}
-
-/// Encoded block with mapping of objects that it contains
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncodedBlockWithObjectMapping {
-    /// Encoded block
-    #[serde(with = "HexForm")]
-    pub block: Vec<u8>,
-    /// Mapping of objects inside of the block
-    pub object_mapping: BlockObjectMapping,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcNewSlotInfo {
-    /// Slot number
-    pub slot_number: SlotNumber,
-    /// Slot challenge
-    pub challenge: [u8; 8],
-    /// Salt
-    pub salt: [u8; 8],
-    /// Salt for the next eon
-    pub next_salt: Option<[u8; 8]>,
-    /// Acceptable solution range
-    pub solution_range: u64,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcArchivedSegment {
-    /// Root block
-    pub root_block: RootBlock,
-    /// Pieces that correspond to the segment in root block
-    pub pieces: Vec<Vec<u8>>,
-    /// Mappings for objects stored in corresponding pieces.
-    ///
-    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
-    pub object_mapping: Vec<PieceObjectMapping>,
-}
-
-impl From<ArchivedSegmentNotification> for RpcArchivedSegment {
-    fn from(archived_segment_notification: ArchivedSegmentNotification) -> Self {
-        let ArchivedSegmentNotification {
-            root_block,
-            pieces,
-            object_mapping,
-        } = archived_segment_notification;
-
-        Self {
-            root_block,
-            pieces: pieces.into_iter().map(|piece| piece.to_vec()).collect(),
-            object_mapping,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RpcSolution {
-    pub public_key: [u8; 32],
-    pub piece_index: u64,
-    pub encoding: Vec<u8>,
-    pub signature: Vec<u8>,
-    pub tag: [u8; 8],
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProposedProofOfReplicationResult {
-    pub slot_number: SlotNumber,
-    pub solution: Option<RpcSolution>,
-    pub secret_key: Vec<u8>,
-}
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc]
@@ -158,11 +66,8 @@ pub trait SubspaceRpcApi {
         block_number: u32,
     ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
-    #[rpc(name = "subspace_proposeProofOfReplication")]
-    fn propose_proof_of_replication(
-        &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
-    ) -> FutureResult<()>;
+    #[rpc(name = "subspace_submitSolutionResponse")]
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()>;
 
     /// Slot info subscription
     #[pubsub(
@@ -170,7 +75,7 @@ pub trait SubspaceRpcApi {
         subscribe,
         name = "subspace_subscribeSlotInfo"
     )]
-    fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<RpcNewSlotInfo>);
+    fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>);
 
     /// Unsubscribe from slot info subscription.
     #[pubsub(
@@ -193,7 +98,7 @@ pub trait SubspaceRpcApi {
     fn subscribe_archived_segment(
         &self,
         metadata: Self::Metadata,
-        subscriber: Subscriber<RpcArchivedSegment>,
+        subscriber: Subscriber<ArchivedSegment>,
     );
 
     /// Unsubscribe from archived segment subscription.
@@ -210,27 +115,27 @@ pub trait SubspaceRpcApi {
 }
 
 #[derive(Default)]
-struct ResponseSenders {
+struct SolutionResponseSenders {
     current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<ProposedProofOfReplicationResult>>,
+    senders: Vec<async_oneshot::Sender<SolutionResponse>>,
 }
 
-/// Implements the SubspaceRpc trait for interacting with Subspace.
+/// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
 pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    response_senders: Arc<Mutex<ResponseSenders>>,
-    _block: PhantomData<Block>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
+    solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
+    _phantom: PhantomData<Block>,
 }
 
-/// `SubspaceRpcHandler` is used for notifying subscribers about arrival of new slots and for
+/// [`SubspaceRpcHandler`] is used for notifying subscribers about arrival of new slots and for
 /// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
-/// `subspace_proposeProofOfReplication` requests with `ProposedProofOfReplicationResult` in them or until
+/// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
 impl<Block, Client> SubspaceRpcHandler<Block, Client>
 where
@@ -241,16 +146,14 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block>,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new<E>(
         client: Arc<Client>,
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-        archived_segment_notification_stream: SubspaceNotificationStream<
-            ArchivedSegmentNotification,
-        >,
+        archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     ) -> Self
     where
         E: Spawn + Send + Sync + 'static,
@@ -260,8 +163,8 @@ where
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
             archived_segment_notification_stream,
-            response_senders: Arc::default(),
-            _block: PhantomData::default(),
+            solution_response_senders: Arc::default(),
+            _phantom: PhantomData::default(),
         }
     }
 }
@@ -275,7 +178,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block>,
 {
     type Metadata = sc_rpc_api::Metadata;
 
@@ -345,20 +248,17 @@ where
         Box::pin(async move { result })
     }
 
-    fn propose_proof_of_replication(
-        &self,
-        proposed_proof_of_space_result: ProposedProofOfReplicationResult,
-    ) -> FutureResult<()> {
-        let response_senders = Arc::clone(&self.response_senders);
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()> {
+        let solution_response_senders = self.solution_response_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
         Box::pin(async move {
-            let mut response_senders = response_senders.lock();
+            let mut solution_response_senders = solution_response_senders.lock();
 
-            if *response_senders.current_slot == proposed_proof_of_space_result.slot_number {
-                if let Some(mut sender) = response_senders.senders.pop() {
-                    let _ = sender.send(proposed_proof_of_space_result);
+            if *solution_response_senders.current_slot == solution_response.slot_number {
+                if let Some(mut sender) = solution_response_senders.senders.pop() {
+                    let _ = sender.send(solution_response);
                 }
             }
 
@@ -366,14 +266,10 @@ where
         })
     }
 
-    fn subscribe_slot_info(
-        &self,
-        _metadata: Self::Metadata,
-        subscriber: Subscriber<RpcNewSlotInfo>,
-    ) {
+    fn subscribe_slot_info(&self, _metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>) {
         self.subscription_manager.add(subscriber, |sink| {
             let executor = self.subscription_manager.executor().clone();
-            let response_senders = Arc::clone(&self.response_senders);
+            let solution_response_senders = self.solution_response_senders.clone();
 
             self.new_slot_notification_stream
                 .subscribe()
@@ -388,21 +284,21 @@ where
                     // Store solution sender so that we can retrieve it when solution comes from
                     // the farmer
                     {
-                        let mut response_senders = response_senders.lock();
+                        let mut solution_response_senders = solution_response_senders.lock();
 
-                        if response_senders.current_slot != new_slot_info.slot {
-                            response_senders.current_slot = new_slot_info.slot;
-                            response_senders.senders.clear();
+                        if solution_response_senders.current_slot != new_slot_info.slot {
+                            solution_response_senders.current_slot = new_slot_info.slot;
+                            solution_response_senders.senders.clear();
                         }
 
-                        response_senders.senders.push(response_sender);
+                        solution_response_senders.senders.push(response_sender);
                     }
 
                     // Wait for solutions and transform proposed proof of space solutions into
                     // data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
-                        if let Ok(proposed_proof_of_space_result) = response_receiver.await {
-                            if let Some(solution) = proposed_proof_of_space_result.solution {
+                        if let Ok(solution_response) = response_receiver.await {
+                            if let Some(solution) = solution_response.maybe_solution {
                                 let solution = Solution {
                                     public_key: FarmerPublicKey::from_slice(&solution.public_key),
                                     piece_index: solution.piece_index,
@@ -412,7 +308,7 @@ where
                                 };
 
                                 let _ = solution_sender
-                                    .send((solution, proposed_proof_of_space_result.secret_key))
+                                    .send((solution, solution_response.secret_key))
                                     .await;
                             }
                         }
@@ -428,7 +324,7 @@ where
                     );
 
                     // This will be sent to the farmer
-                    Ok(Ok(RpcNewSlotInfo {
+                    Ok(Ok(SlotInfo {
                         slot_number: new_slot_info.slot.into(),
                         challenge: new_slot_info.challenge,
                         salt: new_slot_info.salt,
@@ -452,14 +348,14 @@ where
     fn subscribe_archived_segment(
         &self,
         _metadata: Self::Metadata,
-        subscriber: Subscriber<RpcArchivedSegment>,
+        subscriber: Subscriber<ArchivedSegment>,
     ) {
         self.subscription_manager.add(subscriber, |sink| {
             self.archived_segment_notification_stream
                 .subscribe()
                 .map(|archived_segment_notification| {
                     // This will be sent to the farmer
-                    Ok(Ok(archived_segment_notification.into()))
+                    Ok(Ok(archived_segment_notification))
                 })
                 .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
                 .map(|_| ())

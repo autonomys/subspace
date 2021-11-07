@@ -3,7 +3,7 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::{EncodedBlockWithObjectMapping, FarmerMetadata, RpcClient};
+use crate::rpc::RpcClient;
 use anyhow::{anyhow, Result};
 use log::{debug, error, info};
 use std::path::PathBuf;
@@ -13,6 +13,7 @@ use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchive
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified

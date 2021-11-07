@@ -21,6 +21,7 @@ use super::*;
 use futures::executor::block_on;
 use log::debug;
 use parking_lot::Mutex;
+use rand::prelude::*;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sc_client_api::{backend::TransactionFor, BlockchainEvents};
 use sc_consensus::{BoxBlockImport, BoxJustificationImport};
@@ -41,10 +42,8 @@ use sp_runtime::{
     traits::{Block as BlockT, DigestFor},
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
-// use std::sync::mpsc;
-use rand::prelude::*;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_core_primitives::Tag;
+use subspace_core_primitives::{Piece, Tag};
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 

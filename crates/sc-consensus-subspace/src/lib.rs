@@ -48,6 +48,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub use self::archiver::start_subspace_archiver;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 use codec::{Decode, Encode};
@@ -109,10 +110,10 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::future::Future;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
-use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+pub use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::{BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::objects::PieceObjectMapping;
-use subspace_core_primitives::{Piece, Randomness, RootBlock, Salt};
+use subspace_core_primitives::{Randomness, RootBlock, Salt};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 mod archiver;
@@ -123,8 +124,6 @@ mod slot_worker;
 #[cfg(test)]
 mod tests;
 mod verification;
-
-pub use self::archiver::start_subspace_archiver;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -148,19 +147,6 @@ pub struct NewSlotNotification {
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot
     pub solution_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
-}
-
-/// Archived segments notification with new pieces
-#[derive(Debug, Clone)]
-pub struct ArchivedSegmentNotification {
-    /// Root block
-    pub root_block: RootBlock,
-    /// Pieces that correspond to the segment in root block
-    pub pieces: Vec<Piece>,
-    /// Mappings for objects stored in corresponding pieces.
-    ///
-    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
-    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 /// Subspace epoch information
@@ -778,8 +764,8 @@ pub struct SubspaceLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
-    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
+    archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegment>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
@@ -806,7 +792,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
     /// Get stream with notifications about archived segment creation
     pub fn archived_segment_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<ArchivedSegmentNotification> {
+    ) -> SubspaceNotificationStream<ArchivedSegment> {
         self.archived_segment_notification_stream.clone()
     }
 }
