@@ -88,8 +88,8 @@ where
         client.clone(),
     )));
 
-    io.extend_with(sc_consensus_subspace_rpc::SubspaceApi::to_delegate(
-        sc_consensus_subspace_rpc::Subspace::new(
+    io.extend_with(sc_consensus_subspace_rpc::SubspaceRpcApi::to_delegate(
+        sc_consensus_subspace_rpc::SubspaceRpcHandler::new(
             client,
             subscription_executor,
             new_slot_notification_stream,

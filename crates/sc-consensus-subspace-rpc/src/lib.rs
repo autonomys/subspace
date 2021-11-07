@@ -51,7 +51,7 @@ type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc]
-pub trait SubspaceApi {
+pub trait SubspaceRpcApi {
     /// RPC metadata
     type Metadata;
 
@@ -123,8 +123,8 @@ struct ResponseSenders {
     senders: Vec<async_oneshot::Sender<ProofOfReplication>>,
 }
 
-/// Implements the [`SubspaceApi`] trait for interacting with Subspace.
-pub struct Subspace<Block, Client> {
+/// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
+pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -133,14 +133,14 @@ pub struct Subspace<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-/// `Subspace` is used for notifying subscribers about arrival of new slots and for
+/// [`SubspaceRpcHandler`] is used for notifying subscribers about arrival of new slots and for
 /// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_proposeProofOfReplication` requests with `ProofOfReplication` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client> Subspace<Block, Client>
+impl<Block, Client> SubspaceRpcHandler<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -172,7 +172,7 @@ where
     }
 }
 
-impl<Block, Client> SubspaceApi for Subspace<Block, Client>
+impl<Block, Client> SubspaceRpcApi for SubspaceRpcHandler<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
