@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Salt, Tag};
 
+/// Type of a slot number.
 pub type SlotNumber = u64;
 
 /// Encoded block with mapping of objects that it contains
@@ -85,16 +86,26 @@ pub struct SolutionResponse {
     pub secret_key: Vec<u8>,
 }
 
+/// Duplicate type of [sp_consensus_subspace::digests::Solution] as we'd like to
+/// not pull in the Substrate libraries when it only relateds to the Subspace functionalities.
+///
+/// [sp_consensus_subspace::digests::Solution]: ../sp_consensus_subspace/digests/struct.Solution.html
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Solution {
+    /// Public key of the farmer that created the solution
     pub public_key: [u8; 32],
+    /// Index of encoded piece
     pub piece_index: u64,
+    /// Encoding
     pub encoding: Vec<u8>,
+    /// Signature of the tag
     pub signature: Vec<u8>,
+    /// Tag (hmac of encoding and salt)
     pub tag: Tag,
 }
 
 impl Solution {
+    /// Creates a new instance of [`Solution`].
     pub fn new(
         public_key: [u8; 32],
         piece_index: u64,
