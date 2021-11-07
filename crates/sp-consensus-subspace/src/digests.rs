@@ -25,7 +25,7 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use sp_std::vec::Vec;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, Tag};
 
 // TODO: better documentation here
 /// Solution
@@ -40,7 +40,7 @@ pub struct Solution {
     /// Signature of the tag
     pub signature: Vec<u8>,
     /// Tag (hmac of encoding and salt)
-    pub tag: [u8; 8],
+    pub tag: Tag,
 }
 
 impl Solution {

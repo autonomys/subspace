@@ -16,6 +16,7 @@
 use crate::merkle_tree::{MerkleTree, Witness};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
@@ -112,8 +113,8 @@ pub enum SegmentItem {
     RootBlock(RootBlock),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ArchivedSegment {
     /// Root block of the segment
     pub root_block: RootBlock,

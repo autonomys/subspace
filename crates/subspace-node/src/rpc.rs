@@ -23,7 +23,7 @@
 
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegmentNotification, NewSlotNotification};
+use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -46,8 +46,7 @@ pub struct FullDeps<C, P> {
     /// A stream with notifications about new slot arrival with ability to send solution back
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// A stream with notifications about archived segment creation
-    pub archived_segment_notification_stream:
-        SubspaceNotificationStream<ArchivedSegmentNotification>,
+    pub archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
 }
 
 /// Instantiate all full RPC extensions.
