@@ -303,8 +303,8 @@ sp_api::decl_runtime_apis! {
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
-        /// Get MerkleRoot for specified segment index
-        fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash>;
+        /// Get the merkle tree root of records for specified segment index
+        fn records_root(segment_index: u64) -> Option<Sha256Hash>;
 
         /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;

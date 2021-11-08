@@ -31,7 +31,7 @@ mod tests;
 use codec::{Decode, Encode};
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
-    dispatch::DispatchResultWithPostInfo,
+    dispatch::{DispatchResult, DispatchResultWithPostInfo},
     traits::{ConstU32, Get, OnTimestampSet},
     weights::{Pays, Weight},
     BoundedVec,
@@ -388,9 +388,10 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerPublicKey, ()>;
 
-    /// Mapping from segment index to corresponding Merkle Root.
+    /// Mapping from segment index to corresponding merkle tree root of segment records.
     #[pallet::storage]
-    pub(super) type MerkleRootsBySegmentIndex<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
+    #[pallet::getter(fn records_root)]
+    pub(super) type RecordsRoot<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::genesis_config]
     #[cfg_attr(feature = "std", derive(Default))]
@@ -475,12 +476,8 @@ pub mod pallet {
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`).
         #[pallet::weight((<T as Config>::WeightInfo::store_root_block(), DispatchClass::Mandatory, Pays::No))]
-        pub fn store_root_block(
-            origin: OriginFor<T>,
-            root_block: RootBlock,
-        ) -> DispatchResultWithPostInfo {
+        pub fn store_root_block(origin: OriginFor<T>, root_block: RootBlock) -> DispatchResult {
             ensure_none(origin)?;
-
             Self::do_store_root_block(root_block)
         }
     }
@@ -914,16 +911,10 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
-        MerkleRootsBySegmentIndex::<T>::insert(
-            root_block.segment_index(),
-            root_block.records_root(),
-        );
-
+    fn do_store_root_block(root_block: RootBlock) -> DispatchResult {
+        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
         Self::deposit_event(Event::RootBlockStored(root_block));
-
-        // Waive the fee since the root block is required by the protocol and beneficial
-        Ok(Pays::No.into())
+        Ok(())
     }
 
     /// Submits an extrinsic to report an equivocation. This method will create an unsigned
@@ -945,20 +936,12 @@ impl<T: Config> Pallet<T> {
 
     /// Just stores root block in the storage, only used for tests.
     pub fn submit_test_store_root_block(root_block: RootBlock) {
-        MerkleRootsBySegmentIndex::<T>::insert(
-            root_block.segment_index(),
-            root_block.records_root(),
-        );
+        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
-    }
-
-    /// Get MerkleRoot for specified segment index
-    pub fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
-        MerkleRootsBySegmentIndex::<T>::get(segment_index)
     }
 }
 
@@ -1040,7 +1023,7 @@ fn check_root_block_for_segment_index<T: Config>(
     segment_index: u64,
 ) -> Result<(), TransactionValidityError> {
     // Check if the root block was already set for this segment index
-    if MerkleRootsBySegmentIndex::<T>::contains_key(segment_index) {
+    if RecordsRoot::<T>::contains_key(segment_index) {
         return Err(InvalidTransaction::Stale.into());
     }
 
@@ -1105,51 +1088,4 @@ fn compute_randomness(
     }
 
     sp_io::hashing::blake2_256(&s)
-}
-
-// TODO: Is this needed in Subspace?
-pub mod migrations {
-    use super::*;
-    use frame_support::pallet_prelude::{StorageValue, ValueQuery};
-
-    /// Something that can return the storage prefix of the `Subspace` pallet.
-    pub trait SubspacePalletPrefix: Config {
-        fn pallet_prefix() -> &'static str;
-    }
-
-    struct __OldNextEpochConfig<T>(sp_std::marker::PhantomData<T>);
-    impl<T: SubspacePalletPrefix> frame_support::traits::StorageInstance for __OldNextEpochConfig<T> {
-        fn pallet_prefix() -> &'static str {
-            T::pallet_prefix()
-        }
-        const STORAGE_PREFIX: &'static str = "NextEpochConfig";
-    }
-
-    type OldNextEpochConfig<T> =
-        StorageValue<__OldNextEpochConfig<T>, Option<NextConfigDescriptor>, ValueQuery>;
-
-    /// A storage migration that adds the current epoch configuration for Subspace to storage.
-    pub fn add_epoch_configuration<T: SubspacePalletPrefix>(
-        epoch_config: SubspaceEpochConfiguration,
-    ) -> Weight {
-        let mut writes = 0;
-        let mut reads = 0;
-
-        if let Some(pending_change) = OldNextEpochConfig::<T>::get() {
-            PendingEpochConfigChange::<T>::put(pending_change);
-
-            writes += 1;
-        }
-
-        reads += 1;
-
-        OldNextEpochConfig::<T>::kill();
-
-        EpochConfig::<T>::put(epoch_config.clone());
-        NextEpochConfig::<T>::put(epoch_config);
-
-        writes += 3;
-
-        T::DbWeight::get().writes(writes) + T::DbWeight::get().reads(reads)
-    }
 }

@@ -45,7 +45,7 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     /// Salt corresponding to this block.
     pub(super) salt: Salt,
     /// Merkle Root hash for pieces in the segment to which solution in `pre_digest` belongs to
-    pub(super) merkle_root: &'a Sha256Hash,
+    pub(super) records_root: &'a Sha256Hash,
     /// Position within segment of a piece from solution in `pre_digest`
     pub(super) position: u64,
     /// Record size for a segment to which solution in `pre_digest` belongs to
@@ -75,7 +75,7 @@ where
         epoch,
         solution_range,
         salt,
-        merkle_root,
+        records_root,
         position,
         record_size,
         signing_context,
@@ -123,7 +123,7 @@ where
             solution_range,
             slot: pre_digest.slot,
             salt,
-            merkle_root,
+            records_root,
             position,
             record_size,
             signing_context,
@@ -171,7 +171,7 @@ fn check_piece_tag<B: BlockT>(slot: Slot, salt: Salt, solution: &Solution) -> Re
 fn check_piece<B: BlockT>(
     slot: Slot,
     salt: Salt,
-    merkle_root: &Sha256Hash,
+    records_root: &Sha256Hash,
     position: u64,
     record_size: u32,
     solution: &Solution,
@@ -188,7 +188,7 @@ fn check_piece<B: BlockT>(
 
     if !archiver::is_piece_valid(
         &piece,
-        *merkle_root,
+        *records_root,
         position as usize,
         record_size as usize,
     ) {
@@ -225,7 +225,7 @@ pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) solution_range: u64,
     pub(crate) slot: Slot,
     pub(crate) salt: Salt,
-    pub(crate) merkle_root: &'a Sha256Hash,
+    pub(crate) records_root: &'a Sha256Hash,
     pub(crate) position: u64,
     pub(crate) record_size: u32,
     pub(crate) signing_context: &'a SigningContext,
@@ -240,7 +240,7 @@ pub(crate) fn verify_solution<B: BlockT>(
         solution_range,
         slot,
         salt,
-        merkle_root,
+        records_root,
         position,
         record_size,
         signing_context,
@@ -256,7 +256,7 @@ pub(crate) fn verify_solution<B: BlockT>(
 
     check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
 
-    check_piece(slot, salt, merkle_root, position, record_size, solution)?;
+    check_piece(slot, salt, records_root, position, record_size, solution)?;
 
     Ok(())
 }
