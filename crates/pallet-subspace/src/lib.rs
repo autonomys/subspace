@@ -476,13 +476,11 @@ pub mod pallet {
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`).
         #[pallet::weight((<T as Config>::WeightInfo::store_root_block(), DispatchClass::Mandatory, Pays::No))]
-        pub fn store_root_block(
-            origin: OriginFor<T>,
-            root_block: RootBlock,
-        ) -> DispatchResultWithPostInfo {
+        pub fn store_root_block(origin: OriginFor<T>, root_block: RootBlock) -> DispatchResult {
             ensure_none(origin)?;
-
-            Self::do_store_root_block(root_block)
+            RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
+            Self::deposit_event(Event::RootBlockStored(root_block));
+            Ok(())
         }
     }
 
@@ -912,15 +910,6 @@ impl<T: Config> Pallet<T> {
             .map_err(|_| Error::<T>::DuplicateOffenceReport)?;
 
         // waive the fee since the report is valid and beneficial
-        Ok(Pays::No.into())
-    }
-
-    fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
-        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-
-        Self::deposit_event(Event::RootBlockStored(root_block));
-
-        // Waive the fee since the root block is required by the protocol and beneficial
         Ok(Pays::No.into())
     }
 
