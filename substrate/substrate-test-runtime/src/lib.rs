@@ -1005,8 +1005,8 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
-                    <pallet_subspace::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
+                fn records_root_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+                    <pallet_subspace::Pallet<Runtime>>::records_root_for_segment_index(segment_index)
                 }
 
                 fn extract_root_block(
@@ -1347,8 +1347,8 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn merkle_tree_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
-                    <pallet_subspace::Pallet<Runtime>>::merkle_tree_for_segment_index(segment_index)
+                fn records_root_for_segment_index(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+                    <pallet_subspace::Pallet<Runtime>>::records_root_for_segment_index(segment_index)
                 }
 
                 fn extract_root_block(

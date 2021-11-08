@@ -388,9 +388,10 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerPublicKey, ()>;
 
-    /// Mapping from segment index to corresponding Merkle Root.
+    /// Mapping from segment index to corresponding merkle tree root of segment records.
     #[pallet::storage]
-    pub(super) type MerkleRootsBySegmentIndex<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
+    #[pallet::storage_prefix = "MerkleRootsBySegmentIndex"]
+    pub(super) type RecordsRoot<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::genesis_config]
     #[cfg_attr(feature = "std", derive(Default))]
@@ -915,10 +916,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_store_root_block(root_block: RootBlock) -> DispatchResultWithPostInfo {
-        MerkleRootsBySegmentIndex::<T>::insert(
-            root_block.segment_index(),
-            root_block.records_root(),
-        );
+        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
 
         Self::deposit_event(Event::RootBlockStored(root_block));
 
@@ -945,10 +943,7 @@ impl<T: Config> Pallet<T> {
 
     /// Just stores root block in the storage, only used for tests.
     pub fn submit_test_store_root_block(root_block: RootBlock) {
-        MerkleRootsBySegmentIndex::<T>::insert(
-            root_block.segment_index(),
-            root_block.records_root(),
-        );
+        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)
@@ -956,9 +951,9 @@ impl<T: Config> Pallet<T> {
         BlockList::<T>::contains_key(farmer_public_key)
     }
 
-    /// Get MerkleRoot for specified segment index
-    pub fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
-        MerkleRootsBySegmentIndex::<T>::get(segment_index)
+    /// Get RecordsRoot for specified segment index
+    pub fn records_root_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
+        RecordsRoot::<T>::get(segment_index)
     }
 }
 
@@ -1040,7 +1035,7 @@ fn check_root_block_for_segment_index<T: Config>(
     segment_index: u64,
 ) -> Result<(), TransactionValidityError> {
     // Check if the root block was already set for this segment index
-    if MerkleRootsBySegmentIndex::<T>::contains_key(segment_index) {
+    if RecordsRoot::<T>::contains_key(segment_index) {
         return Err(InvalidTransaction::Stale.into());
     }
 

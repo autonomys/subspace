@@ -634,8 +634,8 @@ impl_runtime_apis! {
             Subspace::is_in_block_list(farmer_public_key)
         }
 
-        fn merkle_tree_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
-            Subspace::merkle_tree_for_segment_index(segment_index)
+        fn records_root_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
+            Subspace::records_root_for_segment_index(segment_index)
         }
 
         fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {

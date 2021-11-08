@@ -208,7 +208,7 @@ where
         let mut merkle_root = worker
             .client
             .runtime_api()
-            .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+            .records_root_for_segment_index(&parent_block_id, segment_index)
             .ok()?;
 
         // TODO: This is not a very nice hack due to the fact that at the time first block is

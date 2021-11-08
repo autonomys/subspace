@@ -1026,7 +1026,7 @@ where
             let mut merkle_root = self
                 .client
                 .runtime_api()
-                .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+                .records_root_for_segment_index(&parent_block_id, segment_index)
                 .unwrap_or_else(|error| {
                     panic!(
                         "Failed to get Merkle Root for segment {} from runtime API: {}",
