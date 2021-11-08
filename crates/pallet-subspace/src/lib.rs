@@ -31,7 +31,7 @@ mod tests;
 use codec::{Decode, Encode};
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
-    dispatch::DispatchResultWithPostInfo,
+    dispatch::{DispatchResult, DispatchResultWithPostInfo},
     traits::{ConstU32, Get, OnTimestampSet},
     weights::{Pays, Weight},
     BoundedVec,
@@ -478,9 +478,7 @@ pub mod pallet {
         #[pallet::weight((<T as Config>::WeightInfo::store_root_block(), DispatchClass::Mandatory, Pays::No))]
         pub fn store_root_block(origin: OriginFor<T>, root_block: RootBlock) -> DispatchResult {
             ensure_none(origin)?;
-            RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-            Self::deposit_event(Event::RootBlockStored(root_block));
-            Ok(())
+            Self::do_store_root_block(root_block)
         }
     }
 
@@ -911,6 +909,12 @@ impl<T: Config> Pallet<T> {
 
         // waive the fee since the report is valid and beneficial
         Ok(Pays::No.into())
+    }
+
+    fn do_store_root_block(root_block: RootBlock) -> DispatchResult {
+        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
+        Self::deposit_event(Event::RootBlockStored(root_block));
+        Ok(())
     }
 
     /// Submits an extrinsic to report an equivocation. This method will create an unsigned
