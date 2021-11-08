@@ -17,7 +17,6 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use super::{Call, *};
-use frame_support::storage::migration::{get_storage_value, put_storage_value};
 use frame_support::{
     assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
 };
@@ -566,11 +565,11 @@ fn store_root_block_works() {
 
         let root_block = create_root_block(0);
 
-        let post_info = Subspace::store_root_block(Origin::none(), root_block).unwrap();
-
+        let call = Call::<Test>::store_root_block { root_block };
         // Root blocks don't require fee
-        assert_eq!(post_info.pays_fee, Pays::No);
+        assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
 
+        Subspace::store_root_block(Origin::none(), root_block).unwrap();
         assert_eq!(
             System::events(),
             vec![EventRecord {

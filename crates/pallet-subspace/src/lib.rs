@@ -390,7 +390,7 @@ pub mod pallet {
 
     /// Mapping from segment index to corresponding merkle tree root of segment records.
     #[pallet::storage]
-    #[pallet::storage_prefix = "MerkleRootsBySegmentIndex"]
+    #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::genesis_config]
@@ -938,11 +938,6 @@ impl<T: Config> Pallet<T> {
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
-    }
-
-    /// Get RecordsRoot for specified segment index
-    pub fn records_root_for_segment_index(segment_index: u64) -> Option<Sha256Hash> {
-        RecordsRoot::<T>::get(segment_index)
     }
 }
 
