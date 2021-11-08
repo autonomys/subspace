@@ -6,8 +6,9 @@ use anyhow::Result;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
-use subspace_core_primitives::{crypto, Salt};
+use subspace_core_primitives::{Salt, Signature};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
+use subspace_solving::TAG_SIZE;
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
@@ -90,8 +91,6 @@ async fn subscribe_to_slot_info(
     commitments: &Commitments,
     identity: &Identity,
 ) -> Result<()> {
-    let farmer_public_key_hash = crypto::sha256_hash(&identity.public_key());
-
     info!("Subscribing to slot info");
     let mut new_slots = client.subscribe_slot_info().await?;
 
@@ -102,22 +101,28 @@ async fn subscribe_to_slot_info(
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
-        let local_challenge =
-            subspace_solving::derive_local_challenge(slot_info.challenge, &farmer_public_key_hash);
+        let local_challenge = derive_local_challenge(slot_info.global_challenge, identity);
 
         let maybe_solution = match commitments
-            .find_by_range(local_challenge, slot_info.solution_range, slot_info.salt)
+            .find_by_range(
+                local_challenge[..TAG_SIZE]
+                    .try_into()
+                    .expect("Signature is always bigger than tag; qed"),
+                slot_info.solution_range,
+                slot_info.salt,
+            )
             .await
         {
             Some((tag, piece_index)) => {
                 let encoding = plot.read(piece_index).await?;
-                let solution = Solution::new(
-                    identity.public_key().to_bytes(),
+                let solution = Solution {
+                    public_key: identity.public_key().to_bytes().into(),
                     piece_index,
-                    encoding.to_vec(),
-                    identity.sign(&tag).to_bytes().to_vec(),
+                    encoding,
+                    signature: identity.sign(&tag).to_bytes().into(),
+                    local_challenge,
                     tag,
-                );
+                };
                 debug!("Solution found");
                 trace!("Solution found: {:?}", solution);
 
@@ -217,4 +222,9 @@ fn update_commitments(
             });
         }
     }
+}
+
+/// Derive local challenge for farmer's identity from the global challenge.
+fn derive_local_challenge<C: AsRef<[u8]>>(global_challenge: C, identity: &Identity) -> Signature {
+    identity.sign(global_challenge.as_ref()).to_bytes().into()
 }

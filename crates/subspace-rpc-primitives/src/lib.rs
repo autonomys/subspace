@@ -18,7 +18,7 @@
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{Salt, Tag};
+use subspace_core_primitives::{Piece, PublicKey, Salt, Signature, Tag};
 
 /// Type of a slot number.
 pub type SlotNumber = u64;
@@ -57,11 +57,12 @@ pub struct FarmerMetadata {
 
 /// Information about new slot that just arrived
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SlotInfo {
     /// Slot number
     pub slot_number: SlotNumber,
-    /// Slot challenge
-    pub challenge: [u8; 8],
+    /// Global slot challenge
+    pub global_challenge: Tag,
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon
@@ -73,6 +74,7 @@ pub struct SlotInfo {
 /// Response of a slot challenge consisting of an optional solution and
 /// the submitter(farmer)'s secret key for block signing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SolutionResponse {
     /// Slot number.
     pub slot_number: SlotNumber,
@@ -86,39 +88,24 @@ pub struct SolutionResponse {
     pub secret_key: Vec<u8>,
 }
 
+// TODO: Deduplicate this type
 /// Duplicate type of [sp_consensus_subspace::digests::Solution] as we'd like to
-/// not pull in the Substrate libraries when it only relateds to the Subspace functionalities.
+/// not pull in the Substrate libraries when it only related to the Subspace functionalities.
 ///
 /// [sp_consensus_subspace::digests::Solution]: ../sp_consensus_subspace/digests/struct.Solution.html
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Solution {
     /// Public key of the farmer that created the solution
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
-    pub encoding: Vec<u8>,
+    pub encoding: Piece,
     /// Signature of the tag
-    pub signature: Vec<u8>,
+    pub signature: Signature,
+    /// Local challenge derived with farmer's identity
+    pub local_challenge: Signature,
     /// Tag (hmac of encoding and salt)
     pub tag: Tag,
-}
-
-impl Solution {
-    /// Creates a new instance of [`Solution`].
-    pub fn new(
-        public_key: [u8; 32],
-        piece_index: u64,
-        encoding: Vec<u8>,
-        signature: Vec<u8>,
-        tag: Tag,
-    ) -> Self {
-        Self {
-            public_key,
-            piece_index,
-            encoding,
-            signature,
-            tag,
-        }
-    }
 }

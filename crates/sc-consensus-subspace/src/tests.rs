@@ -43,7 +43,7 @@ use sp_runtime::{
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_core_primitives::{Piece, Tag};
+use subspace_core_primitives::{Piece, Signature, Tag};
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -583,7 +583,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             let keypair = Keypair::generate();
             let subspace_solving = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
-            let (piece_index, mut piece) = archived_pieces_receiver
+            let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
                 .unwrap()
                 .into_iter()
@@ -591,7 +591,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, piece))
                 .unwrap();
-            subspace_solving.encode(piece_index, &mut piece).unwrap();
+            subspace_solving.encode(piece_index, &mut encoding).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -599,15 +599,19 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = subspace_solving::create_tag(&piece, new_slot_info.salt);
+                    let tag: Tag = subspace_solving::create_tag(&encoding, new_slot_info.salt);
 
                     let _ = solution_sender
                         .send((
                             Solution {
                                 public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
                                 piece_index,
-                                encoding: piece.to_vec(),
-                                signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
+                                encoding,
+                                signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
+                                local_challenge: keypair
+                                    .sign(ctx.bytes(&new_slot_info.global_challenge))
+                                    .to_bytes()
+                                    .into(),
                                 tag,
                             },
                             keypair.secret.to_bytes().into(),
@@ -718,11 +722,12 @@ pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, Farmer
     return Some((
         PreDigest {
             solution: Solution {
-                public_key: Default::default(),
+                public_key: FarmerPublicKey::default(),
                 piece_index: 0,
-                encoding: vec![],
-                signature: vec![],
-                tag: Default::default(),
+                encoding: Piece::default(),
+                signature: Signature::default(),
+                local_challenge: Signature::default(),
+                tag: Tag::default(),
             },
             slot,
         },
@@ -783,7 +788,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
         let encoding = Piece::default();
         let tag: Tag = [0u8; 8];
 
-        let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();
+        let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
         (
             sp_runtime::generic::Digest {
@@ -792,8 +797,9 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                     solution: Solution {
                         public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
                         piece_index: 0,
-                        encoding: encoding.to_vec(),
-                        signature: signature.clone(),
+                        encoding,
+                        signature: signature.into(),
+                        local_challenge: Signature::default(),
                         tag,
                     },
                 })],
@@ -820,7 +826,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
         .unwrap()
         .unwrap();
 
-    let seal = Item::subspace_seal(signature.try_into().unwrap());
+    let seal = Item::subspace_seal(signature.to_vec().try_into().unwrap());
 
     let post_hash = {
         block.header.digest_mut().push(seal.clone());

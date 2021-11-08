@@ -55,6 +55,82 @@ pub type Tag = [u8; 8];
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; 8];
 
+const PUBLIC_KEY_LENGTH: usize = 32;
+
+/// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
+#[derive(Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct PublicKey([u8; PUBLIC_KEY_LENGTH]);
+
+impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
+    fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl From<PublicKey> for [u8; PUBLIC_KEY_LENGTH] {
+    fn from(signature: PublicKey) -> Self {
+        signature.0
+    }
+}
+
+impl Deref for PublicKey {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+const SIGNATURE_LENGTH: usize = 64;
+
+/// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Signature(
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
+);
+
+impl Default for Signature {
+    fn default() -> Self {
+        Self([0u8; SIGNATURE_LENGTH])
+    }
+}
+
+impl From<[u8; SIGNATURE_LENGTH]> for Signature {
+    fn from(bytes: [u8; SIGNATURE_LENGTH]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl From<Signature> for [u8; SIGNATURE_LENGTH] {
+    fn from(signature: Signature) -> Self {
+        signature.0
+    }
+}
+
+impl Deref for Signature {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for Signature {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 /// A piece of archival history in Subspace Network.
 ///
 /// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
