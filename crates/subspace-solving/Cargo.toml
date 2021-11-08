@@ -13,6 +13,7 @@ include = [
 ]
 
 [dependencies]
+schnorrkel = "0.9.1"
 sloth256-189 = "0.2.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 

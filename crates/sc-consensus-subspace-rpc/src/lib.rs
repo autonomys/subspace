@@ -304,6 +304,7 @@ where
                                     piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,
+                                    local_challenge: solution.local_challenge,
                                     tag: solution.tag,
                                 };
 
@@ -326,7 +327,7 @@ where
                     // This will be sent to the farmer
                     Ok(Ok(SlotInfo {
                         slot_number: new_slot_info.slot.into(),
-                        challenge: new_slot_info.challenge,
+                        global_challenge: new_slot_info.global_challenge,
                         salt: new_slot_info.salt,
                         next_salt: new_slot_info.next_salt,
                         solution_range: new_slot_info.solution_range,

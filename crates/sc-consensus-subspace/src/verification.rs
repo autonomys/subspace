@@ -25,8 +25,10 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use subspace_archiving::archiver;
-use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Sha256Hash};
-use subspace_solving::{derive_global_challenge, derive_local_challenge, SubspaceCodec};
+use subspace_core_primitives::{Randomness, Salt, Sha256Hash};
+use subspace_solving::{
+    derive_global_challenge, is_local_challenge_valid, SubspaceCodec, TAG_SIZE,
+};
 
 /// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -154,13 +156,7 @@ fn check_signature(
 
 /// Check if the tag of a solution's piece is valid.
 fn check_piece_tag<B: BlockT>(slot: Slot, salt: Salt, solution: &Solution) -> Result<(), Error<B>> {
-    let piece: Piece = solution
-        .encoding
-        .as_slice()
-        .try_into()
-        .map_err(|_error| Error::EncodingOfWrongSize)?;
-
-    if !subspace_solving::is_tag_valid(&piece, salt, solution.tag) {
+    if !subspace_solving::is_tag_valid(&solution.encoding, salt, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
 
@@ -178,7 +174,7 @@ fn check_piece<B: BlockT>(
 ) -> Result<(), Error<B>> {
     check_piece_tag(slot, salt, solution)?;
 
-    let mut piece = solution.encoding.clone();
+    let mut piece = solution.encoding;
 
     // Ensure piece is decodable.
     let subspace_codec = SubspaceCodec::new(&solution.public_key);
@@ -199,15 +195,12 @@ fn check_piece<B: BlockT>(
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-fn is_within_solution_range(
-    solution: &Solution,
-    global_challenge: [u8; 8],
-    solution_range: u64,
-) -> bool {
-    let farmer_public_key_hash = crypto::sha256_hash(&solution.public_key);
-    let local_challenge = derive_local_challenge(global_challenge, farmer_public_key_hash);
-
-    let target = u64::from_be_bytes(local_challenge);
+fn is_within_solution_range(solution: &Solution, solution_range: u64) -> bool {
+    let target = u64::from_be_bytes(
+        solution.local_challenge[..TAG_SIZE]
+            .try_into()
+            .expect("Signature is always bigger than tag; qed"),
+    );
     let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
     let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
 
@@ -246,11 +239,15 @@ pub(crate) fn verify_solution<B: BlockT>(
         signing_context,
     } = params;
 
-    if !is_within_solution_range(
-        solution,
+    if let Err(error) = is_local_challenge_valid(
         derive_global_challenge(epoch_randomness, slot),
-        solution_range,
+        &solution.local_challenge,
+        &solution.public_key,
     ) {
+        return Err(Error::BadLocalChallenge(slot, error));
+    }
+
+    if !is_within_solution_range(solution, solution_range) {
         return Err(Error::OutsideOfSolutionRange(slot));
     }
 

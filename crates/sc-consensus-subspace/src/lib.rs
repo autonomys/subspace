@@ -113,7 +113,7 @@ use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration
 pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_archiving::archiver::{BlockArchiver, ObjectArchiver};
 use subspace_archiving::pre_genesis_data;
-use subspace_core_primitives::{Randomness, RootBlock, Salt};
+use subspace_core_primitives::{Randomness, RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 mod archiver;
@@ -130,8 +130,8 @@ mod verification;
 pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
-    /// Slot challenge
-    pub challenge: [u8; 8],
+    /// Global slot challenge
+    pub global_challenge: Tag,
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon
@@ -264,12 +264,12 @@ pub enum Error<B: BlockT> {
     /// Bad solution signature
     #[display(fmt = "Bad solution signature on slot {:?}: {:?}", _0, _1)]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
+    /// Bad local challenge
+    #[display(fmt = "Local challenge is invalid for slot {}: {}", _0, _1)]
+    BadLocalChallenge(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
     #[display(fmt = "Solution is outside of solution range for slot {}", _0)]
     OutsideOfSolutionRange(Slot),
-    /// Encoding is of wrong size
-    #[display(fmt = "Encoding is of the wrong size")]
-    EncodingOfWrongSize,
     /// Invalid encoding of a piece
     #[display(fmt = "Invalid encoding for slot {}", _0)]
     InvalidEncoding(Slot),

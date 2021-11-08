@@ -22,8 +22,9 @@
 mod codec;
 
 pub use codec::SubspaceCodec;
+use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
-use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Tag};
+use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Signature, Tag};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"FARMER";
@@ -54,15 +55,15 @@ pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, s
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive local challenge for farmer's public key hash from the global challenge.
-pub fn derive_local_challenge<C: AsRef<[u8]>, H: AsRef<[u8]>>(
-    global_challenge: C,
-    farmer_public_key_hash: H,
-) -> Tag {
-    let mut hasher = Sha256::new();
-    hasher.update(global_challenge.as_ref());
-    hasher.update(farmer_public_key_hash.as_ref());
-    hasher.finalize()[..TAG_SIZE]
-        .try_into()
-        .expect("Slice is always of correct size; qed")
+/// Verify local challenge for farmer's public key that was derived from the global challenge.
+pub fn is_local_challenge_valid<P: AsRef<[u8]>>(
+    global_challenge: Tag,
+    local_challenge: &Signature,
+    public_key: P,
+) -> SignatureResult<()> {
+    let signature = schnorrkel::Signature::from_bytes(local_challenge)?;
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())?;
+
+    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
+    public_key.verify(ctx.bytes(&global_challenge), &signature)
 }

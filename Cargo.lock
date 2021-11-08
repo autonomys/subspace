@@ -1175,19 +1175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "curve25519-dalek-ng"
-version = "4.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c359b7249347e46fb28804470d071c921156ad62b3eef5d34e2ba867533dec8"
-dependencies = [
- "byteorder 1.4.3",
- "digest 0.9.0",
- "rand_core 0.6.3",
- "subtle-ng",
- "zeroize",
-]
-
-[[package]]
 name = "data-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3540,18 +3527,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merlin"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d"
-dependencies = [
- "byteorder 1.4.3",
- "keccak",
- "rand_core 0.6.3",
- "zeroize",
-]
-
-[[package]]
 name = "minicbor"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4063,7 +4038,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.10.2",
+ "schnorrkel",
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
@@ -4105,7 +4080,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
@@ -5460,7 +5435,7 @@ dependencies = [
  "sc-service",
  "sc-telemetry",
  "sc-utils",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "serde",
  "sp-api",
  "sp-block-builder",
@@ -6086,28 +6061,11 @@ dependencies = [
  "arrayvec 0.5.2",
  "curve25519-dalek 2.1.3",
  "getrandom 0.1.16",
- "merlin 2.0.1",
+ "merlin",
  "rand 0.7.3",
  "rand_core 0.5.1",
  "sha2 0.8.2",
  "subtle",
- "zeroize",
-]
-
-[[package]]
-name = "schnorrkel"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "844b7645371e6ecdf61ff246ba1958c29e802881a749ae3fb1993675d210d28d"
-dependencies = [
- "arrayref",
- "arrayvec 0.7.2",
- "curve25519-dalek-ng",
- "merlin 3.0.0",
- "rand_core 0.6.3",
- "serde_bytes",
- "sha2 0.9.8",
- "subtle-ng",
  "zeroize",
 ]
 
@@ -6213,15 +6171,6 @@ name = "serde_arrays"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16ae07dd2f88a366f15bd0632ba725227018c69a1c8550a927324f8eb8368bb9"
 dependencies = [
  "serde",
 ]
@@ -6614,7 +6563,7 @@ version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=26d69bcbe26f6b463e9374e1b1c54c3067fb6131#26d69bcbe26f6b463e9374e1b1c54c3067fb6131"
 dependencies = [
  "async-trait",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -6668,7 +6617,7 @@ version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=26d69bcbe26f6b463e9374e1b1c54c3067fb6131#26d69bcbe26f6b463e9374e1b1c54c3067fb6131"
 dependencies = [
  "parity-scale-codec",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-core",
  "sp-runtime",
  "sp-std",
@@ -6693,7 +6642,7 @@ dependencies = [
  "lazy_static",
  "libsecp256k1 0.6.0",
  "log",
- "merlin 2.0.1",
+ "merlin",
  "num-traits",
  "parity-scale-codec",
  "parity-util-mem",
@@ -6702,7 +6651,7 @@ dependencies = [
  "rand 0.7.3",
  "regex",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "secrecy",
  "serde",
  "sha2 0.9.8",
@@ -6826,10 +6775,10 @@ dependencies = [
  "async-trait",
  "derive_more",
  "futures 0.3.17",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "serde",
  "sp-core",
  "sp-externalities",
@@ -7266,7 +7215,7 @@ dependencies = [
  "rand 0.8.4",
  "rayon",
  "rocksdb",
- "schnorrkel 0.10.2",
+ "schnorrkel",
  "serde",
  "serde_json",
  "subspace-archiving",
@@ -7370,6 +7319,7 @@ name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
  "rand 0.8.4",
+ "schnorrkel",
  "sha2 0.9.8",
  "sloth256-189",
  "subspace-core-primitives",
@@ -7383,7 +7333,7 @@ checksum = "49eee6965196b32f882dd2ee85a92b1dbead41b04e53907f269de3b0dc04733c"
 dependencies = [
  "hmac 0.11.0",
  "pbkdf2 0.8.0",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sha2 0.9.8",
  "zeroize",
 ]
@@ -7562,12 +7512,6 @@ name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
-
-[[package]]
-name = "subtle-ng"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "syn"

@@ -35,7 +35,7 @@ use sp_runtime::{
     Perbill,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, Signature, Tag,
 };
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
@@ -194,17 +194,18 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let subspace_solving = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
-    let mut piece = Piece::default();
-    subspace_solving.encode(piece_index, &mut piece).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&piece, Subspace::salt().to_le_bytes());
+    let mut encoding = Piece::default();
+    subspace_solving.encode(piece_index, &mut encoding).unwrap();
+    let tag: Tag = subspace_solving::create_tag(&encoding, Subspace::salt().to_le_bytes());
 
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
             piece_index: 0,
-            encoding: piece.to_vec(),
-            signature: keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec(),
+            encoding,
+            signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
+            local_challenge: Signature::default(),
             tag,
         },
     );
@@ -254,7 +255,7 @@ pub fn generate_equivocation_proof(
     let tag: Tag = [(current_block % 8) as u8; 8];
 
     let public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
-    let signature = keypair.sign(ctx.bytes(&tag)).to_bytes().to_vec();
+    let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
     let make_header = |piece_index| {
         let parent_hash = System::parent_hash();
@@ -263,8 +264,9 @@ pub fn generate_equivocation_proof(
             Solution {
                 public_key: public_key.clone(),
                 piece_index,
-                encoding: encoding.to_vec(),
-                signature: signature.clone(),
+                encoding,
+                signature: signature.into(),
+                local_challenge: Signature::default(),
                 tag,
             },
         );

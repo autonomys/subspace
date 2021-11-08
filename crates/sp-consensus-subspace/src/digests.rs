@@ -24,8 +24,7 @@ use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use sp_std::vec::Vec;
-use subspace_core_primitives::{Randomness, Tag};
+use subspace_core_primitives::{Piece, Randomness, Signature, Tag};
 
 // TODO: better documentation here
 /// Solution
@@ -36,9 +35,11 @@ pub struct Solution {
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
-    pub encoding: Vec<u8>,
+    pub encoding: Piece,
     /// Signature of the tag
-    pub signature: Vec<u8>,
+    pub signature: Signature,
+    /// Local challenge derived with farmer's identity
+    pub local_challenge: Signature,
     /// Tag (hmac of encoding and salt)
     pub tag: Tag,
 }
@@ -49,9 +50,10 @@ impl Solution {
         Self {
             public_key: FarmerPublicKey::default(),
             piece_index: 0u64,
-            encoding: Vec::new(),
-            signature: Vec::new(),
-            tag: [0u8; 8],
+            encoding: Piece::default(),
+            signature: Signature::default(),
+            local_challenge: Signature::default(),
+            tag: Tag::default(),
         }
     }
 }

@@ -136,7 +136,7 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
             salt: salt.to_le_bytes(),
             // TODO: This will not be the correct way in the future once salt is no longer
             //  just an incremented number
