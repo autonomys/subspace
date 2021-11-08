@@ -2,8 +2,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::{EncodedBlockWithObjectMapping, FarmerMetadata, RpcClient};
-use anyhow::{anyhow, Result};
+use crate::rpc::RpcClient;
 use log::{debug, error, info};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -11,12 +10,37 @@ use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchive
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
-use tokio::{sync::mpsc, task::JoinHandle};
+use thiserror::Error;
+use tokio::sync::oneshot::Receiver;
+use tokio::{sync::oneshot, task::JoinHandle};
+
+#[derive(Debug, Error)]
+pub enum PlottingError {
+    #[error("Plot is empty on restart, can't continue")]
+    ContinueError,
+    #[error("Failed to get block {0} from the chain, probably need to erase existing plot")]
+    GetBlockError(u32),
+    #[error("jsonrpsee error: {0}")]
+    Rpc(jsonrpsee::types::Error),
+    #[error("Last block retrieval from plot, rocksdb error: {0}")]
+    LastBlock(rocksdb::Error),
+    #[error("Error joining task: {0}")]
+    JoinTask(tokio::task::JoinError),
+    #[error("Archiver instantiation error: {0}")]
+    Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
+    #[error("Object mapping store error: {0}")]
+    ObjectMapping(crate::object_mappings::ObjectMappingError),
+    #[error("Commitment creation error: {0}")]
+    Commitment(crate::commitments::CommitmentError),
+    #[error("Plot write error: {0}")]
+    PlotWrite(std::io::Error),
+}
 
 pub struct Plotting {
-    sender: Option<mpsc::Sender<()>>,
-    handle: Option<JoinHandle<Result<()>>>,
+    sender: Option<oneshot::Sender<()>>,
+    handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
 impl Plotting {
@@ -27,7 +51,7 @@ impl Plotting {
         client: RpcClient,
         identity: Identity,
     ) -> Self {
-        let (sender, receiver) = mpsc::channel(1);
+        let (sender, receiver) = oneshot::channel();
 
         let plotting_handle = tokio::spawn(async move {
             background_plotting(
@@ -47,8 +71,12 @@ impl Plotting {
         }
     }
 
-    pub async fn wait(mut self) -> Result<()> {
-        self.handle.take().unwrap().await?
+    pub async fn wait(mut self) -> Result<(), PlottingError> {
+        self.handle
+            .take()
+            .unwrap()
+            .await
+            .map_err(PlottingError::JoinTask)?
     }
 }
 
@@ -70,8 +98,8 @@ async fn background_plotting<P: AsRef<[u8]>>(
     commitments: Commitments,
     object_mappings: ObjectMappings,
     public_key: &P,
-    mut receiver: mpsc::Receiver<()>,
-) -> Result<()> {
+    mut receiver: Receiver<()>,
+) -> Result<(), PlottingError> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
@@ -80,17 +108,21 @@ async fn background_plotting<P: AsRef<[u8]>>(
         pre_genesis_object_size,
         pre_genesis_object_count,
         pre_genesis_object_seed,
-    } = client.farmer_metadata().await?;
+    } = client.farmer_metadata().await.map_err(PlottingError::Rpc)?;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let subspace_solving = SubspaceCodec::new(public_key);
 
-    let mut archiver = if let Some(last_root_block) = plot.get_last_root_block().await? {
+    let mut archiver = if let Some(last_root_block) = plot
+        .get_last_root_block()
+        .await
+        .map_err(PlottingError::LastBlock)?
+    {
         // Continuing from existing initial state
         if plot.is_empty() {
-            return Err(anyhow!("Plot is empty on restart, can't continue",));
+            return Err(PlottingError::ContinueError);
         }
 
         drop(plot);
@@ -98,7 +130,10 @@ async fn background_plotting<P: AsRef<[u8]>>(
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
-        let maybe_last_archived_block = client.block_by_number(last_archived_block_number).await?;
+        let maybe_last_archived_block = client
+            .block_by_number(last_archived_block_number)
+            .await
+            .map_err(PlottingError::Rpc)?;
 
         match maybe_last_archived_block {
             Some(EncodedBlockWithObjectMapping {
@@ -110,12 +145,10 @@ async fn background_plotting<P: AsRef<[u8]>>(
                 last_root_block,
                 &block,
                 object_mapping,
-            )?,
+            )
+            .map_err(PlottingError::Archiver)?,
             None => {
-                return Err(anyhow!(
-                    "Failed to get block {} from the chain, probably need to erase existing plot",
-                    last_archived_block_number
-                ));
+                return Err(PlottingError::GetBlockError(last_archived_block_number));
             }
         }
     } else {
@@ -128,7 +161,8 @@ async fn background_plotting<P: AsRef<[u8]>>(
         drop(plot);
 
         let mut object_archiver =
-            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)?;
+            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+                .map_err(PlottingError::Archiver)?;
 
         // Erasure coding in archiver and piece encoding are a CPU-intensive operations
         let maybe_block_archiver_handle = tokio::task::spawn_blocking({
@@ -137,7 +171,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
             let object_mappings = object_mappings.clone();
             let subspace_solving = subspace_solving.clone();
 
-            move || -> Result<Option<BlockArchiver>, anyhow::Error> {
+            move || -> Result<Option<BlockArchiver>, PlottingError> {
                 let runtime_handle = tokio::runtime::Handle::current();
                 info!("Plotting pre-genesis objects");
 
@@ -166,7 +200,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) =
                                 subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
-                                error!("Failed to encode a piece: error: {:?}", error);
+                                error!("Failed to encode a piece: error: {}", error);
                                 continue;
                             }
                         }
@@ -175,13 +209,17 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             let pieces = Arc::new(pieces);
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
-                            runtime_handle.block_on(
-                                plot.write_many(Arc::clone(&pieces), piece_index_offset),
-                            )?;
-                            runtime_handle.block_on(
-                                commitments.create_for_pieces(&pieces, piece_index_offset),
-                            )?;
-                            object_mappings.store(&object_mapping)?;
+                            runtime_handle
+                                .block_on(plot.write_many(Arc::clone(&pieces), piece_index_offset))
+                                .map_err(PlottingError::PlotWrite)?;
+                            runtime_handle
+                                .block_on(
+                                    commitments.create_for_pieces(&pieces, piece_index_offset),
+                                )
+                                .map_err(PlottingError::Commitment)?;
+                            object_mappings
+                                .store(&object_mapping)
+                                .map_err(PlottingError::ObjectMapping)?;
                             info!(
                                 "Archived segment {} at object {}",
                                 root_block.segment_index(),
@@ -199,7 +237,10 @@ async fn background_plotting<P: AsRef<[u8]>>(
             }
         });
 
-        match maybe_block_archiver_handle.await?? {
+        match maybe_block_archiver_handle
+            .await
+            .map_err(PlottingError::JoinTask)??
+        {
             Some(block_archiver) => block_archiver,
             None => {
                 // Plot was dropped, time to exit already
@@ -252,7 +293,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
                         }
                         Err(error) => {
                             error!(
-                                "Failed to get block #{} from RPC: {:?}",
+                                "Failed to get block #{} from RPC: {}",
                                 block_to_archive, error,
                             );
 
@@ -278,7 +319,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) =
                                 subspace_solving.encode(piece_index_offset + position as u64, piece)
                             {
-                                error!("Failed to encode a piece: error: {:?}", error);
+                                error!("Failed to encode a piece: error: {}", error);
                                 continue;
                             }
                         }
@@ -295,10 +336,10 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) = runtime_handle.block_on(
                                 commitments.create_for_pieces(&pieces, piece_index_offset),
                             ) {
-                                error!("Failed to create commitments for pieces: {:?}", error);
+                                error!("Failed to create commitments for pieces: {}", error);
                             }
                             if let Err(error) = object_mappings.store(&object_mapping) {
-                                error!("Failed to store object mappings for pieces: {:?}", error);
+                                error!("Failed to store object mappings for pieces: {}", error);
                             }
 
                             let segment_index = root_block.segment_index();
@@ -316,7 +357,7 @@ async fn background_plotting<P: AsRef<[u8]>>(
                             if let Err(error) =
                                 runtime_handle.block_on(plot.set_last_root_block(&last_root_block))
                             {
-                                error!("Failed to store last root block: {:?}", error);
+                                error!("Failed to store last root block: {}", error);
                             }
                         }
                     }
@@ -328,14 +369,18 @@ async fn background_plotting<P: AsRef<[u8]>>(
     });
 
     info!("Subscribing to new heads");
-    let mut new_head = client.subscribe_new_head().await?;
+    let mut new_head = client
+        .subscribe_new_head()
+        .await
+        .map_err(PlottingError::Rpc)?;
 
     let block_to_archive = Arc::new(AtomicU32::default());
 
     // Listen for new blocks produced on the network
+    // receiver.fuse();
     loop {
         tokio::select! {
-            Some(_) = receiver.recv() => {
+            _ = &mut receiver => {
                 info!("plotting stopped!");
                 break;
             }
