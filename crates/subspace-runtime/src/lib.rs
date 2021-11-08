@@ -465,6 +465,54 @@ fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
     None
 }
 
+fn extract_feeds_block_object_mapping(
+    base_offset: u32,
+    objects: &mut Vec<BlockObject>,
+    call: &pallet_feeds::Call<Runtime>,
+) {
+    if let Some(call_object_location) = call.extract_object_location() {
+        objects.push(BlockObject::V0 {
+            hash: call_object_location.hash,
+            offset: base_offset + call_object_location.offset,
+        });
+    }
+}
+
+fn extract_utility_block_object_mapping(
+    base_offset: u32,
+    objects: &mut Vec<BlockObject>,
+    call: &pallet_utility::Call<Runtime>,
+) {
+    // Add enum variant to the offset
+    let mut base_nested_call_offset = base_offset + 1;
+
+    match call {
+        pallet_utility::Call::batch { calls } | pallet_utility::Call::batch_all { calls } => {
+            base_nested_call_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
+
+            for call in calls {
+                if let Call::Feeds(call) = call {
+                    // `+1` for enum variant offset
+                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+                }
+
+                base_nested_call_offset += call.encoded_size() as u32;
+            }
+        }
+        pallet_utility::Call::as_derivative { index, call } => {
+            base_nested_call_offset += index.encoded_size() as u32;
+
+            if let Call::Feeds(call) = call.as_ref() {
+                // `+1` for enum variant offset
+                extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+            }
+        }
+        pallet_utility::Call::__Ignore(_, _) => {
+            // Ignore.
+        }
+    }
+}
+
 fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
     let mut base_offset =
@@ -486,12 +534,23 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
             + signature_size
             + 1;
 
-        if let Call::Feeds(call) = &extrinsic.function {
-            if let Some(call_object_location) = call.extract_object_location() {
-                block_object_mapping.objects.push(BlockObject::V0 {
-                    hash: call_object_location.hash,
-                    offset: base_extrinsic_offset as u32 + call_object_location.offset,
-                });
+        match &extrinsic.function {
+            Call::Feeds(call) => {
+                extract_feeds_block_object_mapping(
+                    base_extrinsic_offset as u32,
+                    &mut block_object_mapping.objects,
+                    call,
+                );
+            }
+            Call::Utility(call) => {
+                extract_utility_block_object_mapping(
+                    base_extrinsic_offset as u32,
+                    &mut block_object_mapping.objects,
+                    call,
+                );
+            }
+            _ => {
+                // No other pallets store useful data yet.
             }
         }
 
