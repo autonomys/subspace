@@ -205,16 +205,16 @@ where
         let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
         let segment_index = solution.piece_index / merkle_num_leaves;
         let position = solution.piece_index % merkle_num_leaves;
-        let mut merkle_root = worker
+        let mut maybe_records_root = worker
             .client
             .runtime_api()
-            .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+            .records_root(&parent_block_id, segment_index)
             .ok()?;
 
         // TODO: This is not a very nice hack due to the fact that at the time first block is
         //  produced extrinsics with root blocks are not yet in runtime
-        if merkle_root.is_none() && parent_header.number().is_zero() {
-            merkle_root = worker.subspace_link.root_blocks.lock().iter().find_map(
+        if maybe_records_root.is_none() && parent_header.number().is_zero() {
+            maybe_records_root = worker.subspace_link.root_blocks.lock().iter().find_map(
                 |(_block_number, root_blocks)| {
                     root_blocks.iter().find_map(|root_block| {
                         if root_block.segment_index() == segment_index {
@@ -227,12 +227,12 @@ where
             );
         }
 
-        let merkle_root = match merkle_root {
-            Some(merkle_root) => merkle_root,
+        let records_root = match maybe_records_root {
+            Some(records_root) => records_root,
             None => {
                 warn!(
                     target: "subspace",
-                    "Merkle Root segment index {} not found (slot {})",
+                    "Records root for segment index {} not found (slot {})",
                     segment_index,
                     slot,
                 );
@@ -249,7 +249,7 @@ where
                 solution_range,
                 slot,
                 salt,
-                merkle_root: &merkle_root,
+                records_root: &records_root,
                 position,
                 record_size,
                 signing_context: &signing_context,

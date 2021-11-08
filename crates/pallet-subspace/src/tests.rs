@@ -17,7 +17,6 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use super::{Call, *};
-use frame_support::storage::migration::{get_storage_value, put_storage_value};
 use frame_support::{
     assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
 };
@@ -566,11 +565,11 @@ fn store_root_block_works() {
 
         let root_block = create_root_block(0);
 
-        let post_info = Subspace::store_root_block(Origin::none(), root_block).unwrap();
-
+        let call = Call::<Test>::store_root_block { root_block };
         // Root blocks don't require fee
-        assert_eq!(post_info.pays_fee, Pays::No);
+        assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
 
+        Subspace::store_root_block(Origin::none(), root_block).unwrap();
         assert_eq!(
             System::events(),
             vec![EventRecord {
@@ -647,48 +646,4 @@ fn store_root_block_has_valid_weight() {
     assert!((1..=1000)
         .map(|_| { <Test as Config>::WeightInfo::store_root_block() })
         .all(|w| w == 1));
-}
-
-#[test]
-fn add_epoch_configurations_migration_works() {
-    impl crate::migrations::SubspacePalletPrefix for Test {
-        fn pallet_prefix() -> &'static str {
-            "Subspace"
-        }
-    }
-
-    new_test_ext().execute_with(|| {
-        let next_config_descriptor = NextConfigDescriptor::V1 { c: (3, 4) };
-
-        put_storage_value(
-            b"Subspace",
-            b"NextEpochConfig",
-            &[],
-            Some(next_config_descriptor.clone()),
-        );
-
-        assert!(get_storage_value::<Option<NextConfigDescriptor>>(
-            b"Subspace",
-            b"NextEpochConfig",
-            &[],
-        )
-        .is_some());
-
-        let current_epoch = SubspaceEpochConfiguration { c: (1, 4) };
-
-        crate::migrations::add_epoch_configuration::<Test>(current_epoch.clone());
-
-        assert!(get_storage_value::<Option<NextConfigDescriptor>>(
-            b"Subspace",
-            b"NextEpochConfig",
-            &[],
-        )
-        .is_none());
-
-        assert_eq!(EpochConfig::<Test>::get(), Some(current_epoch));
-        assert_eq!(
-            PendingEpochConfigChange::<Test>::get(),
-            Some(next_config_descriptor)
-        );
-    });
 }

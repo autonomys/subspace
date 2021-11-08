@@ -301,8 +301,8 @@ pub enum Error<B: BlockT> {
     #[display(fmt = "Farmer {} is in block list", _0)]
     FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
-    #[display(fmt = "Merkle Root for segment index {} not found", _0)]
-    MerkleRootNotFound(u64),
+    #[display(fmt = "Records Root for segment index {} not found", _0)]
+    RecordsRootNotFound(u64),
     /// Check inherents error
     #[display(fmt = "Checking inherents failed: {}", _0)]
     CheckInherents(sp_inherents::Error),
@@ -1023,10 +1023,10 @@ where
             let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
             let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
             let position = pre_digest.solution.piece_index % merkle_num_leaves;
-            let mut merkle_root = self
+            let mut maybe_records_root = self
                 .client
                 .runtime_api()
-                .merkle_tree_for_segment_index(&parent_block_id, segment_index)
+                .records_root(&parent_block_id, segment_index)
                 .unwrap_or_else(|error| {
                     panic!(
                         "Failed to get Merkle Root for segment {} from runtime API: {}",
@@ -1036,8 +1036,8 @@ where
 
             // TODO: This is not a very nice hack due to the fact that at the time first block is
             //  produced extrinsics with root blocks are not yet in runtime
-            if merkle_root.is_none() && block.header.number().is_one() {
-                merkle_root =
+            if maybe_records_root.is_none() && block.header.number().is_one() {
+                maybe_records_root =
                     self.root_blocks
                         .lock()
                         .iter()
@@ -1052,10 +1052,10 @@ where
                         });
             }
 
-            let merkle_root = match merkle_root {
-                Some(merkle_root) => merkle_root,
+            let records_root = match maybe_records_root {
+                Some(records_root) => records_root,
                 None => {
-                    return Err(Error::<Block>::MerkleRootNotFound(segment_index).into());
+                    return Err(Error::<Block>::RecordsRootNotFound(segment_index).into());
                 }
             };
 
@@ -1068,7 +1068,7 @@ where
                 epoch: viable_epoch.as_ref(),
                 solution_range,
                 salt: salt.to_le_bytes(),
-                merkle_root: &merkle_root,
+                records_root: &records_root,
                 position,
                 record_size,
                 signing_context: &self.signing_context,
