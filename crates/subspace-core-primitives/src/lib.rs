@@ -47,13 +47,14 @@ pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
 
+/// Size of `Tag` in bytes.
+pub const TAG_SIZE: usize = 8;
+
 /// Type of the commitment for a particular piece.
-///
-/// TODO: why not use `Commitment` directly?
-pub type Tag = [u8; 8];
+pub type Tag = [u8; TAG_SIZE];
 
 /// Salt used for creating commitment tags for pieces.
-pub type Salt = [u8; 8];
+pub type Salt = [u8; TAG_SIZE];
 
 const PUBLIC_KEY_LENGTH: usize = 32;
 
@@ -128,6 +129,55 @@ impl Deref for Signature {
 impl AsRef<[u8]> for Signature {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+/// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct LocalChallenge(
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
+);
+
+impl Default for LocalChallenge {
+    fn default() -> Self {
+        Self([0u8; SIGNATURE_LENGTH])
+    }
+}
+
+impl From<[u8; SIGNATURE_LENGTH]> for LocalChallenge {
+    fn from(bytes: [u8; SIGNATURE_LENGTH]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl From<LocalChallenge> for [u8; SIGNATURE_LENGTH] {
+    fn from(signature: LocalChallenge) -> Self {
+        signature.0
+    }
+}
+
+impl Deref for LocalChallenge {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for LocalChallenge {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl LocalChallenge {
+    /// Derive tags search target from local challenge.
+    pub fn derive_target(&self) -> Tag {
+        crypto::sha256_hash(&self.0)[..TAG_SIZE]
+            .try_into()
+            .expect("Signature is always bigger than tag; qed")
     }
 }
 

@@ -24,7 +24,7 @@ use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use subspace_core_primitives::{Piece, Randomness, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Signature, Tag};
 
 // TODO: better documentation here
 /// Solution
@@ -38,8 +38,8 @@ pub struct Solution {
     pub encoding: Piece,
     /// Signature of the tag
     pub signature: Signature,
-    /// Local challenge derived with farmer's identity
-    pub local_challenge: Signature,
+    /// Local challenge derived from global challenge using farmer's identity.
+    pub local_challenge: LocalChallenge,
     /// Tag (hmac of encoding and salt)
     pub tag: Tag,
 }
@@ -52,7 +52,7 @@ impl Solution {
             piece_index: 0u64,
             encoding: Piece::default(),
             signature: Signature::default(),
-            local_challenge: Signature::default(),
+            local_challenge: LocalChallenge::default(),
             tag: Tag::default(),
         }
     }
