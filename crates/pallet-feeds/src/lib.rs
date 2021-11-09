@@ -24,6 +24,11 @@ pub use pallet::*;
 use sp_std::vec::Vec;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
+#[cfg(all(feature = "std", test))]
+mod mock;
+#[cfg(all(feature = "std", test))]
+mod tests;
+
 #[frame_support::pallet]
 mod pallet {
     use super::*;
@@ -51,9 +56,9 @@ mod pallet {
     pub(super) type ObjectMetadata = Vec<u8>;
 
     /// Total amount of data and number of objects stored in a feed
-    #[derive(Decode, Encode, TypeInfo, Default)]
+    #[derive(Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
     #[cfg_attr(feature = "std", derive(Debug))]
-    pub(super) struct TotalObjectsAndSize {
+    pub struct TotalObjectsAndSize {
         /// Total size of objects in bytes
         pub(super) size: u64,
         /// Total number of objects
@@ -61,10 +66,12 @@ mod pallet {
     }
 
     #[pallet::storage]
-    pub(super) type Feeds<T: Config> =
+    #[pallet::getter(fn metadata)]
+    pub(super) type FeedsMetadata<T: Config> =
         StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn totals)]
     pub(super) type Totals<T: Config> =
         StorageMap<_, Blake2_128Concat, FeedId, TotalObjectsAndSize, ValueQuery>;
 
@@ -129,7 +136,7 @@ mod pallet {
 
             ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
 
-            Feeds::<T>::insert(feed_id, metadata.clone());
+            FeedsMetadata::<T>::insert(feed_id, metadata.clone());
 
             Totals::<T>::mutate(feed_id, |feed_totals| {
                 feed_totals.size += object_size;
