@@ -26,9 +26,7 @@ use sp_core::Public;
 use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
 use subspace_archiving::archiver;
 use subspace_core_primitives::{Randomness, Salt, Sha256Hash};
-use subspace_solving::{
-    derive_global_challenge, is_local_challenge_valid, SubspaceCodec, TAG_SIZE,
-};
+use subspace_solving::{derive_global_challenge, is_local_challenge_valid, SubspaceCodec};
 
 /// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -196,11 +194,7 @@ fn check_piece<B: BlockT>(
 
 /// Returns true if `solution.tag` is within the solution range.
 fn is_within_solution_range(solution: &Solution, solution_range: u64) -> bool {
-    let target = u64::from_be_bytes(
-        solution.local_challenge[..TAG_SIZE]
-            .try_into()
-            .expect("Signature is always bigger than tag; qed"),
-    );
+    let target = u64::from_be_bytes(solution.local_challenge.derive_target());
     let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
     let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
 

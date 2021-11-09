@@ -6,9 +6,8 @@ use anyhow::Result;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
-use subspace_core_primitives::{Salt, Signature};
+use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
-use subspace_solving::TAG_SIZE;
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
@@ -105,9 +104,7 @@ async fn subscribe_to_slot_info(
 
         let maybe_solution = match commitments
             .find_by_range(
-                local_challenge[..TAG_SIZE]
-                    .try_into()
-                    .expect("Signature is always bigger than tag; qed"),
+                local_challenge.derive_target(),
                 slot_info.solution_range,
                 slot_info.salt,
             )
@@ -225,6 +222,9 @@ fn update_commitments(
 }
 
 /// Derive local challenge for farmer's identity from the global challenge.
-fn derive_local_challenge<C: AsRef<[u8]>>(global_challenge: C, identity: &Identity) -> Signature {
+fn derive_local_challenge<C: AsRef<[u8]>>(
+    global_challenge: C,
+    identity: &Identity,
+) -> LocalChallenge {
     identity.sign(global_challenge.as_ref()).to_bytes().into()
 }

@@ -18,7 +18,7 @@
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{Piece, PublicKey, Salt, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, PublicKey, Salt, Signature, Tag};
 
 /// Type of a slot number.
 pub type SlotNumber = u64;
@@ -104,8 +104,8 @@ pub struct Solution {
     pub encoding: Piece,
     /// Signature of the tag
     pub signature: Signature,
-    /// Local challenge derived with farmer's identity
-    pub local_challenge: Signature,
+    /// Local challenge derived from global challenge using farmer's identity.
+    pub local_challenge: LocalChallenge,
     /// Tag (hmac of encoding and salt)
     pub tag: Tag,
 }

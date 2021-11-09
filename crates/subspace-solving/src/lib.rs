@@ -24,13 +24,10 @@ mod codec;
 pub use codec::SubspaceCodec;
 use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
-use subspace_core_primitives::{crypto, Piece, Randomness, Salt, Signature, Tag};
+use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"FARMER";
-
-/// Size of `Tag` in bytes.
-pub const TAG_SIZE: usize = core::mem::size_of::<Tag>();
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication
@@ -58,7 +55,7 @@ pub fn derive_global_challenge<Slot: Into<u64>>(epoch_randomness: &Randomness, s
 /// Verify local challenge for farmer's public key that was derived from the global challenge.
 pub fn is_local_challenge_valid<P: AsRef<[u8]>>(
     global_challenge: Tag,
-    local_challenge: &Signature,
+    local_challenge: &LocalChallenge,
     public_key: P,
 ) -> SignatureResult<()> {
     let signature = schnorrkel::Signature::from_bytes(local_challenge)?;

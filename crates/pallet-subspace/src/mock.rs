@@ -35,7 +35,8 @@ use sp_runtime::{
     Perbill,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, Signature, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash,
+    Signature, Tag,
 };
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 
@@ -205,7 +206,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
-            local_challenge: Signature::default(),
+            local_challenge: LocalChallenge::default(),
             tag,
         },
     );
@@ -266,7 +267,7 @@ pub fn generate_equivocation_proof(
                 piece_index,
                 encoding,
                 signature: signature.into(),
-                local_challenge: Signature::default(),
+                local_challenge: LocalChallenge::default(),
                 tag,
             },
         );

@@ -43,7 +43,7 @@ use sp_runtime::{
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_core_primitives::{Piece, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, Signature, Tag};
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -726,7 +726,7 @@ pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, Farmer
                 piece_index: 0,
                 encoding: Piece::default(),
                 signature: Signature::default(),
-                local_challenge: Signature::default(),
+                local_challenge: LocalChallenge::default(),
                 tag: Tag::default(),
             },
             slot,
@@ -799,7 +799,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                         piece_index: 0,
                         encoding,
                         signature: signature.into(),
-                        local_challenge: Signature::default(),
+                        local_challenge: LocalChallenge::default(),
                         tag,
                     },
                 })],
