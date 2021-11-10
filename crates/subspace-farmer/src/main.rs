@@ -22,6 +22,7 @@ mod farming;
 mod identity;
 mod object_mappings;
 mod plot;
+mod plotting;
 mod rpc;
 mod utils;
 
