@@ -807,14 +807,13 @@ impl<T: Config> Pallet<T> {
             .logs
             .iter()
             .filter_map(|s| s.as_pre_runtime())
-            .filter_map(|(id, mut data)| {
+            .find_map(|(id, mut data)| {
                 if id == SUBSPACE_ENGINE_ID {
                     PreDigest::decode(&mut data).ok()
                 } else {
                     None
                 }
-            })
-            .next();
+            });
 
         let maybe_randomness: MaybeRandomness = maybe_pre_digest.map(|digest| {
             // on the first non-zero block (i.e. block #1)

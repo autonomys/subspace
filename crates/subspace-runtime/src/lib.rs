@@ -379,6 +379,17 @@ impl pallet_offences_subspace::Config for Runtime {
     type OnOffenceHandler = Subspace;
 }
 
+parameter_types! {
+    pub const BlockReward: Balance = SSC;
+}
+
+impl pallet_rewards::Config for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+    type BlockReward = BlockReward;
+    type WeightInfo = ();
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
 }
@@ -412,6 +423,7 @@ construct_runtime!(
 
         Subspace: pallet_subspace::{Pallet, Call, Config, Storage, Event, ValidateUnsigned} = 2,
         OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event} = 3,
+        Rewards: pallet_rewards::{Pallet, Event<T>} = 9,
 
         Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>} = 4,
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 5,
