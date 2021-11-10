@@ -2,7 +2,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
+use crate::web_socket_rpc::WebSocketRpc;
 use log::{debug, error, info};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -48,7 +48,7 @@ impl Plotting {
         plot: Plot,
         commitments: Commitments,
         object_mappings: ObjectMappings,
-        client: RpcClient,
+        client: WebSocketRpc,
         identity: Identity,
     ) -> Self {
         let (sender, receiver) = oneshot::channel();
@@ -93,7 +93,7 @@ impl Drop for Plotting {
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting<P: AsRef<[u8]>>(
-    client: RpcClient,
+    client: WebSocketRpc,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,

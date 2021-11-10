@@ -4,7 +4,7 @@ use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::plotting::Plotting;
-use crate::rpc::RpcClient;
+use crate::web_socket_rpc::WebSocketRpc;
 use anyhow::{anyhow, Result};
 use log::info;
 use std::path::PathBuf;
@@ -28,7 +28,7 @@ pub(crate) async fn farm(base_directory: PathBuf, ws_server: &str) -> Result<(),
     .await??;
 
     info!("Connecting to RPC server: {}", ws_server);
-    let client = RpcClient::new(ws_server).await?;
+    let client = WebSocketRpc::new(ws_server).await?;
 
     let identity = Identity::open_or_create(&base_directory)?;
 

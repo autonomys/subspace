@@ -1,7 +1,7 @@
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
+use crate::web_socket_rpc::WebSocketRpc;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
@@ -32,7 +32,7 @@ impl Farming {
     pub fn start(
         plot: Plot,
         commitments: Commitments,
-        client: RpcClient,
+        client: WebSocketRpc,
         identity: Identity,
     ) -> Self {
         let (sender, receiver) = async_oneshot::oneshot();
@@ -69,7 +69,7 @@ impl Drop for Farming {
 }
 
 async fn background_farming(
-    client: RpcClient,
+    client: WebSocketRpc,
     plot: Plot,
     commitments: Commitments,
     identity: Identity,
@@ -104,7 +104,7 @@ struct Salts {
 }
 
 async fn subscribe_to_slot_info(
-    client: &RpcClient,
+    client: &WebSocketRpc,
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,

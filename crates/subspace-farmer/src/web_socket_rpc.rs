@@ -16,11 +16,11 @@ pub(super) struct NewHead {
 
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
-pub struct RpcClient {
+pub struct WebSocketRpc {
     client: Arc<WsClient>,
 }
 
-impl RpcClient {
+impl WebSocketRpc {
     /// Create a new instance of [`RpcClient`].
     pub async fn new(url: &str) -> Result<Self, Error> {
         let client = Arc::new(WsClientBuilder::default().build(url).await?);
