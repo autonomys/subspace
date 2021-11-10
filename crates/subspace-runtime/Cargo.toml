@@ -6,6 +6,11 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
+include = [
+	"/src",
+	"/build.rs",
+	"/Cargo.toml",
+]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

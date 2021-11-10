@@ -7,6 +7,10 @@ edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
 
 [dependencies]
 hex-buffer-serde = "0.3.0"
