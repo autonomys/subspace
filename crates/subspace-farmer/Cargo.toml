@@ -8,9 +8,7 @@ edition = "2021"
 include = [
     "/src",
     "/Cargo.toml",
-    "/LICENSE-APACHE",
-    "/LICENSE-MIT",
-    "/README.md"
+    "/README.md",
 ]
 
 [dependencies]
