@@ -16,18 +16,20 @@
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
 
-pub(crate) mod commands; // TODO: remove this again (temporarily inserted)
 pub(crate) mod commitments;
 pub(crate) mod farming;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
+pub(crate) mod plotting;
 pub(crate) mod rpc;
+pub(crate) mod ws_rpc;
 
-pub use commands::farm;
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::Farming;
 pub use identity::Identity;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};
+pub use plotting::Plotting;
 pub use rpc::RpcClient;
+pub use ws_rpc::WsRpc;

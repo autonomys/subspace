@@ -22,8 +22,10 @@ mod farming;
 mod identity;
 mod object_mappings;
 mod plot;
+mod plotting;
 mod rpc;
 mod utils;
+mod ws_rpc;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};

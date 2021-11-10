@@ -2,34 +2,42 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
-use anyhow::Result;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
+use thiserror::Error;
+use tokio::task::JoinHandle;
+
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    #[error("jsonrpsee error: {0}")]
+    Rpc(jsonrpsee::types::Error),
+    #[error("Error joining task: {0}")]
+    JoinTask(tokio::task::JoinError),
+    #[error("Plot read error: {0}")]
+    PlotRead(std::io::Error),
+}
 
 /// Farming Instance to store the necessary information for the farming operations,
 /// and also a channel to stop/pause the background farming task
 pub struct Farming {
     sender: Option<async_oneshot::Sender<()>>,
+    handle: Option<JoinHandle<Result<(), FarmingError>>>,
 }
 
 impl Farming {
     /// returns an instance of farming, and also starts a concurrent background farming task
-    pub fn start(
+    pub fn start<T: RpcClient + Sync + Send + 'static>(
         plot: Plot,
         commitments: Commitments,
-        client: RpcClient,
+        client: T,
         identity: Identity,
     ) -> Self {
         let (sender, receiver) = async_oneshot::oneshot();
 
-        let farming = Farming {
-            sender: Some(sender),
-        };
-
-        tokio::spawn(background_farming(
+        let farming_handle = tokio::spawn(background_farming(
             client,
             plot,
             commitments,
@@ -37,7 +45,18 @@ impl Farming {
             receiver,
         ));
 
-        farming
+        Farming {
+            sender: Some(sender),
+            handle: Some(farming_handle),
+        }
+    }
+
+    pub async fn wait(mut self) -> Result<(), FarmingError> {
+        self.handle
+            .take()
+            .unwrap()
+            .await
+            .map_err(FarmingError::JoinTask)?
     }
 }
 
@@ -49,13 +68,13 @@ impl Drop for Farming {
     }
 }
 
-async fn background_farming(
-    client: RpcClient,
+async fn background_farming<T: RpcClient + Send>(
+    client: T,
     plot: Plot,
     commitments: Commitments,
     identity: Identity,
     receiver: async_oneshot::Receiver<()>,
-) {
+) -> Result<(), FarmingError> {
     match future::select(
         Box::pin(
             async move { subscribe_to_slot_info(&client, &plot, &commitments, &identity).await },
@@ -66,16 +85,16 @@ async fn background_farming(
     {
         Either::Left((farming_result, _)) => {
             if let Err(val) = farming_result {
-                error!("Farming process ended with error: {}", val)
+                return Err(val);
             }
         }
-        Either::Right((channel_result, _)) => match channel_result {
-            Ok(_) => {
-                info!("Farming stopped!");
-            }
-            Err(_) => error!("Unable to receive messages: Sender was dropped."),
-        },
+        // either Sender is dropped, or a stop message is received.
+        // in both cases, we stop the process and return Ok(())
+        Either::Right((_, _)) => {
+            info!("Farming stopped!");
+        }
     }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -84,18 +103,21 @@ struct Salts {
     next: Option<Salt>,
 }
 
-async fn subscribe_to_slot_info(
-    client: &RpcClient,
+async fn subscribe_to_slot_info<T: RpcClient>(
+    client: &T,
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,
-) -> Result<()> {
+) -> Result<(), FarmingError> {
     info!("Subscribing to slot info");
-    let mut new_slots = client.subscribe_slot_info().await?;
+    let mut new_slots = client
+        .subscribe_slot_info()
+        .await
+        .map_err(FarmingError::Rpc)?;
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = new_slots.next().await? {
+    while let Some(slot_info) = new_slots.next().await.map_err(FarmingError::Rpc)? {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
@@ -111,7 +133,10 @@ async fn subscribe_to_slot_info(
             .await
         {
             Some((tag, piece_index)) => {
-                let encoding = plot.read(piece_index).await?;
+                let encoding = plot
+                    .read(piece_index)
+                    .await
+                    .map_err(FarmingError::PlotRead)?;
                 let solution = Solution {
                     public_key: identity.public_key().to_bytes().into(),
                     piece_index,
@@ -137,7 +162,8 @@ async fn subscribe_to_slot_info(
                 maybe_solution,
                 secret_key: identity.secret_key().to_bytes().into(),
             })
-            .await?;
+            .await
+            .map_err(FarmingError::Rpc)?;
     }
 
     Ok(())
