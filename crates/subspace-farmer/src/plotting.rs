@@ -44,11 +44,11 @@ pub struct Plotting {
 }
 
 impl Plotting {
-    pub fn start(
+    pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
         plot: Plot,
         commitments: Commitments,
         object_mappings: ObjectMappings,
-        client: RpcClient,
+        client: T,
         identity: Identity,
     ) -> Self {
         let (sender, receiver) = oneshot::channel();
@@ -92,8 +92,8 @@ impl Drop for Plotting {
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting<P: AsRef<[u8]>>(
-    client: RpcClient,
+async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'static>(
+    client: T,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,

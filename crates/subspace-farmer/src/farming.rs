@@ -29,10 +29,10 @@ pub struct Farming {
 
 impl Farming {
     /// returns an instance of farming, and also starts a concurrent background farming task
-    pub fn start(
+    pub fn start<T: RpcClient + Sync + Send + 'static>(
         plot: Plot,
         commitments: Commitments,
-        client: RpcClient,
+        client: T,
         identity: Identity,
     ) -> Self {
         let (sender, receiver) = async_oneshot::oneshot();
@@ -68,8 +68,8 @@ impl Drop for Farming {
     }
 }
 
-async fn background_farming(
-    client: RpcClient,
+async fn background_farming<T: RpcClient + Send>(
+    client: T,
     plot: Plot,
     commitments: Commitments,
     identity: Identity,
@@ -103,8 +103,8 @@ struct Salts {
     next: Option<Salt>,
 }
 
-async fn subscribe_to_slot_info(
-    client: &RpcClient,
+async fn subscribe_to_slot_info<T: RpcClient>(
+    client: &T,
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,
