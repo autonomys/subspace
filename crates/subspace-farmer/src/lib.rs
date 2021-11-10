@@ -22,7 +22,8 @@ pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub(crate) mod plotting;
-pub(crate) mod web_socket_rpc;
+pub(crate) mod rpc;
+pub(crate) mod ws_rpc;
 
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::Farming;
@@ -30,3 +31,5 @@ pub use identity::Identity;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};
 pub use plotting::Plotting;
+pub use rpc::RpcClient;
+pub use ws_rpc::WsRpc;
