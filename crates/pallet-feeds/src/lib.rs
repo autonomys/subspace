@@ -60,14 +60,14 @@ mod pallet {
     #[cfg_attr(feature = "std", derive(Debug))]
     pub struct TotalObjectsAndSize {
         /// Total size of objects in bytes
-        pub(super) size: u64,
+        pub size: u64,
         /// Total number of objects
-        pub(super) count: u64,
+        pub count: u64,
     }
 
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
-    pub(super) type FeedsMetadata<T: Config> =
+    pub(super) type Metadata<T: Config> =
         StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
 
     #[pallet::storage]
@@ -136,7 +136,7 @@ mod pallet {
 
             ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
 
-            FeedsMetadata::<T>::insert(feed_id, metadata.clone());
+            Metadata::<T>::insert(feed_id, metadata.clone());
 
             Totals::<T>::mutate(feed_id, |feed_totals| {
                 feed_totals.size += object_size;

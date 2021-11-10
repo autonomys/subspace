@@ -37,7 +37,7 @@ fn can_do_put() {
             object_metadata.clone()
         ));
 
-        // check FeedsMetadata hashmap for updated metadata
+        // check Metadata hashmap for updated metadata
         assert_eq!(Feeds::metadata(FEED_ID), Some(object_metadata.clone()));
 
         // check Totals hashmap
