@@ -91,7 +91,8 @@ where
         slot: Slot,
         epoch_descriptor: &Self::EpochData,
     ) -> Option<Self::Claim> {
-        self.claim_slot_impl(parent_header, slot, epoch_descriptor).await
+        self.claim_slot_impl(parent_header, slot, epoch_descriptor)
+            .await
     }
 
     fn pre_digest_data(

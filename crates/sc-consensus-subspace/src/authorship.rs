@@ -104,36 +104,9 @@ where
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let maybe_prepared_data: Option<PreparedData<B>> = try {
-            let epoch_changes = self.subspace_link.epoch_changes.shared_data();
-            let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
-                Epoch::genesis(&self.subspace_link.config, slot)
-            })?;
-            let epoch_randomness = epoch.as_ref().randomness;
-            // Here we always use parent block as the source of information, thus on the edge of the
-            // era the very first block of the era still uses solution range from the previous one,
-            // but the block after it uses "next" solution range deposited in the first block.
-            let solution_range = find_next_solution_range_digest::<B>(parent_header)
-                .ok()?
-                .map(|d| d.solution_range)
-                .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when
-                    // there is no solution range stored yet
-                    self.client
-                        .runtime_api()
-                        .solution_range(&parent_block_id)
-                        .ok()
-                })?;
-            // Here we always use parent block as the source of information, thus on the edge of the
-            // eon the very first block of the eon still uses salt from the previous one, but the
-            // block after it uses "next" salt deposited in the first block.
-            let salt = find_next_salt_digest::<B>(parent_header)
-                .ok()?
-                .map(|d| d.salt)
-                .or_else(|| {
-                    // We use runtime API as it will fallback to default value for genesis when
-                    // there is no salt stored yet
-                    self.client.runtime_api().salt(&parent_block_id).ok()
-                })?;
+            let epoch_randomness = self.next_epoch_randomness(epoch_descriptor)?;
+            let solution_range = self.next_solution_range(parent_header)?;
+            let salt = self.next_salt(parent_header)?;
 
             let new_slot_info = NewSlotInfo {
                 slot,
@@ -270,5 +243,50 @@ where
         }
 
         None
+    }
+
+    /// Epoch randomness for the new slot.
+    fn next_epoch_randomness(&self, epoch_descriptor: &EpochData<B>) -> Option<Randomness> {
+        let epoch_changes = self.subspace_link.epoch_changes.shared_data();
+        let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
+            Epoch::genesis(&self.subspace_link.config, slot)
+        })?;
+        Some(epoch.as_ref().randomness)
+    }
+
+    /// Solution range for the new slot.
+    fn next_solution_range(&self, parent_header: &B::Header) -> Option<u64> {
+        // Here we always use parent block as the source of information, thus on the edge of the
+        // era the very first block of the era still uses solution range from the previous one,
+        // but the block after it uses "next" solution range deposited in the first block.
+        find_next_solution_range_digest::<B>(parent_header)
+            .ok()?
+            .map(|d| d.solution_range)
+            .or_else(|| {
+                // We use runtime API as it will fallback to default value for genesis when
+                // there is no solution range stored yet
+                self.client
+                    .runtime_api()
+                    .solution_range(&BlockId::Hash(parent_header.hash()))
+                    .ok()
+            })
+    }
+
+    /// Salt for the new slot.
+    fn next_salt(&self, parent_header: &B::Header) -> Option<u64> {
+        // Here we always use parent block as the source of information, thus on the edge of the
+        // eon the very first block of the eon still uses salt from the previous one, but the
+        // block after it uses "next" salt deposited in the first block.
+        find_next_salt_digest::<B>(parent_header)
+            .ok()?
+            .map(|d| d.salt)
+            .or_else(|| {
+                // We use runtime API as it will fallback to default value for genesis when
+                // there is no salt stored yet
+                self.client
+                    .runtime_api()
+                    .salt(&BlockId::Hash(parent_header.hash()))
+                    .ok()
+            })
     }
 }
