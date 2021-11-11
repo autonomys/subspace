@@ -32,7 +32,7 @@ where
         for extrinsic in block.block.extrinsics() {
             match client
                 .runtime_api()
-                .extract_root_block(&block_to_check, extrinsic.encode())
+                .extract_root_block(&block_to_check, extrinsic)
             {
                 Ok(Some(root_block)) => match &mut latest_root_block {
                     Some(latest_root_block) => {
