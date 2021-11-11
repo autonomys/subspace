@@ -68,6 +68,13 @@ where
     Ok(next_salt_digest)
 }
 
+struct NewSlotPuzzle<B: BlockT> {
+    block_id: BlockId<B>,
+    salt: Salt,
+    solution_range: u64,
+    epoch_randomness: Randomness,
+}
+
 impl<B, C, E, I, Error, SO, L, BS> SubspaceSlotWorker<B, C, E, I, SO, L, BS>
 where
     B: BlockT,
@@ -94,66 +101,35 @@ where
     ) -> Option<Claim> {
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
-        struct PreparedData<B: BlockT> {
-            block_id: BlockId<B>,
-            solution_range: u64,
-            epoch_randomness: Randomness,
-            salt: Salt,
-            solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
-        }
+        let (new_slot_puzzle, new_slot_info) =
+            self.prepare_new_slot(parent_header, slot, epoch_descriptor)?;
 
-        let parent_block_id = BlockId::Hash(parent_header.hash());
-        let maybe_prepared_data: Option<PreparedData<B>> = try {
-            let epoch_randomness = self.next_epoch_randomness(epoch_descriptor)?;
-            let solution_range = self.next_solution_range(parent_header)?;
-            let salt = self.next_salt(parent_header)?;
+        // Notify the outside farmers about the new slot.
+        let (solution_sender, mut solution_receiver) =
+            tracing_unbounded("subspace_slot_solution_stream");
 
-            let new_slot_info = NewSlotInfo {
-                slot,
-                global_challenge: subspace_solving::derive_global_challenge(
-                    &epoch_randomness,
-                    slot,
-                ),
-                salt: salt.to_le_bytes(),
-                // TODO: This will not be the correct way in the future once salt is no longer
-                //  just an incremented number
-                next_salt: Some((salt + 1).to_le_bytes()),
-                solution_range,
-            };
-            let (solution_sender, solution_receiver) =
-                tracing_unbounded("subspace_slot_solution_stream");
+        self.subspace_link
+            .new_slot_notification_sender
+            .notify(|| NewSlotNotification {
+                new_slot_info,
+                solution_sender,
+            });
 
-            self.subspace_link
-                .new_slot_notification_sender
-                .notify(|| NewSlotNotification {
-                    new_slot_info,
-                    solution_sender,
-                });
-
-            PreparedData {
-                block_id: parent_block_id,
+        // Wait until a valid solution from some farmer arrives.
+        while let Some((solution, secret_key)) = solution_receiver.next().await {
+            let NewSlotPuzzle {
+                block_id,
                 solution_range,
                 epoch_randomness,
-                salt: salt.to_le_bytes(),
-                solution_receiver,
-            }
-        };
+                salt,
+            } = new_slot_puzzle;
 
-        let client = self.client.clone();
-        let signing_context = self.signing_context.clone();
+            let parent_block_id = BlockId::Hash(parent_header.hash());
 
-        let PreparedData {
-            block_id,
-            solution_range,
-            epoch_randomness,
-            salt,
-            mut solution_receiver,
-        } = maybe_prepared_data?;
-
-        while let Some((solution, secret_key)) = solution_receiver.next().await {
             // TODO: We need also need to check for equivocation of farmers connected to *this node*
             //  during block import, currently farmers connected to this node are considered trusted
-            if client
+            if self
+                .client
                 .runtime_api()
                 .is_in_block_list(&block_id, &solution.public_key)
                 .ok()?
@@ -228,7 +204,7 @@ where
                     records_root: &records_root,
                     position,
                     record_size,
-                    signing_context: &signing_context,
+                    signing_context: &self.signing_context,
                 },
             ) {
                 Ok(_) => {
@@ -243,6 +219,37 @@ where
         }
 
         None
+    }
+
+    /// Returns all the data required for the farmers to claim next slot.
+    fn prepare_new_slot(
+        &self,
+        parent_header: &B::Header,
+        slot: Slot,
+        epoch_descriptor: &EpochData<B>,
+    ) -> Option<(NewSlotPuzzle<B>, NewSlotInfo)> {
+        let epoch_randomness = self.next_epoch_randomness(epoch_descriptor)?;
+        let solution_range = self.next_solution_range(parent_header)?;
+        let salt = self.next_salt(parent_header)?;
+
+        let new_slot_puzzle = NewSlotPuzzle {
+            block_id: BlockId::Hash(parent_header.hash()),
+            salt: salt.to_le_bytes(),
+            solution_range,
+            epoch_randomness,
+        };
+
+        let new_slot_info = NewSlotInfo {
+            slot,
+            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+            salt: salt.to_le_bytes(),
+            // TODO: This will not be the correct way in the future once salt is no longer
+            //  just an incremented number
+            next_salt: Some((salt + 1).to_le_bytes()),
+            solution_range,
+        };
+
+        Some((new_slot_puzzle, new_slot_info))
     }
 
     /// Epoch randomness for the new slot.
