@@ -1010,7 +1010,7 @@ cfg_if! {
                 }
 
                 fn extract_root_block(
-                    _encoded_extrinsic: Vec<u8>,
+                    _ext: &<Block as BlockT>::Extrinsic
                 ) -> Option<subspace_core_primitives::RootBlock> {
                     panic!("Not needed in tests")
                 }
@@ -1352,7 +1352,7 @@ cfg_if! {
                 }
 
                 fn extract_root_block(
-                    _encoded_extrinsic: Vec<u8>,
+                    _ext: &<Block as BlockT>::Extrinsic
                 ) -> Option<subspace_core_primitives::RootBlock> {
                     panic!("Not needed in tests")
                 }

@@ -306,8 +306,8 @@ sp_api::decl_runtime_apis! {
         /// Get the merkle tree root of records for specified segment index
         fn records_root(segment_index: u64) -> Option<Sha256Hash>;
 
-        /// Try to decode an extrinsic as `store_root_block` extrinsic and get root block out of it
-        fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock>;
+        /// Returns `RootBlock` if the given extrinsic has one.
+        fn extract_root_block(ext: &Block::Extrinsic) -> Option<RootBlock>;
 
         /// Extract block object mapping for a given block
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping;

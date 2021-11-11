@@ -1495,7 +1495,7 @@ where
                     match self
                         .client
                         .runtime_api()
-                        .extract_root_block(&BlockId::Hash(parent_hash), extrinsic.encode())
+                        .extract_root_block(&BlockId::Hash(parent_hash), extrinsic)
                     {
                         Ok(Some(root_block)) => {
                             if !root_blocks_set.remove(&root_block) {
