@@ -6598,6 +6598,7 @@ source = "git+https://github.com/paritytech/substrate?rev=26d69bcbe26f6b463e9374
 dependencies = [
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-arithmetic",
  "sp-runtime",
 ]

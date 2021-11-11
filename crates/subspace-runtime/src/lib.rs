@@ -23,7 +23,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Decode, Encode};
+use codec::{Compact, CompactLen, Encode};
 use frame_support::{
     construct_runtime, parameter_types,
     weights::{
@@ -465,16 +465,11 @@ pub type Executive = frame_executive::Executive<
     AllPallets,
 >;
 
-fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
-    if let Ok(extrinsic) = UncheckedExtrinsic::decode(&mut encoded_extrinsic.as_slice()) {
-        if let Call::Subspace(pallet_subspace::Call::store_root_block { root_block }) =
-            extrinsic.function
-        {
-            return Some(root_block);
-        }
+fn extract_root_block(ext: &UncheckedExtrinsic) -> Option<RootBlock> {
+    match ext.function {
+        Call::Subspace(pallet_subspace::Call::store_root_block { root_block }) => Some(root_block),
+        _ => None,
     }
-
-    None
 }
 
 fn extract_feeds_block_object_mapping(
@@ -709,8 +704,8 @@ impl_runtime_apis! {
             Subspace::records_root(segment_index)
         }
 
-        fn extract_root_block(encoded_extrinsic: Vec<u8>) -> Option<RootBlock> {
-            extract_root_block(encoded_extrinsic)
+        fn extract_root_block(ext: &<Block as BlockT>::Extrinsic) -> Option<RootBlock> {
+            extract_root_block(ext)
         }
 
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
