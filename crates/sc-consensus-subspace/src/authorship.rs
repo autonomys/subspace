@@ -68,12 +68,7 @@ where
     Ok(next_salt_digest)
 }
 
-pub(crate) async fn claim_slot<B: BlockT, C, E, I, Error, SO, L, BS>(
-    worker: &SubspaceSlotWorker<B, C, E, I, SO, L, BS>,
-    parent_header: &B::Header,
-    slot: Slot,
-    epoch_descriptor: &EpochData<B>,
-) -> Option<Claim>
+impl<B, C, E, I, Error, SO, L, BS> SubspaceSlotWorker<B, C, E, I, SO, L, BS>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B>
@@ -90,181 +85,190 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: Send + From<ConsensusError> + From<I::Error> + 'static,
 {
-    debug!(target: "subspace", "Attempting to claim slot {}", slot);
+    /// Actually implements [`SimpleSlotWorker::claim_slot`] for [`SubspaceSlotWorker`].
+    pub(crate) async fn claim_slot_impl(
+        &self,
+        parent_header: &B::Header,
+        slot: Slot,
+        epoch_descriptor: &EpochData<B>,
+    ) -> Option<Claim> {
+        debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
-    struct PreparedData<B: BlockT> {
-        block_id: BlockId<B>,
-        solution_range: u64,
-        epoch_randomness: Randomness,
-        salt: Salt,
-        solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
-    }
+        struct PreparedData<B: BlockT> {
+            block_id: BlockId<B>,
+            solution_range: u64,
+            epoch_randomness: Randomness,
+            salt: Salt,
+            solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
+        }
 
-    let parent_block_id = BlockId::Hash(parent_header.hash());
-    let maybe_prepared_data: Option<PreparedData<B>> = try {
-        let epoch_changes = worker.subspace_link.epoch_changes.shared_data();
-        let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
-            Epoch::genesis(&worker.subspace_link.config, slot)
-        })?;
-        let epoch_randomness = epoch.as_ref().randomness;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // era the very first block of the era still uses solution range from the previous one,
-        // but the block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_next_solution_range_digest::<B>(parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no solution range stored yet
-                worker
-                    .client
-                    .runtime_api()
-                    .solution_range(&parent_block_id)
-                    .ok()
+        let parent_block_id = BlockId::Hash(parent_header.hash());
+        let maybe_prepared_data: Option<PreparedData<B>> = try {
+            let epoch_changes = self.subspace_link.epoch_changes.shared_data();
+            let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
+                Epoch::genesis(&self.subspace_link.config, slot)
             })?;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // eon the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let salt = find_next_salt_digest::<B>(parent_header)
-            .ok()?
-            .map(|d| d.salt)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no salt stored yet
-                worker.client.runtime_api().salt(&parent_block_id).ok()
-            })?;
+            let epoch_randomness = epoch.as_ref().randomness;
+            // Here we always use parent block as the source of information, thus on the edge of the
+            // era the very first block of the era still uses solution range from the previous one,
+            // but the block after it uses "next" solution range deposited in the first block.
+            let solution_range = find_next_solution_range_digest::<B>(parent_header)
+                .ok()?
+                .map(|d| d.solution_range)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when
+                    // there is no solution range stored yet
+                    self.client
+                        .runtime_api()
+                        .solution_range(&parent_block_id)
+                        .ok()
+                })?;
+            // Here we always use parent block as the source of information, thus on the edge of the
+            // eon the very first block of the eon still uses salt from the previous one, but the
+            // block after it uses "next" salt deposited in the first block.
+            let salt = find_next_salt_digest::<B>(parent_header)
+                .ok()?
+                .map(|d| d.salt)
+                .or_else(|| {
+                    // We use runtime API as it will fallback to default value for genesis when
+                    // there is no salt stored yet
+                    self.client.runtime_api().salt(&parent_block_id).ok()
+                })?;
 
-        let new_slot_info = NewSlotInfo {
-            slot,
-            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
-            salt: salt.to_le_bytes(),
-            // TODO: This will not be the correct way in the future once salt is no longer
-            //  just an incremented number
-            next_salt: Some((salt + 1).to_le_bytes()),
-            solution_range,
+            let new_slot_info = NewSlotInfo {
+                slot,
+                global_challenge: subspace_solving::derive_global_challenge(
+                    &epoch_randomness,
+                    slot,
+                ),
+                salt: salt.to_le_bytes(),
+                // TODO: This will not be the correct way in the future once salt is no longer
+                //  just an incremented number
+                next_salt: Some((salt + 1).to_le_bytes()),
+                solution_range,
+            };
+            let (solution_sender, solution_receiver) =
+                tracing_unbounded("subspace_slot_solution_stream");
+
+            self.subspace_link
+                .new_slot_notification_sender
+                .notify(|| NewSlotNotification {
+                    new_slot_info,
+                    solution_sender,
+                });
+
+            PreparedData {
+                block_id: parent_block_id,
+                solution_range,
+                epoch_randomness,
+                salt: salt.to_le_bytes(),
+                solution_receiver,
+            }
         };
-        let (solution_sender, solution_receiver) =
-            tracing_unbounded("subspace_slot_solution_stream");
 
-        worker
-            .subspace_link
-            .new_slot_notification_sender
-            .notify(|| NewSlotNotification {
-                new_slot_info,
-                solution_sender,
-            });
+        let client = self.client.clone();
+        let signing_context = self.signing_context.clone();
 
-        PreparedData {
-            block_id: parent_block_id,
+        let PreparedData {
+            block_id,
             solution_range,
             epoch_randomness,
-            salt: salt.to_le_bytes(),
-            solution_receiver,
-        }
-    };
+            salt,
+            mut solution_receiver,
+        } = maybe_prepared_data?;
 
-    let client = worker.client.clone();
-    let signing_context = worker.signing_context.clone();
-
-    let PreparedData {
-        block_id,
-        solution_range,
-        epoch_randomness,
-        salt,
-        mut solution_receiver,
-    } = maybe_prepared_data?;
-
-    while let Some((solution, secret_key)) = solution_receiver.next().await {
-        // TODO: We need also need to check for equivocation of farmers connected to *this node*
-        //  during block import, currently farmers connected to this node are considered trusted
-        if client
-            .runtime_api()
-            .is_in_block_list(&block_id, &solution.public_key)
-            .ok()?
-        {
-            warn!(
-                target: "subspace",
-                "Ignoring solution for slot {} provided by farmer in block list: {}",
-                slot,
-                solution.public_key,
-            );
-
-            continue;
-        }
-
-        let record_size = worker
-            .client
-            .runtime_api()
-            .record_size(&parent_block_id)
-            .ok()?;
-        let recorded_history_segment_size = worker
-            .client
-            .runtime_api()
-            .recorded_history_segment_size(&parent_block_id)
-            .ok()?;
-        let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-        let segment_index = solution.piece_index / merkle_num_leaves;
-        let position = solution.piece_index % merkle_num_leaves;
-        let mut maybe_records_root = worker
-            .client
-            .runtime_api()
-            .records_root(&parent_block_id, segment_index)
-            .ok()?;
-
-        // TODO: This is not a very nice hack due to the fact that at the time first block is
-        //  produced extrinsics with root blocks are not yet in runtime
-        if maybe_records_root.is_none() && parent_header.number().is_zero() {
-            maybe_records_root = worker.subspace_link.root_blocks.lock().iter().find_map(
-                |(_block_number, root_blocks)| {
-                    root_blocks.iter().find_map(|root_block| {
-                        if root_block.segment_index() == segment_index {
-                            Some(root_block.records_root())
-                        } else {
-                            None
-                        }
-                    })
-                },
-            );
-        }
-
-        let records_root = match maybe_records_root {
-            Some(records_root) => records_root,
-            None => {
+        while let Some((solution, secret_key)) = solution_receiver.next().await {
+            // TODO: We need also need to check for equivocation of farmers connected to *this node*
+            //  during block import, currently farmers connected to this node are considered trusted
+            if client
+                .runtime_api()
+                .is_in_block_list(&block_id, &solution.public_key)
+                .ok()?
+            {
                 warn!(
                     target: "subspace",
-                    "Records root for segment index {} not found (slot {})",
-                    segment_index,
+                    "Ignoring solution for slot {} provided by farmer in block list: {}",
                     slot,
+                    solution.public_key,
                 );
+
                 continue;
             }
-        };
 
-        let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
+            let record_size = self
+                .client
+                .runtime_api()
+                .record_size(&parent_block_id)
+                .ok()?;
+            let recorded_history_segment_size = self
+                .client
+                .runtime_api()
+                .recorded_history_segment_size(&parent_block_id)
+                .ok()?;
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            let segment_index = solution.piece_index / merkle_num_leaves;
+            let position = solution.piece_index % merkle_num_leaves;
+            let mut maybe_records_root = self
+                .client
+                .runtime_api()
+                .records_root(&parent_block_id, segment_index)
+                .ok()?;
 
-        match verification::verify_solution::<B>(
-            &solution,
-            verification::VerifySolutionParams {
-                epoch_randomness: &epoch_randomness,
-                solution_range,
-                slot,
-                salt,
-                records_root: &records_root,
-                position,
-                record_size,
-                signing_context: &signing_context,
-            },
-        ) {
-            Ok(_) => {
-                debug!(target: "subspace", "Claimed slot {}", slot);
-
-                return Some((PreDigest { solution, slot }, secret_key.into()));
+            // TODO: This is not a very nice hack due to the fact that at the time first block is
+            //  produced extrinsics with root blocks are not yet in runtime
+            if maybe_records_root.is_none() && parent_header.number().is_zero() {
+                maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+                    |(_block_number, root_blocks)| {
+                        root_blocks.iter().find_map(|root_block| {
+                            if root_block.segment_index() == segment_index {
+                                Some(root_block.records_root())
+                            } else {
+                                None
+                            }
+                        })
+                    },
+                );
             }
-            Err(error) => {
-                warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
+
+            let records_root = match maybe_records_root {
+                Some(records_root) => records_root,
+                None => {
+                    warn!(
+                        target: "subspace",
+                        "Records root for segment index {} not found (slot {})",
+                        segment_index,
+                        slot,
+                    );
+                    continue;
+                }
+            };
+
+            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
+
+            match verification::verify_solution::<B>(
+                &solution,
+                verification::VerifySolutionParams {
+                    epoch_randomness: &epoch_randomness,
+                    solution_range,
+                    slot,
+                    salt,
+                    records_root: &records_root,
+                    position,
+                    record_size,
+                    signing_context: &signing_context,
+                },
+            ) {
+                Ok(_) => {
+                    debug!(target: "subspace", "Claimed slot {}", slot);
+
+                    return Some((PreDigest { solution, slot }, secret_key.into()));
+                }
+                Err(error) => {
+                    warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
+                }
             }
         }
-    }
 
-    None
+        None
+    }
 }
