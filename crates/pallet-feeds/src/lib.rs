@@ -13,14 +13,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
+//! # Feeds pallet.
+//!
+//! The Feeds pallet provides the functionality for storing arbitrary user
+//! data to the network.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+use codec::{Decode, Encode};
 use core::mem;
 pub use pallet::*;
+use scale_info::TypeInfo;
+use sp_core::RuntimeDebug;
+use sp_std::vec::Vec;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
 #[cfg(all(feature = "std", test))]
@@ -28,12 +35,31 @@ mod mock;
 #[cfg(all(feature = "std", test))]
 mod tests;
 
+/// Simple index type that we use to count feeds.
+pub type FeedId = u64;
+
+/// Arbitrary user data stored to the network.
+///
+/// The size of each object is typically limited by the transaction size limit.
+pub type Object = Vec<u8>;
+
+/// Some meta information about [`Object`].
+pub type Metaobject = Vec<u8>;
+
+/// Total size and number of objects stored in a feed.
+#[derive(Decode, Encode, TypeInfo, Default, PartialEq, Eq, RuntimeDebug)]
+pub struct FeedInfo {
+    /// Total size of objects in bytes
+    pub total_size: u64,
+    /// Total number of objects
+    pub total_objects: u64,
+}
+
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use scale_info::TypeInfo;
-    use sp_std::prelude::*;
+    use super::*;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -46,45 +72,14 @@ mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
-    /// User-provided object to store
-    pub(super) type PutDataObject = Vec<u8>;
-    /// ID of the feed
-    pub(super) type FeedId = u64;
-    /// User-provided object metadata (not addressable directly, but available in an even)
-    pub(super) type ObjectMetadata = Vec<u8>;
-
-    /// Total amount of data and number of objects stored in a feed
-    #[derive(Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
-    #[cfg_attr(feature = "std", derive(Debug))]
-    pub struct TotalObjectsAndSize {
-        /// Total size of objects in bytes
-        pub size: u64,
-        /// Total number of objects
-        pub count: u64,
-    }
-
-    #[pallet::storage]
-    #[pallet::getter(fn metadata)]
-    pub(super) type Metadata<T: Config> =
-        StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn totals)]
-    pub(super) type Totals<T: Config> =
-        StorageMap<_, Blake2_128Concat, FeedId, TotalObjectsAndSize, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn current_feed_id)]
-    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, FeedId, ValueQuery>;
-
     /// `pallet-feeds` events
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// New object is added \[object_metadata, account_id, object_size\]
-        DataSubmitted(ObjectMetadata, T::AccountId, u64),
-        /// New feed is created \[feed_id, account_id\]
-        FeedCreated(FeedId, T::AccountId),
+        /// New feed was created. \[who, feed_id\]
+        FeedCreated(T::AccountId, FeedId),
+        /// New object was submitted. \[who, metaobject, object_size\]
+        ObjectSubmitted(T::AccountId, Metaobject, u64),
     }
 
     /// `pallet-feeds` errors
@@ -101,15 +96,10 @@ mod pallet {
         #[pallet::weight(10_000)]
         pub fn create(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
             let feed_id = Self::current_feed_id();
-
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
-
-            Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
-
-            Self::deposit_event(Event::FeedCreated(feed_id, who));
-
+            Feeds::<T>::insert(feed_id, FeedInfo::default());
+            Self::deposit_event(Event::FeedCreated(who, feed_id));
             Ok(())
         }
 
@@ -120,32 +110,43 @@ mod pallet {
         pub fn put(
             origin: OriginFor<T>,
             feed_id: FeedId,
-            data: PutDataObject,
-            metadata: ObjectMetadata,
+            object: Object,
+            metaobject: Metaobject,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let object_size = data.len() as u64;
+            let object_size = object.len() as u64;
 
-            log::debug!("metadata: {:?}", metadata);
-            log::debug!("object_size: {:?}", object_size);
+            log::debug!("object_size: {}, metaobject: {:?}", object_size, metaobject);
 
             let current_feed_id = Self::current_feed_id();
-
             ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
 
-            Metadata::<T>::insert(feed_id, metadata.clone());
-
-            Totals::<T>::mutate(feed_id, |feed_totals| {
-                feed_totals.size += object_size;
-                feed_totals.count += 1;
+            Metaobjects::<T>::insert(feed_id, metaobject.clone());
+            Feeds::<T>::mutate(feed_id, |feed_info| {
+                feed_info.total_size += object_size;
+                feed_info.total_objects += 1;
             });
 
-            Self::deposit_event(Event::DataSubmitted(metadata, who, object_size));
+            Self::deposit_event(Event::ObjectSubmitted(who, metaobject, object_size));
 
             Ok(())
         }
     }
+
+    #[pallet::storage]
+    #[pallet::getter(fn metaobjects)]
+    pub(super) type Metaobjects<T: Config> =
+        StorageMap<_, Blake2_128Concat, FeedId, Metaobject, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn feeds)]
+    pub(super) type Feeds<T: Config> =
+        StorageMap<_, Blake2_128Concat, FeedId, FeedInfo, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn current_feed_id)]
+    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, FeedId, ValueQuery>;
 }
 
 /// Mapping to the object offset and size within an extrinsic
@@ -161,11 +162,11 @@ impl<T: Config> Call<T> {
     /// Extract object location if an extrinsic corresponds to `put` call
     pub fn extract_object_location(&self) -> Option<CallObjectLocation> {
         match self {
-            Self::put { data, .. } => {
+            Self::put { object, .. } => {
                 // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
                 // enum variant encoding.
                 Some(CallObjectLocation {
-                    hash: crypto::sha256_hash(data),
+                    hash: crypto::sha256_hash(object),
                     offset: 1 + mem::size_of::<FeedId>() as u32,
                 })
             }
