@@ -157,28 +157,8 @@ where
             let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
             let segment_index = solution.piece_index / merkle_num_leaves;
             let position = solution.piece_index % merkle_num_leaves;
-            let mut maybe_records_root = self
-                .client
-                .runtime_api()
-                .records_root(&parent_block_id, segment_index)
-                .ok()?;
 
-            // TODO: This is not a very nice hack due to the fact that at the time first block is
-            //  produced extrinsics with root blocks are not yet in runtime
-            if maybe_records_root.is_none() && parent_header.number().is_zero() {
-                maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
-                    |(_block_number, root_blocks)| {
-                        root_blocks.iter().find_map(|root_block| {
-                            if root_block.segment_index() == segment_index {
-                                Some(root_block.records_root())
-                            } else {
-                                None
-                            }
-                        })
-                    },
-                );
-            }
-
+            let maybe_records_root = self.records_root_for(parent_header, segment_index);
             let records_root = match maybe_records_root {
                 Some(records_root) => records_root,
                 None => {
@@ -191,8 +171,6 @@ where
                     continue;
                 }
             };
-
-            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
 
             match verification::verify_solution::<B>(
                 &solution,
@@ -209,7 +187,7 @@ where
             ) {
                 Ok(_) => {
                     debug!(target: "subspace", "Claimed slot {}", slot);
-
+                    let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
                     return Some((PreDigest { solution, slot }, secret_key.into()));
                 }
                 Err(error) => {
@@ -295,5 +273,36 @@ where
                     .salt(&BlockId::Hash(parent_header.hash()))
                     .ok()
             })
+    }
+
+    /// Returns the merkle root of records given the segment index.
+    fn records_root_for(
+        &self,
+        parent_header: &B::Header,
+        segment_index: u64,
+    ) -> Option<subspace_core_primitives::Sha256Hash> {
+        let mut maybe_records_root = self
+            .client
+            .runtime_api()
+            .records_root(&BlockId::Hash(parent_header.hash()), segment_index)
+            .ok()?;
+
+        // TODO: This is not a very nice hack due to the fact that at the time first block is
+        //  produced extrinsics with root blocks are not yet in runtime
+        if maybe_records_root.is_none() && parent_header.number().is_zero() {
+            maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+                |(_block_number, root_blocks)| {
+                    root_blocks.iter().find_map(|root_block| {
+                        if root_block.segment_index() == segment_index {
+                            Some(root_block.records_root())
+                        } else {
+                            None
+                        }
+                    })
+                },
+            );
+        }
+
+        maybe_records_root
     }
 }

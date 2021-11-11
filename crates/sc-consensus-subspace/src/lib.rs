@@ -76,7 +76,7 @@ use sc_consensus_slots::{
     SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use schnorrkel::context::SigningContext;
 use schnorrkel::SecretKey;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
