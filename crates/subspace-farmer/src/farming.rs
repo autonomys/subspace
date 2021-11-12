@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Error)]
 pub enum FarmingError {
     #[error("jsonrpsee error: {0}")]
-    Rpc(jsonrpsee::types::Error),
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
     #[error("Error joining task: {0}")]
     JoinTask(tokio::task::JoinError),
     #[error("Plot read error: {0}")]
@@ -113,11 +113,12 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     let mut new_slots = client
         .subscribe_slot_info()
         .await
-        .map_err(FarmingError::Rpc)?;
+        .map_err(FarmingError::RpcError)?;
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = new_slots.next().await.map_err(FarmingError::Rpc)? {
+    // could also import futures mpsc, and call `try_next`, but without await. I think this is more robust
+    while let Some(slot_info) = new_slots.recv().await {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
@@ -163,7 +164,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 secret_key: identity.secret_key().to_bytes().into(),
             })
             .await
-            .map_err(FarmingError::Rpc)?;
+            .map_err(FarmingError::RpcError)?;
     }
 
     Ok(())

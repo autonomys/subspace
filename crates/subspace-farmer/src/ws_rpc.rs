@@ -1,13 +1,14 @@
-use crate::rpc::{NewHead, RpcClient};
+use crate::rpc::{Error as RpcError, NewHead, RpcClient};
 use async_trait::async_trait;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
 use jsonrpsee::types::v2::params::JsonRpcParams;
-use jsonrpsee::types::{Error, Subscription};
+use jsonrpsee::types::Error as JsonError;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
 use subspace_rpc_primitives::{
     EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
 };
+use tokio::sync::mpsc;
 
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
@@ -17,7 +18,7 @@ pub struct WsRpc {
 
 impl WsRpc {
     /// Create a new instance of [`RpcClient`].
-    pub async fn new(url: &str) -> Result<Self, Error> {
+    pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(WsClientBuilder::default().build(url).await?);
         Ok(Self { client })
     }
@@ -26,57 +27,82 @@ impl WsRpc {
 #[async_trait]
 impl RpcClient for WsRpc {
     /// Get farmer metadata.
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error> {
-        self.client
+    async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
+        Ok(self
+            .client
             .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
-            .await
+            .await?)
     }
 
     /// Get a block by number.
     async fn block_by_number(
         &self,
         block_number: u32,
-    ) -> Result<Option<EncodedBlockWithObjectMapping>, Error> {
-        self.client
+    ) -> Result<Option<EncodedBlockWithObjectMapping>, RpcError> {
+        Ok(self
+            .client
             .request(
                 "subspace_getBlockByNumber",
                 JsonRpcParams::Array(vec![serde_json::to_value(block_number)?]),
             )
-            .await
+            .await?)
     }
 
     /// Subscribe to chain head.
-    async fn subscribe_new_head(&self) -> Result<Subscription<NewHead>, Error> {
-        self.client
+    async fn subscribe_new_head(&self) -> Result<mpsc::Receiver<NewHead>, RpcError> {
+        let mut subscription = self
+            .client
             .subscribe(
                 "chain_subscribeNewHead",
                 JsonRpcParams::NoParams,
                 "chain_unsubscribeNewHead",
             )
-            .await
+            .await?;
+
+        let (sender, receiver) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            while let Ok(Some(notification)) = subscription.next().await {
+                let _ = sender.send(notification).await;
+            }
+        });
+
+        Ok(receiver)
     }
 
     /// Subscribe to slot.
-    async fn subscribe_slot_info(&self) -> Result<Subscription<SlotInfo>, Error> {
-        self.client
+    async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, RpcError> {
+        let mut subscription = self
+            .client
             .subscribe(
                 "subspace_subscribeSlotInfo",
                 JsonRpcParams::NoParams,
                 "subspace_unsubscribeSlotInfo",
             )
-            .await
+            .await?;
+
+        let (sender, receiver) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            while let Ok(Some(notification)) = subscription.next().await {
+                let _ = sender.send(notification).await;
+            }
+        });
+
+        Ok(receiver)
     }
 
     /// Submit a slot solution.
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,
-    ) -> Result<(), Error> {
-        self.client
+    ) -> Result<(), RpcError> {
+        Ok(self
+            .client
             .request(
                 "subspace_submitSolutionResponse",
                 JsonRpcParams::Array(vec![serde_json::to_value(&solution_response)?]),
             )
-            .await
+            .await?)
     }
 }
