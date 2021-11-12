@@ -26,7 +26,6 @@ impl WsRpc {
 
 #[async_trait]
 impl RpcClient for WsRpc {
-    /// Get farmer metadata.
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
         Ok(self
             .client
@@ -34,7 +33,6 @@ impl RpcClient for WsRpc {
             .await?)
     }
 
-    /// Get a block by number.
     async fn block_by_number(
         &self,
         block_number: u32,
@@ -45,7 +43,6 @@ impl RpcClient for WsRpc {
             .await?)
     }
 
-    /// Subscribe to chain head.
     async fn subscribe_new_head(&self) -> Result<mpsc::Receiver<NewHead>, RpcError> {
         let mut subscription = self
             .client
@@ -67,7 +64,6 @@ impl RpcClient for WsRpc {
         Ok(receiver)
     }
 
-    /// Subscribe to slot.
     async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, RpcError> {
         let mut subscription = self
             .client
@@ -89,7 +85,6 @@ impl RpcClient for WsRpc {
         Ok(receiver)
     }
 
-    /// Submit a slot solution.
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,

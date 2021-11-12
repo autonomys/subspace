@@ -36,13 +36,18 @@ pub enum PlottingError {
     #[error("Plot write error: {0}")]
     PlotWrite(std::io::Error),
 }
-
+/// `Plotting` struct is the abstraction of the plotting process
+///
+/// Plotting Instance that stores a channel to stop/pause the background farming task
+/// and a handle to make it possible to wait on this background task
 pub struct Plotting {
-    sender: Option<oneshot::Sender<()>>,
+    stop_sender: Option<oneshot::Sender<()>>,
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
+/// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
 impl Plotting {
+    /// Returns an instance of plotting, and also starts a concurrent background plotting task
     pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
         plot: Plot,
         commitments: Commitments,
@@ -50,8 +55,10 @@ impl Plotting {
         client: T,
         subspace_codec: SubspaceCodec,
     ) -> Self {
-        let (sender, receiver) = oneshot::channel();
+        // Oneshot channels, that will be used for interrupt/stop the process
+        let (stop_sender, stop_receiver) = oneshot::channel();
 
+        // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(async move {
             background_plotting(
                 client,
@@ -59,17 +66,18 @@ impl Plotting {
                 commitments,
                 object_mappings,
                 subspace_codec,
-                receiver,
+                stop_receiver,
             )
             .await
         });
 
         Plotting {
-            sender: Some(sender),
+            stop_sender: Some(stop_sender),
             handle: Some(plotting_handle),
         }
     }
 
+    /// Waits for the background plotting to finish
     pub async fn wait(mut self) -> Result<(), PlottingError> {
         self.handle
             .take()
@@ -81,9 +89,7 @@ impl Plotting {
 
 impl Drop for Plotting {
     fn drop(&mut self) {
-        // we don't have to do anything in here
-        // these are for clarity and verbosity
-        let _ = self.sender.take().unwrap().send(());
+        let _ = self.stop_sender.take().unwrap().send(());
     }
 }
 
@@ -96,7 +102,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     commitments: Commitments,
     object_mappings: ObjectMappings,
     subspace_codec: SubspaceCodec,
-    mut receiver: Receiver<()>,
+    mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = plot.downgrade();
     let FarmerMetadata {
@@ -378,7 +384,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     // receiver.fuse();
     loop {
         tokio::select! {
-            _ = &mut receiver => {
+            _ = &mut stop_receiver => {
                 info!("Plotting stopped!");
                 break;
             }
