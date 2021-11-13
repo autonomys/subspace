@@ -35,8 +35,7 @@ use sp_runtime::{
     Perbill,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash,
-    Signature, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash, Tag,
 };
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 

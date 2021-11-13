@@ -14,7 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use super::*;
+use crate::SubspaceLink;
+use codec::Encode;
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info};
+use sc_client_api::BlockBackend;
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::SubspaceApi;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
+use std::sync::Arc;
+use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+use subspace_archiving::pre_genesis_data;
+use subspace_core_primitives::RootBlock;
 
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
 where
@@ -27,23 +40,15 @@ where
             .block(&block_to_check)
             .expect("Older blocks should always exist")
             .expect("Older blocks should always exist");
-        let mut latest_root_block: Option<RootBlock> = None;
 
         for extrinsic in block.block.extrinsics() {
             match client
                 .runtime_api()
-                .extract_root_block(&block_to_check, extrinsic)
+                .extract_root_blocks(&block_to_check, extrinsic)
             {
-                Ok(Some(root_block)) => match &mut latest_root_block {
-                    Some(latest_root_block) => {
-                        if latest_root_block.segment_index() < root_block.segment_index() {
-                            *latest_root_block = root_block;
-                        }
-                    }
-                    None => {
-                        latest_root_block.replace(root_block);
-                    }
-                },
+                Ok(Some(root_blocks)) => {
+                    return root_blocks.into_iter().last();
+                }
                 Ok(None) => {
                     // Some other extrinsic, ignore
                 }
@@ -52,10 +57,6 @@ where
                     error!(target: "subspace", "Failed to make runtime API call: {:?}", error);
                 }
             }
-        }
-
-        if latest_root_block.is_some() {
-            break latest_root_block;
         }
 
         let parent_block_hash = *block.block.header().parent_hash();
@@ -163,18 +164,6 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .flatten()
             .map(|archived_segment| archived_segment.root_block)
             .collect();
-
-        if subspace_link.authoring_enabled {
-            // TODO: Block size will not be enough in case number of root blocks it too large; not a
-            //  problem for now though. Also RAM usage will be very significant with current approach.
-            // Submit store root block extrinsic at genesis block.
-            for root_block in new_root_blocks.iter().copied() {
-                client
-                    .runtime_api()
-                    .submit_store_root_block_extrinsic(&genesis_block_id, root_block)
-                    .expect("Failed to submit `store_root_block` extrinsic at genesis block");
-            }
-        }
 
         // Set list of expected root blocks for the next block after genesis (we can't have
         // extrinsics in genesis block, at least not right now)

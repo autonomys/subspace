@@ -30,6 +30,7 @@ mod tests;
 
 use codec::{Decode, Encode};
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
+use frame_support::inherent::{InherentData, InherentIdentifier, ProvideInherent};
 use frame_support::{
     dispatch::{DispatchResult, DispatchResultWithPostInfo},
     traits::{ConstU32, Get, OnTimestampSet},
@@ -40,6 +41,7 @@ use frame_support::{
 use num_traits::float::FloatCore;
 pub use pallet::*;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
 use sp_consensus_subspace::{
     digests::{
         NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
@@ -63,7 +65,7 @@ use subspace_core_primitives::{RootBlock, Sha256Hash, RANDOMNESS_LENGTH};
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
     fn report_equivocation() -> Weight;
-    fn store_root_block() -> Weight;
+    fn store_root_blocks(root_blocks_count: usize) -> Weight;
 }
 
 /// Trigger an epoch change, if any should take place.
@@ -475,10 +477,53 @@ pub mod pallet {
         ///
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`).
-        #[pallet::weight((<T as Config>::WeightInfo::store_root_block(), DispatchClass::Mandatory, Pays::No))]
-        pub fn store_root_block(origin: OriginFor<T>, root_block: RootBlock) -> DispatchResult {
+        #[pallet::weight((<T as Config>::WeightInfo::store_root_blocks(root_blocks.len()), DispatchClass::Mandatory, Pays::No))]
+        pub fn store_root_blocks(
+            origin: OriginFor<T>,
+            root_blocks: Vec<RootBlock>,
+        ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::do_store_root_block(root_block)
+            Self::do_store_root_blocks(root_blocks)
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Subspace inherent data not correctly encoded")
+                .expect("Subspace inherent data must be provided");
+
+            let root_blocks = inherent_data.root_blocks;
+            if root_blocks.is_empty() {
+                None
+            } else {
+                Some(Call::store_root_blocks { root_blocks })
+            }
+        }
+
+        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
+            if let Call::store_root_blocks { root_blocks } = call {
+                let inherent_data = data
+                    .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                    .expect("Subspace inherent data not correctly encoded")
+                    .expect("Subspace inherent data must be provided");
+
+                if root_blocks != &inherent_data.root_blocks {
+                    return Err(InherentError::IncorrectRootBlocksList);
+                }
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::store_root_blocks { .. })
         }
     }
 
@@ -490,7 +535,7 @@ pub mod pallet {
                 Call::report_equivocation { .. } => {
                     Self::validate_equivocation_report(source, call)
                 }
-                Call::store_root_block { .. } => Self::validate_root_block(source, call),
+                Call::store_root_blocks { .. } => Self::validate_root_block(source, call),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -498,7 +543,7 @@ pub mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::report_equivocation { .. } => Self::pre_dispatch_equivocation_report(call),
-                Call::store_root_block { .. } => Self::pre_dispatch_root_block(call),
+                Call::store_root_blocks { .. } => Self::pre_dispatch_root_block(call),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -767,8 +812,9 @@ impl<T: Config> Pallet<T> {
     fn eon_start(eon_index: u64) -> Slot {
         // (eon_index * eon_duration) + genesis_slot
 
-        const PROOF: &str = "slot number is u64; it should relate in some way to wall clock time; \
-							 if u64 is not enough we should crash for safety; qed.";
+        const PROOF: &str =
+            "slot number is u64; it should relate in some way to wall clock time; if u64 is not \
+            enough we should crash for safety; qed.";
 
         let eon_start = eon_index.checked_mul(T::EonDuration::get()).expect(PROOF);
 
@@ -910,9 +956,11 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    fn do_store_root_block(root_block: RootBlock) -> DispatchResult {
-        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-        Self::deposit_event(Event::RootBlockStored(root_block));
+    fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
+        for root_block in root_blocks {
+            RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
+            Self::deposit_event(Event::RootBlockStored(root_block));
+        }
         Ok(())
     }
 
@@ -933,41 +981,9 @@ impl<T: Config> Pallet<T> {
         Some(())
     }
 
-    /// Just stores root block in the storage, only used for tests.
-    pub fn submit_test_store_root_block(root_block: RootBlock) {
-        RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-    }
-
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
-    }
-}
-
-impl<T> Pallet<T>
-where
-    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
-{
-    /// Submits an extrinsic to store root block. This method will create an unsigned extrinsic with
-    /// a call to `store_root_block` and will push the transaction to the pool. Only useful in an
-    /// offchain context.
-    pub fn submit_store_root_block(root_block: RootBlock) {
-        use frame_system::offchain::SubmitTransaction;
-
-        let call = Call::store_root_block { root_block };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace",
-                "📦 Submitted Subspace root block with segment index {}.",
-                root_block.segment_index(),
-            ),
-            Err(e) => log::error!(
-                target: "runtime::subspace",
-                "Error submitting Subspace root block: {:?}",
-                e,
-            ),
-        }
     }
 }
 
@@ -977,7 +993,7 @@ where
 /// blocks.
 impl<T: Config> Pallet<T> {
     pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::store_root_block { root_block } = call {
+        if let Call::store_root_blocks { root_blocks } = call {
             // Discard root block not coming from the local node
             if !matches!(
                 source,
@@ -991,16 +1007,13 @@ impl<T: Config> Pallet<T> {
                 return InvalidTransaction::Call.into();
             }
 
-            // Check if root block for this segment index already exists
-            check_root_block_for_segment_index::<T>(root_block.segment_index())?;
+            check_root_blocks::<T>(root_blocks)?;
 
             ValidTransaction::with_tag_prefix("SubspaceRootBlock")
                 // We assign the maximum priority for any equivocation report.
                 .priority(TransactionPriority::MAX)
-                // Only one root block for every segment index.
-                .and_provides(root_block.segment_index())
                 // Should be included immediately into the upcoming block with no exceptions.
-                .longevity(1)
+                .longevity(0)
                 // We don't propagate this. This can never be included on a remote node.
                 .propagate(false)
                 .build()
@@ -1010,24 +1023,57 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::store_root_block { root_block } = call {
-            check_root_block_for_segment_index::<T>(root_block.segment_index())
+        if let Call::store_root_blocks { root_blocks } = call {
+            check_root_blocks::<T>(root_blocks)?;
+
+            Ok(())
         } else {
             Err(InvalidTransaction::Call.into())
         }
     }
 }
 
-fn check_root_block_for_segment_index<T: Config>(
-    segment_index: u64,
-) -> Result<(), TransactionValidityError> {
-    // Check if the root block was already set for this segment index
-    if RecordsRoot::<T>::contains_key(segment_index) {
-        return Err(InvalidTransaction::Stale.into());
+fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
+    let mut root_blocks_iter = root_blocks.iter();
+
+    // There should be some root blocks
+    let first_root_block = match root_blocks_iter.next() {
+        Some(first_root_block) => first_root_block,
+        None => {
+            return Err(InvalidTransaction::BadMandatory.into());
+        }
+    };
+
+    // Segment in root blocks should monotonically increase
+    if first_root_block.segment_index() > 0
+        && !RecordsRoot::<T>::contains_key(first_root_block.segment_index() - 1)
+    {
+        return Err(InvalidTransaction::BadMandatory.into());
     }
 
-    // There is no guarantee on the order of transactions even on the same node unfortunately, so we
-    // can't do other validations like monotonically increasing `segment_index`
+    // Root blocks should never repeat
+    if RecordsRoot::<T>::contains_key(first_root_block.segment_index()) {
+        return Err(InvalidTransaction::BadMandatory.into());
+    }
+
+    let mut last_segment_index = first_root_block.segment_index();
+
+    for root_block in root_blocks_iter {
+        let segment_index = root_block.segment_index();
+
+        // Segment in root blocks should monotonically increase
+        if segment_index != last_segment_index + 1 {
+            return Err(InvalidTransaction::BadMandatory.into());
+        }
+
+        // Root blocks should never repeat
+        if RecordsRoot::<T>::contains_key(segment_index) {
+            return Err(InvalidTransaction::BadMandatory.into());
+        }
+
+        last_segment_index = segment_index;
+    }
+
     Ok(())
 }
 

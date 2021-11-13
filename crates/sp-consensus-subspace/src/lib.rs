@@ -295,19 +295,14 @@ sp_api::decl_runtime_apis! {
             equivocation_proof: EquivocationProof<Block::Header>,
         ) -> Option<()>;
 
-        /// Submits an unsigned extrinsic to store root block. The extrinsic will be unsigned and
-        /// should only be accepted for local authorship (not to be broadcast to the network). Only
-        /// useful in an offchain context.
-        fn submit_store_root_block_extrinsic(root_block: RootBlock);
-
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
         /// Get the merkle tree root of records for specified segment index
         fn records_root(segment_index: u64) -> Option<Sha256Hash>;
 
-        /// Returns `RootBlock` if the given extrinsic has one.
-        fn extract_root_block(ext: &Block::Extrinsic) -> Option<RootBlock>;
+        /// Returns `Vec<RootBlock>` if a given extrinsic has them.
+        fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;
 
         /// Extract block object mapping for a given block
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping;

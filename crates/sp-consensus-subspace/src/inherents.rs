@@ -16,47 +16,72 @@
 
 //! Inherents for Subspace consensus
 
-use sp_inherents::{Error, InherentData, InherentIdentifier};
-
+use codec::{Decode, Encode};
+use sp_consensus_slots::Slot;
+use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
+use sp_runtime::RuntimeDebug;
 use sp_std::result::Result;
+use sp_std::vec::Vec;
+use subspace_core_primitives::RootBlock;
 
 /// The Subspace inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 
-/// The type of the Subspace inherent data.
-pub type SubspaceInherentData = sp_consensus_slots::Slot;
-
-/// Auxiliary trait to extract Subspace inherent data.
-pub trait SubspaceInherentDataTrait {
-    /// Get Subspace inherent data.
-    fn subspace_inherent_data(&self) -> Result<Option<SubspaceInherentData>, Error>;
-
-    /// Replace Subspace inherent data.
-    fn replace_subspace_inherent_data(&mut self, new: SubspaceInherentData);
+/// Errors that can occur while checking root blocks.
+#[derive(Encode, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(Decode))]
+pub enum InherentError {
+    /// List of root blocks is not correct.
+    IncorrectRootBlocksList,
 }
 
-impl SubspaceInherentDataTrait for InherentData {
-    fn subspace_inherent_data(&self) -> Result<Option<SubspaceInherentData>, Error> {
+impl IsFatalError for InherentError {
+    fn is_fatal_error(&self) -> bool {
+        true
+    }
+}
+
+/// The type of the Subspace inherent data.
+#[derive(Encode, Decode, RuntimeDebug)]
+pub struct InherentType {
+    /// Slot at which block was created.
+    pub slot: Slot,
+    /// Root blocks expected to be included in the block.
+    pub root_blocks: Vec<RootBlock>,
+}
+
+/// Auxiliary trait to extract Subspace inherent data.
+pub trait SubspaceInherentData {
+    /// Get Subspace inherent data.
+    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error>;
+
+    /// Replace Subspace inherent data.
+    fn replace_subspace_inherent_data(&mut self, new: InherentType);
+}
+
+impl SubspaceInherentData for InherentData {
+    fn subspace_inherent_data(&self) -> Result<Option<InherentType>, Error> {
         self.get_data(&INHERENT_IDENTIFIER)
     }
 
-    fn replace_subspace_inherent_data(&mut self, new: SubspaceInherentData) {
+    fn replace_subspace_inherent_data(&mut self, new: InherentType) {
         self.replace_data(INHERENT_IDENTIFIER, &new);
     }
 }
 
-/// Provides the slot duration inherent data for Subspace.
-// TODO: Remove in the future. https://github.com/paritytech/substrate/issues/8029
+/// Provides the root blocks inherent data for Subspace.
 #[cfg(feature = "std")]
 pub struct InherentDataProvider {
-    slot: SubspaceInherentData,
+    data: InherentType,
 }
 
 #[cfg(feature = "std")]
 impl InherentDataProvider {
-    /// Create new inherent data provider from the given `slot`.
-    pub fn new(slot: SubspaceInherentData) -> Self {
-        Self { slot }
+    /// Create new inherent data provider from the given `data`.
+    pub fn new(slot: Slot, root_blocks: Vec<RootBlock>) -> Self {
+        Self {
+            data: InherentType { slot, root_blocks },
+        }
     }
 
     /// Creates the inherent data provider by calculating the slot from the given
@@ -64,26 +89,25 @@ impl InherentDataProvider {
     pub fn from_timestamp_and_duration(
         timestamp: sp_timestamp::Timestamp,
         duration: std::time::Duration,
+        root_blocks: Vec<RootBlock>,
     ) -> Self {
-        let slot = SubspaceInherentData::from(
-            (timestamp.as_duration().as_millis() / duration.as_millis()) as u64,
-        );
+        let slot = Slot::from((timestamp.as_duration().as_millis() / duration.as_millis()) as u64);
 
-        Self { slot }
+        Self::new(slot, root_blocks)
     }
 
-    /// Returns the `slot` of this inherent data provider.
-    pub fn slot(&self) -> SubspaceInherentData {
-        self.slot
+    /// Returns the `data` of this inherent data provider.
+    pub fn data(&self) -> &InherentType {
+        &self.data
     }
 }
 
 #[cfg(feature = "std")]
 impl sp_std::ops::Deref for InherentDataProvider {
-    type Target = SubspaceInherentData;
+    type Target = Slot;
 
     fn deref(&self) -> &Self::Target {
-        &self.slot
+        &self.data.slot
     }
 }
 
@@ -91,15 +115,20 @@ impl sp_std::ops::Deref for InherentDataProvider {
 #[async_trait::async_trait]
 impl sp_inherents::InherentDataProvider for InherentDataProvider {
     fn provide_inherent_data(&self, inherent_data: &mut InherentData) -> Result<(), Error> {
-        inherent_data.put_data(INHERENT_IDENTIFIER, &self.slot)
+        inherent_data.put_data(INHERENT_IDENTIFIER, &self.data)
     }
 
     async fn try_handle_error(
         &self,
-        _: &InherentIdentifier,
-        _: &[u8],
+        identifier: &InherentIdentifier,
+        error: &[u8],
     ) -> Option<Result<(), Error>> {
-        // There is no error anymore
-        None
+        if *identifier != INHERENT_IDENTIFIER {
+            return None;
+        }
+
+        let error = InherentError::decode(&mut &*error).ok()?;
+
+        Some(Err(Error::Application(Box::from(format!("{:?}", error)))))
     }
 }

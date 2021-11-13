@@ -421,7 +421,7 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 1,
 
-        Subspace: pallet_subspace::{Pallet, Call, Config, Storage, Event, ValidateUnsigned} = 2,
+        Subspace: pallet_subspace::{Pallet, Call, Config, Storage, Inherent, Event, ValidateUnsigned} = 2,
         OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event} = 3,
         Rewards: pallet_rewards::{Pallet, Event<T>} = 9,
 
@@ -465,9 +465,11 @@ pub type Executive = frame_executive::Executive<
     AllPallets,
 >;
 
-fn extract_root_block(ext: &UncheckedExtrinsic) -> Option<RootBlock> {
-    match ext.function {
-        Call::Subspace(pallet_subspace::Call::store_root_block { root_block }) => Some(root_block),
+fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
+    match &ext.function {
+        Call::Subspace(pallet_subspace::Call::store_root_blocks { root_blocks }) => {
+            Some(root_blocks.clone())
+        }
         _ => None,
     }
 }
@@ -690,10 +692,6 @@ impl_runtime_apis! {
             Subspace::submit_equivocation_report(equivocation_proof)
         }
 
-        fn submit_store_root_block_extrinsic(root_block: RootBlock) {
-            Subspace::submit_store_root_block(root_block)
-        }
-
         fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
@@ -704,8 +702,8 @@ impl_runtime_apis! {
             Subspace::records_root(segment_index)
         }
 
-        fn extract_root_block(ext: &<Block as BlockT>::Extrinsic) -> Option<RootBlock> {
-            extract_root_block(ext)
+        fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
+            extract_root_blocks(ext)
         }
 
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
