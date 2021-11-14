@@ -1,7 +1,7 @@
 use crate::rpc::{Error as RpcError, NewHead, RpcClient};
 use async_trait::async_trait;
+use jsonrpsee::rpc_params;
 use jsonrpsee::types::traits::{Client, SubscriptionClient};
-use jsonrpsee::types::v2::params::JsonRpcParams;
 use jsonrpsee::types::Error as JsonError;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
@@ -30,7 +30,7 @@ impl RpcClient for WsRpc {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
         Ok(self
             .client
-            .request("subspace_getFarmerMetadata", JsonRpcParams::NoParams)
+            .request("subspace_getFarmerMetadata", rpc_params![])
             .await?)
     }
 
@@ -41,10 +41,7 @@ impl RpcClient for WsRpc {
     ) -> Result<Option<EncodedBlockWithObjectMapping>, RpcError> {
         Ok(self
             .client
-            .request(
-                "subspace_getBlockByNumber",
-                JsonRpcParams::Array(vec![serde_json::to_value(block_number)?]),
-            )
+            .request("subspace_getBlockByNumber", rpc_params![block_number])
             .await?)
     }
 
@@ -54,7 +51,7 @@ impl RpcClient for WsRpc {
             .client
             .subscribe(
                 "chain_subscribeNewHead",
-                JsonRpcParams::NoParams,
+                rpc_params![],
                 "chain_unsubscribeNewHead",
             )
             .await?;
@@ -76,7 +73,7 @@ impl RpcClient for WsRpc {
             .client
             .subscribe(
                 "subspace_subscribeSlotInfo",
-                JsonRpcParams::NoParams,
+                rpc_params![],
                 "subspace_unsubscribeSlotInfo",
             )
             .await?;
@@ -101,7 +98,7 @@ impl RpcClient for WsRpc {
             .client
             .request(
                 "subspace_submitSolutionResponse",
-                JsonRpcParams::Array(vec![serde_json::to_value(&solution_response)?]),
+                rpc_params![&solution_response],
             )
             .await?)
     }
