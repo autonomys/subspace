@@ -20,8 +20,9 @@ use sp_core::crypto::Ss58Codec;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
-    AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, Signature, SubspaceConfig,
-    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
+    AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, SS58Prefix, Signature,
+    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK,
+    SSC, WASM_BINARY,
 };
 
 // The URL for the telemetry server.
@@ -145,8 +146,12 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
         // Properties
         Some(Properties::from_iter([
             (
+                "ss58Format".to_string(),
+                serde_json::to_value(SS58Prefix::get()).expect("u16 is always serializable; qed"),
+            ),
+            (
                 "tokenDecimals".to_string(),
-                serde_json::to_value(18_u8).expect("u8 is always serializable; qed"),
+                serde_json::to_value(DECIMAL_PLACES).expect("u8 is always serializable; qed"),
             ),
             (
                 "tokenSymbol".to_string(),

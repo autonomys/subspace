@@ -123,8 +123,10 @@ pub fn native_version() -> NativeVersion {
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;
-/// One Subspace Credit has 18 decimal places.
-pub const SSC: Balance = (10 * SHANNON).pow(18);
+/// Subspace Credits have 18 decimal places.
+pub const DECIMAL_PLACES: u8 = 18;
+/// One Subspace Credit.
+pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
@@ -214,7 +216,7 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
-    pub const SS58Prefix: u8 = 42;
+    pub const SS58Prefix: u16 = 2254;
 }
 
 // Configure FRAME pallets to include in runtime.
@@ -264,7 +266,7 @@ impl frame_system::Config for Runtime {
     type AccountData = pallet_balances::AccountData<Balance>;
     /// Weight information for the extrinsics of this pallet.
     type SystemWeightInfo = ();
-    /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
+    /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
