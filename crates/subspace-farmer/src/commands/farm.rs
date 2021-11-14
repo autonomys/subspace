@@ -30,8 +30,9 @@ pub(crate) async fn farm(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let path = base_directory.join("object-mappings");
-        move || ObjectMappings::new(&path)
+        let base_directory = base_directory.clone();
+
+        move || ObjectMappings::open_or_create(&base_directory)
     })
     .await??;
 
@@ -47,7 +48,7 @@ pub(crate) async fn farm(
         .build(ws_server_listen_addr)
         .await?;
     let ws_server_addr = ws_server.local_addr()?;
-    let rpc_server = RpcServerImpl::new(plot.clone(), subspace_codec);
+    let rpc_server = RpcServerImpl::new(plot.clone(), object_mappings.clone(), subspace_codec);
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
     info!("WS RPC server listening on {}", ws_server_addr);
