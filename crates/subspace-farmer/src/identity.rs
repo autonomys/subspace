@@ -12,8 +12,8 @@ pub struct Identity {
 }
 
 impl Identity {
-    pub fn open_or_create(path: &Path) -> Result<Identity, Error> {
-        let identity_file = path.join("identity.bin");
+    pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Identity, Error> {
+        let identity_file = base_directory.as_ref().join("identity.bin");
         let keypair = if identity_file.exists() {
             info!("Opening existing keypair"); // TODO: turn this into a channel
             Keypair::from_bytes(&fs::read(identity_file)?).map_err(Error::msg)?

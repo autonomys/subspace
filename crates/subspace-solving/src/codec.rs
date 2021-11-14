@@ -30,7 +30,7 @@ const ENCODE_ROUNDS: usize = 1;
 
 /// Subspace codec is used to encode pieces of archived history before writing them to disk and also
 /// to decode them after reading from disk.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct SubspaceCodec {
     farmer_public_key_hash: Sha256Hash,
     cuda_available: bool,
