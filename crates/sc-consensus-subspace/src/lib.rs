@@ -54,13 +54,11 @@ use crate::slot_worker::SubspaceSlotWorker;
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
 use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
-use log::{debug, error, info, log, trace, warn};
+use log::{debug, info, log, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
-use sc_client_api::{
-    backend::AuxStore, BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider,
-};
+use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::{
     block_import::{
         BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
@@ -89,30 +87,24 @@ use sp_consensus::{
     SelectChain, SlotData, SyncOracle,
 };
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
+    NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+};
+use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
-    digests::{
-        CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
-        NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
-    },
-    inherents::SubspaceInherentDataTrait,
     ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
 };
 use sp_core::sr25519::Pair;
 use sp_core::{ExecutionContext, Pair as PairTrait};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
-use sp_runtime::traits::One;
-use sp_runtime::{
-    generic::{BlockId, OpaqueDigestItemId},
-    traits::{Block as BlockT, CheckedSub, DigestItemFor, Header, Saturating, Zero},
-};
+use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
+use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, One, Zero};
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::future::Future;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
 pub use subspace_archiving::archiver::ArchivedSegment;
-use subspace_archiving::archiver::{BlockArchiver, ObjectArchiver};
-use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
@@ -447,7 +439,7 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<B, C, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
+pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -463,33 +455,37 @@ pub fn start_subspace<B, C, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-    }: SubspaceParams<B, C, SC, E, I, SO, L, CIDP, BS, CAW>,
-) -> Result<SubspaceWorker<B>, sp_consensus::Error>
+    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, CAW>,
+) -> Result<SubspaceWorker<Block>, sp_consensus::Error>
 where
-    B: BlockT,
-    C: ProvideRuntimeApi<B>
-        + ProvideCache<B>
-        + ProvideUncles<B>
-        + BlockchainEvents<B>
-        + HeaderBackend<B>
-        + HeaderMetadata<B, Error = ClientError>
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + ProvideCache<Block>
+        + ProvideUncles<Block>
+        + BlockchainEvents<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = ClientError>
         + Send
         + Sync
         + 'static,
-    C::Api: SubspaceApi<B>,
-    SC: SelectChain<B> + 'static,
-    E: Environment<B, Error = Error> + Send + Sync + 'static,
-    E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
-    I: BlockImport<B, Error = ConsensusError, Transaction = sp_api::TransactionFor<C, B>>
-        + Send
+    Client::Api: SubspaceApi<Block>,
+    SC: SelectChain<Block> + 'static,
+    E: Environment<Block, Error = Error> + Send + Sync + 'static,
+    E::Proposer:
+        Proposer<Block, Error = Error, Transaction = sp_api::TransactionFor<Client, Block>>,
+    I: BlockImport<
+            Block,
+            Error = ConsensusError,
+            Transaction = sp_api::TransactionFor<Client, Block>,
+        > + Send
         + Sync
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
-    L: sc_consensus::JustificationSyncLink<B> + 'static,
-    CIDP: CreateInherentDataProviders<B, ()> + Send + Sync + 'static,
+    L: sc_consensus::JustificationSyncLink<Block> + 'static,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync + 'static,
-    CAW: CanAuthorWith<B> + Send + Sync + 'static,
+    BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     const HANDLE_BUFFER_SIZE: usize = 1024;
@@ -758,8 +754,6 @@ where
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
-    /// `true` if this node is expected to try to produce blocks on its own
-    authoring_enabled: bool,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
@@ -794,6 +788,15 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self,
     ) -> SubspaceNotificationStream<ArchivedSegment> {
         self.archived_segment_notification_stream.clone()
+    }
+
+    /// Get blocks that are expected to be included at specified block number.
+    pub fn root_blocks_for_block(&self, block_number: NumberFor<Block>) -> Vec<RootBlock> {
+        self.root_blocks
+            .lock()
+            .get(&block_number)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -1115,7 +1118,15 @@ where
                     let mut inherent_data = create_inherent_data_providers
                         .create_inherent_data()
                         .map_err(Error::<Block>::CreateInherents)?;
-                    inherent_data.replace_subspace_inherent_data(slot);
+                    inherent_data.replace_subspace_inherent_data(InherentType {
+                        slot,
+                        root_blocks: self
+                            .root_blocks
+                            .lock()
+                            .peek(block.header.number())
+                            .cloned()
+                            .unwrap_or_default(),
+                    });
                     let new_block = Block::new(pre_header.clone(), inner_body);
 
                     self.check_inherents(
@@ -1172,8 +1183,6 @@ where
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
 pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
-    /// `true` if this node is expected to try to produce blocks on its own
-    authoring_enabled: bool,
     inner: I,
     client: Arc<Client>,
     epoch_changes: SharedEpochChanges<Block, Epoch>,
@@ -1188,7 +1197,6 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
 impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
     fn clone(&self) -> Self {
         SubspaceBlockImport {
-            authoring_enabled: self.authoring_enabled,
             inner: self.inner.clone(),
             client: self.client.clone(),
             epoch_changes: self.epoch_changes.clone(),
@@ -1201,7 +1209,6 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
 
 impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
     fn new(
-        authoring_enabled: bool,
         client: Arc<Client>,
         epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
@@ -1213,7 +1220,6 @@ impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
         root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
     ) -> Self {
         SubspaceBlockImport {
-            authoring_enabled,
             client,
             inner: block_import,
             epoch_changes,
@@ -1486,38 +1492,51 @@ where
         {
             let root_blocks = self.root_blocks.lock();
             // If there are root blocks expected to be included in this block, check them
-            if let Some(mut root_blocks_set) = root_blocks
-                .peek(&block_number)
-                .map(|v| v.iter().copied().collect::<HashSet<_>>())
-            {
+            if let Some(correct_root_blocks) = root_blocks.peek(&block_number) {
                 // TODO: Why there could be no body? Light client?
+                let mut found = false;
                 for extrinsic in block.body.as_ref().unwrap() {
                     match self
                         .client
                         .runtime_api()
-                        .extract_root_block(&BlockId::Hash(parent_hash), extrinsic)
+                        .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)
                     {
-                        Ok(Some(root_block)) => {
-                            if !root_blocks_set.remove(&root_block) {
-                                return Err(ConsensusError::ClientImport(format!(
-                                    "Found root block that should not have been present: {:?}",
-                                    root_block,
-                                )));
+                        Ok(Some(found_root_blocks)) => {
+                            if correct_root_blocks == &found_root_blocks {
+                                found = true;
+                                break;
+                            } else {
+                                warn!(
+                                    target: "subspace",
+                                    "Found root blocks: {:?}",
+                                    found_root_blocks
+                                );
+                                warn!(
+                                    target: "subspace",
+                                    "Correct root blocks: {:?}",
+                                    correct_root_blocks
+                                );
+                                return Err(ConsensusError::ClientImport(
+                                    "Found incorrect set of root blocks".to_string(),
+                                ));
                             }
                         }
                         Ok(None) => {
                             // Some other extrinsic, ignore
                         }
                         Err(error) => {
-                            warn!(target: "subspace", "Failed to make runtime API call: {:?}", error);
+                            return Err(ConsensusError::ClientImport(format!(
+                                "Failed to make runtime API call: {:?}",
+                                error
+                            )));
                         }
                     }
                 }
 
-                if !root_blocks_set.is_empty() {
+                if !found {
                     return Err(ConsensusError::ClientImport(format!(
-                        "Some required store root block extrinsics were not found: {:?}",
-                        root_blocks_set,
+                        "Stored root block extrinsics were not found: {:?}",
+                        correct_root_blocks,
                     )));
                 }
             }
@@ -1540,22 +1559,6 @@ where
                         } else {
                             root_blocks.put(next_block_number, vec![root_block]);
                         }
-                    }
-
-                    if self.authoring_enabled {
-                        // Submit store root block extrinsic at the current block.
-                        self.client
-                            .runtime_api()
-                            .submit_store_root_block_extrinsic(
-                                &BlockId::Hash(block_hash),
-                                root_block,
-                            )
-                            .map_err(|error| {
-                                ConsensusError::ClientImport(format!(
-                                    "Failed to submit store root block extrinsic: {}",
-                                    error
-                                ))
-                            })?;
                     }
                 }
 
@@ -1625,7 +1628,6 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 pub fn block_import<Client, Block: BlockT, I>(
-    authoring_enabled: bool,
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
@@ -1652,7 +1654,6 @@ where
         .expect("Failed to get `confirmation_depth_k` from runtime API");
 
     let link = SubspaceLink {
-        authoring_enabled,
         epoch_changes: epoch_changes.clone(),
         config: config.clone(),
         new_slot_notification_sender,
@@ -1669,7 +1670,6 @@ where
     prune_finalized(client.clone(), &mut epoch_changes.shared_data())?;
 
     let import = SubspaceBlockImport::new(
-        authoring_enabled,
         client,
         epoch_changes,
         wrapped_block_import,

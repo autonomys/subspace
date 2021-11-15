@@ -43,6 +43,8 @@ use sp_runtime::{
 };
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::{cell::RefCell, task::Poll, time::Duration};
+use subspace_archiving::archiver::ObjectArchiver;
+use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{LocalChallenge, Piece, Signature, Tag};
 use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
@@ -344,9 +346,8 @@ impl TestNetFactory for SubspaceTestNet {
         let client = client.as_full().expect("only full clients are tested");
 
         let config = Config::get_or_compute(&*client).expect("config available");
-        let (block_import, link) =
-            crate::block_import(false, config, client.clone(), client.clone())
-                .expect("can initialize block-import");
+        let (block_import, link) = crate::block_import(config, client.clone(), client.clone())
+            .expect("can initialize block-import");
 
         let block_import = PanickingBlockImport {
             block_import,
@@ -394,6 +395,7 @@ impl TestNetFactory for SubspaceTestNet {
                     let slot = InherentDataProvider::from_timestamp_and_duration(
                         *timestamp,
                         Duration::from_secs(6),
+                        vec![],
                     );
 
                     Ok((timestamp, slot))
@@ -563,6 +565,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 let slot = InherentDataProvider::from_timestamp_and_duration(
                     *timestamp,
                     Duration::from_secs(6),
+                    vec![],
                 );
 
                 Ok((timestamp, slot))

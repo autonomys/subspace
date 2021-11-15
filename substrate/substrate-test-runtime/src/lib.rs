@@ -997,10 +997,6 @@ cfg_if! {
                     )
                 }
 
-                fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
-                    <pallet_subspace::Pallet<Runtime>>::submit_test_store_root_block(root_block);
-                }
-
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
@@ -1009,9 +1005,9 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
                 }
 
-                fn extract_root_block(
+                fn extract_root_blocks(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<subspace_core_primitives::RootBlock> {
+                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
                 }
 
@@ -1339,10 +1335,6 @@ cfg_if! {
                     )
                 }
 
-                fn submit_store_root_block_extrinsic(root_block: subspace_core_primitives::RootBlock) {
-                    <pallet_subspace::Pallet<Runtime>>::submit_test_store_root_block(root_block);
-                }
-
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
@@ -1351,9 +1343,9 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
                 }
 
-                fn extract_root_block(
+                fn extract_root_blocks(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<subspace_core_primitives::RootBlock> {
+                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
                 }
 

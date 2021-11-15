@@ -510,7 +510,7 @@ fn report_equivocation_has_valid_weight() {
     // the weight is always the same.
     assert!((1..=1000)
         .map(|_| { <Test as Config>::WeightInfo::report_equivocation() })
-        .all(|w| w == 1));
+        .all(|w| w == 10_000));
 }
 
 #[test]
@@ -565,11 +565,13 @@ fn store_root_block_works() {
 
         let root_block = create_root_block(0);
 
-        let call = Call::<Test>::store_root_block { root_block };
+        let call = Call::<Test>::store_root_blocks {
+            root_blocks: vec![root_block],
+        };
         // Root blocks don't require fee
         assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
 
-        Subspace::store_root_block(Origin::none(), root_block).unwrap();
+        Subspace::store_root_blocks(Origin::none(), vec![root_block]).unwrap();
         assert_eq!(
             System::events(),
             vec![EventRecord {
@@ -588,10 +590,11 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
 
         progress_to_block(&keypair, 1);
 
-        let segment_index = 0u64;
-        let root_block = create_root_block(segment_index);
+        let root_block = create_root_block(0);
 
-        let inner = Call::store_root_block { root_block };
+        let inner = Call::store_root_blocks {
+            root_blocks: vec![root_block],
+        };
 
         // Only local/in block reports are allowed
         assert_eq!(
@@ -611,8 +614,8 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
             TransactionValidity::Ok(ValidTransaction {
                 priority: TransactionPriority::MAX,
                 requires: vec![],
-                provides: vec![("SubspaceRootBlock", segment_index).encode()],
-                longevity: 1,
+                provides: vec![],
+                longevity: 0,
                 propagate: false,
             })
         );
@@ -621,7 +624,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
         assert_ok!(<Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
         // Submit the report
-        Subspace::store_root_block(Origin::none(), root_block).unwrap();
+        Subspace::store_root_blocks(Origin::none(), vec![root_block]).unwrap();
 
         // The report should now be considered stale and the transaction is invalid.
         // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
@@ -630,20 +633,28 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
                 TransactionSource::Local,
                 &inner,
             ),
-            InvalidTransaction::Stale,
+            InvalidTransaction::BadMandatory,
         );
-
         assert_err!(
             <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner),
-            InvalidTransaction::Stale,
+            InvalidTransaction::BadMandatory,
+        );
+
+        let inner2 = Call::store_root_blocks {
+            root_blocks: vec![create_root_block(1), create_root_block(1)],
+        };
+
+        // Same root block can't be included twice even in the same extrinsic
+        assert_err!(
+            <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
+                TransactionSource::Local,
+                &inner2,
+            ),
+            InvalidTransaction::BadMandatory,
+        );
+        assert_err!(
+            <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner2),
+            InvalidTransaction::BadMandatory,
         );
     });
-}
-
-#[test]
-fn store_root_block_has_valid_weight() {
-    // the weight is always the same.
-    assert!((1..=1000)
-        .map(|_| { <Test as Config>::WeightInfo::store_root_block() })
-        .all(|w| w == 1));
 }

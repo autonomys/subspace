@@ -23,6 +23,7 @@ use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
+use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
 
 // Our native executor instance.
@@ -109,7 +110,6 @@ pub fn new_partial(
     );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
-        config.role.is_authority(),
         sc_consensus_subspace::Config::get_or_compute(&*client)?,
         client.clone(),
         client.clone(),
@@ -131,16 +131,17 @@ pub fn new_partial(
         move |_, ()| async move {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-            let slot =
+            let subspace_inherents =
                 sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
                     *timestamp,
                     slot_duration,
+                    vec![],
                 );
 
             let uncles =
                 sp_authorship::InherentDataProvider::<<Block as BlockT>::Header>::check_inherents();
 
-            Ok((timestamp, slot, uncles))
+            Ok((timestamp, subspace_inherents, uncles))
         },
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
@@ -214,8 +215,6 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
         let can_author_with =
             sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone());
 
-        let client_clone = client.clone();
-        let slot_duration = subspace_link.config().slot_duration();
         let subspace_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
             select_chain,
@@ -223,23 +222,37 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
             block_import,
             sync_oracle: network.clone(),
             justification_sync_link: network.clone(),
-            create_inherent_data_providers: move |parent, ()| {
-                let client_clone = client_clone.clone();
-                async move {
-                    let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
-                        &*client_clone,
-                        parent,
-                    )?;
+            create_inherent_data_providers: {
+                let client = client.clone();
+                let subspace_link = subspace_link.clone();
 
-                    let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+                move |parent, ()| {
+                    let client = client.clone();
+                    let subspace_link = subspace_link.clone();
 
-                    let slot =
-                        sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
-                        *timestamp,
-                        slot_duration,
-                    );
+                    async move {
+                        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    Ok((timestamp, slot, uncles))
+                        // TODO: Would be nice if the whole header was passed in here
+                        let block_number = client
+                            .header(&BlockId::Hash(parent))
+                            .expect("Parent header must always exist when block is created; qed")
+                            .expect("Parent header must always exist when block is created; qed")
+                            .number;
+
+                        let subspace_inherents =
+                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
+                                *timestamp,
+                                subspace_link.config().slot_duration(),
+                                subspace_link.root_blocks_for_block(block_number + 1),
+                            );
+
+                        let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
+                            &*client, parent,
+                        )?;
+
+                        Ok((timestamp, subspace_inherents, uncles))
+                    }
                 }
             },
             force_authoring,

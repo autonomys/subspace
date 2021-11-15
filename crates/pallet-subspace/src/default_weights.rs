@@ -25,11 +25,11 @@ impl crate::WeightInfo for () {
 
     fn report_equivocation() -> Weight {
         // TODO: Proper value
-        1
+        10_000
     }
 
-    fn store_root_block() -> Weight {
+    fn store_root_blocks(root_blocks_count: usize) -> Weight {
         // TODO: Proper value
-        1
+        10_000 * (root_blocks_count as u64 + 1)
     }
 }
