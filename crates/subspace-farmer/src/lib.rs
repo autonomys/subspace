@@ -24,10 +24,12 @@ pub(crate) mod plot;
 pub(crate) mod plotting;
 pub(crate) mod rpc;
 pub(crate) mod ws_rpc;
+pub mod ws_rpc_server;
 
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::Farming;
 pub use identity::Identity;
+pub use jsonrpsee;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};
 pub use plotting::Plotting;

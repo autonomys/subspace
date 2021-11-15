@@ -22,9 +22,7 @@ async fn read_write() {
     let piece = generate_random_piece();
     let index = 0;
 
-    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).await.unwrap();
     assert_eq!(true, plot.is_empty());
     plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
     assert_eq!(false, plot.is_empty());
@@ -35,9 +33,7 @@ async fn read_write() {
     drop(plot);
 
     // Make sure it is still not empty on reopen
-    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).await.unwrap();
     assert_eq!(false, plot.is_empty());
 }
 
@@ -46,9 +42,7 @@ async fn last_root_block() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).await.unwrap();
 
     assert!(plot.get_last_root_block().await.unwrap().is_none());
 

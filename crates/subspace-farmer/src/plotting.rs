@@ -1,5 +1,4 @@
 use crate::commitments::Commitments;
-use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
@@ -49,7 +48,7 @@ impl Plotting {
         commitments: Commitments,
         object_mappings: ObjectMappings,
         client: T,
-        identity: Identity,
+        subspace_codec: SubspaceCodec,
     ) -> Self {
         let (sender, receiver) = oneshot::channel();
 
@@ -59,7 +58,7 @@ impl Plotting {
                 plot,
                 commitments,
                 object_mappings,
-                &identity.public_key(),
+                subspace_codec,
                 receiver,
             )
             .await
@@ -91,12 +90,12 @@ impl Drop for Plotting {
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'static>(
+async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     client: T,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
-    public_key: &P,
+    subspace_codec: SubspaceCodec,
     mut receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = plot.downgrade();
@@ -114,8 +113,6 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-
-    let subspace_solving = SubspaceCodec::new(public_key);
 
     let mut archiver = if let Some(last_root_block) = plot
         .get_last_root_block()
@@ -171,7 +168,6 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
             let weak_plot = weak_plot.clone();
             let commitments = commitments.clone();
             let object_mappings = object_mappings.clone();
-            let subspace_solving = subspace_solving.clone();
 
             move || -> Result<Option<BlockArchiver>, PlottingError> {
                 let runtime_handle = tokio::runtime::Handle::current();
@@ -200,7 +196,7 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_solving.encode(piece_index_offset + position as u64, piece)
+                                subspace_codec.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;
@@ -319,7 +315,7 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_solving.encode(piece_index_offset + position as u64, piece)
+                                subspace_codec.encode(piece_index_offset + position as u64, piece)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;

@@ -21,9 +21,7 @@ async fn create() {
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
     let index = 0;
 
-    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).await.unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments").into())
         .await
         .unwrap();
@@ -45,9 +43,7 @@ async fn find_by_tag() {
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
 
-    let plot = Plot::open_or_create(&base_directory.path().to_path_buf().into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).await.unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments").into())
         .await
         .unwrap();

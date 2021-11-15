@@ -26,12 +26,14 @@ mod plotting;
 mod rpc;
 mod utils;
 mod ws_rpc;
+mod ws_rpc_server;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use env_logger::Env;
 use log::info;
 use std::fs;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 // TODO: Separate commands for erasing the plot and wiping everything
@@ -46,12 +48,15 @@ enum Command {
     },
     /// Start a farmer using previously created plot
     Farm {
-        /// Use custom path for data storage instead of platform-specific default
+        /// Custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
-        /// Specify WebSocket RPC server TCP port
-        #[clap(long, default_value = "ws://127.0.0.1:9944")]
-        ws_server: String,
+        /// WebSocket RPC URL of the Subspace node to connect to
+        #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
+        node_rpc_url: String,
+        /// Host and port where built-in WebSocket RPC server should listen for incoming connections
+        #[clap(long, default_value = "127.0.0.1:9955")]
+        ws_server_listen_addr: SocketAddr,
     },
 }
 
@@ -87,10 +92,11 @@ async fn main() -> Result<()> {
         }
         Command::Farm {
             custom_path,
-            ws_server,
+            node_rpc_url,
+            ws_server_listen_addr,
         } => {
             let path = utils::get_path(custom_path);
-            commands::farm(path, &ws_server).await?;
+            commands::farm(path, &node_rpc_url, ws_server_listen_addr).await?;
         }
     }
     Ok(())

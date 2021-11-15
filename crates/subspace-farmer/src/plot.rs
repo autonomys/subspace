@@ -2,7 +2,6 @@
 mod tests;
 
 use async_std::fs::OpenOptions;
-use async_std::path::PathBuf;
 use futures::channel::mpsc as async_mpsc;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SinkExt, StreamExt};
@@ -10,6 +9,7 @@ use log::error;
 use rocksdb::DB;
 use std::io;
 use std::io::SeekFrom;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE};
@@ -70,12 +70,12 @@ pub struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub async fn open_or_create(base_directory: &PathBuf) -> Result<Plot, PlotError> {
+    pub async fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(base_directory.join("plot.bin"))
+            .open(base_directory.as_ref().join("plot.bin"))
             .await
             .map_err(PlotError::PlotOpen)?;
 
@@ -88,7 +88,7 @@ impl Plot {
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
         let plot_metadata_db = tokio::task::spawn_blocking({
-            let path = base_directory.join("plot-metadata");
+            let path = base_directory.as_ref().join("plot-metadata");
 
             move || DB::open_default(path)
         })
