@@ -23,7 +23,7 @@ pub enum PlottingError {
     #[error("Failed to get block {0} from the chain, probably need to erase existing plot")]
     GetBlockError(u32),
     #[error("jsonrpsee error: {0}")]
-    Rpc(jsonrpsee::types::Error),
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
     #[error("Last block retrieval from plot, rocksdb error: {0}")]
     LastBlock(rocksdb::Error),
     #[error("Error joining task: {0}")]
@@ -85,7 +85,6 @@ impl Drop for Plotting {
         // we don't have to do anything in here
         // these are for clarity and verbosity
         let _ = self.sender.take().unwrap().send(());
-        info!("Plotting stopped!");
     }
 }
 
@@ -108,7 +107,10 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
         pre_genesis_object_size,
         pre_genesis_object_count,
         pre_genesis_object_seed,
-    } = client.farmer_metadata().await.map_err(PlottingError::Rpc)?;
+    } = client
+        .farmer_metadata()
+        .await
+        .map_err(PlottingError::RpcError)?;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
@@ -133,7 +135,7 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
         let maybe_last_archived_block = client
             .block_by_number(last_archived_block_number)
             .await
-            .map_err(PlottingError::Rpc)?;
+            .map_err(PlottingError::RpcError)?;
 
         match maybe_last_archived_block {
             Some(EncodedBlockWithObjectMapping {
@@ -372,7 +374,7 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
     let mut new_head = client
         .subscribe_new_head()
         .await
-        .map_err(PlottingError::Rpc)?;
+        .map_err(PlottingError::RpcError)?;
 
     let block_to_archive = Arc::new(AtomicU32::default());
 
@@ -381,10 +383,10 @@ async fn background_plotting<P: AsRef<[u8]>, T: RpcClient + Clone + Send + 'stat
     loop {
         tokio::select! {
             _ = &mut receiver => {
-                info!("plotting stopped!");
+                info!("Plotting stopped!");
                 break;
             }
-            Ok(Some(head)) = new_head.next() => {
+            Some(head) = new_head.recv() => {
                 let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
                 debug!("Last block number: {:#?}", block_number);
 
