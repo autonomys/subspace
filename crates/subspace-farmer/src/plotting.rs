@@ -48,6 +48,7 @@ impl Plotting {
         commitments: Commitments,
         object_mappings: ObjectMappings,
         client: T,
+        farmer_metadata: FarmerMetadata,
         subspace_codec: SubspaceCodec,
     ) -> Self {
         let (sender, receiver) = oneshot::channel();
@@ -58,6 +59,7 @@ impl Plotting {
                 plot,
                 commitments,
                 object_mappings,
+                farmer_metadata,
                 subspace_codec,
                 receiver,
             )
@@ -95,6 +97,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
+    farmer_metadata: FarmerMetadata,
     subspace_codec: SubspaceCodec,
     mut receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
@@ -106,10 +109,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         pre_genesis_object_size,
         pre_genesis_object_count,
         pre_genesis_object_seed,
-    } = client
-        .farmer_metadata()
-        .await
-        .map_err(PlottingError::RpcError)?;
+    } = farmer_metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);

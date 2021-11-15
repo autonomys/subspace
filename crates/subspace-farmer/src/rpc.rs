@@ -12,7 +12,7 @@ pub struct NewHead {
 }
 
 /// To become error type agnostic
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 #[async_trait]
 pub trait RpcClient {
