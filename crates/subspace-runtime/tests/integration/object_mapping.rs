@@ -89,7 +89,7 @@ fn object_mapping() {
     // Expect all 7 objects to be mapped.
     assert_eq!(objects.len(), 7);
 
-    // Hashes shoudl be computed correctly.
+    // Hashes should be computed correctly.
     assert_eq!(objects[0].hash(), crypto::sha256_hash(&data0));
     assert_eq!(objects[1].hash(), crypto::sha256_hash(&data1));
     assert_eq!(objects[2].hash(), crypto::sha256_hash(&data2));

@@ -5,11 +5,15 @@ use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::Error;
 use log::{debug, error};
-use parity_scale_codec::{Compact, Decode};
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
+use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, Sha256Hash, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
+
+/// Maximum expected size of one object in bytes
+const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
 
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -164,22 +168,28 @@ impl RpcServerImpl {
     ) -> Self {
         Self {
             record_size,
-            merkle_num_leaves: recorded_history_segment_size / (record_size * 2),
+            merkle_num_leaves: recorded_history_segment_size / record_size * 2,
             plot,
             object_mappings,
             subspace_codec,
         }
     }
 
-    async fn assemble_object(&self, piece_index: u64, offset: u16) -> Result<Vec<u8>, Error> {
+    /// Assemble object that starts at `piece_index` at `offset` by reading necessary pieces from
+    /// plot and putting necessary bytes together.
+    async fn assemble_object(
+        &self,
+        piece_index: u64,
+        offset: u16,
+        object_id: &str,
+    ) -> Result<Vec<u8>, Error> {
         // Try fast object assembling
         if let Some(data) = self.assemble_object_fast(piece_index, offset).await? {
             return Ok(data);
         }
 
-        // TODO: Regular object retrieval
-
-        todo!()
+        self.assemble_object_regular(piece_index, offset, object_id)
+            .await
     }
 
     /// Fast object assembling in case object doesn't cross piece (super fast) or segment (just
@@ -191,8 +201,8 @@ impl RpcServerImpl {
     ) -> Result<Option<Vec<u8>>, Error> {
         // We care if the offset is before the last 2 bytes of a piece because if not we might be
         // able to do very fast object retrieval without assembling and processing the whole
-        // segment. Last 2 bytes is because those 2 bytes might contain padding if a piece is the
-        // last piece in the segment.
+        // segment. `-2` is because last 2 bytes might contain padding if a piece is the last piece
+        // in the segment.
         let before_last_two_bytes = u32::from(offset) <= self.record_size - 1 - 2;
 
         // We care about whether piece index points to the last data piece in the segment because
@@ -207,11 +217,14 @@ impl RpcServerImpl {
 
         // How much bytes are definitely available starting at `piece_index` and `offset` without
         // crossing segment boundary
-        let bytes_available_in_segment = (u64::from(self.merkle_num_leaves)
-            - piece_index % u64::from(self.merkle_num_leaves))
-            * self.record_size as u64
-            - offset as u64
-            - 2;
+        let bytes_available_in_segment = {
+            let data_shards = u64::from(self.merkle_num_leaves / 2);
+            let piece_position = piece_index % u64::from(self.merkle_num_leaves);
+
+            // `-2` is because last 2 bytes might contain padding if a piece is the last piece in
+            // the segment.
+            (data_shards - piece_position) * u64::from(self.record_size) - u64::from(offset) - 2
+        };
 
         if last_data_piece_in_segment && !before_last_two_bytes {
             // Fast retrieval possibility is not guaranteed
@@ -219,7 +232,7 @@ impl RpcServerImpl {
         }
 
         // Cache of read pieces that were already read, starting with piece at index `piece_index`
-        let mut read_records_data = Vec::<u8>::new();
+        let mut read_records_data = Vec::<u8>::with_capacity(self.record_size as usize * 2);
         let mut next_piece_index = piece_index;
 
         let piece = self.read_and_decode_piece(next_piece_index).await?;
@@ -274,7 +287,7 @@ impl RpcServerImpl {
             Error::Custom(error_string)
         })?;
 
-        if (data_length_bytes_length + data_length) as u64 > bytes_available_in_segment {
+        if u64::from(data_length_bytes_length + data_length) > bytes_available_in_segment {
             // Not enough data without crossing segment boundary
             return Ok(None);
         }
@@ -284,7 +297,7 @@ impl RpcServerImpl {
         drop(read_records_data);
 
         // Read more pieces until we have enough data
-        while data.len() < data_length as usize {
+        while data.len() <= data_length as usize {
             let piece = self.read_and_decode_piece(next_piece_index).await?;
             next_piece_index += 1;
             data.extend_from_slice(&piece[..self.record_size as usize]);
@@ -296,6 +309,124 @@ impl RpcServerImpl {
         Ok(Some(data))
     }
 
+    /// Assemble object that can cross segment boundary, which requires assembling and iterating
+    /// over full segments.
+    async fn assemble_object_regular(
+        &self,
+        piece_index: u64,
+        offset: u16,
+        object_id: &str,
+    ) -> Result<Vec<u8>, Error> {
+        let segment_index = piece_index / u64::from(self.merkle_num_leaves);
+        let piece_position_in_segment = piece_index % u64::from(self.merkle_num_leaves);
+        let offset_in_segment =
+            piece_position_in_segment * u64::from(self.record_size) + u64::from(offset);
+
+        let mut data = {
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            // Unconditional progress is enum variant + compact encoding of number of elements
+            let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
+            let segment_item = items
+                .into_iter()
+                .find(|item| {
+                    // Add number of bytes in encoded version of segment item
+                    progress += item.encoded_size();
+
+                    // Our data is within another segment item, which will have wrapping data
+                    // structure, hence strictly `>` here
+                    progress > offset_in_segment as usize
+                })
+                .ok_or_else(|| {
+                    let error_string = format!(
+                        "Failed to find item at offset {} in segment {} for object {}",
+                        offset_in_segment, segment_index, object_id
+                    );
+                    error!("{}", error_string);
+
+                    Error::Custom(error_string)
+                })?;
+
+            match segment_item {
+                SegmentItem::Block { bytes, .. }
+                | SegmentItem::BlockStart { bytes, .. }
+                | SegmentItem::BlockContinuation { bytes, .. } => {
+                    // Rewind back progress to the beginning of the number of bytes
+                    progress -= bytes.len();
+                    // Get a chunk of the bytes starting at the position we care about
+                    Vec::from(&bytes[offset_in_segment as usize - progress..])
+                }
+                segment_item => {
+                    error!(
+                        "Unexpected segment item {:?} at offset {} in segment {} for object {}",
+                        segment_item, offset_in_segment, segment_index, object_id
+                    );
+
+                    return Err(Error::Custom(format!(
+                        "Unexpected segment item at offset {} in segment {} for object {}",
+                        offset_in_segment, segment_index, object_id
+                    )));
+                }
+            }
+        };
+
+        if let Ok(data) = Vec::<u8>::decode(&mut data.as_slice()) {
+            return Ok(data);
+        }
+
+        for segment_index in segment_index + 1.. {
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            for segment_item in items {
+                if let SegmentItem::BlockContinuation { bytes, .. } = segment_item {
+                    data.extend_from_slice(&bytes);
+
+                    if let Ok(data) = Vec::<u8>::decode(&mut data.as_slice()) {
+                        return Ok(data);
+                    }
+                }
+            }
+
+            if data.len() >= MAX_OBJECT_SIZE {
+                break;
+            }
+        }
+
+        error!(
+            "Read max object size for object {} without success",
+            object_id
+        );
+
+        Err(Error::Custom(
+            "Read max object size for object without success".to_string(),
+        ))
+    }
+
+    /// Read the whole segment by its index (just records, skipping witnesses)
+    async fn read_segment(&self, segment_index: u64) -> Result<Segment, Error> {
+        let first_piece_in_segment = segment_index * u64::from(self.merkle_num_leaves);
+        let mut segment_bytes =
+            Vec::<u8>::with_capacity((self.merkle_num_leaves * self.record_size) as usize);
+
+        for piece_index in (first_piece_in_segment..).take(self.merkle_num_leaves as usize / 2) {
+            let piece = self.read_and_decode_piece(piece_index).await?;
+            segment_bytes.extend_from_slice(&piece[..self.record_size as usize]);
+        }
+
+        let segment = Segment::decode(&mut segment_bytes.as_slice()).map_err(|error| {
+            error!(
+                "Failed to decode segment {} of archival history on retrieval: {}",
+                segment_index, error,
+            );
+
+            Error::Custom(format!(
+                "Failed to decode segment {} of archival history on retrieval",
+                segment_index
+            ))
+        })?;
+
+        Ok(segment)
+    }
+
+    /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: u64) -> Result<Piece, Error> {
         let mut piece = self.plot.read(piece_index).await.map_err(|error| {
             debug!("Failed to read piece with index {}: {}", piece_index, error);
@@ -351,15 +482,24 @@ impl RpcServer for RpcServerImpl {
 
             move || object_mappings.retrieve(&object_id.into())
         });
+
+        let object_id_string = hex::encode(object_id);
+
         let global_object = global_object_handle
             .await
             .map_err(|error| {
-                error!("Object mapping retrieving panicked: {}", error);
+                error!(
+                    "Object mapping retrieving panicked for {}: {}",
+                    object_id_string, error
+                );
 
                 Error::Custom("Failed to find an object due to internal error".to_string())
             })?
             .map_err(|error| {
-                error!("Object mapping retrieving failed: {}", error);
+                error!(
+                    "Object mapping retrieving failed for {}: {}",
+                    object_id_string, error
+                );
 
                 Error::Custom("Failed to find an object due to internal error".to_string())
             })?;
@@ -367,7 +507,7 @@ impl RpcServer for RpcServerImpl {
         let global_object = match global_object {
             Some(global_object) => global_object,
             None => {
-                debug!("Object {} not found", hex::encode(object_id));
+                debug!("Object {} not found", object_id_string);
 
                 return Ok(None);
             }
@@ -376,7 +516,10 @@ impl RpcServer for RpcServerImpl {
         let piece_index = global_object.piece_index();
         let offset = global_object.offset();
 
-        let data = self.assemble_object(piece_index, offset).await?;
+        let data = self
+            .assemble_object(piece_index, offset, &object_id_string)
+            .await?;
+
         Ok(Some(Object {
             piece_index,
             offset,
