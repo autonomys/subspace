@@ -1,3 +1,6 @@
+//! A farming process, that is interruptable (via dropping it)
+//! and possible to wait on (custom `wait` method)
+
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
@@ -19,38 +22,58 @@ pub enum FarmingError {
     #[error("Plot read error: {0}")]
     PlotRead(std::io::Error),
 }
-
-/// Farming Instance to store the necessary information for the farming operations,
-/// and also a channel to stop/pause the background farming task
+/// `Farming` struct is the abstraction of the farming process
+///
+/// Farming Instance that stores a channel to stop/pause the background farming task
+/// and a handle to make it possible to wait on this background task
 pub struct Farming {
-    sender: Option<async_oneshot::Sender<()>>,
+    stop_sender: Option<async_oneshot::Sender<()>>,
     handle: Option<JoinHandle<Result<(), FarmingError>>>,
 }
 
+/// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
 impl Farming {
-    /// returns an instance of farming, and also starts a concurrent background farming task
+    /// Returns an instance of farming, and also starts a concurrent background farming task
     pub fn start<T: RpcClient + Sync + Send + 'static>(
         plot: Plot,
         commitments: Commitments,
         client: T,
         identity: Identity,
     ) -> Self {
-        let (sender, receiver) = async_oneshot::oneshot();
+        // Oneshot channels, that will be used for interrupt/stop the process
+        let (stop_sender, stop_receiver) = async_oneshot::oneshot();
 
-        let farming_handle = tokio::spawn(background_farming(
-            client,
-            plot,
-            commitments,
-            identity,
-            receiver,
-        ));
+        // Get a handle for the background task, so that we can wait on it later if we want to
+        let farming_handle = tokio::spawn(async {
+            match future::select(
+                Box::pin(async move {
+                    subscribe_to_slot_info(&client, &plot, &commitments, &identity).await
+                }),
+                stop_receiver,
+            )
+            .await
+            {
+                Either::Left((farming_result, _)) => {
+                    if let Err(val) = farming_result {
+                        return Err(val);
+                    }
+                }
+                // either Sender is dropped, or a stop message is received.
+                // in both cases, we stop the process and return Ok(())
+                Either::Right((_, _)) => {
+                    info!("Farming stopped!");
+                }
+            }
+            Ok(())
+        });
 
         Farming {
-            sender: Some(sender),
+            stop_sender: Some(stop_sender),
             handle: Some(farming_handle),
         }
     }
 
+    /// Waits for the background farming to finish
     pub async fn wait(mut self) -> Result<(), FarmingError> {
         self.handle
             .take()
@@ -62,47 +85,18 @@ impl Farming {
 
 impl Drop for Farming {
     fn drop(&mut self) {
-        // we don't have to do anything in here
-        // this is for clarity and verbosity
-        let _ = self.sender.take().unwrap().send(());
+        let _ = self.stop_sender.take().unwrap().send(());
     }
 }
 
-async fn background_farming<T: RpcClient + Send>(
-    client: T,
-    plot: Plot,
-    commitments: Commitments,
-    identity: Identity,
-    receiver: async_oneshot::Receiver<()>,
-) -> Result<(), FarmingError> {
-    match future::select(
-        Box::pin(
-            async move { subscribe_to_slot_info(&client, &plot, &commitments, &identity).await },
-        ),
-        receiver,
-    )
-    .await
-    {
-        Either::Left((farming_result, _)) => {
-            if let Err(val) = farming_result {
-                return Err(val);
-            }
-        }
-        // either Sender is dropped, or a stop message is received.
-        // in both cases, we stop the process and return Ok(())
-        Either::Right((_, _)) => {
-            info!("Farming stopped!");
-        }
-    }
-    Ok(())
-}
-
+/// Salts will change, this struct allows to keep track of them
 #[derive(Default)]
 struct Salts {
     current: Option<Salt>,
     next: Option<Salt>,
 }
 
+/// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
     client: &T,
     plot: &Plot,
@@ -117,7 +111,6 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
     let mut salts = Salts::default();
 
-    // could also import futures mpsc, and call `try_next`, but without await. I think this is more robust
     while let Some(slot_info) = new_slots.recv().await {
         debug!("New slot: {:?}", slot_info);
 
@@ -125,6 +118,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
         let local_challenge = derive_local_challenge(slot_info.global_challenge, identity);
 
+        // for the current challenge, we will either find `Some(solution)` or we can't find one (`None`)
         let maybe_solution = match commitments
             .find_by_range(
                 local_challenge.derive_target(),
@@ -182,9 +176,8 @@ fn update_commitments(
     if salts.current != Some(slot_info.salt) {
         salts.current.replace(slot_info.salt);
 
+        // If previous `salts.next` is not the same as current (expected behavior), need to re-commit
         if salts.next != Some(slot_info.salt) {
-            // If previous `salts.next` is the same as current (expected behavior), need to re-commit
-
             tokio::spawn({
                 let salt = slot_info.salt;
                 let plot = plot.clone();

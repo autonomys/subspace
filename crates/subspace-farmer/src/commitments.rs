@@ -336,6 +336,7 @@ impl Commitments {
         Ok(())
     }
 
+    /// Finds the commitment/s falling in the range of the challenge
     pub(crate) async fn find_by_range(
         &self,
         target: Tag,
