@@ -24,6 +24,7 @@ hex-literal = { version = "0.3.3", optional = true }
 orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https://github.com/subspace/open-runtime-module-library", branch = "substrate-monthly-2021-11" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
+pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["no-early-solution-range-updates"], path = "../pallet-subspace" }
@@ -68,6 +69,7 @@ std = [
 	"orml-vesting/std",
 	"pallet-balances/std",
 	"pallet-feeds/std",
+	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
 	"pallet-rewards/std",
 	"pallet-subspace/std",
