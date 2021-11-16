@@ -14,7 +14,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use super::*;
+use crate::slot_worker::SubspaceSlotWorker;
+use crate::{subspace_err, verification, Epoch, Error, NewSlotInfo, NewSlotNotification};
+use futures::StreamExt;
+use log::{debug, trace, warn};
+use sc_consensus::block_import::BlockImport;
+use sc_consensus_epochs::ViableEpochDescriptor;
+use sc_consensus_slots::BackoffAuthoringBlocksStrategy;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
+use schnorrkel::SecretKey;
+use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache};
+use sp_consensus::{Environment, Error as ConsensusError, Proposer, SyncOracle};
+use sp_consensus_slots::Slot;
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest, Solution,
+};
+use sp_consensus_subspace::{ConsensusLog, SubspaceApi, SUBSPACE_ENGINE_ID};
+use sp_core::sr25519::Pair;
+use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
+use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, Zero};
+pub use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::{Randomness, Salt};
 
 type EpochData<B> = ViableEpochDescriptor<<B as BlockT>::Hash, NumberFor<B>, Epoch>;
 

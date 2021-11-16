@@ -28,18 +28,19 @@ pub use pallet::*;
 use sp_consensus_subspace::digests::PreDigest;
 use sp_consensus_subspace::SUBSPACE_ENGINE_ID;
 
-type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
-
 pub trait WeightInfo {
     fn on_initialize() -> Weight;
 }
 
 #[frame_support::pallet]
 mod pallet {
-    use super::*;
+    use super::WeightInfo;
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
+
+    type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
