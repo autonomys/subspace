@@ -1,4 +1,5 @@
-use crate::{mock::*, Error, FeedId, ObjectMetadata, PutDataObject, TotalObjectsAndSize};
+use crate::mock::{new_test_ext, Event, Feeds, Origin, System, Test};
+use crate::{Error, FeedId, ObjectMetadata, PutDataObject, TotalObjectsAndSize};
 use frame_support::{assert_noop, assert_ok};
 
 const FEED_ID: FeedId = 0;

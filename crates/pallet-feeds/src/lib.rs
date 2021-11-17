@@ -21,7 +21,6 @@
 
 use core::mem;
 pub use pallet::*;
-use sp_std::vec::Vec;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
 #[cfg(all(feature = "std", test))]
@@ -31,11 +30,10 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
-    use super::*;
-    use frame_support::dispatch::DispatchResult;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
+    use sp_std::prelude::*;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

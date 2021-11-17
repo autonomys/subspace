@@ -48,12 +48,21 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-pub use self::archiver::start_subspace_archiver;
+mod archiver;
+mod authorship;
+pub mod aux_schema;
+pub mod notification;
+mod slot_worker;
+#[cfg(test)]
+mod tests;
+mod verification;
+
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
+pub use archiver::start_subspace_archiver;
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
-use futures::{future, FutureExt, SinkExt, StreamExt, TryFutureExt};
+use futures::{future, FutureExt, SinkExt, StreamExt};
 use log::{debug, info, log, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -62,7 +71,6 @@ use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsagePro
 use sc_consensus::{
     block_import::{
         BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
-        StateAction,
     },
     import_queue::{BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier},
 };
@@ -71,12 +79,11 @@ use sc_consensus_epochs::{
 };
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
+    SlotProportion,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
-use schnorrkel::SecretKey;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{
@@ -88,34 +95,23 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
-    NextSolutionRangeDescriptor, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest, SaltDescriptor,
+    Solution, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
     ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
 };
-use sp_core::sr25519::Pair;
-use sp_core::{ExecutionContext, Pair as PairTrait};
+use sp_core::ExecutionContext;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, One, Zero};
 use std::cmp::Ordering;
-use std::future::Future;
-use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration, u64};
+use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
-
-mod archiver;
-mod authorship;
-pub mod aux_schema;
-pub mod notification;
-mod slot_worker;
-#[cfg(test)]
-mod tests;
-mod verification;
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]

@@ -16,22 +16,35 @@
 
 //! Consensus extension module tests for Subspace consensus.
 
-use super::{Call, *};
+use crate::mock::{
+    create_root_block, generate_equivocation_proof, go_to_block, make_pre_digest, new_test_ext,
+    progress_to_block, Event, Origin, ReportLongevity, Subspace, System, Test,
+    INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+};
+use crate::{
+    compute_randomness, Call, Config, CurrentSlot, EpochConfig, EpochStart, Error, NextEpochConfig,
+    NextRandomness, SegmentIndex, UnderConstruction, WeightInfo,
+};
+use codec::Encode;
+use frame_support::weights::Pays;
 use frame_support::{
     assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
 };
 use frame_system::{EventRecord, Phase};
-use mock::{Event, *};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{digests::Solution, SubspaceEpochConfiguration};
+use sp_consensus_subspace::digests::NextConfigDescriptor;
+use sp_consensus_subspace::{
+    digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
+};
 use sp_core::Public;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     ValidTransaction,
 };
-use sp_runtime::DispatchError;
+use sp_runtime::{DigestItem, DispatchError};
+use subspace_core_primitives::RANDOMNESS_LENGTH;
 
 const EMPTY_RANDOMNESS: [u8; 32] = [
     74, 25, 49, 128, 53, 97, 244, 49, 222, 202, 176, 2, 231, 66, 95, 10, 133, 49, 213, 228, 86,

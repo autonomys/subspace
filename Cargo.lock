@@ -4094,6 +4094,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-object-store"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "subspace-core-primitives",
+]
+
+[[package]]
 name = "pallet-offences-subspace"
 version = "0.1.0"
 dependencies = [
@@ -7365,6 +7383,7 @@ dependencies = [
  "orml-vesting",
  "pallet-balances",
  "pallet-feeds",
+ "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-subspace",
