@@ -30,7 +30,6 @@ mod tests;
 
 use codec::{Decode, Encode};
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
-use frame_support::inherent::{InherentData, InherentIdentifier, ProvideInherent};
 use frame_support::{
     dispatch::{DispatchResult, DispatchResultWithPostInfo},
     traits::{ConstU32, Get, OnTimestampSet},
@@ -41,11 +40,10 @@ use frame_support::{
 use num_traits::float::FloatCore;
 pub use pallet::*;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
 use sp_consensus_subspace::{
     digests::{
-        NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor,
-        PreDigest, SaltDescriptor, SolutionRangeDescriptor,
+        NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest,
+        SaltDescriptor, SolutionRangeDescriptor,
     },
     offence::{OffenceDetails, OnOffenceHandler},
     ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
@@ -60,7 +58,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
-use subspace_core_primitives::{RootBlock, Sha256Hash, RANDOMNESS_LENGTH};
+use subspace_core_primitives::{RootBlock, RANDOMNESS_LENGTH};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
@@ -121,15 +119,22 @@ impl EonChangeTrigger for NormalEonChange {
     }
 }
 
-const UNDER_CONSTRUCTION_SEGMENT_LENGTH: u32 = 256;
-
-type MaybeRandomness = Option<subspace_core_primitives::Randomness>;
-
 #[frame_support::pallet]
-pub mod pallet {
-    use super::*;
+mod pallet {
+    use super::{EonChangeTrigger, EpochChangeTrigger, EraChangeTrigger, WeightInfo};
+    use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use sp_consensus_slots::Slot;
+    use sp_consensus_subspace::digests::NextConfigDescriptor;
+    use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration};
+    use sp_std::prelude::*;
+    use subspace_core_primitives::{RootBlock, Sha256Hash};
+
+    pub(super) const UNDER_CONSTRUCTION_SEGMENT_LENGTH: u32 = 256;
+
+    pub(super) type MaybeRandomness = Option<subspace_core_primitives::Randomness>;
 
     /// The Subspace Pallet
     #[pallet::pallet]
