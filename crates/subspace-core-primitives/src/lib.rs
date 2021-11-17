@@ -204,6 +204,12 @@ impl From<[u8; PIECE_SIZE]> for Piece {
     }
 }
 
+impl From<Piece> for [u8; PIECE_SIZE] {
+    fn from(piece: Piece) -> Self {
+        piece.0
+    }
+}
+
 impl TryFrom<&[u8]> for Piece {
     type Error = &'static str;
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
