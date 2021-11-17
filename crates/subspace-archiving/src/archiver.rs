@@ -741,6 +741,7 @@ impl BlockArchiver {
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
+            // TODO: This check can be removed when we no longer have pre-genesis objects
             return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
         }
 

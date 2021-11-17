@@ -101,7 +101,17 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         .recorded_history_segment_size(&genesis_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
-    let mut archiver = if let Some(last_root_block) = find_last_root_block(client.as_ref()) {
+    let maybe_last_root_block = find_last_root_block(client.as_ref()).and_then(|last_root_block| {
+        // At least one non-genesis block needs to be archived for restarts
+        // TODO: This check can be removed when we no longer have pre-genesis objects
+        if last_root_block.last_archived_block().number == 0 {
+            None
+        } else {
+            Some(last_root_block)
+        }
+    });
+
+    let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!(
@@ -221,20 +231,23 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     block_to_archive,
                     encoded_block.len() as f32 / 1024.0
                 );
+
                 // These archived segments were processed before, thus do not need to be sent to
                 // farmers
-                let new_root_blocks = archiver
+                let new_root_blocks: Vec<RootBlock> = archiver
                     .add_block(encoded_block, block_object_mapping)
                     .into_iter()
                     .map(|archived_segment| archived_segment.root_block)
                     .collect();
 
-                // Set list of expected root blocks for the block where we expect root block
-                // extrinsic to be included
-                subspace_link.root_blocks.lock().put(
-                    (block_to_archive + confirmation_depth_k + 1).into(),
-                    new_root_blocks,
-                );
+                if !new_root_blocks.is_empty() {
+                    // Set list of expected root blocks for the block where we expect root block
+                    // extrinsic to be included
+                    subspace_link.root_blocks.lock().put(
+                        (block_to_archive + confirmation_depth_k + 1).into(),
+                        new_root_blocks,
+                    );
+                }
             }
         }
     }
