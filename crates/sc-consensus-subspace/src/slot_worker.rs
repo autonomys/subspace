@@ -15,7 +15,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use super::*;
+use crate::{
+    authorship, find_pre_digest, Epoch, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
+};
+use futures::TryFutureExt;
+use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
+use sc_consensus_epochs::{descendent_query, ViableEpochDescriptor};
+use sc_consensus_slots::{
+    BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
+};
+use sc_telemetry::TelemetryHandle;
+use schnorrkel::context::SigningContext;
+use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache};
+use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
+use sp_consensus_slots::Slot;
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::SubspaceApi;
+use sp_core::sr25519::Pair;
+use sp_core::Pair as _;
+use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header};
+use std::future::Future;
+use std::{borrow::Cow, pin::Pin, sync::Arc};
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     pub(super) client: Arc<C>,

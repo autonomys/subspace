@@ -14,24 +14,25 @@ pub struct NewHead {
 /// To become error type agnostic
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+/// Abstraction of the Remote Procedure Call Client
 #[async_trait]
 pub trait RpcClient {
-    /// Get farmer metadata.
+    /// Get farmer metadata
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error>;
 
-    /// Get a block by number.
+    /// Get a block by number
     async fn block_by_number(
         &self,
         block_number: u32,
     ) -> Result<Option<EncodedBlockWithObjectMapping>, Error>;
 
-    /// Subscribe to chain head.
+    /// Subscribe to chain head
     async fn subscribe_new_head(&self) -> Result<Receiver<NewHead>, Error>;
 
-    /// Subscribe to slot.
+    /// Subscribe to slot
     async fn subscribe_slot_info(&self) -> Result<Receiver<SlotInfo>, Error>;
 
-    /// Submit a slot solution.
+    /// Submit a slot solution
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,

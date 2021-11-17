@@ -25,14 +25,13 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode};
+pub use pallet::*;
 use sp_consensus_subspace::{
-    offence::{Kind, Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence},
+    offence::{Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence},
     FarmerPublicKey,
 };
 use sp_runtime::traits::Hash;
 use sp_std::prelude::*;
-
-pub use pallet::*;
 
 /// A binary blob which represents a SCALE codec-encoded `O::TimeSlot`.
 type OpaqueTimeSlot = Vec<u8>;
@@ -41,9 +40,12 @@ type OpaqueTimeSlot = Vec<u8>;
 type ReportIdOf<T> = <T as frame_system::Config>::Hash;
 
 #[frame_support::pallet]
-pub mod pallet {
-    use super::*;
+mod pallet {
+    use super::{OpaqueTimeSlot, ReportIdOf};
     use frame_support::pallet_prelude::*;
+    use sp_consensus_subspace::offence::{Kind, OffenceDetails, OnOffenceHandler};
+    use sp_consensus_subspace::FarmerPublicKey;
+    use sp_std::prelude::*;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]

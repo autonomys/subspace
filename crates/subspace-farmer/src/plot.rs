@@ -222,7 +222,7 @@ impl Plot {
         })
     }
 
-    /// Whether plot doesn't have anything in it
+    /// How many pieces are there in the plot
     pub(crate) fn piece_count(&self) -> u64 {
         self.inner.piece_count.load(Ordering::Acquire)
     }
@@ -263,7 +263,7 @@ impl Plot {
         })?
     }
 
-    /// Writes a piece to the plot by index, will overwrite if piece exists (updates)
+    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
     pub(crate) async fn write_many(
         &self,
         encodings: Arc<Vec<Piece>>,

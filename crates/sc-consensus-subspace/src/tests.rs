@@ -17,15 +17,28 @@
 
 //! PoC testsuite
 
-use super::*;
+use crate::{
+    find_pre_digest, start_subspace, Config, Epoch, NewSlotNotification, SubspaceIntermediate,
+    SubspaceLink, SubspaceParams, SubspaceVerifier, INTERMEDIATE_KEY,
+};
+use codec::Encode;
+use futures::channel::oneshot;
 use futures::executor::block_on;
-use log::debug;
+use futures::{future, SinkExt, StreamExt};
+use log::{debug, trace};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
-use sc_client_api::{backend::TransactionFor, BlockchainEvents};
-use sc_consensus::{BoxBlockImport, BoxJustificationImport};
-use sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging;
+use sc_client_api::backend::TransactionFor;
+use sc_client_api::BlockchainEvents;
+use sc_consensus::block_import::ForkChoiceStrategy;
+use sc_consensus::{
+    BlockCheckParams, BlockImport, BlockImportParams, BoxBlockImport, BoxJustificationImport,
+    ImportResult, Verifier,
+};
+use sc_consensus_epochs::descendent_query;
+use sc_consensus_epochs::SharedEpochChanges;
+use sc_consensus_slots::{BackoffAuthoringOnFinalizedHeadLagging, SlotProportion};
 use sc_network::config::ProtocolConfig;
 use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
@@ -33,20 +46,35 @@ use sc_network_test::{
 };
 use sc_service::TaskManager;
 use schnorrkel::Keypair;
-use sp_consensus::{AlwaysCanAuthor, DisableProofRecording, NoNetwork as DummyOracle, Proposal};
-use sp_consensus_slots::Slot;
-use sp_consensus_subspace::inherents::InherentDataProvider;
-use sp_core::Public;
-use sp_runtime::{
-    generic::DigestItem,
-    traits::{Block as BlockT, DigestFor},
+use sp_api::{HeaderT, ProvideRuntimeApi};
+use sp_consensus::{
+    AlwaysCanAuthor, BlockOrigin, CacheKeyId, DisableProofRecording, Environment,
+    NoNetwork as DummyOracle, Proposal, Proposer,
 };
+use sp_consensus_slots::Slot;
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, NextEpochDescriptor, PreDigest, SaltDescriptor, Solution,
+    SolutionRangeDescriptor,
+};
+use sp_consensus_subspace::inherents::InherentDataProvider;
+use sp_consensus_subspace::{
+    ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
+};
+use sp_core::Public;
+use sp_inherents::{CreateInherentDataProviders, InherentData};
+use sp_runtime::generic::{BlockId, DigestItem};
+use sp_runtime::traits::{Block as BlockT, DigestFor, Zero};
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::ObjectArchiver;
 use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::{LocalChallenge, Piece, Signature, Tag};
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type Item = DigestItem<Hash>;

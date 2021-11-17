@@ -38,7 +38,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys,
+    create_runtime_str, generic,
     transaction_validity::{TransactionSource, TransactionValidity},
     ApplyExtrinsicResult, MultiSignature, Perbill,
 };
@@ -76,14 +76,15 @@ pub type Moment = u64;
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
 /// to even the core data structures.
 pub mod opaque {
-    use super::*;
-
-    use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+    use super::{BlockNumber, Subspace};
+    use sp_runtime::traits::BlakeTwo256;
+    use sp_runtime::{generic, impl_opaque_keys, OpaqueExtrinsic};
+    use sp_std::vec::Vec;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
-    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+    pub type Block = generic::Block<Header, OpaqueExtrinsic>;
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
 
@@ -396,6 +397,10 @@ impl pallet_feeds::Config for Runtime {
     type Event = Event;
 }
 
+impl pallet_object_store::Config for Runtime {
+    type Event = Event;
+}
+
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
     pub const MinVestedTransfer: Balance = 0;
@@ -432,6 +437,7 @@ construct_runtime!(
         Utility: pallet_utility::{Pallet, Call, Event} = 8,
 
         Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
+        ObjectStore: pallet_object_store::{Pallet, Call, Event<T>} = 10,
 
         Vesting: orml_vesting::{Pallet, Call, Config<T>, Storage, Event<T>} = 7,
 
@@ -489,6 +495,19 @@ fn extract_feeds_block_object_mapping(
     }
 }
 
+fn extract_object_store_block_object_mapping(
+    base_offset: u32,
+    objects: &mut Vec<BlockObject>,
+    call: &pallet_object_store::Call<Runtime>,
+) {
+    if let Some(call_object_location) = call.extract_object_location() {
+        objects.push(BlockObject::V0 {
+            hash: call_object_location.hash,
+            offset: base_offset + call_object_location.offset,
+        });
+    }
+}
+
 fn extract_utility_block_object_mapping(
     base_offset: u32,
     objects: &mut Vec<BlockObject>,
@@ -502,9 +521,24 @@ fn extract_utility_block_object_mapping(
             base_nested_call_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                if let Call::Feeds(call) = call {
-                    // `+1` for enum variant offset
-                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+                match call {
+                    Call::Feeds(call) => {
+                        // `+1` for enum variant offset
+                        extract_feeds_block_object_mapping(
+                            base_nested_call_offset + 1,
+                            objects,
+                            call,
+                        );
+                    }
+                    Call::ObjectStore(call) => {
+                        // `+1` for enum variant offset
+                        extract_object_store_block_object_mapping(
+                            base_nested_call_offset + 1,
+                            objects,
+                            call,
+                        );
+                    }
+                    _ => {}
                 }
 
                 base_nested_call_offset += call.encoded_size() as u32;
@@ -513,9 +547,20 @@ fn extract_utility_block_object_mapping(
         pallet_utility::Call::as_derivative { index, call } => {
             base_nested_call_offset += index.encoded_size() as u32;
 
-            if let Call::Feeds(call) = call.as_ref() {
-                // `+1` for enum variant offset
-                extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+            match call.as_ref() {
+                Call::Feeds(call) => {
+                    // `+1` for enum variant offset
+                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+                }
+                Call::ObjectStore(call) => {
+                    // `+1` for enum variant offset
+                    extract_object_store_block_object_mapping(
+                        base_nested_call_offset + 1,
+                        objects,
+                        call,
+                    );
+                }
+                _ => {}
             }
         }
         pallet_utility::Call::__Ignore(_, _) => {
@@ -548,6 +593,13 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
         match &extrinsic.function {
             Call::Feeds(call) => {
                 extract_feeds_block_object_mapping(
+                    base_extrinsic_offset as u32,
+                    &mut block_object_mapping.objects,
+                    call,
+                );
+            }
+            Call::ObjectStore(call) => {
+                extract_object_store_block_object_mapping(
                     base_extrinsic_offset as u32,
                     &mut block_object_mapping.objects,
                     call,

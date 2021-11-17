@@ -18,13 +18,15 @@
 
 #![cfg(test)]
 
-use super::*;
 use crate::mock::{
     new_test_ext, offence_reports, report_id, with_on_offence_fractions, Event, Offence,
     OffencesSubspace, System, KIND,
 };
+use codec::{Decode, Encode};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
+use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, ReportOffence};
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::Public;
 use sp_runtime::Perbill;
 
