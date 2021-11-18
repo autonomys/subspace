@@ -477,11 +477,8 @@ mod pallet {
             Ok(())
         }
 
-        /// Submit new root block to the blockchain. Contents of this extrinsic can't be verified in
-        /// the runtime at the moment, so that is done in block import pipeline instead.
-        ///
-        /// This extrinsic must be called unsigned and it is expected that only block authors will
-        /// call it (validated in `ValidateUnsigned`).
+        /// Submit new root block to the blockchain. This is an inherent extrinsic and part of the
+        /// Subspace consensus logic.
         #[pallet::weight((<T as Config>::WeightInfo::store_root_blocks(root_blocks.len()), DispatchClass::Mandatory, Pays::No))]
         pub fn store_root_blocks(
             origin: OriginFor<T>,
