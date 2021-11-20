@@ -7340,6 +7340,7 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-consensus-uncles",
  "sc-executor",
+ "sc-network",
  "sc-rpc",
  "sc-rpc-api",
  "sc-service",
