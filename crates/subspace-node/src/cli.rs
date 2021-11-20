@@ -14,22 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use sc_cli::RunCmd;
+//! Subspace CLI library.
+
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-pub struct Cli {
-    #[structopt(subcommand)]
-    pub subcommand: Option<Subcommand>,
-
-    #[structopt(flatten)]
-    pub run: RunCmd,
-}
-
+/// Utilities for working with a node.
 #[derive(Debug, StructOpt)]
 pub enum Subcommand {
     /// Key management cli utilities
     Key(sc_cli::KeySubcommand),
+
     /// Build a chain specification.
     BuildSpec(sc_cli::BuildSpecCmd),
 
@@ -54,4 +48,24 @@ pub enum Subcommand {
     /// The custom benchmark subcommand benchmarking runtime pallets.
     #[structopt(name = "benchmark", about = "Benchmark runtime pallets.")]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+}
+
+/// Command used to run a Subspace node.
+#[derive(Debug, StructOpt)]
+pub struct RunCmd {
+    /// Base command to run a node.
+    #[structopt(flatten)]
+    pub base: sc_cli::RunCmd,
+}
+
+/// Subspace Cli.
+#[derive(Debug, StructOpt)]
+pub struct Cli {
+    /// Various utility commands.
+    #[structopt(subcommand)]
+    pub subcommand: Option<Subcommand>,
+
+    /// Run a node.
+    #[structopt(flatten)]
+    pub run: RunCmd,
 }

@@ -18,7 +18,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use sp_runtime::traits::{BlakeTwo256, IdentifyAccount, Verify};
+use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
 
 /// An index to a block.
@@ -48,14 +48,15 @@ pub type Moment = u64;
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
 /// to even the core data structures.
 pub mod opaque {
-    use super::*;
-
+    use super::BlockNumber;
+    use sp_runtime::generic;
+    use sp_runtime::traits::BlakeTwo256;
     pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
-    pub type Header = sp_runtime::generic::Header<BlockNumber, BlakeTwo256>;
+    pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
-    pub type Block = sp_runtime::generic::Block<Header, UncheckedExtrinsic>;
+    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
     /// Opaque block identifier type.
-    pub type BlockId = sp_runtime::generic::BlockId<Block>;
+    pub type BlockId = generic::BlockId<Block>;
 }

@@ -6680,7 +6680,6 @@ source = "git+https://github.com/paritytech/substrate?rev=26d69bcbe26f6b463e9374
 dependencies = [
  "parity-scale-codec",
  "scale-info",
- "serde",
  "sp-arithmetic",
  "sp-runtime",
 ]
@@ -7364,14 +7363,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-primitives"
-version = "0.1.0"
-dependencies = [
- "sp-core",
- "sp-runtime",
-]
-
-[[package]]
 name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [
@@ -7418,8 +7409,16 @@ dependencies = [
  "sp-transaction-pool",
  "sp-version",
  "subspace-core-primitives",
- "subspace-primitives",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
+]
+
+[[package]]
+name = "subspace-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [package]
-name = "subspace-primitives"
+name = "subspace-runtime-primitives"
 description = "Runtime primitives for Subspace Network"
 license = "GPL-3.0-or-later"
 version = "0.1.0"

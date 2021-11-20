@@ -48,7 +48,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE};
-pub use subspace_primitives::*;
+pub use subspace_runtime_primitives::*;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
