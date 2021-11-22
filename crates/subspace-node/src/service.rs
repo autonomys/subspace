@@ -26,7 +26,7 @@ use std::sync::Arc;
 use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
 
-// Our native executor instance.
+/// Subspace native executor instance.
 pub struct ExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
@@ -46,11 +46,13 @@ impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
     }
 }
 
-type FullClient =
+/// Subspace full client.
+pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+/// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
 pub fn new_partial(
     config: &Configuration,
@@ -161,8 +163,22 @@ pub fn new_partial(
     })
 }
 
+/// Full client along with some other components.
+pub struct NewFull<C> {
+    /// Task manager.
+    pub task_manager: TaskManager,
+    /// Full client.
+    pub client: C,
+    /// Network.
+    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// RPC handlers.
+    pub rpc_handlers: sc_service::RpcHandlers,
+    /// Full client backend.
+    pub backend: Arc<FullBackend>,
+}
+
 /// Builds a new service for a full client.
-pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
+pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, ServiceError> {
     let sc_service::PartialComponents {
         client,
         backend,
@@ -291,21 +307,28 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
         })
     };
 
-    let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-        network,
-        client,
+    let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
+        network: network.clone(),
+        client: client.clone(),
         keystore: keystore_container.sync_keystore(),
         task_manager: &mut task_manager,
         transaction_pool,
         rpc_extensions_builder,
         on_demand: None,
         remote_blockchain: None,
-        backend,
+        backend: backend.clone(),
         system_rpc_tx,
         config,
         telemetry: telemetry.as_mut(),
     })?;
 
     network_starter.start_network();
-    Ok(task_manager)
+
+    Ok(NewFull {
+        task_manager,
+        client,
+        network,
+        rpc_handlers,
+        backend,
+    })
 }

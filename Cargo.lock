@@ -7339,6 +7339,7 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-consensus-uncles",
  "sc-executor",
+ "sc-network",
  "sc-rpc",
  "sc-rpc-api",
  "sc-service",
@@ -7408,7 +7409,16 @@ dependencies = [
  "sp-transaction-pool",
  "sp-version",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
+]
+
+[[package]]
+name = "subspace-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
