@@ -47,7 +47,7 @@ impl Farming {
         let farming_handle = tokio::spawn(async {
             match future::select(
                 Box::pin(async move {
-                    subscribe_to_slot_info(&client, &plot, &commitments, &identity).await
+                    subscribe_to_slot_info(client, &plot, &commitments, &identity).await
                 }),
                 stop_receiver,
             )
@@ -98,7 +98,7 @@ struct Salts {
 
 /// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
-    client: &T,
+    mut client: T,
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,

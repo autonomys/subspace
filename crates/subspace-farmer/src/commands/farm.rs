@@ -38,7 +38,7 @@ pub(crate) async fn farm(
     .await??;
 
     info!("Connecting to node at {}", node_rpc_url);
-    let client = WsRpc::new(node_rpc_url).await?;
+    let mut client = WsRpc::new(node_rpc_url).await?;
 
     let farmer_metadata = client
         .farmer_metadata()
