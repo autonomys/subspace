@@ -147,9 +147,11 @@ pub fn run() -> sc_cli::Result<()> {
             }
         }
         None => {
-            let runner = cli.create_runner(&cli.run)?;
+            let runner = cli.create_runner(&cli.run.base)?;
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config).map_err(sc_cli::Error::Service)
+                service::new_full(config)
+                    .map(|full| full.task_manager)
+                    .map_err(sc_cli::Error::Service)
             })
         }
     }
