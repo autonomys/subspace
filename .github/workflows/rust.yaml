@@ -10,10 +10,6 @@ env:
 jobs:
   cargo-fmt:
     runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        rust:
-          - nightly
 
     steps:
       - name: Checkout
@@ -21,8 +17,9 @@ jobs:
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -33,9 +30,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: cargo fmt
         uses: actions-rs/cargo@v1
@@ -50,8 +45,6 @@ jobs:
           - ubuntu-20.04
           - macos-11
           - windows-2019
-        rust:
-          - nightly
 
     runs-on: ${{ matrix.os }}
 
@@ -61,8 +54,9 @@ jobs:
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -85,21 +79,19 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ matrix.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ matrix.os }}-cargo-
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: cargo clippy (Linux or Windows with CUDA)
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/clippy-check@v1
         with:
-          command: clippy
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: --features=subspace-farmer/cuda -- -D warnings
         if: runner.os != 'macOS'
 
       - name: cargo clippy (macOS)
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/clippy-check@v1
         with:
-          command: clippy
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -- -D warnings
         if: runner.os == 'macOS'
 
@@ -110,8 +102,6 @@ jobs:
           - ubuntu-20.04
           - macos-11
           - windows-2019
-        rust:
-          - nightly
 
     runs-on: ${{ matrix.os }}
 
@@ -121,8 +111,9 @@ jobs:
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -137,7 +128,7 @@ jobs:
         id: cuda-toolkit
         with:
           cuda: '11.2.2'
-        if: runner.os != 'macOS'
+        if: runner.os == 'Linux'
 
       - name: Configure cache
         uses: actions/cache@v2
@@ -145,19 +136,17 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ matrix.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ matrix.os }}-cargo-
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: cargo test (Linux or Windows with CUDA)
+      - name: cargo test (Linux with CUDA)
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --features=subspace-farmer/cuda
-        if: runner.os != 'macOS'
+        if: runner.os == 'Linux'
 
-      - name: cargo test (macOS)
+      - name: cargo test (macOS or Windows)
         uses: actions-rs/cargo@v1
         with:
           command: test
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' || runner.os == 'Windows'
