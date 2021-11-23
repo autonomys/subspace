@@ -8,7 +8,6 @@ use subspace_core_primitives::{Piece, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
 
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -20,7 +19,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let base_directory = TempDir::new().unwrap();
 
     let piece: Piece = [9u8; 4096].into();
-    let salt: Salt = slots[0].salt.clone(); // the first slots salt should be used for the initial commitments
+    let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
     let index = 0;
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
@@ -30,25 +29,27 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
     commitments.create(salt, plot.clone()).await.unwrap();
 
-    let identity;
-    let res = Identity::open_or_create(&base_directory);
-    match res {
-        Ok(result) => identity = result,
-        Err(_) => panic!("Identity fail!"),
-    }
+    let identity =
+        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
     let (_metadata_sender, metadata_recv) = mpsc::channel(10);
     let (_block_sender, block_recv) = mpsc::channel(10);
-    let (_newhead_sender, newhead_recv) = mpsc::channel(10);
+    let (_new_head_sender, new_head_recv) = mpsc::channel(10);
     let (slot_sender, slot_recv) = mpsc::channel(10);
     let (tag_sender, tag_recv) = mpsc::channel(10);
 
-    let _ = slot_sender.send(slots[0].clone()).await; // send only the first slot, so that farmer can start
+    slot_sender.send(slots[0].clone()).await.unwrap(); // send only the first slot, so that farmer can start
     for tag in tags {
-        let _ = tag_sender.send(tag).await; // we can send all the correct tags to the MockRPC, will not create any racy behaviour
+        tag_sender.send(tag).await.unwrap(); // we can send all the correct tags to the MockRPC, will not create any racy behaviour
     }
 
-    let client = MockRpc::new(metadata_recv, block_recv, newhead_recv, slot_recv, tag_recv);
+    let client = MockRpc::new(
+        metadata_recv,
+        block_recv,
+        new_head_recv,
+        slot_recv,
+        tag_recv,
+    );
 
     // start the farming task
     let farming_instance =
@@ -57,10 +58,13 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     // if we have more than 1 slot, we will send the remaining with interleaving delays
     if slots.len() >= 2 {
         for slot in 1..slots.len() {
-            sleep(Duration::from_millis(500)).await;
-            let _ = slot_sender.send(slots[slot].clone()).await;
+            slot_sender.send(slots[slot].clone()).await.unwrap();
         }
     }
+
+    // let the farmer know we are done by closing the channels
+    drop(slot_sender);
+    drop(tag_sender);
 
     if let Err(e) = farming_instance.wait().await {
         panic!("Panicked with error...{:?}", e);

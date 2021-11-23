@@ -26,7 +26,7 @@ impl WsRpc {
 
 #[async_trait]
 impl RpcClient for WsRpc {
-    async fn farmer_metadata(&mut self) -> Result<FarmerMetadata, RpcError> {
+    async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
         Ok(self
             .client
             .request("subspace_getFarmerMetadata", rpc_params![])
@@ -34,7 +34,7 @@ impl RpcClient for WsRpc {
     }
 
     async fn block_by_number(
-        &mut self,
+        &self,
         block_number: u32,
     ) -> Result<Option<EncodedBlockWithObjectMapping>, RpcError> {
         Ok(self
@@ -43,7 +43,7 @@ impl RpcClient for WsRpc {
             .await?)
     }
 
-    async fn subscribe_new_head(&mut self) -> Result<mpsc::Receiver<NewHead>, RpcError> {
+    async fn subscribe_new_head(&self) -> Result<mpsc::Receiver<NewHead>, RpcError> {
         let mut subscription = self
             .client
             .subscribe(
@@ -64,7 +64,7 @@ impl RpcClient for WsRpc {
         Ok(receiver)
     }
 
-    async fn subscribe_slot_info(&mut self) -> Result<mpsc::Receiver<SlotInfo>, RpcError> {
+    async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, RpcError> {
         let mut subscription = self
             .client
             .subscribe(
@@ -86,7 +86,7 @@ impl RpcClient for WsRpc {
     }
 
     async fn submit_solution_response(
-        &mut self,
+        &self,
         solution_response: SolutionResponse,
     ) -> Result<(), RpcError> {
         Ok(self

@@ -99,7 +99,7 @@ impl Drop for Plotting {
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
-    mut client: T,
+    client: T,
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
@@ -263,7 +263,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
     // Erasure coding in archiver and piece encoding are CPU-intensive operations.
     tokio::task::spawn_blocking({
-        let mut client = client.clone();
+        let client = client.clone();
         let weak_plot = weak_plot.clone();
 
         #[allow(clippy::mut_range_bound)]
