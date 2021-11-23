@@ -25,7 +25,7 @@ use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::RootBlock;
 
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
@@ -131,7 +131,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             )
             .expect("Must be able to make runtime call");
 
-        BlockArchiver::with_initial_state(
+        Archiver::with_initial_state(
             record_size as usize,
             recorded_history_segment_size as usize,
             last_root_block,
@@ -141,9 +141,9 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         .expect("Incorrect parameters for archiver")
     } else {
         info!(target: "subspace", "Starting archiving from genesis");
-        ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+
+        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
             .expect("Incorrect parameters for archiver")
-            .into_block_archiver()
     };
 
     // Process blocks since last fully archived block (or genesis) up to the current head minus K

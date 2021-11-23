@@ -5,7 +5,7 @@ use crate::rpc::RpcClient;
 use log::{debug, error, info};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
@@ -135,7 +135,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             Some(EncodedBlockWithObjectMapping {
                 block,
                 object_mapping,
-            }) => BlockArchiver::with_initial_state(
+            }) => Archiver::with_initial_state(
                 record_size as usize,
                 recorded_history_segment_size as usize,
                 last_root_block,
@@ -156,9 +156,8 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
         drop(plot);
 
-        ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
             .map_err(PlottingError::Archiver)?
-            .into_block_archiver()
     };
 
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =

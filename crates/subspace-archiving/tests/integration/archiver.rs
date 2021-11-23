@@ -1,10 +1,9 @@
 use parity_scale_codec::{Compact, Decode, Encode};
-use rand::Rng;
 use std::assert_matches::assert_matches;
 use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
-use subspace_archiving::archiver::{ArchiverInstantiationError, BlockArchiver, ObjectArchiver};
+use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
@@ -38,7 +37,7 @@ fn compare_block_objects_to_piece_objects<'a>(
 
 #[test]
 fn archiver() {
-    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     let (block_0, block_0_object_mapping) = {
         let mut block = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
@@ -158,7 +157,7 @@ fn archiver() {
     // Check that initializing archiver with initial state before last block results in the same
     // archived segments once last block is added
     {
-        let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
+        let mut archiver_with_initial_state = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
@@ -249,7 +248,7 @@ fn archiver() {
     // Check that initializing archiver with initial state before last block results in the same
     // archived segments once last block is added
     {
-        let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
+        let mut archiver_with_initial_state = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             last_root_block,
@@ -282,78 +281,36 @@ fn archiver() {
     }
 }
 
-#[test]
-fn object_archiver() {
-    let mut archiver = ObjectArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
-
-    let mut rng = rand::thread_rng();
-    {
-        let mut object = vec![0u8; SEGMENT_SIZE];
-
-        for _ in 0..10 {
-            rng.fill(object.as_mut_slice());
-
-            assert_eq!(archiver.add_object(object.to_vec()).len(), 1);
-        }
-    }
-
-    let mut archiver = archiver.into_block_archiver();
-
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE]>();
-
-    let root_block = archiver
-        .add_block(block_0.to_vec(), BlockObjectMapping::default())
-        .into_iter()
-        .next()
-        .unwrap()
-        .root_block;
-
-    let mut archiver_with_initial_state = BlockArchiver::with_initial_state(
-        RECORD_SIZE,
-        SEGMENT_SIZE,
-        root_block,
-        block_0.to_vec(),
-        BlockObjectMapping::default(),
-    )
-    .unwrap();
-
-    let block_1 = rand::random::<[u8; SEGMENT_SIZE]>();
-    assert_eq!(
-        archiver.add_block(block_1.to_vec(), BlockObjectMapping::default()),
-        archiver_with_initial_state.add_block(block_1.to_vec(), BlockObjectMapping::default()),
-    );
-}
-
 // TODO: Tests for block to piece object translation that crosses piece boundary
 
 #[test]
 fn archiver_invalid_usage() {
     assert_matches!(
-        BlockArchiver::new(5, SEGMENT_SIZE),
+        Archiver::new(5, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),
     );
 
     assert_matches!(
-        BlockArchiver::new(10, 9),
+        Archiver::new(10, 9),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
     assert_matches!(
-        BlockArchiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
+        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
 
     assert_matches!(
-        BlockArchiver::new(17, SEGMENT_SIZE),
+        Archiver::new(17, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
     assert_matches!(
-        BlockArchiver::new(17, 34),
+        Archiver::new(17, 34),
         Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
     );
 
     {
-        let result = BlockArchiver::with_initial_state(
+        let result = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             RootBlock::V0 {
@@ -380,7 +337,7 @@ fn archiver_invalid_usage() {
     }
 
     {
-        let result = BlockArchiver::with_initial_state(
+        let result = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             RootBlock::V0 {
@@ -412,7 +369,7 @@ fn archiver_invalid_usage() {
     }
 
     {
-        let result = BlockArchiver::with_initial_state(
+        let result = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
             RootBlock::V0 {
@@ -437,7 +394,7 @@ fn archiver_invalid_usage() {
 
 #[test]
 fn one_byte_smaller_segment() {
-    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
     // but this should already produce archived segment since just enum variant and smallest compact
@@ -453,7 +410,7 @@ fn one_byte_smaller_segment() {
 
 #[test]
 fn spill_over_edge_case() {
-    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     // Carefully compute the block size such that there is just 3 byte left to fill the segment
     assert!(archiver
@@ -474,7 +431,7 @@ fn spill_over_edge_case() {
 
 #[test]
 fn object_on_the_edge_of_segment() {
-    let mut archiver = BlockArchiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     assert_eq!(
         archiver
             .add_block(vec![0u8; SEGMENT_SIZE], BlockObjectMapping::default())

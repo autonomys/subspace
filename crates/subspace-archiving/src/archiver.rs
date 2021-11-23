@@ -22,7 +22,6 @@ use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::iter;
-use std::marker::PhantomData;
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
@@ -157,35 +156,6 @@ pub enum ArchiverInstantiationError {
     NoBlocksInvalidInitialState,
 }
 
-mod private {
-    pub trait ArchiverState {}
-
-    /// Marker struct used in archiver to define a state where archiver is used for archiving object
-    /// before genesis block
-    #[derive(Debug)]
-    pub struct ObjectArchiverState;
-
-    impl ArchiverState for ObjectArchiverState {}
-
-    /// Marker struct used in archiver to define a state where archiver is used for archiving blocks
-    /// at or after genesis block
-    #[derive(Debug)]
-    pub struct BlockArchiverState;
-
-    impl ArchiverState for BlockArchiverState {}
-}
-
-/// Object archiver for Subspace blockchain.
-///
-/// It takes pre-genesis objects and concatenates them into a buffer, buffer is
-/// sliced into segments of `RECORDED_HISTORY_SEGMENT_SIZE` size, segments are sliced into source
-/// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
-/// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
-/// block header.
-///
-/// Object archiver is only used pre-genesis and should be turned into block archiver for later use.
-pub type ObjectArchiver = Archiver<private::ObjectArchiverState>;
-
 /// Block archiver for Subspace blockchain.
 ///
 /// It takes new confirmed (at `K` depth) blocks and concatenates them into a buffer, buffer is
@@ -193,13 +163,8 @@ pub type ObjectArchiver = Archiver<private::ObjectArchiverState>;
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
-pub type BlockArchiver = Archiver<private::BlockArchiverState>;
-
-/// Generic archiver for Subspace blockchain.
-///
-/// Shouldn't be used directly, but rather through `ObjectArchiver` or `BlockArchiver` type aliases.
 #[derive(Debug)]
-pub struct Archiver<State: private::ArchiverState> {
+pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
@@ -216,11 +181,9 @@ pub struct Archiver<State: private::ArchiverState> {
     prev_root_block_hash: Sha256Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
-    /// Just a marker for otherwise unused generic parameter
-    state_marker: PhantomData<State>,
 }
 
-impl<State: private::ArchiverState> Archiver<State> {
+impl Archiver {
     /// Create a new instance with specified record size and recorded history segment size.
     ///
     /// Note: this is the only way to instantiate object archiver, while block archiver can be
@@ -270,7 +233,6 @@ impl<State: private::ArchiverState> Archiver<State> {
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
-            state_marker: PhantomData::default(),
         })
     }
 
@@ -687,49 +649,7 @@ impl<State: private::ArchiverState> Archiver<State> {
             object_mapping,
         }
     }
-}
 
-impl ObjectArchiver {
-    /// Adds new object to internal buffer, potentially producing pieces and root block headers
-    pub fn add_object(&mut self, object: Vec<u8>) -> Vec<ArchivedSegment> {
-        // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Object(object));
-
-        let mut archived_segments = Vec::new();
-
-        while let Some(segment) = self.produce_segment() {
-            archived_segments.push(self.produce_archived_segment(segment));
-        }
-
-        archived_segments
-    }
-
-    pub fn into_block_archiver(self) -> BlockArchiver {
-        let Self {
-            buffer,
-            record_size,
-            segment_size,
-            reed_solomon,
-            segment_index,
-            prev_root_block_hash,
-            last_archived_block,
-            ..
-        } = self;
-
-        Archiver {
-            buffer,
-            record_size,
-            segment_size,
-            reed_solomon,
-            segment_index,
-            prev_root_block_hash,
-            last_archived_block,
-            state_marker: PhantomData::default(),
-        }
-    }
-}
-
-impl BlockArchiver {
     /// Create a new instance of block archiver with initial state in case of restart.
     ///
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
