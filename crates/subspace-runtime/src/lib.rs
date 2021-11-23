@@ -133,9 +133,6 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochCon
         c: SLOT_PROBABILITY,
     };
 
-const PRE_GENESIS_OBJECT_SIZE: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-const PRE_GENESIS_OBJECT_COUNT: u32 = 10;
-const PRE_GENESIS_OBJECT_SEED: &[u8] = b"subspace";
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
 const INITIAL_SOLUTION_RANGE: u64 =
@@ -221,9 +218,6 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
     pub const RecordSize: u32 = RECORD_SIZE;
     pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-    pub const PreGenesisObjectSize: u32 = PRE_GENESIS_OBJECT_SIZE;
-    pub const PreGenesisObjectCount: u32 = PRE_GENESIS_OBJECT_COUNT;
-    pub const PreGenesisObjectSeed: &'static [u8] = PRE_GENESIS_OBJECT_SEED;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -238,9 +232,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type PreGenesisObjectSize = PreGenesisObjectSize;
-    type PreGenesisObjectCount = PreGenesisObjectCount;
-    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -630,18 +621,6 @@ impl_runtime_apis! {
 
         fn recorded_history_segment_size() -> u32 {
             RecordedHistorySegmentSize::get()
-        }
-
-        fn pre_genesis_object_size() -> u32 {
-            PreGenesisObjectSize::get()
-        }
-
-        fn pre_genesis_object_count() -> u32 {
-            PreGenesisObjectCount::get()
-        }
-
-        fn pre_genesis_object_seed() -> Vec<u8> {
-            Vec::from(PreGenesisObjectSeed::get())
         }
 
         fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {

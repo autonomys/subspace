@@ -26,7 +26,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
-use subspace_archiving::pre_genesis_data;
 use subspace_core_primitives::RootBlock;
 
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
@@ -121,8 +120,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         );
         let last_archived_block = client
             .block(&BlockId::Number(last_archived_block_number.into()))
-            .expect("Older blocks should always exist")
-            .expect("Older blocks should always exist");
+            .expect("Older blocks must always exist")
+            .expect("Older blocks must always exist");
 
         let block_object_mapping = client
             .runtime_api()
@@ -141,50 +140,10 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         )
         .expect("Incorrect parameters for archiver")
     } else {
-        // Starting from genesis
-        let runtime_api = client.runtime_api();
-
-        let mut object_archiver =
-            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
-                .expect("Incorrect parameters for archiver");
-
-        let pre_genesis_object_size = runtime_api
-            .pre_genesis_object_size(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_size` from runtime API");
-        let pre_genesis_object_count = runtime_api
-            .pre_genesis_object_count(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_count` from runtime API");
-        let pre_genesis_object_seed = runtime_api
-            .pre_genesis_object_seed(&genesis_block_id)
-            .expect("Failed to get `pre_genesis_object_seed` from runtime API");
-
-        // These archived segments are a part of the public parameters of network setup, thus do not
-        // need to be sent to farmers
-        info!(target: "subspace", "Processing pre-genesis objects");
-        let new_root_blocks: Vec<RootBlock> = (0..pre_genesis_object_count)
-            .map(|index| {
-                object_archiver
-                    .add_object(pre_genesis_data::from_seed(
-                        &pre_genesis_object_seed,
-                        index,
-                        pre_genesis_object_size,
-                    ))
-                    .into_iter()
-            })
-            .flatten()
-            .map(|archived_segment| archived_segment.root_block)
-            .collect();
-
-        // Set list of expected root blocks for the next block after genesis (we can't have
-        // extrinsics in genesis block, at least not right now)
-        subspace_link
-            .root_blocks
-            .lock()
-            .put(One::one(), new_root_blocks);
-
-        info!(target: "subspace", "Finished processing pre-genesis objects");
-
-        object_archiver.into_block_archiver()
+        info!(target: "subspace", "Starting archiving from genesis");
+        ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
+            .expect("Incorrect parameters for archiver")
+            .into_block_archiver()
     };
 
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
@@ -201,7 +160,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     best_number,
                 );
             })
-            .checked_sub(confirmation_depth_k);
+            .checked_sub(confirmation_depth_k)
+            .or_else(|| {
+                if maybe_last_root_block.is_none() {
+                    // If not continuation, archive genesis block
+                    Some(0)
+                } else {
+                    None
+                }
+            });
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
@@ -244,7 +211,13 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     // Set list of expected root blocks for the block where we expect root block
                     // extrinsic to be included
                     subspace_link.root_blocks.lock().put(
-                        (block_to_archive + confirmation_depth_k + 1).into(),
+                        if block_to_archive.is_zero() {
+                            // Special case for genesis block whose root block should be included in
+                            // the first block in order for further validation to work properly.
+                            One::one()
+                        } else {
+                            (block_to_archive + confirmation_depth_k + 1).into()
+                        },
                         new_root_blocks,
                     );
                 }

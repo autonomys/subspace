@@ -118,10 +118,13 @@ pub mod opaque {
         }
         fn new(mut header: Self::Header, extrinsics: Vec<Self::Extrinsic>) -> Self {
             if header.number == 0 {
-                // We fill genesis block with extra data such that the very first archived segment
-                // can be produced right away, bootstrapping the farming process.
-                let ballast = vec![0; RECORDED_HISTORY_SEGMENT_SIZE as usize];
-                header.digest.logs.push(DigestItem::Other(ballast));
+                // This check is necessary in case block was deconstructed and constructed again.
+                if header.digest.logs.is_empty() {
+                    // We fill genesis block with extra data such that the very first archived
+                    // segment can be produced right away, bootstrapping the farming process.
+                    let ballast = vec![0; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+                    header.digest.logs.push(DigestItem::Other(ballast));
+                }
                 Block { header, extrinsics }
             } else {
                 Block { header, extrinsics }

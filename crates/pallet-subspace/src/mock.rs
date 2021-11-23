@@ -166,9 +166,6 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type PreGenesisObjectSize = PreGenesisObjectSize;
-    type PreGenesisObjectCount = PreGenesisObjectCount;
-    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
