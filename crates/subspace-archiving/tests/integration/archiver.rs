@@ -281,8 +281,6 @@ fn archiver() {
     }
 }
 
-// TODO: Tests for block to piece object translation that crosses piece boundary
-
 #[test]
 fn archiver_invalid_usage() {
     assert_matches!(
@@ -366,29 +364,6 @@ fn archiver_invalid_usage() {
             assert_eq!(block_bytes, 6);
             assert_eq!(archived_block_bytes, 10);
         }
-    }
-
-    {
-        let result = Archiver::with_initial_state(
-            RECORD_SIZE,
-            SEGMENT_SIZE,
-            RootBlock::V0 {
-                segment_index: 0,
-                records_root: Sha256Hash::default(),
-                prev_root_block_hash: Sha256Hash::default(),
-                last_archived_block: LastArchivedBlock {
-                    number: 0,
-                    archived_progress: ArchivedBlockProgress::Partial(0),
-                },
-            },
-            &vec![0u8; 5],
-            BlockObjectMapping::default(),
-        );
-
-        assert_matches!(
-            result,
-            Err(ArchiverInstantiationError::NoBlocksInvalidInitialState),
-        );
     }
 }
 

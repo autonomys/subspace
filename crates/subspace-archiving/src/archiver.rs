@@ -151,9 +151,6 @@ pub enum ArchiverInstantiationError {
         /// Already archived portion of the block
         archived_block_bytes: u32,
     },
-    /// No archived blocks, invalid initial state
-    #[error("No archived blocks, invalid initial state")]
-    NoBlocksInvalidInitialState,
 }
 
 /// Block archiver for Subspace blockchain.
@@ -660,11 +657,6 @@ impl Archiver {
         encoded_block: B,
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
-        if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
-            // TODO: This check can be removed when we no longer have pre-genesis objects
-            return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
-        }
-
         let mut archiver = Self::new(record_size, segment_size)?;
 
         archiver.segment_index = root_block.segment_index() + 1;

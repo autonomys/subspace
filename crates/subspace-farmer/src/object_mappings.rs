@@ -29,8 +29,6 @@ impl ObjectMappings {
         Ok(Self { db: Arc::new(db) })
     }
 
-    // TODO: Remove suppression once we start using this
-    #[allow(dead_code)]
     /// Retrieve mapping for object
     pub(super) fn retrieve(
         &self,

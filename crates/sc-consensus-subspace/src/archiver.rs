@@ -100,15 +100,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         .recorded_history_segment_size(&genesis_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
-    let maybe_last_root_block = find_last_root_block(client.as_ref()).and_then(|last_root_block| {
-        // At least one non-genesis block needs to be archived for restarts
-        // TODO: This check can be removed when we no longer have pre-genesis objects
-        if last_root_block.last_archived_block().number == 0 {
-            None
-        } else {
-            Some(last_root_block)
-        }
-    });
+    let maybe_last_root_block = find_last_root_block(client.as_ref());
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
