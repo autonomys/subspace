@@ -55,7 +55,7 @@ docker run --rm --init -it \
   --mount source=subspace-farmer,target=/var/subspace \
   subspacelabs/subspace-farmer \
     farm \
-    --ws-server ws://subspace-node:9944
+    --node-rpc-url ws://subspace-node:9944
 ```
 
 Now you should see block production in the first terminal where node is running.
@@ -184,7 +184,7 @@ cargo run --bin subspace-farmer -- farm
         --mount source=subspace-farmer-1,target=/var/subspace \
         subspacelabs/subspace-farmer \
           farm \
-          --ws-server ws://subspace-node-full-1:9944
+          --node-rpc-url ws://subspace-node-full-1:9944
       ```
 3. Repeat 2. with `-1` replaced with `-2` everywhere in order to obtain one more pair of client and farmer
 4. Observe following messages in logs similar to these, also block production will stop:
