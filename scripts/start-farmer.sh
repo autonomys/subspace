@@ -18,7 +18,7 @@ run-farm() {
     --mount source=subspace-farmer,target=/var/subspace \
     subspacelabs/subspace-farmer \
         farm \
-        --ws-server ws://subspace-node-full:9944
+        --node-rpc-url ws://subspace-node-full:9944
 }
 
 wipe() {
