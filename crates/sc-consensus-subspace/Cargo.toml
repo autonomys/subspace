@@ -31,7 +31,7 @@ sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/paritytech/sub
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sc-consensus-epochs = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
-serde = { version = "1.0.127", features = ["derive"] }
+serde = { version = "1.0.130", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }

@@ -7417,8 +7417,13 @@ dependencies = [
 name = "subspace-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "parity-scale-codec",
+ "parity-util-mem",
+ "serde",
  "sp-core",
  "sp-runtime",
+ "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
