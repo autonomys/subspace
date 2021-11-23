@@ -233,6 +233,99 @@ impl Archiver {
         })
     }
 
+    /// Create a new instance of the archiver with initial state in case of restart.
+    ///
+    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    pub fn with_initial_state<B: AsRef<[u8]>>(
+        record_size: usize,
+        segment_size: usize,
+        root_block: RootBlock,
+        encoded_block: B,
+        mut object_mapping: BlockObjectMapping,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        let mut archiver = Self::new(record_size, segment_size)?;
+
+        archiver.segment_index = root_block.segment_index() + 1;
+        archiver.prev_root_block_hash = root_block.hash();
+        archiver.last_archived_block = root_block.last_archived_block();
+
+        // The first thing in the buffer should be root block
+        archiver
+            .buffer
+            .push_back(SegmentItem::RootBlock(root_block));
+
+        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
+            let encoded_block = encoded_block.as_ref();
+            let encoded_block_bytes = u32::try_from(encoded_block.len())
+                .expect("Blocks length is never bigger than u32; qed");
+
+            match encoded_block_bytes.cmp(&archived_block_bytes) {
+                Ordering::Less => {
+                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                        block_bytes: encoded_block_bytes,
+                        archived_block_bytes,
+                    });
+                }
+                Ordering::Equal => {
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
+                        encoded_block_bytes,
+                    ));
+                }
+                Ordering::Greater => {
+                    // Take part of the encoded block that wasn't archived yet and push to the
+                    // buffer and block continuation
+                    object_mapping
+                        .objects
+                        .drain_filter(|block_object: &mut BlockObject| {
+                            let current_offset = block_object.offset();
+                            if current_offset >= archived_block_bytes {
+                                block_object.set_offset(current_offset - archived_block_bytes);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation {
+                        bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                        object_mapping,
+                    });
+                }
+            }
+        }
+
+        Ok(archiver)
+    }
+
+    /// Get last archived block if there was any
+    pub fn last_archived_block_number(&self) -> Option<u32> {
+        if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
+            Some(self.last_archived_block.number)
+        } else {
+            None
+        }
+    }
+
+    /// Adds new block to internal buffer, potentially producing pieces and root block headers
+    pub fn add_block(
+        &mut self,
+        bytes: Vec<u8>,
+        object_mapping: BlockObjectMapping,
+    ) -> Vec<ArchivedSegment> {
+        // Append new block to the buffer
+        self.buffer.push_back(SegmentItem::Block {
+            bytes,
+            object_mapping,
+        });
+
+        let mut archived_segments = Vec::new();
+
+        while let Some(segment) = self.produce_segment() {
+            archived_segments.push(self.produce_archived_segment(segment));
+        }
+
+        archived_segments
+    }
+
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
     /// a time
     fn produce_segment(&mut self) -> Option<Segment> {
@@ -645,99 +738,6 @@ impl Archiver {
             pieces,
             object_mapping,
         }
-    }
-
-    /// Create a new instance of block archiver with initial state in case of restart.
-    ///
-    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
-    pub fn with_initial_state<B: AsRef<[u8]>>(
-        record_size: usize,
-        segment_size: usize,
-        root_block: RootBlock,
-        encoded_block: B,
-        mut object_mapping: BlockObjectMapping,
-    ) -> Result<Self, ArchiverInstantiationError> {
-        let mut archiver = Self::new(record_size, segment_size)?;
-
-        archiver.segment_index = root_block.segment_index() + 1;
-        archiver.prev_root_block_hash = root_block.hash();
-        archiver.last_archived_block = root_block.last_archived_block();
-
-        // The first thing in the buffer should be root block
-        archiver
-            .buffer
-            .push_back(SegmentItem::RootBlock(root_block));
-
-        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
-            let encoded_block = encoded_block.as_ref();
-            let encoded_block_bytes = u32::try_from(encoded_block.len())
-                .expect("Blocks length is never bigger than u32; qed");
-
-            match encoded_block_bytes.cmp(&archived_block_bytes) {
-                Ordering::Less => {
-                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
-                        block_bytes: encoded_block_bytes,
-                        archived_block_bytes,
-                    });
-                }
-                Ordering::Equal => {
-                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
-                        encoded_block_bytes,
-                    ));
-                }
-                Ordering::Greater => {
-                    // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
-                    object_mapping
-                        .objects
-                        .drain_filter(|block_object: &mut BlockObject| {
-                            let current_offset = block_object.offset();
-                            if current_offset >= archived_block_bytes {
-                                block_object.set_offset(current_offset - archived_block_bytes);
-                                false
-                            } else {
-                                true
-                            }
-                        });
-                    archiver.buffer.push_back(SegmentItem::BlockContinuation {
-                        bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                        object_mapping,
-                    });
-                }
-            }
-        }
-
-        Ok(archiver)
-    }
-
-    /// Get last archived block if there was any
-    pub fn last_archived_block_number(&self) -> Option<u32> {
-        if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
-            Some(self.last_archived_block.number)
-        } else {
-            None
-        }
-    }
-
-    /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub fn add_block(
-        &mut self,
-        bytes: Vec<u8>,
-        object_mapping: BlockObjectMapping,
-    ) -> Vec<ArchivedSegment> {
-        // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Block {
-            bytes,
-            object_mapping,
-        });
-
-        let mut archived_segments = Vec::new();
-
-        while let Some(segment) = self.produce_segment() {
-            archived_segments.push(self.produce_archived_segment(segment));
-        }
-
-        archived_segments
     }
 }
 
