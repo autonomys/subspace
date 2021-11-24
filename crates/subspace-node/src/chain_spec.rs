@@ -73,6 +73,11 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 }
 
 pub fn testnet_config() -> Result<ChainSpec, String> {
+    let mut properties = Properties::new();
+    properties.insert("ss58Format".into(), SS58Prefix::get().into());
+    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
+    properties.insert("tokenSymbol".into(), "tSSC".into());
+
     Ok(ChainSpec::from_genesis(
         // Name
         "Subspace testnet",
@@ -144,20 +149,7 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
         // Protocol ID
         Some("subspace"),
         // Properties
-        Some(Properties::from_iter([
-            (
-                "ss58Format".to_string(),
-                serde_json::to_value(SS58Prefix::get()).expect("u16 is always serializable; qed"),
-            ),
-            (
-                "tokenDecimals".to_string(),
-                serde_json::to_value(DECIMAL_PLACES).expect("u8 is always serializable; qed"),
-            ),
-            (
-                "tokenSymbol".to_string(),
-                serde_json::to_value("tSSC").expect("&str is always serializable; qed"),
-            ),
-        ])),
+        Some(properties),
         // Extensions
         None,
     ))
