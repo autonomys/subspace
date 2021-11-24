@@ -28,6 +28,9 @@ pub(crate) mod rpc;
 pub(crate) mod ws_rpc;
 pub mod ws_rpc_server;
 
+#[cfg(test)]
+mod mock_rpc;
+
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::Farming;
 pub use identity::Identity;

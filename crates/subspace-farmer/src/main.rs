@@ -28,6 +28,9 @@ mod utils;
 mod ws_rpc;
 mod ws_rpc_server;
 
+#[cfg(test)]
+mod mock_rpc;
+
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use env_logger::Env;
