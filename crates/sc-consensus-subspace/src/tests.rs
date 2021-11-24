@@ -30,7 +30,7 @@ use parking_lot::Mutex;
 use rand::prelude::*;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sc_client_api::backend::TransactionFor;
-use sc_client_api::BlockchainEvents;
+use sc_client_api::{BlockBackend, BlockchainEvents};
 use sc_consensus::block_import::ForkChoiceStrategy;
 use sc_consensus::{
     BlockCheckParams, BlockImport, BlockImportParams, BoxBlockImport, BoxJustificationImport,
@@ -71,8 +71,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
-use subspace_archiving::archiver::ObjectArchiver;
-use subspace_archiving::pre_genesis_data;
+use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{LocalChallenge, Piece, Signature, Tag};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
@@ -473,33 +473,15 @@ fn get_archived_pieces(client: &TestClient) -> Vec<Piece> {
     let recorded_history_segment_size = runtime_api
         .recorded_history_segment_size(&genesis_block_id)
         .unwrap();
-    let pre_genesis_object_size = runtime_api
-        .pre_genesis_object_size(&genesis_block_id)
-        .unwrap();
-    let pre_genesis_object_count = runtime_api
-        .pre_genesis_object_count(&genesis_block_id)
-        .unwrap();
-    let pre_genesis_object_seed = runtime_api
-        .pre_genesis_object_seed(&genesis_block_id)
-        .unwrap();
 
-    let mut object_archiver =
-        ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
-            .expect("Incorrect parameters for archiver");
+    let mut archiver = Archiver::new(record_size as usize, recorded_history_segment_size as usize)
+        .expect("Incorrect parameters for archiver");
 
-    (0..pre_genesis_object_count)
-        .map(|index| {
-            object_archiver
-                .add_object(pre_genesis_data::from_seed(
-                    &pre_genesis_object_seed,
-                    index,
-                    pre_genesis_object_size,
-                ))
-                .into_iter()
-        })
-        .flatten()
-        .map(|archived_segment| archived_segment.pieces.into_iter())
-        .flatten()
+    let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
+    archiver
+        .add_block(genesis_block.encode(), BlockObjectMapping::default())
+        .into_iter()
+        .flat_map(|archived_segment| archived_segment.pieces.into_iter())
         .collect()
 }
 

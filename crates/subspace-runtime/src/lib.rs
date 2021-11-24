@@ -17,7 +17,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
-#![feature(int_log)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -47,8 +46,11 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE};
-pub use subspace_runtime_primitives::*;
+use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
+pub use subspace_runtime_primitives::{
+    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -131,39 +133,11 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochCon
         c: SLOT_PROBABILITY,
     };
 
-// TODO: Proper value here
-const CONFIRMATION_DEPTH_K: u32 = 100;
-/// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
-/// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
-///
-/// This number is a tradeoff:
-/// * as this number goes up, fewer [`RootBlock`]s are required to be stored for verifying archival
-///   history of the network, which makes sync quicker and more efficient, but also more data in
-///   each [`Piece`] will be occupied with witness, thus wasting space that otherwise could have
-///   been used for storing data (record part of a Piece)
-/// * as this number goes down, witness get smaller leading to better piece utilization, but the
-///   number of root blocks goes up making sync less efficient and less records are needed to be
-///   lost before part of the archived history become unrecoverable, reducing reliability of the
-///   data stored on the network
-const MERKLE_NUM_LEAVES: u32 = 256;
-/// Size of witness for a segment record (in bytes).
-const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
-/// Size of a segment record given the global piece size (in bytes).
-const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-/// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
-/// pieces of archival history.
-const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
-const PRE_GENESIS_OBJECT_SIZE: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-const PRE_GENESIS_OBJECT_COUNT: u32 = 10;
-const PRE_GENESIS_OBJECT_SEED: &[u8] = b"subspace";
-
-// We assume initial plot size starts with the size of pre-genesis history (roughly, there is some
-// overhead in archiving process)
-const INITIAL_SOLUTION_RANGE: u64 = u64::MAX
-    / (PRE_GENESIS_OBJECT_SIZE * PRE_GENESIS_OBJECT_COUNT / PIECE_SIZE as u32) as u64 // number of total pieces in pre-genesis.
-    * SLOT_PROBABILITY.0
-    / SLOT_PROBABILITY.1;
+// We assume initial plot size starts with the a single recorded history segment (which is erasure
+// coded of course, hence `*2`).
+const INITIAL_SOLUTION_RANGE: u64 =
+    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / PIECE_SIZE as u32) as u64 * SLOT_PROBABILITY.0
+        / SLOT_PROBABILITY.1;
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -244,9 +218,6 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
     pub const RecordSize: u32 = RECORD_SIZE;
     pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-    pub const PreGenesisObjectSize: u32 = PRE_GENESIS_OBJECT_SIZE;
-    pub const PreGenesisObjectCount: u32 = PRE_GENESIS_OBJECT_COUNT;
-    pub const PreGenesisObjectSeed: &'static [u8] = PRE_GENESIS_OBJECT_SEED;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -261,9 +232,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type PreGenesisObjectSize = PreGenesisObjectSize;
-    type PreGenesisObjectCount = PreGenesisObjectCount;
-    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -653,18 +621,6 @@ impl_runtime_apis! {
 
         fn recorded_history_segment_size() -> u32 {
             RecordedHistorySegmentSize::get()
-        }
-
-        fn pre_genesis_object_size() -> u32 {
-            PreGenesisObjectSize::get()
-        }
-
-        fn pre_genesis_object_count() -> u32 {
-            PreGenesisObjectCount::get()
-        }
-
-        fn pre_genesis_object_seed() -> Vec<u8> {
-            Vec::from(PreGenesisObjectSeed::get())
         }
 
         fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {

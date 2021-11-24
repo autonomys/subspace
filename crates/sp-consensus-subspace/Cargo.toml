@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = { version = "0.1.51", optional = true }
 codec = { package = "parity-scale-codec", version = "2.3.0", default-features = false }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
-serde = { version = "1.0.127", features = ["derive"], optional = true }
+serde = { version = "1.0.130", features = ["derive"], optional = true }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }
 sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/paritytech/substrate", rev = "26d69bcbe26f6b463e9374e1b1c54c3067fb6131" }

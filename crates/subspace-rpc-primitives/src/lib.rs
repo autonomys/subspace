@@ -45,14 +45,6 @@ pub struct FarmerMetadata {
     pub record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
-    /// This constant defines the size (in bytes) of one pre-genesis object.
-    pub pre_genesis_object_size: u32,
-    /// This constant defines the number of a pre-genesis objects that will bootstrap the
-    /// history.
-    pub pre_genesis_object_count: u32,
-    /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-    /// the history.
-    pub pre_genesis_object_seed: Vec<u8>,
 }
 
 /// Information about new slot that just arrived

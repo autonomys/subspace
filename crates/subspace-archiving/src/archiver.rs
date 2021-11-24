@@ -22,7 +22,6 @@ use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::iter;
-use std::marker::PhantomData;
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
@@ -69,15 +68,6 @@ impl Segment {
 /// Kinds of items that are contained within a segment
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
 pub enum SegmentItem {
-    /// Contains full object inside
-    #[codec(index = 0)]
-    Object(Vec<u8>),
-    /// Contains the beginning of the object inside, remainder will be found in subsequent segments
-    #[codec(index = 1)]
-    ObjectStart(Vec<u8>),
-    /// Continuation of the partial object spilled over into the next segment
-    #[codec(index = 2)]
-    ObjectContinuation(Vec<u8>),
     /// Contains full block inside
     #[codec(index = 3)]
     Block {
@@ -152,39 +142,7 @@ pub enum ArchiverInstantiationError {
         /// Already archived portion of the block
         archived_block_bytes: u32,
     },
-    /// No archived blocks, invalid initial state
-    #[error("No archived blocks, invalid initial state")]
-    NoBlocksInvalidInitialState,
 }
-
-mod private {
-    pub trait ArchiverState {}
-
-    /// Marker struct used in archiver to define a state where archiver is used for archiving object
-    /// before genesis block
-    #[derive(Debug)]
-    pub struct ObjectArchiverState;
-
-    impl ArchiverState for ObjectArchiverState {}
-
-    /// Marker struct used in archiver to define a state where archiver is used for archiving blocks
-    /// at or after genesis block
-    #[derive(Debug)]
-    pub struct BlockArchiverState;
-
-    impl ArchiverState for BlockArchiverState {}
-}
-
-/// Object archiver for Subspace blockchain.
-///
-/// It takes pre-genesis objects and concatenates them into a buffer, buffer is
-/// sliced into segments of `RECORDED_HISTORY_SEGMENT_SIZE` size, segments are sliced into source
-/// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
-/// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
-/// block header.
-///
-/// Object archiver is only used pre-genesis and should be turned into block archiver for later use.
-pub type ObjectArchiver = Archiver<private::ObjectArchiverState>;
 
 /// Block archiver for Subspace blockchain.
 ///
@@ -193,13 +151,8 @@ pub type ObjectArchiver = Archiver<private::ObjectArchiverState>;
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
-pub type BlockArchiver = Archiver<private::BlockArchiverState>;
-
-/// Generic archiver for Subspace blockchain.
-///
-/// Shouldn't be used directly, but rather through `ObjectArchiver` or `BlockArchiver` type aliases.
 #[derive(Debug)]
-pub struct Archiver<State: private::ArchiverState> {
+pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
@@ -216,11 +169,9 @@ pub struct Archiver<State: private::ArchiverState> {
     prev_root_block_hash: Sha256Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
-    /// Just a marker for otherwise unused generic parameter
-    state_marker: PhantomData<State>,
 }
 
-impl<State: private::ArchiverState> Archiver<State> {
+impl Archiver {
     /// Create a new instance with specified record size and recorded history segment size.
     ///
     /// Note: this is the only way to instantiate object archiver, while block archiver can be
@@ -270,8 +221,100 @@ impl<State: private::ArchiverState> Archiver<State> {
             segment_index: 0,
             prev_root_block_hash: Sha256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
-            state_marker: PhantomData::default(),
         })
+    }
+
+    /// Create a new instance of the archiver with initial state in case of restart.
+    ///
+    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    pub fn with_initial_state<B: AsRef<[u8]>>(
+        record_size: usize,
+        segment_size: usize,
+        root_block: RootBlock,
+        encoded_block: B,
+        mut object_mapping: BlockObjectMapping,
+    ) -> Result<Self, ArchiverInstantiationError> {
+        let mut archiver = Self::new(record_size, segment_size)?;
+
+        archiver.segment_index = root_block.segment_index() + 1;
+        archiver.prev_root_block_hash = root_block.hash();
+        archiver.last_archived_block = root_block.last_archived_block();
+
+        // The first thing in the buffer should be root block
+        archiver
+            .buffer
+            .push_back(SegmentItem::RootBlock(root_block));
+
+        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
+            let encoded_block = encoded_block.as_ref();
+            let encoded_block_bytes = u32::try_from(encoded_block.len())
+                .expect("Blocks length is never bigger than u32; qed");
+
+            match encoded_block_bytes.cmp(&archived_block_bytes) {
+                Ordering::Less => {
+                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                        block_bytes: encoded_block_bytes,
+                        archived_block_bytes,
+                    });
+                }
+                Ordering::Equal => {
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
+                        encoded_block_bytes,
+                    ));
+                }
+                Ordering::Greater => {
+                    // Take part of the encoded block that wasn't archived yet and push to the
+                    // buffer and block continuation
+                    object_mapping
+                        .objects
+                        .drain_filter(|block_object: &mut BlockObject| {
+                            let current_offset = block_object.offset();
+                            if current_offset >= archived_block_bytes {
+                                block_object.set_offset(current_offset - archived_block_bytes);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    archiver.buffer.push_back(SegmentItem::BlockContinuation {
+                        bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
+                        object_mapping,
+                    });
+                }
+            }
+        }
+
+        Ok(archiver)
+    }
+
+    /// Get last archived block if there was any
+    pub fn last_archived_block_number(&self) -> Option<u32> {
+        if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
+            Some(self.last_archived_block.number)
+        } else {
+            None
+        }
+    }
+
+    /// Adds new block to internal buffer, potentially producing pieces and root block headers
+    pub fn add_block(
+        &mut self,
+        bytes: Vec<u8>,
+        object_mapping: BlockObjectMapping,
+    ) -> Vec<ArchivedSegment> {
+        // Append new block to the buffer
+        self.buffer.push_back(SegmentItem::Block {
+            bytes,
+            object_mapping,
+        });
+
+        let mut archived_segments = Vec::new();
+
+        while let Some(segment) = self.produce_segment() {
+            archived_segments.push(self.produce_archived_segment(segment));
+        }
+
+        archived_segments
     }
 
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
@@ -317,11 +360,6 @@ impl<State: private::ArchiverState> Archiver<State> {
                 // last segment item insertion needs to be skipped to avoid out of range panic when
                 // trying to cut segment item internal bytes.
                 let inner_bytes_size = match &segment_item {
-                    SegmentItem::Object(bytes) => bytes.len(),
-                    SegmentItem::ObjectStart(_) => {
-                        unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
-                    }
-                    SegmentItem::ObjectContinuation(bytes) => bytes.len(),
                     SegmentItem::Block { bytes, .. } => bytes.len(),
                     SegmentItem::BlockStart { .. } => {
                         unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
@@ -342,11 +380,6 @@ impl<State: private::ArchiverState> Archiver<State> {
             }
 
             match &segment_item {
-                SegmentItem::Object(_)
-                | SegmentItem::ObjectStart(_)
-                | SegmentItem::ObjectContinuation(_) => {
-                    // We are not interested in object here
-                }
                 SegmentItem::Block { .. } => {
                     // Skip block number increase in case of the very first block
                     if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
@@ -394,33 +427,6 @@ impl<State: private::ArchiverState> Archiver<State> {
                 .expect("Segment over segment size always has at least one item; qed");
 
             let segment_item = match segment_item {
-                SegmentItem::Object(mut bytes) => {
-                    let split_point = bytes.len() - spill_over;
-                    let continuation_bytes = bytes[split_point..].to_vec();
-
-                    bytes.truncate(split_point);
-
-                    // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
-
-                    SegmentItem::ObjectStart(bytes)
-                }
-                SegmentItem::ObjectStart(_) => {
-                    unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
-                }
-                SegmentItem::ObjectContinuation(mut bytes) => {
-                    let split_point = bytes.len() - spill_over;
-                    let continuation_bytes = bytes[split_point..].to_vec();
-
-                    bytes.truncate(split_point);
-
-                    // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
-
-                    SegmentItem::ObjectContinuation(bytes)
-                }
                 SegmentItem::Block {
                     mut bytes,
                     mut object_mapping,
@@ -544,11 +550,6 @@ impl<State: private::ArchiverState> Archiver<State> {
             let mut base_offset_in_segment = 1 + Compact::compact_len(&(items.len() as u32));
             for segment_item in items {
                 match segment_item {
-                    SegmentItem::Object(_)
-                    | SegmentItem::ObjectStart(_)
-                    | SegmentItem::ObjectContinuation(_) => {
-                        // Ignore, no objects mappings here
-                    }
                     SegmentItem::Block {
                         bytes,
                         object_mapping,
@@ -686,146 +687,6 @@ impl<State: private::ArchiverState> Archiver<State> {
             pieces,
             object_mapping,
         }
-    }
-}
-
-impl ObjectArchiver {
-    /// Adds new object to internal buffer, potentially producing pieces and root block headers
-    pub fn add_object(&mut self, object: Vec<u8>) -> Vec<ArchivedSegment> {
-        // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Object(object));
-
-        let mut archived_segments = Vec::new();
-
-        while let Some(segment) = self.produce_segment() {
-            archived_segments.push(self.produce_archived_segment(segment));
-        }
-
-        archived_segments
-    }
-
-    pub fn into_block_archiver(self) -> BlockArchiver {
-        let Self {
-            buffer,
-            record_size,
-            segment_size,
-            reed_solomon,
-            segment_index,
-            prev_root_block_hash,
-            last_archived_block,
-            ..
-        } = self;
-
-        Archiver {
-            buffer,
-            record_size,
-            segment_size,
-            reed_solomon,
-            segment_index,
-            prev_root_block_hash,
-            last_archived_block,
-            state_marker: PhantomData::default(),
-        }
-    }
-}
-
-impl BlockArchiver {
-    /// Create a new instance of block archiver with initial state in case of restart.
-    ///
-    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
-    pub fn with_initial_state<B: AsRef<[u8]>>(
-        record_size: usize,
-        segment_size: usize,
-        root_block: RootBlock,
-        encoded_block: B,
-        mut object_mapping: BlockObjectMapping,
-    ) -> Result<Self, ArchiverInstantiationError> {
-        if root_block.last_archived_block() == INITIAL_LAST_ARCHIVED_BLOCK {
-            // TODO: This check can be removed when we no longer have pre-genesis objects
-            return Err(ArchiverInstantiationError::NoBlocksInvalidInitialState);
-        }
-
-        let mut archiver = Self::new(record_size, segment_size)?;
-
-        archiver.segment_index = root_block.segment_index() + 1;
-        archiver.prev_root_block_hash = root_block.hash();
-        archiver.last_archived_block = root_block.last_archived_block();
-
-        // The first thing in the buffer should be root block
-        archiver
-            .buffer
-            .push_back(SegmentItem::RootBlock(root_block));
-
-        if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
-            let encoded_block = encoded_block.as_ref();
-            let encoded_block_bytes = u32::try_from(encoded_block.len())
-                .expect("Blocks length is never bigger than u32; qed");
-
-            match encoded_block_bytes.cmp(&archived_block_bytes) {
-                Ordering::Less => {
-                    return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
-                        block_bytes: encoded_block_bytes,
-                        archived_block_bytes,
-                    });
-                }
-                Ordering::Equal => {
-                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
-                        encoded_block_bytes,
-                    ));
-                }
-                Ordering::Greater => {
-                    // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
-                    object_mapping
-                        .objects
-                        .drain_filter(|block_object: &mut BlockObject| {
-                            let current_offset = block_object.offset();
-                            if current_offset >= archived_block_bytes {
-                                block_object.set_offset(current_offset - archived_block_bytes);
-                                false
-                            } else {
-                                true
-                            }
-                        });
-                    archiver.buffer.push_back(SegmentItem::BlockContinuation {
-                        bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                        object_mapping,
-                    });
-                }
-            }
-        }
-
-        Ok(archiver)
-    }
-
-    /// Get last archived block if there was any
-    pub fn last_archived_block_number(&self) -> Option<u32> {
-        if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
-            Some(self.last_archived_block.number)
-        } else {
-            None
-        }
-    }
-
-    /// Adds new block to internal buffer, potentially producing pieces and root block headers
-    pub fn add_block(
-        &mut self,
-        bytes: Vec<u8>,
-        object_mapping: BlockObjectMapping,
-    ) -> Vec<ArchivedSegment> {
-        // Append new block to the buffer
-        self.buffer.push_back(SegmentItem::Block {
-            bytes,
-            object_mapping,
-        });
-
-        let mut archived_segments = Vec::new();
-
-        while let Some(segment) = self.produce_segment() {
-            archived_segments.push(self.produce_archived_segment(segment));
-        }
-
-        archived_segments
     }
 }
 

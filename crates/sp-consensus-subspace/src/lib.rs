@@ -255,17 +255,6 @@ sp_api::decl_runtime_apis! {
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         fn recorded_history_segment_size() -> u32;
 
-        /// This constant defines the size (in bytes) of one pre-genesis object.
-        fn pre_genesis_object_size() -> u32;
-
-        /// This constant defines the number of a pre-genesis objects that will bootstrap the
-        /// history.
-        fn pre_genesis_object_count() -> u32;
-
-        /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-        /// the history.
-        fn pre_genesis_object_seed() -> Vec<u8>;
-
         /// Return the genesis configuration for Subspace. The configuration is only read on genesis.
         fn configuration() -> SubspaceGenesisConfiguration;
 

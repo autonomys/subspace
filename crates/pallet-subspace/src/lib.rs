@@ -199,26 +199,6 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
-        // TODO: This is not the only way to bootstrap the network, we might want to use multiple
-        //  objects from file system instead (like Bitcoin history)
-        /// This constant defines the size (in bytes) of one pre-genesis object.
-        ///
-        /// Pre-genesis objects are needed to solve chicken-and-egg problem where in order to
-        /// produce a solution (and farm a block) a plot is needed, but plot is supposed to contain
-        /// some archived blocks. Pre-genesis history allows network bootstrapping.
-        #[pallet::constant]
-        type PreGenesisObjectSize: Get<u32>;
-
-        /// This constant defines the number of a pre-genesis objects that will bootstrap the
-        /// history.
-        #[pallet::constant]
-        type PreGenesisObjectCount: Get<u32>;
-
-        /// This constant defines the seed used for deriving pre-genesis objects that will bootstrap
-        /// the history.
-        #[pallet::constant]
-        type PreGenesisObjectSeed: Get<&'static [u8]>;
-
         /// Subspace requires some logic to be triggered on every block to query for whether an epoch
         /// has ended and to perform the transition to the next epoch.
         ///
