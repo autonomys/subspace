@@ -194,12 +194,6 @@ where
                     record_size: runtime_api.record_size(&best_block_hash)?,
                     recorded_history_segment_size: runtime_api
                         .recorded_history_segment_size(&best_block_hash)?,
-                    pre_genesis_object_size: runtime_api
-                        .pre_genesis_object_size(&best_block_hash)?,
-                    pre_genesis_object_count: runtime_api
-                        .pre_genesis_object_count(&best_block_hash)?,
-                    pre_genesis_object_seed: runtime_api
-                        .pre_genesis_object_seed(&best_block_hash)?,
                 }
             };
 

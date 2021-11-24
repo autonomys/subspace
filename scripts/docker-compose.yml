@@ -10,11 +10,12 @@ services:
         target: /var/subspace
         type: volume
     command: [
-        "--validator",
-        "--chain", "testnet",
-        "--base-path", "/var/subspace",
-        "--ws-external",
-        "--bootnodes", "/ip4/${BOOTSTRAP_CLIENT_IP}/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
+      "--validator",
+      "--force-authoring",
+      "--chain", "testnet",
+      "--base-path", "/var/subspace",
+      "--ws-external",
+      "--bootnodes", "/ip4/${BOOTSTRAP_CLIENT_IP}/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
     ]
   farmer:
     image: subspacelabs/subspace-farmer
@@ -26,8 +27,8 @@ services:
         type: volume
     restart: always
     command: [
-        "farm",
-        "--ws-server", "ws://node:9944"
+      "farm",
+      "--node-rpc-url", "ws://node:9944"
     ]
 
 networks:

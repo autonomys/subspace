@@ -224,6 +224,9 @@ where
     }
 
     fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
-        None
+        // This function is used in `sc-consensus-slots` in order to determine whether it is
+        // possible to skip block production under certain circumstances, returning `None` or any
+        // number smaller than `1` disables that functionality and we don't want it
+        Some(2)
     }
 }

@@ -17,14 +17,14 @@ run-full() {
     --name subspace-node-full \
     --mount source=subspace-node,target=/var/subspace \
     --publish 0.0.0.0:30333:30333 \
-        --publish 127.0.0.1:9944:9944 \
-        --publish 127.0.0.1:9933:9933 \
+    --publish 127.0.0.1:9944:9944 \
+    --publish 127.0.0.1:9933:9933 \
     subspacelabs/subspace-node \
         --validator \
         --chain testnet \
         --base-path /var/subspace \
         --ws-external \
-        --bootnodes /ip4/165.232.157.230/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \
+        --bootnodes /dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs \
         --telemetry-url 'wss://telemetry.polkadot.io/submit/ 1'
 }
 
@@ -50,10 +50,10 @@ clear='\e[0m'
 ##
 
 ColorGreen(){
-echo -ne $green$1$clear
+    echo -ne $green$1$clear
 }
 ColorBlue(){
-echo -ne $blue$1$clear
+    echo -ne $blue$1$clear
 }
 
 menu(){

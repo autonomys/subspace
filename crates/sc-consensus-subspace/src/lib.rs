@@ -1033,8 +1033,8 @@ where
                     );
                 });
 
-            // TODO: This is not a very nice hack due to the fact that at the time first block is
-            //  produced extrinsics with root blocks are not yet in runtime
+            // This is not a very nice hack due to the fact that at the time first block is produced
+            // extrinsics with root blocks are not yet in runtime.
             if maybe_records_root.is_none() && block.header.number().is_one() {
                 maybe_records_root =
                     self.root_blocks

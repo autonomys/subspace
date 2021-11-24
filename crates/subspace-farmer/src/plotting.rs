@@ -5,8 +5,7 @@ use crate::rpc::RpcClient;
 use log::{debug, error, info};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, BlockArchiver, ObjectArchiver};
-use subspace_archiving::pre_genesis_data;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
@@ -29,12 +28,6 @@ pub enum PlottingError {
     JoinTask(tokio::task::JoinError),
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
-    #[error("Object mapping store error: {0}")]
-    ObjectMapping(crate::object_mappings::ObjectMappingError),
-    #[error("Commitment creation error: {0}")]
-    Commitment(crate::commitments::CommitmentError),
-    #[error("Plot write error: {0}")]
-    PlotWrite(std::io::Error),
 }
 /// `Plotting` struct is the abstraction of the plotting process
 ///
@@ -112,19 +105,17 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
-        pre_genesis_object_size,
-        pre_genesis_object_count,
-        pre_genesis_object_seed,
     } = farmer_metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
-    let mut archiver = if let Some(last_root_block) = plot
+    let maybe_last_root_block = plot
         .get_last_root_block()
         .await
-        .map_err(PlottingError::LastBlock)?
-    {
+        .map_err(PlottingError::LastBlock)?;
+
+    let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
         if plot.is_empty() {
             return Err(PlottingError::ContinueError);
@@ -144,7 +135,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             Some(EncodedBlockWithObjectMapping {
                 block,
                 object_mapping,
-            }) => BlockArchiver::with_initial_state(
+            }) => Archiver::with_initial_state(
                 record_size as usize,
                 recorded_history_segment_size as usize,
                 last_root_block,
@@ -165,96 +156,13 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
         drop(plot);
 
-        let mut object_archiver =
-            ObjectArchiver::new(record_size as usize, recorded_history_segment_size as usize)
-                .map_err(PlottingError::Archiver)?;
-
-        // Erasure coding in archiver and piece encoding are a CPU-intensive operations
-        let maybe_block_archiver_handle = tokio::task::spawn_blocking({
-            let weak_plot = weak_plot.clone();
-            let commitments = commitments.clone();
-            let object_mappings = object_mappings.clone();
-
-            move || -> Result<Option<BlockArchiver>, PlottingError> {
-                let runtime_handle = tokio::runtime::Handle::current();
-                info!("Plotting pre-genesis objects");
-
-                // These archived segments are a part of the public parameters of network setup
-                for index in 0..pre_genesis_object_count {
-                    let archived_segments =
-                        object_archiver.add_object(pre_genesis_data::from_seed(
-                            &pre_genesis_object_seed,
-                            index,
-                            pre_genesis_object_size,
-                        ));
-
-                    for archived_segment in archived_segments {
-                        let ArchivedSegment {
-                            root_block,
-                            mut pieces,
-                            object_mapping,
-                        } = archived_segment;
-                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
-
-                        let object_mapping =
-                            create_global_object_mapping(piece_index_offset, object_mapping);
-
-                        // TODO: Batch encoding
-                        for (position, piece) in pieces.iter_mut().enumerate() {
-                            if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
-                            {
-                                error!("Failed to encode a piece: error: {}", error);
-                                continue;
-                            }
-                        }
-
-                        if let Some(plot) = weak_plot.upgrade() {
-                            let pieces = Arc::new(pieces);
-                            // TODO: There is no internal mapping between pieces and their indexes yet
-                            // TODO: Then we might want to send indexes as a separate vector
-                            runtime_handle
-                                .block_on(plot.write_many(Arc::clone(&pieces), piece_index_offset))
-                                .map_err(PlottingError::PlotWrite)?;
-                            runtime_handle
-                                .block_on(
-                                    commitments.create_for_pieces(&pieces, piece_index_offset),
-                                )
-                                .map_err(PlottingError::Commitment)?;
-                            object_mappings
-                                .store(&object_mapping)
-                                .map_err(PlottingError::ObjectMapping)?;
-                            info!(
-                                "Archived segment {} at object {}",
-                                root_block.segment_index(),
-                                index
-                            );
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                }
-
-                info!("Finished plotting pre-genesis objects");
-
-                Ok(Some(object_archiver.into_block_archiver()))
-            }
-        });
-
-        match maybe_block_archiver_handle
-            .await
-            .map_err(PlottingError::JoinTask)??
-        {
-            Some(block_archiver) => block_archiver,
-            None => {
-                // Plot was dropped, time to exit already
-                return Ok(());
-            }
-        }
+        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
+            .map_err(PlottingError::Archiver)?
     };
 
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =
         std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
+
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     let mut blocks_to_archive_from = archiver
         .last_archived_block_number()
@@ -379,6 +287,13 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         .map_err(PlottingError::RpcError)?;
 
     let block_to_archive = Arc::new(AtomicU32::default());
+
+    if maybe_last_root_block.is_none() {
+        // If not continuation, archive genesis block
+        new_block_to_archive_sender
+            .send(Arc::clone(&block_to_archive))
+            .expect("Failed to send genesis block archiving message");
+    }
 
     // Listen for new blocks produced on the network
     loop {

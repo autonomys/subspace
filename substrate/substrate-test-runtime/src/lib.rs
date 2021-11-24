@@ -668,9 +668,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type PreGenesisObjectSize = PreGenesisObjectSize;
-    type PreGenesisObjectCount = PreGenesisObjectCount;
-    type PreGenesisObjectSeed = PreGenesisObjectSeed;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -943,18 +940,6 @@ cfg_if! {
 
                 fn recorded_history_segment_size() -> u32 {
                     RecordedHistorySegmentSize::get()
-                }
-
-                fn pre_genesis_object_size() -> u32 {
-                    PreGenesisObjectSize::get()
-                }
-
-                fn pre_genesis_object_count() -> u32 {
-                    PreGenesisObjectCount::get()
-                }
-
-                fn pre_genesis_object_seed() -> Vec<u8> {
-                    Vec::from(PreGenesisObjectSeed::get())
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
@@ -1281,18 +1266,6 @@ cfg_if! {
 
                 fn recorded_history_segment_size() -> u32 {
                     RecordedHistorySegmentSize::get()
-                }
-
-                fn pre_genesis_object_size() -> u32 {
-                    PreGenesisObjectSize::get()
-                }
-
-                fn pre_genesis_object_count() -> u32 {
-                    PreGenesisObjectCount::get()
-                }
-
-                fn pre_genesis_object_seed() -> Vec<u8> {
-                    Vec::from(PreGenesisObjectSeed::get())
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
