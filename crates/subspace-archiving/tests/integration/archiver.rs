@@ -282,7 +282,7 @@ fn archiver() {
 }
 
 #[test]
-fn archiver_invalid_usage() {
+fn invalid_usage() {
     assert_matches!(
         Archiver::new(5, SEGMENT_SIZE),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),

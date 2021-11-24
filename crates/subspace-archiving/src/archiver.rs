@@ -14,6 +14,7 @@
 // limitations under the License.
 
 use crate::merkle_tree::{MerkleTree, Witness};
+use crate::utils;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use serde::{Deserialize, Serialize};
@@ -598,16 +599,9 @@ impl Archiver {
             segment
         };
 
-        fn slice_to_arrays(slice: &[u8]) -> Vec<[u8; 2]> {
-            slice
-                .chunks_exact(2)
-                .map(|s| s.try_into().unwrap())
-                .collect()
-        }
-
         let data_shards: Vec<Vec<[u8; 2]>> = segment
             .chunks_exact(self.record_size)
-            .map(slice_to_arrays)
+            .map(utils::slice_to_arrays)
             .collect();
 
         drop(segment);
