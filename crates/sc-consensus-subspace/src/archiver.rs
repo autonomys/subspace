@@ -85,19 +85,19 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + 'static,
     Client::Api: SubspaceApi<Block>,
 {
-    let genesis_block_id = BlockId::Number(Zero::zero());
+    let best_block_id = BlockId::Hash(client.info().best_hash);
 
     let confirmation_depth_k = client
         .runtime_api()
-        .confirmation_depth_k(&genesis_block_id)
+        .confirmation_depth_k(&best_block_id)
         .expect("Failed to get `confirmation_depth_k` from runtime API");
     let record_size = client
         .runtime_api()
-        .record_size(&genesis_block_id)
+        .record_size(&best_block_id)
         .expect("Failed to get `record_size` from runtime API");
     let recorded_history_segment_size = client
         .runtime_api()
-        .recorded_history_segment_size(&genesis_block_id)
+        .recorded_history_segment_size(&best_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
     let maybe_last_root_block = find_last_root_block(client.as_ref());
