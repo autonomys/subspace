@@ -39,45 +39,45 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let (_block_sender, block_recv) = mpsc::channel(10);
     let (_new_head_sender, new_head_recv) = mpsc::channel(10);
     let (slot_sender, slot_recv) = mpsc::channel(10);
-    let (tag_sender, tag_recv) = mpsc::channel(10);
-    let (signal_sender, mut signal_recv) = mpsc::channel(1);
-
-    slot_sender.send(slots[0].clone()).await.unwrap(); // send only the first slot, so that farmer can start
-    for tag in tags {
-        tag_sender.send(tag).await.unwrap(); // we can send all the correct tags to the MockRPC, will not create any racy behaviour
-    }
+    let (solution_sender, mut solution_recv) = mpsc::channel(1);
 
     let client = MockRpc::new(
         metadata_recv,
         block_recv,
         new_head_recv,
         slot_recv,
-        tag_recv,
-        signal_sender,
+        solution_sender,
     );
 
     // start the farming task
     let farming_instance =
         Farming::start(plot.clone(), commitments.clone(), client, identity.clone());
 
-    // if we have more than 1 slot, we will send the remaining with interleaving delays
-    if slots.len() >= 2 {
-        for slot in 1..slots.len() {
-            // race between receiving a solution, and waiting for 1 sec
-            tokio::select! {
-                _ = signal_recv.recv() => {},
-                _ = sleep(Duration::from_secs(1)) => {},
-            }
-            // commitment in the background cannot keep up with the speed, so putting a little delay in here
-            // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
-            sleep(Duration::from_millis(100)).await;
-            slot_sender.send(slots[slot].clone()).await.unwrap();
+    // send only the first slot, so that farmer can start
+    slot_sender.send(slots[0].clone()).await.unwrap();
+
+    for index in 0..slots.len() - 1 {
+        // race between receiving a solution, and waiting for 1 sec
+        tokio::select! {
+            Some(solution) = solution_recv.recv() => {
+                if let Some(solution) = solution.maybe_solution {
+                    if solution.tag != tags[index] {
+                        panic!("Wrong Tag! The expected value was: {:?}", tags[index]);
+                    }
+                } else {
+                    panic!("Solution was None!")
+                }
+            },
+            _ = sleep(Duration::from_secs(1)) => {},
         }
+        // commitment in the background cannot keep up with the speed, so putting a little delay in here
+        // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
+        sleep(Duration::from_millis(100)).await;
+        slot_sender.send(slots[index + 1].clone()).await.unwrap();
     }
 
     // let the farmer know we are done by closing the channels
     drop(slot_sender);
-    drop(tag_sender);
 
     if let Err(e) = farming_instance.wait().await {
         panic!("Panicked with error...{:?}", e);

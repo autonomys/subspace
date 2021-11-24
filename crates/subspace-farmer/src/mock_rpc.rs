@@ -1,8 +1,6 @@
 use crate::rpc::{Error as MockError, NewHead, RpcClient};
 use async_trait::async_trait;
-use log::info;
 use std::sync::Arc;
-use subspace_core_primitives::Tag;
 use subspace_rpc_primitives::{
     EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
 };
@@ -15,8 +13,7 @@ pub struct MockRpc {
     block_recv: Arc<Mutex<mpsc::Receiver<EncodedBlockWithObjectMapping>>>,
     new_head_recv: Arc<Mutex<mpsc::Receiver<NewHead>>>,
     slot_recv: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
-    tag_recv: Arc<Mutex<mpsc::Receiver<Tag>>>,
-    signal_sender: mpsc::Sender<()>,
+    solution_sender: mpsc::Sender<SolutionResponse>,
 }
 
 impl MockRpc {
@@ -26,16 +23,14 @@ impl MockRpc {
         block_recv: mpsc::Receiver<EncodedBlockWithObjectMapping>,
         new_head_recv: mpsc::Receiver<NewHead>,
         slot_recv: mpsc::Receiver<SlotInfo>,
-        tag_recv: mpsc::Receiver<Tag>,
-        signal_sender: mpsc::Sender<()>,
+        solution_sender: mpsc::Sender<SolutionResponse>,
     ) -> Self {
         MockRpc {
             metadata_recv: Arc::new(Mutex::new(metadata_recv)),
             block_recv: Arc::new(Mutex::new(block_recv)),
             new_head_recv: Arc::new(Mutex::new(new_head_recv)),
             slot_recv: Arc::new(Mutex::new(slot_recv)),
-            tag_recv: Arc::new(Mutex::new(tag_recv)),
-            signal_sender,
+            solution_sender,
         }
     }
 }
@@ -55,8 +50,6 @@ impl RpcClient for MockRpc {
 
     async fn subscribe_new_head(&self) -> Result<mpsc::Receiver<NewHead>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
-
-        // sends only a single new_head, after a solution is submitted
         let new_head_r = self.new_head_recv.clone();
         tokio::spawn(async move {
             while let Some(new_head) = new_head_r.lock().await.recv().await {
@@ -69,8 +62,6 @@ impl RpcClient for MockRpc {
 
     async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
-
-        // sends only a single challenge, after a solution is submitted
         let slot_r = self.slot_recv.clone();
         tokio::spawn(async move {
             while let Some(slot_info) = slot_r.lock().await.recv().await {
@@ -85,17 +76,7 @@ impl RpcClient for MockRpc {
         &self,
         solution_response: SolutionResponse,
     ) -> Result<(), MockError> {
-        if let Some(correct_tag) = self.tag_recv.lock().await.recv().await {
-            let received_tag = solution_response.maybe_solution.unwrap().tag;
-            if received_tag == correct_tag {
-                let _ = self.signal_sender.send(()).await;
-                Ok(())
-            } else {
-                info!("expected value was: {:?}", correct_tag);
-                Err("Wrong Tag!".into())
-            }
-        } else {
-            Err("Cannot receive the correct tag from channel".into())
-        }
+        let _ = self.solution_sender.send(solution_response).await;
+        Ok(())
     }
 }
