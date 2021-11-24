@@ -8,6 +8,7 @@ use subspace_core_primitives::{Piece, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -23,9 +24,11 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let index = 0;
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
+
     let commitments = Commitments::new(base_directory.path().join("commitments").into())
         .await
         .unwrap();
+
     plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
     commitments.create(salt, plot.clone()).await.unwrap();
 
@@ -37,6 +40,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let (_new_head_sender, new_head_recv) = mpsc::channel(10);
     let (slot_sender, slot_recv) = mpsc::channel(10);
     let (tag_sender, tag_recv) = mpsc::channel(10);
+    let (signal_sender, mut signal_recv) = mpsc::channel(1);
 
     slot_sender.send(slots[0].clone()).await.unwrap(); // send only the first slot, so that farmer can start
     for tag in tags {
@@ -49,6 +53,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         new_head_recv,
         slot_recv,
         tag_recv,
+        signal_sender,
     );
 
     // start the farming task
@@ -58,6 +63,14 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     // if we have more than 1 slot, we will send the remaining with interleaving delays
     if slots.len() >= 2 {
         for slot in 1..slots.len() {
+            // race between receiving a solution, and waiting for 1 sec
+            tokio::select! {
+                _ = signal_recv.recv() => {},
+                _ = sleep(Duration::from_secs(1)) => {},
+            }
+            // commitment in the background cannot keep up with the speed, so putting a little delay in here
+            // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
+            sleep(Duration::from_millis(100)).await;
             slot_sender.send(slots[slot].clone()).await.unwrap();
         }
     }

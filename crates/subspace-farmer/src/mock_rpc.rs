@@ -16,6 +16,7 @@ pub struct MockRpc {
     new_head_recv: Arc<Mutex<mpsc::Receiver<NewHead>>>,
     slot_recv: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     tag_recv: Arc<Mutex<mpsc::Receiver<Tag>>>,
+    signal_sender: mpsc::Sender<()>,
 }
 
 impl MockRpc {
@@ -26,6 +27,7 @@ impl MockRpc {
         new_head_recv: mpsc::Receiver<NewHead>,
         slot_recv: mpsc::Receiver<SlotInfo>,
         tag_recv: mpsc::Receiver<Tag>,
+        signal_sender: mpsc::Sender<()>,
     ) -> Self {
         MockRpc {
             metadata_recv: Arc::new(Mutex::new(metadata_recv)),
@@ -33,6 +35,7 @@ impl MockRpc {
             new_head_recv: Arc::new(Mutex::new(new_head_recv)),
             slot_recv: Arc::new(Mutex::new(slot_recv)),
             tag_recv: Arc::new(Mutex::new(tag_recv)),
+            signal_sender,
         }
     }
 }
@@ -85,6 +88,7 @@ impl RpcClient for MockRpc {
         if let Some(correct_tag) = self.tag_recv.lock().await.recv().await {
             let received_tag = solution_response.maybe_solution.unwrap().tag;
             if received_tag == correct_tag {
+                let _ = self.signal_sender.send(()).await;
                 Ok(())
             } else {
                 info!("expected value was: {:?}", correct_tag);
