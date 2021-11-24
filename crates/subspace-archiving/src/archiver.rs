@@ -68,15 +68,6 @@ impl Segment {
 /// Kinds of items that are contained within a segment
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
 pub enum SegmentItem {
-    /// Contains full object inside
-    #[codec(index = 0)]
-    Object(Vec<u8>),
-    /// Contains the beginning of the object inside, remainder will be found in subsequent segments
-    #[codec(index = 1)]
-    ObjectStart(Vec<u8>),
-    /// Continuation of the partial object spilled over into the next segment
-    #[codec(index = 2)]
-    ObjectContinuation(Vec<u8>),
     /// Contains full block inside
     #[codec(index = 3)]
     Block {
@@ -369,11 +360,6 @@ impl Archiver {
                 // last segment item insertion needs to be skipped to avoid out of range panic when
                 // trying to cut segment item internal bytes.
                 let inner_bytes_size = match &segment_item {
-                    SegmentItem::Object(bytes) => bytes.len(),
-                    SegmentItem::ObjectStart(_) => {
-                        unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
-                    }
-                    SegmentItem::ObjectContinuation(bytes) => bytes.len(),
                     SegmentItem::Block { bytes, .. } => bytes.len(),
                     SegmentItem::BlockStart { .. } => {
                         unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
@@ -394,11 +380,6 @@ impl Archiver {
             }
 
             match &segment_item {
-                SegmentItem::Object(_)
-                | SegmentItem::ObjectStart(_)
-                | SegmentItem::ObjectContinuation(_) => {
-                    // We are not interested in object here
-                }
                 SegmentItem::Block { .. } => {
                     // Skip block number increase in case of the very first block
                     if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
@@ -446,33 +427,6 @@ impl Archiver {
                 .expect("Segment over segment size always has at least one item; qed");
 
             let segment_item = match segment_item {
-                SegmentItem::Object(mut bytes) => {
-                    let split_point = bytes.len() - spill_over;
-                    let continuation_bytes = bytes[split_point..].to_vec();
-
-                    bytes.truncate(split_point);
-
-                    // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
-
-                    SegmentItem::ObjectStart(bytes)
-                }
-                SegmentItem::ObjectStart(_) => {
-                    unreachable!("Buffer never contains SegmentItem::ObjectStart; qed");
-                }
-                SegmentItem::ObjectContinuation(mut bytes) => {
-                    let split_point = bytes.len() - spill_over;
-                    let continuation_bytes = bytes[split_point..].to_vec();
-
-                    bytes.truncate(split_point);
-
-                    // Push continuation element back into the buffer where removed segment item was
-                    self.buffer
-                        .push_front(SegmentItem::ObjectContinuation(continuation_bytes));
-
-                    SegmentItem::ObjectContinuation(bytes)
-                }
                 SegmentItem::Block {
                     mut bytes,
                     mut object_mapping,
@@ -596,11 +550,6 @@ impl Archiver {
             let mut base_offset_in_segment = 1 + Compact::compact_len(&(items.len() as u32));
             for segment_item in items {
                 match segment_item {
-                    SegmentItem::Object(_)
-                    | SegmentItem::ObjectStart(_)
-                    | SegmentItem::ObjectContinuation(_) => {
-                        // Ignore, no objects mappings here
-                    }
                     SegmentItem::Block {
                         bytes,
                         object_mapping,
