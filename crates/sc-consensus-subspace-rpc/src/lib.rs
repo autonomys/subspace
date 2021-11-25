@@ -185,15 +185,15 @@ where
     fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata> {
         let client = Arc::clone(&self.client);
         Box::pin(async move {
-            let best_block_hash = BlockId::Hash(client.info().best_hash);
+            let best_block_id = BlockId::Hash(client.info().best_hash);
             let runtime_api = client.runtime_api();
 
             let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
                 FarmerMetadata {
-                    confirmation_depth_k: runtime_api.confirmation_depth_k(&best_block_hash)?,
-                    record_size: runtime_api.record_size(&best_block_hash)?,
+                    confirmation_depth_k: runtime_api.confirmation_depth_k(&best_block_id)?,
+                    record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
-                        .recorded_history_segment_size(&best_block_hash)?,
+                        .recorded_history_segment_size(&best_block_id)?,
                 }
             };
 
