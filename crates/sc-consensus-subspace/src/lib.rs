@@ -1644,9 +1644,11 @@ where
     let (imported_block_notification_sender, imported_block_notification_stream) =
         notification::channel("subspace_imported_block_notification_stream");
 
+    let best_block_id = BlockId::Hash(client.info().best_hash);
+
     let confirmation_depth_k = client
         .runtime_api()
-        .confirmation_depth_k(&BlockId::Number(Zero::zero()))
+        .confirmation_depth_k(&best_block_id)
         .expect("Failed to get `confirmation_depth_k` from runtime API");
 
     let link = SubspaceLink {
