@@ -3,3 +3,4 @@
 
 mod archiver;
 mod merkle_tree;
+mod reconstructor;
