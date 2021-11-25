@@ -296,7 +296,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     }
 
     // Listen for new blocks produced on the network
-    // receiver.fuse();
     loop {
         tokio::select! {
             _ = &mut stop_receiver => {

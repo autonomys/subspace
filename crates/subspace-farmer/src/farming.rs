@@ -1,5 +1,7 @@
 //! A farming process, that is interruptable (via dropping it)
 //! and possible to wait on (custom `wait` method)
+#[cfg(test)]
+mod tests;
 
 use crate::commitments::Commitments;
 use crate::identity::Identity;
