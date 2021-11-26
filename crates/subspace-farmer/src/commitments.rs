@@ -225,9 +225,9 @@ impl Commitments {
             .update_status(salt, CommitmentStatus::InProgress)
             .await?;
 
-        // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
-        // that nothing else can modify it
         let mut db_guard = db_entry.db.lock().await;
+        // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
+        // that nothing else can modify it.
         drop(commitment_databases);
 
         let db_path = self.inner.base_directory.join(hex::encode(salt));
@@ -239,6 +239,8 @@ impl Commitments {
             let piece_count = plot.piece_count();
             for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
                 let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
+                // TODO: Read next batch while creating tags for the previous one for faster
+                //  recommitment.
                 let pieces = runtime_handle
                     .block_on(plot.read_pieces(batch_start, pieces_to_process))
                     .map_err(CommitmentError::Plot)?;
@@ -293,18 +295,22 @@ impl Commitments {
             .collect::<Vec<Salt>>();
 
         for salt in salts {
-            let commitment_databases = self.inner.commitment_databases.lock().await;
-            let db_entry = match commitment_databases.databases.peek(&salt).cloned() {
+            let db_entry = match self
+                .inner
+                .commitment_databases
+                .lock()
+                .await
+                .databases
+                .peek(&salt)
+                .cloned()
+            {
                 Some(db_entry) => db_entry,
                 None => {
                     continue;
                 }
             };
 
-            // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
-            // that nothing else can modify it
             let db_guard = db_entry.db.lock().await;
-            drop(commitment_databases);
 
             let db = match db_guard.clone() {
                 Some(db) => db,
