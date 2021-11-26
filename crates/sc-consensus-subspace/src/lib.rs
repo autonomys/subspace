@@ -1489,9 +1489,12 @@ where
             let root_blocks = self.root_blocks.lock();
             // If there are root blocks expected to be included in this block, check them
             if let Some(correct_root_blocks) = root_blocks.peek(&block_number) {
-                // TODO: Why there could be no body? Light client?
                 let mut found = false;
-                for extrinsic in block.body.as_ref().unwrap() {
+                for extrinsic in block
+                    .body
+                    .as_ref()
+                    .expect("Light client or fast sync is unsupported; qed")
+                {
                     match self
                         .client
                         .runtime_api()
