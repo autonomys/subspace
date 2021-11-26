@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
@@ -121,8 +124,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             return Err(PlottingError::ContinueError);
         }
 
-        drop(plot);
-
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!("Last archived block {}", last_archived_block_number);
 
@@ -235,7 +236,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             error!("Failed to encode a piece: error: {}", error);
                             continue;
                         }
-
                         if let Some(plot) = weak_plot.upgrade() {
                             let pieces = Arc::new(pieces);
                             // TODO: There is no internal mapping between pieces and their indexes yet
@@ -253,7 +253,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             if let Err(error) = object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }
-
                             let segment_index = root_block.segment_index();
                             last_root_block.replace(root_block);
 
@@ -302,15 +301,23 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                 info!("Plotting stopped!");
                 break;
             }
-            Some(head) = new_head.recv() => {
-                let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
-                debug!("Last block number: {:#?}", block_number);
+            result = new_head.recv() => {
+                match result {
+                    Some(head) => {
+                        let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
+                        debug!("Last block number: {:#?}", block_number);
 
-                if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
-                    // We send block that should be archived over channel that doesn't have a buffer, atomic
-                    // integer is used to make sure archiving process always read up to date value
-                    block_to_archive.store(block, Ordering::Relaxed);
-                    let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                        if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
+                            // We send block that should be archived over channel that doesn't have a buffer, atomic
+                            // integer is used to make sure archiving process always read up to date value
+                            block_to_archive.store(block, Ordering::Relaxed);
+                            new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive)).expect("Cannot send the message to plot!");
+                        }
+                    },
+                    None => {
+                        debug!("Subscription has forcefully closed from node side!");
+                        break;
+                    }
                 }
             }
         }

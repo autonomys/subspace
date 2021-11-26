@@ -53,35 +53,39 @@ impl MockRpc {
     }
 
     pub(crate) async fn send_metadata(&self, metadata: FarmerMetadata) {
-        let _ = self.inner.metadata_sender.send(metadata).await;
+        self.inner.metadata_sender.send(metadata).await.unwrap();
     }
 
     pub(crate) async fn send_block(&self, block: EncodedBlockWithObjectMapping) {
-        let _ = self.inner.block_sender.send(block).await;
+        self.inner
+            .block_sender
+            .send(block)
+            .await
+            .expect("Mock RPC could not send the block:");
     }
 
     pub(crate) async fn send_new_head(&self, new_head: NewHead) {
-        let _ = self
-            .inner
+        self.inner
             .new_head_sender
             .lock()
             .await
             .as_ref()
             .unwrap()
             .send(new_head)
-            .await;
+            .await
+            .unwrap();
     }
 
     pub(crate) async fn send_slot(&self, slot: SlotInfo) {
-        let _ = self
-            .inner
+        self.inner
             .slot_sender
             .lock()
             .await
             .as_ref()
             .unwrap()
             .send(slot)
-            .await;
+            .await
+            .unwrap();
     }
 
     pub(crate) async fn receive_solution(&self) -> Option<SolutionResponse> {
@@ -89,11 +93,11 @@ impl MockRpc {
     }
 
     pub(crate) async fn drop_slot_sender(&self) {
-        let _ = self.inner.slot_sender.lock().await.take();
+        self.inner.slot_sender.lock().await.take().unwrap();
     }
 
     pub(crate) async fn drop_new_head_sender(&self) {
-        let _ = self.inner.new_head_sender.lock().await.take();
+        self.inner.new_head_sender.lock().await.take().unwrap();
     }
 }
 
@@ -115,7 +119,7 @@ impl RpcClient for MockRpc {
         let new_head_r = self.inner.new_head_recv.clone();
         tokio::spawn(async move {
             while let Some(new_head) = new_head_r.lock().await.recv().await {
-                let _ = sender.send(new_head);
+                sender.send(new_head).await.unwrap();
             }
         });
 
@@ -127,7 +131,7 @@ impl RpcClient for MockRpc {
         let slot_r = self.inner.slot_recv.clone();
         tokio::spawn(async move {
             while let Some(slot_info) = slot_r.lock().await.recv().await {
-                let _ = sender.send(slot_info).await;
+                sender.send(slot_info).await.unwrap();
             }
         });
 
@@ -138,7 +142,11 @@ impl RpcClient for MockRpc {
         &self,
         solution_response: SolutionResponse,
     ) -> Result<(), MockError> {
-        let _ = self.inner.solution_sender.send(solution_response).await;
+        self.inner
+            .solution_sender
+            .send(solution_response)
+            .await
+            .unwrap();
         Ok(())
     }
 }

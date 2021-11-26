@@ -3,7 +3,6 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::plot::Plot;
-use futures::{stream, StreamExt};
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -45,34 +44,34 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         identity.clone(),
     );
 
-    stream::iter(slots)
-        .zip(stream::iter(tags))
-        .for_each(|(slot, tag)| {
-            let client_copy = client.clone();
-            async move {
-                // commitment in the background cannot keep up with the speed, so putting a little delay in here
-                // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
-                sleep(Duration::from_millis(100)).await;
-                client_copy.send_slot(slot.clone()).await;
+    for (slot, tag) in slots.into_iter().zip(tags) {
+        let client_copy = client.clone();
+        async move {
+            // commitment in the background cannot keep up with the speed, so putting a little delay in here
+            // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
+            sleep(Duration::from_millis(100)).await;
+            client_copy.send_slot(slot.clone()).await;
 
-                tokio::select! {
-                    Some(solution) = client_copy.receive_solution() => {
-                        if let Some(solution) = solution.maybe_solution {
-                            if solution.tag != tag {
-                                panic!("Wrong Tag! The expected value was: {:?}", tag);
-                            }
-                        } else {
-                            panic!("Solution was None!")
+            tokio::select! {
+                Some(solution) = client_copy.receive_solution() => {
+                    if let Some(solution) = solution.maybe_solution {
+                        if solution.tag != tag {
+                            panic!("Wrong Tag! The expected value was: {:?}", tag);
                         }
-                    },
-                    _ = sleep(Duration::from_secs(1)) => {},
-                }
+                    } else {
+                        panic!("Solution was None!")
+                    }
+                },
+                _ = sleep(Duration::from_secs(1)) => {},
             }
-        })
+        }
         .await;
+    }
 
+    // let the farmer know we are done by closing the channel(s)
     client.drop_slot_sender().await;
 
+    // wait for farmer to finish
     if let Err(e) = farming_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
