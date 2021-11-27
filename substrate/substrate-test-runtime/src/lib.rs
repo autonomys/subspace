@@ -999,7 +999,7 @@ cfg_if! {
                 fn extract_block_object_mapping(
                     _block: Block,
                 ) -> subspace_core_primitives::objects::BlockObjectMapping {
-                    todo!()
+                    subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
             }
 
@@ -1325,7 +1325,7 @@ cfg_if! {
                 fn extract_block_object_mapping(
                     _block: Block,
                 ) -> subspace_core_primitives::objects::BlockObjectMapping {
-                    todo!()
+                    subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
             }
 

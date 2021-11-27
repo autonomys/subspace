@@ -106,7 +106,7 @@ use sp_consensus_subspace::{
 use sp_core::ExecutionContext;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
-use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, One, Zero};
+use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, One, Saturating, Zero};
 use std::cmp::Ordering;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
@@ -1417,7 +1417,7 @@ where
                 // used by pruning may not know about the block that is being
                 // imported.
                 let prune_and_import = || {
-                    prune_finalized(self.client.clone(), &mut epoch_changes)?;
+                    prune_finalized(&*self.client, &mut epoch_changes)?;
 
                     epoch_changes
                         .import(
@@ -1584,37 +1584,67 @@ where
 
 /// Gets the best finalized block and its slot, and prunes the given epoch tree.
 fn prune_finalized<Block, Client>(
-    client: Arc<Client>,
+    client: &Client,
     epoch_changes: &mut EpochChangesFor<Block, Epoch>,
 ) -> Result<(), ConsensusError>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + HeaderMetadata<Block, Error = sp_blockchain::Error>,
+    // TODO: Following 2 lines are for hacky implementation
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
 {
     let info = client.info();
-
-    let finalized_slot = {
-        let finalized_header = client
-            .header(BlockId::Hash(info.finalized_hash))
-            .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
-            .expect(
-                "best finalized hash was given by client; \
+    // let finalized_hash = info.finalized_hash;
+    // let finalized_number = info.finalized_number;
+    //
+    // let finalized_slot = {
+    //     let finalized_header = client
+    //         .header(BlockId::Hash(finalized_hash))
+    //         .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
+    //         .expect(
+    //             "best finalized hash was given by client; \
+    //              finalized headers must exist in db; qed",
+    //         );
+    //
+    //     find_pre_digest::<Block>(&finalized_header)
+    //         .expect(
+    //             "finalized header must be valid; \
+    //              valid blocks have a pre-digest; qed",
+    //         )
+    //         .slot
+    // };
+    // TODO: This is a hack and not a real finalization by any means, it primarily works around
+    //  https://github.com/paritytech/substrate/discussions/9990 until we have a better solution so
+    //  that our nodes don't crash in the meantime.
+    let finalized_number = info.best_number.saturating_sub(
+        client
+            .runtime_api()
+            .confirmation_depth_k(&BlockId::Number(info.best_number))
+            .expect("Must always be able to query constant at best block height; qed")
+            .into(),
+    );
+    let finalized_header = client
+        .header(BlockId::Number(finalized_number))
+        .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
+        .expect(
+            "best finalized hash was given by client; \
                  finalized headers must exist in db; qed",
-            );
-
-        find_pre_digest::<Block>(&finalized_header)
-            .expect(
-                "finalized header must be valid; \
+        );
+    let finalized_hash = finalized_header.hash();
+    let finalized_slot = find_pre_digest::<Block>(&finalized_header)
+        .expect(
+            "finalized header must be valid; \
                  valid blocks have a pre-digest; qed",
-            )
-            .slot
-    };
+        )
+        .slot;
+    // Hack ends here
 
     epoch_changes
         .prune_finalized(
-            descendent_query(&*client),
-            &info.finalized_hash,
-            info.finalized_number,
+            descendent_query(client),
+            &finalized_hash,
+            finalized_number,
             finalized_slot,
         )
         .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?;
@@ -1668,7 +1698,7 @@ where
     // NOTE: this isn't entirely necessary, but since we didn't use to prune the
     // epoch tree it is useful as a migration, so that nodes prune long trees on
     // startup rather than waiting until importing the next epoch change block.
-    prune_finalized(client.clone(), &mut epoch_changes.shared_data())?;
+    prune_finalized(&*client, &mut epoch_changes.shared_data())?;
 
     let import = SubspaceBlockImport::new(
         client,
