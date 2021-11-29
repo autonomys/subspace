@@ -6,13 +6,20 @@ use subspace_archiving::reconstructor::{
 };
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, Piece, PIECE_SIZE, SHA256_HASH_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+
+fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
+    pieces
+        .chunks_exact(PIECE_SIZE)
+        .map(|piece| piece.try_into().unwrap())
+        .collect()
+}
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
     pieces.iter().copied().map(Some).collect()
@@ -46,7 +53,9 @@ fn basic() {
 
     {
         let contents = reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[0].pieces,
+            )))
             .unwrap();
 
         // Only first block fits
@@ -56,7 +65,9 @@ fn basic() {
 
     {
         let contents = reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[1].pieces,
+            )))
             .unwrap();
 
         // Second block is finished, but also third is included
@@ -73,7 +84,9 @@ fn basic() {
 
         let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[1].pieces,
+            )))
             .unwrap();
 
         // Only third block is fully contained
@@ -91,7 +104,9 @@ fn basic() {
 
     {
         let contents = reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[2].pieces,
+            )))
             .unwrap();
 
         // Nothing is fully contained here
@@ -108,7 +123,9 @@ fn basic() {
 
         let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[2].pieces,
+            )))
             .unwrap();
 
         // Nothing is fully contained here
@@ -126,7 +143,9 @@ fn basic() {
 
     {
         let contents = reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[3].pieces,
+            )))
             .unwrap();
 
         // Nothing is fully contained here
@@ -145,7 +164,9 @@ fn basic() {
     {
         let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[3].pieces,
+            )))
             .unwrap();
 
         // Nothing is fully contained here
@@ -163,7 +184,9 @@ fn basic() {
 
     {
         let contents = reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[4].pieces,
+            )))
             .unwrap();
 
         // Enough data to reconstruct fourth block
@@ -182,7 +205,9 @@ fn basic() {
     {
         let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[4].pieces,
+            )))
             .unwrap();
 
         // Nothing is fully contained here
@@ -215,7 +240,7 @@ fn partial_data() {
 
     assert_eq!(archived_segments.len(), 1);
 
-    let pieces = archived_segments.into_iter().next().unwrap().pieces;
+    let pieces = flat_pieces_to_regular(&archived_segments.into_iter().next().unwrap().pieces);
 
     {
         // Take just data shards
@@ -302,8 +327,7 @@ fn invalid_usage() {
         let result = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
             .unwrap()
             .add_segment(
-                &archived_segments[0]
-                    .pieces
+                &flat_pieces_to_regular(&archived_segments[0].pieces)
                     .iter()
                     .take(MERKLE_NUM_LEAVES / 2 - 1)
                     .copied()
@@ -332,11 +356,14 @@ fn invalid_usage() {
         let mut reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
         reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[0].pieces,
+            )))
             .unwrap();
 
-        let result =
-            reconstructor.add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces));
+        let result = reconstructor.add_segment(&pieces_to_option_of_pieces(
+            &flat_pieces_to_regular(&archived_segments[2].pieces),
+        ));
 
         assert_eq!(
             result,
@@ -347,11 +374,14 @@ fn invalid_usage() {
         );
 
         reconstructor
-            .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+            .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
+                &archived_segments[1].pieces,
+            )))
             .unwrap();
 
-        let result =
-            reconstructor.add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces));
+        let result = reconstructor.add_segment(&pieces_to_option_of_pieces(
+            &flat_pieces_to_regular(&archived_segments[3].pieces),
+        ));
 
         assert_eq!(
             result,

@@ -15,6 +15,7 @@
 
 use crate::merkle_tree::{MerkleTree, Witness};
 use crate::utils;
+use crate::utils::{Gf16Element, GF_16_ELEMENT_BYTES};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use serde::{Deserialize, Serialize};
@@ -27,8 +28,8 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    crypto, ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, Sha256Hash, PIECE_SIZE,
-    SHA256_HASH_SIZE,
+    crypto, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, RootBlock, Sha256Hash,
+    PIECE_SIZE, SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 
@@ -110,7 +111,7 @@ pub struct ArchivedSegment {
     /// Root block of the segment
     pub root_block: RootBlock,
     /// Pieces that correspond to this segment
-    pub pieces: Vec<Piece>,
+    pub pieces: FlatPieces,
     /// Mappings for objects stored in corresponding pieces.
     ///
     /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
@@ -599,15 +600,15 @@ impl Archiver {
             segment
         };
 
-        let data_shards: Vec<Vec<[u8; 2]>> = segment
+        let data_shards: Vec<Vec<Gf16Element>> = segment
             .chunks_exact(self.record_size)
             .map(utils::slice_to_arrays)
             .collect();
 
         drop(segment);
 
-        let mut parity_shards: Vec<Vec<[u8; 2]>> =
-            iter::repeat(vec![[0u8; 2]; self.record_size / 2])
+        let mut parity_shards: Vec<Vec<Gf16Element>> =
+            iter::repeat(vec![Gf16Element::default(); self.record_size / 2])
                 .take(data_shards.len())
                 .collect();
 
@@ -616,49 +617,45 @@ impl Archiver {
             .encode_sep(&data_shards, &mut parity_shards)
             .expect("Encoding is running with fixed parameters and should never fail");
 
-        // Combine data and parity records back into vectors for further processing
-        let records: Vec<Vec<u8>> = data_shards
-            .into_iter()
-            .chain(parity_shards)
-            .map(|shard| {
-                let mut record = Vec::with_capacity(self.record_size);
-
-                for chunk in shard {
-                    record.extend_from_slice(&chunk);
-                }
-
-                record
+        let mut pieces = vec![0u8; (data_shards.len() + parity_shards.len()) * PIECE_SIZE];
+        // Combine data and parity records back into flat vector of pieces (witness part of piece is
+        // still zeroes after this and is filled later)
+        pieces
+            .chunks_exact_mut(PIECE_SIZE)
+            .zip(data_shards.into_iter().chain(parity_shards))
+            .flat_map(|(piece, shard)| {
+                piece
+                    .chunks_exact_mut(GF_16_ELEMENT_BYTES)
+                    .zip(shard.into_iter())
             })
-            .collect();
+            .for_each(|(piece_chunk, shard_chunk)| {
+                piece_chunk
+                    .as_mut()
+                    .write_all(&shard_chunk)
+                    .expect("Both source and target are exactly the same size; qed");
+            });
 
-        // Build a Merkle tree over data and parity records
-        let merkle_tree = MerkleTree::from_data(records.iter());
+        // Build a Merkle tree over all records
+        let merkle_tree = MerkleTree::from_data(
+            pieces
+                .chunks_exact(PIECE_SIZE)
+                .map(|piece| &piece[..self.record_size]),
+        );
 
-        // Take records, combine them with witnesses (Merkle proofs) to produce data and parity
-        // pieces
-        let pieces: Vec<Piece> = records
-            .into_iter()
+        // Fill witnesses (Merkle proofs) in pieces created earlier
+        pieces
+            .chunks_exact_mut(PIECE_SIZE)
             .enumerate()
-            .map(|(position, record)| {
+            .for_each(|(position, piece)| {
                 let witness = merkle_tree
                     .get_witness(position)
                     .expect("We use the same indexes as during Merkle tree creation; qed");
-                let mut piece = Piece::default();
-
-                piece.as_mut().write_all(&record).expect(
-                    "With correct archiver parameters record is always smaller than \
-                    piece size; qed",
-                );
-                drop(record);
 
                 (&mut piece[self.record_size..]).write_all(&witness).expect(
                     "Parameters are verified in the archiver constructor to make sure this \
                     never happens; qed",
                 );
-
-                piece
-            })
-            .collect();
+            });
 
         // Now produce root block
         let root_block = RootBlock::V0 {
@@ -678,7 +675,9 @@ impl Archiver {
 
         ArchivedSegment {
             root_block,
-            pieces,
+            pieces: pieces
+                .try_into()
+                .expect("Pieces length is correct as created above; qed"),
             object_mapping,
         }
     }

@@ -73,7 +73,7 @@ use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{LocalChallenge, Piece, Signature, Tag};
+use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag, PIECE_SIZE};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -465,7 +465,7 @@ fn rejects_empty_block() {
     })
 }
 
-fn get_archived_pieces(client: &TestClient) -> Vec<Piece> {
+fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
     let genesis_block_id = BlockId::Number(Zero::zero());
     let runtime_api = client.runtime_api();
 
@@ -481,7 +481,7 @@ fn get_archived_pieces(client: &TestClient) -> Vec<Piece> {
     archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
-        .flat_map(|archived_segment| archived_segment.pieces.into_iter())
+        .map(|archived_segment| archived_segment.pieces)
         .collect()
 }
 
@@ -599,10 +599,11 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
                 .unwrap()
-                .into_iter()
+                .iter()
+                .flat_map(|flat_pieces| flat_pieces.chunks_exact(PIECE_SIZE))
                 .enumerate()
                 .choose(&mut rand::thread_rng())
-                .map(|(piece_index, piece)| (piece_index as u64, piece))
+                .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
             subspace_solving.encode(&mut encoding, piece_index).unwrap();
 

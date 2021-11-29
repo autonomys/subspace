@@ -118,6 +118,9 @@ impl SubspaceCodec {
     /// size, input should ideally contain at least that many worth of pieces to achieve highest
     /// efficiency, it is recommended that the input is a multiple of that, but, strictly speaking,
     /// doesn't have to be.
+    ///
+    /// NOTE: When error is returned, some pieces might have been modified and should be considered
+    /// in inconsistent state!
     #[allow(unused_mut)]
     pub fn batch_encode(
         &self,

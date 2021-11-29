@@ -12,7 +12,7 @@ use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -281,7 +281,7 @@ impl Commitments {
     /// Create commitments for all salts for specified pieces
     pub(crate) async fn create_for_pieces(
         &self,
-        pieces: &Arc<Vec<Piece>>,
+        pieces: &Arc<FlatPieces>,
         start_offset: u64,
     ) -> Result<(), CommitmentError> {
         let salts = self
@@ -323,7 +323,7 @@ impl Commitments {
 
                 move || {
                     let tags: Vec<Tag> = pieces
-                        .par_iter()
+                        .par_chunks_exact(PIECE_SIZE)
                         .map(|piece| subspace_solving::create_tag(piece, salt))
                         .collect();
 

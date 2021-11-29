@@ -226,14 +226,14 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         let object_mapping =
                             create_global_object_mapping(piece_index_offset, object_mapping);
 
-                        // TODO: Batch encoding
-                        for (position, piece) in pieces.iter_mut().enumerate() {
-                            if let Err(error) =
-                                subspace_codec.encode(piece, piece_index_offset + position as u64)
-                            {
-                                error!("Failed to encode a piece: error: {}", error);
-                                continue;
-                            }
+                        // TODO: Batch encoding with more than 1 archived segment worth of data
+                        let piece_indexes = (piece_index_offset..)
+                            .take(pieces.count())
+                            .collect::<Vec<_>>();
+                        if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes)
+                        {
+                            error!("Failed to encode a piece: error: {}", error);
+                            continue;
                         }
 
                         if let Some(plot) = weak_plot.upgrade() {

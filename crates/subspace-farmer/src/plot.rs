@@ -12,7 +12,7 @@ use std::io::SeekFrom;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
-use subspace_core_primitives::{Piece, RootBlock, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, RootBlock, PIECE_SIZE};
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
@@ -42,7 +42,7 @@ enum ReadRequests {
 #[derive(Debug)]
 enum WriteRequests {
     WriteEncodings {
-        encodings: Arc<Vec<Piece>>,
+        encodings: Arc<FlatPieces>,
         first_index: u64,
         result_sender: oneshot::Sender<io::Result<()>>,
     },
@@ -179,15 +179,9 @@ impl Plot {
                                         .seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))
                                         .await?;
                                     {
-                                        let mut whole_encoding = Vec::with_capacity(
-                                            encodings[0].len() * encodings.len(),
-                                        );
-                                        for encoding in encodings.iter() {
-                                            whole_encoding.extend_from_slice(encoding);
-                                        }
-                                        plot_file.write_all(&whole_encoding).await?;
+                                        plot_file.write_all(&encodings).await?;
                                         piece_count.fetch_max(
-                                            first_index + encodings.len() as u64,
+                                            first_index + encodings.count() as u64,
                                             Ordering::AcqRel,
                                         );
                                     }
@@ -266,7 +260,7 @@ impl Plot {
     /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
     pub(crate) async fn write_many(
         &self,
-        encodings: Arc<Vec<Piece>>,
+        encodings: Arc<FlatPieces>,
         first_index: u64,
     ) -> io::Result<()> {
         if encodings.is_empty() {
