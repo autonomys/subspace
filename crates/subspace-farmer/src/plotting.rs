@@ -229,7 +229,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         // TODO: Batch encoding
                         for (position, piece) in pieces.iter_mut().enumerate() {
                             if let Err(error) =
-                                subspace_codec.encode(piece_index_offset + position as u64, piece)
+                                subspace_codec.encode(piece, piece_index_offset + position as u64)
                             {
                                 error!("Failed to encode a piece: error: {}", error);
                                 continue;

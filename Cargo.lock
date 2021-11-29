@@ -7430,11 +7430,14 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
+ "num_cpus",
  "rand 0.8.4",
+ "rayon",
  "schnorrkel",
  "sha2 0.9.8",
  "sloth256-189",
  "subspace-core-primitives",
+ "thiserror",
 ]
 
 [[package]]

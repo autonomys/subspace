@@ -604,7 +604,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, piece))
                 .unwrap();
-            subspace_solving.encode(piece_index, &mut encoding).unwrap();
+            subspace_solving.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,

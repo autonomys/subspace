@@ -435,7 +435,7 @@ impl RpcServerImpl {
         })?;
 
         self.subspace_codec
-            .decode(piece_index, &mut piece)
+            .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(
                     "Failed to decode piece with index {}: {}",
@@ -462,7 +462,7 @@ impl RpcServer for RpcServerImpl {
         };
 
         self.subspace_codec
-            .decode(piece_index, &mut piece)
+            .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(
                     "Failed to decode piece with index {}: {}",
