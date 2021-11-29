@@ -177,7 +177,7 @@ fn check_piece<B: BlockT>(
     // Ensure piece is decodable.
     let subspace_codec = SubspaceCodec::new(&solution.public_key);
     subspace_codec
-        .decode(solution.piece_index, &mut piece)
+        .decode(&mut piece, solution.piece_index)
         .map_err(|_| Error::InvalidEncoding(slot))?;
 
     if !archiver::is_piece_valid(

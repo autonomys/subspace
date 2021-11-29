@@ -12,9 +12,12 @@ include = [
 ]
 
 [dependencies]
+num_cpus = "1.13.0"
+rayon = "1.5.1"
 schnorrkel = "0.9.1"
 sloth256-189 = "0.2.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+thiserror = "1.0.30"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
@@ -27,7 +30,7 @@ version = "0.9.8"
 version = "0.9.8"
 
 [dev-dependencies]
-rand = "0.8.4"
+rand = { version = "0.8.4", features = ["min_const_gen"] }
 
 [features]
 default = []

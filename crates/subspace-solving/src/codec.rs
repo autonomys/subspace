@@ -16,24 +16,65 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+use rayon::prelude::*;
 use sloth256_189::cpu;
-use sloth256_189::cpu::{DecodeError, EncodeError};
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
+use thiserror::Error;
 
-// TODO: Un-comment when batching is re-introduced
-// #[cfg(feature = "cuda")]
-// /// Number of pieces for GPU should be multiples of 1024
-// const GPU_PIECE_BLOCK: usize = 1024;
+/// Number of pieces for GPU should be multiples of 1024
+#[cfg(feature = "cuda")]
+const GPU_PIECE_BLOCK: usize = 1024;
 const ENCODE_ROUNDS: usize = 1;
+
+/// CPU encoding errors
+#[derive(Debug, Error)]
+pub enum BatchEncodeError {
+    /// Pieces argument is not multiple of piece size
+    #[error("Pieces argument is not multiple of piece size")]
+    NotMultipleOfPieceSize,
+    /// CPU encoding error
+    #[error("CPU encoding error: {0}")]
+    CpuEncodeError(cpu::EncodeError),
+    /// CUDA encoding error
+    #[cfg(feature = "cuda")]
+    #[error("CUDA encoding error: {0}")]
+    CudaEncodeError(cuda::EncodeError),
+}
+
+impl From<cpu::EncodeError> for BatchEncodeError {
+    fn from(error: cpu::EncodeError) -> Self {
+        Self::CpuEncodeError(error)
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl From<cuda::EncodeError> for BatchEncodeError {
+    fn from(error: cuda::EncodeError) -> Self {
+        Self::CudaEncodeError(error)
+    }
+}
+
+fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index: u64) {
+    // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
+    public_key_hash
+        .iter_mut()
+        .rev()
+        .zip(piece_index.to_le_bytes().iter().rev())
+        .for_each(|(iv_byte, index_byte)| {
+            *iv_byte ^= index_byte;
+        });
+}
 
 /// Subspace codec is used to encode pieces of archived history before writing them to disk and also
 /// to decode them after reading from disk.
 #[derive(Debug, Copy, Clone)]
 pub struct SubspaceCodec {
     farmer_public_key_hash: Sha256Hash,
+    #[cfg(feature = "cuda")]
     cuda_available: bool,
+    cpu_cores: usize,
 }
 
 impl SubspaceCodec {
@@ -41,108 +82,120 @@ impl SubspaceCodec {
     pub fn new<P: AsRef<[u8]>>(farmer_public_key: &P) -> Self {
         #[cfg(feature = "cuda")]
         let cuda_available = cuda::is_cuda_available();
-        #[cfg(not(feature = "cuda"))]
-        let cuda_available = false;
 
         let farmer_public_key_hash = crypto::sha256_hash(farmer_public_key);
 
         Self {
             farmer_public_key_hash,
+            #[cfg(feature = "cuda")]
             cuda_available,
+            cpu_cores: num_cpus::get(),
         }
     }
 }
 
 impl SubspaceCodec {
-    // TODO: Refactor from being CUDA-specific to be batch-oriented
-    /// Returns true if CUDA is available
-    pub fn is_cuda_available(&self) -> bool {
-        self.cuda_available
-    }
-
     /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
     /// desired number of rounds
-    pub fn encode(&self, piece_index: u64, piece: &mut [u8]) -> Result<(), EncodeError> {
-        let mut expanded_iv = self.farmer_public_key_hash;
-
-        // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
-        expanded_iv
-            .iter_mut()
-            .rev()
-            .zip(piece_index.to_le_bytes().iter().rev())
-            .for_each(|(iv_byte, index_byte)| {
-                *iv_byte ^= index_byte;
-            });
-
-        cpu::encode(piece, &expanded_iv, ENCODE_ROUNDS)
+    pub fn encode(&self, piece: &mut [u8], piece_index: u64) -> Result<(), cpu::EncodeError> {
+        cpu::encode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
     }
 
-    // TODO: Re-introduce batching
-    // // TODO: Remove when CUDA support is properly integrated
-    // #[cfg(not(feature = "cuda"))]
-    // #[doc(hidden)]
-    // /// Encode given batch of pieces using GPU, and CPU for the leftovers
-    // pub fn cuda_batch_encode(&self, _pieces: &mut [u8], _nonce_array: &[u64]) {}
-    //
-    // // TODO: Refactor from being CUDA-specific to be batch-oriented
-    // /// Encode given batch of pieces using GPU, and CPU for the leftovers
-    // #[cfg(feature = "cuda")]
-    // pub fn cuda_batch_encode(&self, pieces: &mut [u8], nonce_array: &[u64]) {
-    //     // each expanded_iv will be in format [u8; 32], so `piece_amount` expanded_iv's
-    //     // should consume [u8; 32 * piece_amount] space.
-    //     let piece_count = pieces.len() / PIECE_SIZE;
-    //     let mut expanded_iv_vector: Vec<u8> = Vec::with_capacity(piece_count * PRIME_SIZE);
-    //     let mut expanded_iv;
-    //     for nonce in nonce_array {
-    //         // same farmer_public_key_hash will be used for each expanded_iv
-    //         expanded_iv = self.farmer_public_key_hash;
-    //
-    //         // select the nonce from nonce_array, xor it with the farmer_public_key_hash
-    //         nonce
-    //             .to_le_bytes()
-    //             .iter()
-    //             .rev()
-    //             .zip(expanded_iv.iter_mut().rev())
-    //             .for_each(|(nonce_byte, expanded_iv_byte)| *expanded_iv_byte ^= nonce_byte);
-    //         //*/
-    //         expanded_iv_vector.extend(expanded_iv);
-    //     }
-    //
-    //     // If there any leftovers from 1024x pieces, cpu will handle them
-    //     let cpu_encode_end_index = piece_count % GPU_PIECE_BLOCK;
-    //
-    //     // CPU encoding:
-    //     for x in 0..cpu_encode_end_index {
-    //         cpu::encode(
-    //             &mut pieces[x * PIECE_SIZE..(x + 1) * PIECE_SIZE],
-    //             &expanded_iv_vector[x * PRIME_SIZE..(x + 1) * PRIME_SIZE],
-    //             ENCODE_ROUNDS,
-    //         )
-    //         .unwrap();
-    //     }
-    //
-    //     // GPU encoding:
-    //     cuda::encode(
-    //         &mut pieces[cpu_encode_end_index * PIECE_SIZE..],
-    //         &expanded_iv_vector[cpu_encode_end_index * PRIME_SIZE..],
-    //         ENCODE_ROUNDS,
-    //     )
-    //     .unwrap();
-    // }
+    /// Number of elements processed efficiently during one iteration of batched encoding.
+    pub fn batch_size(&self) -> usize {
+        #[cfg(feature = "cuda")]
+        if self.cuda_available {
+            return GPU_PIECE_BLOCK;
+        }
+
+        self.cpu_cores
+    }
+
+    /// Encode given batch of pieces using the best method available, which might be GPU, CPU or
+    /// combination of both.
+    ///
+    /// [`SubspaceCodec::recommended_batch_size()`] can be used to determine the recommended batch
+    /// size, input should ideally contain at least that many worth of pieces to achieve highest
+    /// efficiency, it is recommended that the input is a multiple of that, but, strictly speaking,
+    /// doesn't have to be.
+    ///
+    /// NOTE: When error is returned, some pieces might have been modified and should be considered
+    /// in inconsistent state!
+    #[allow(unused_mut)]
+    pub fn batch_encode(
+        &self,
+        mut pieces: &mut [u8],
+        mut piece_indexes: &[u64],
+    ) -> Result<(), BatchEncodeError> {
+        if pieces.len() % PIECE_SIZE != 0 {
+            return Err(BatchEncodeError::NotMultipleOfPieceSize);
+        }
+
+        #[cfg(feature = "cuda")]
+        if self.cuda_available {
+            let pieces_to_process = pieces.len() / PIECE_SIZE / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
+
+            self.batch_encode_cuda(
+                &mut pieces[..pieces_to_process * PIECE_SIZE],
+                &piece_indexes[..pieces_to_process],
+            )?;
+
+            // Leave the rest for CPU
+            pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
+            piece_indexes = &piece_indexes[pieces_to_process..];
+        }
+
+        self.batch_encode_cpu(pieces, piece_indexes)?;
+
+        Ok(())
+    }
 
     /// Decode piece
-    pub fn decode(&self, piece_index: u64, piece: &mut [u8]) -> Result<(), DecodeError> {
+    pub fn decode(&self, piece: &mut [u8], piece_index: u64) -> Result<(), cpu::DecodeError> {
+        cpu::decode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
+    }
+
+    fn create_expanded_iv(&self, piece_index: u64) -> Sha256Hash {
         let mut expanded_iv = self.farmer_public_key_hash;
 
-        // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
+        mix_public_key_hash_with_piece_index(&mut expanded_iv, piece_index);
+
         expanded_iv
-            .iter_mut()
-            .rev()
-            .zip(piece_index.to_le_bytes().iter().rev())
-            .for_each(|(iv_byte, index_byte)| {
-                *iv_byte ^= index_byte;
+    }
+
+    fn batch_encode_cpu(
+        &self,
+        pieces: &mut [u8],
+        piece_indexes: &[u64],
+    ) -> Result<(), cpu::EncodeError> {
+        pieces
+            .par_chunks_exact_mut(PIECE_SIZE)
+            .zip_eq(piece_indexes)
+            .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
+    }
+
+    #[cfg(feature = "cuda")]
+    fn batch_encode_cuda(
+        &self,
+        pieces: &mut [u8],
+        piece_indexes: &[u64],
+    ) -> Result<(), cuda::EncodeError> {
+        use std::io::Write;
+        use subspace_core_primitives::SHA256_HASH_SIZE;
+
+        let mut expanded_ivs = vec![0u8; pieces.len() * SHA256_HASH_SIZE];
+        expanded_ivs
+            .par_chunks_exact_mut(SHA256_HASH_SIZE)
+            .zip_eq(piece_indexes)
+            .for_each(|(expanded_iv, &piece_index)| {
+                expanded_iv
+                    .as_mut()
+                    .write_all(&self.farmer_public_key_hash)
+                    .expect("Chunked target is exactly the same size as written data; qed");
+
+                mix_public_key_hash_with_piece_index(expanded_iv, piece_index);
             });
 
-        cpu::decode(piece, &expanded_iv, ENCODE_ROUNDS)
+        cuda::encode(pieces, &expanded_ivs, ENCODE_ROUNDS)
     }
 }

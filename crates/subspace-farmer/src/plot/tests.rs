@@ -19,16 +19,16 @@ async fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let piece = generate_random_piece();
+    let pieces = Arc::new(generate_random_piece().to_vec().try_into().unwrap());
     let index = 0;
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
     assert_eq!(true, plot.is_empty());
-    plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
+    plot.write_many(Arc::clone(&pieces), index).await.unwrap();
     assert_eq!(false, plot.is_empty());
     let extracted_piece = plot.read(index).await.unwrap();
 
-    assert_eq!(piece[..], extracted_piece[..]);
+    assert_eq!(pieces[..], extracted_piece[..]);
 
     drop(plot);
 

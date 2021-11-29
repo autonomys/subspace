@@ -23,6 +23,9 @@
 pub mod crypto;
 pub mod objects;
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
@@ -240,6 +243,68 @@ impl AsRef<[u8]> for Piece {
 }
 
 impl AsMut<[u8]> for Piece {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+/// Flat representation of multiple pieces concatenated for higher efficient for processing.
+#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
+pub struct FlatPieces(Vec<u8>);
+
+impl FlatPieces {
+    /// Create new instance, returns error if `pieces` is not multiple of full pieces.
+    pub fn new(pieces: Vec<u8>) -> Result<Self, Vec<u8>> {
+        if pieces.len() % PIECE_SIZE != 0 {
+            return Err(pieces);
+        }
+
+        Ok(Self(pieces))
+    }
+
+    /// Number of pieces contained.
+    pub fn count(&self) -> usize {
+        self.0.len() / PIECE_SIZE
+    }
+
+    /// Extract internal flat representation of bytes.
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl TryFrom<Vec<u8>> for FlatPieces {
+    type Error = Vec<u8>;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl Deref for FlatPieces {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for FlatPieces {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl AsRef<[u8]> for FlatPieces {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for FlatPieces {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }

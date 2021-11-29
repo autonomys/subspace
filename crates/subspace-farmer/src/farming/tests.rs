@@ -4,7 +4,7 @@ use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::plot::Plot;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, Salt, Tag, TAG_SIZE};
+use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
@@ -19,7 +19,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let base_directory = TempDir::new().unwrap();
 
-    let piece: Piece = [9u8; 4096].into();
+    let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
     let index = 0;
 
@@ -29,7 +29,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         .await
         .unwrap();
 
-    plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
+    plot.write_many(Arc::new(pieces), index).await.unwrap();
     commitments.create(salt, plot.clone()).await.unwrap();
 
     let identity =

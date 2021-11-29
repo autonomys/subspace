@@ -3,7 +3,7 @@ use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, Salt, Tag};
+use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use tempfile::TempDir;
 
 fn init() {
@@ -15,7 +15,7 @@ async fn create() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let piece: Piece = [9u8; 4096].into();
+    let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
     let salt: Salt = [1u8; 8];
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
@@ -25,7 +25,7 @@ async fn create() {
     let commitments = Commitments::new(base_directory.path().join("commitments").into())
         .await
         .unwrap();
-    plot.write_many(Arc::new(vec![piece]), index).await.unwrap();
+    plot.write_many(Arc::new(pieces), index).await.unwrap();
     commitments.create(salt, plot).await.unwrap();
 
     let (tag, _) = commitments
@@ -50,20 +50,9 @@ async fn find_by_tag() {
 
     // Generate deterministic pieces, such that we don't have random errors in CI
     let mut rng = StdRng::seed_from_u64(0);
-    plot.write_many(
-        Arc::new(
-            (0..1024_usize)
-                .map(|_| {
-                    let mut piece = Piece::default();
-                    rng.fill(&mut piece[..]);
-                    piece
-                })
-                .collect(),
-        ),
-        0,
-    )
-    .await
-    .unwrap();
+    let mut pieces: FlatPieces = vec![0u8; 1024 * PIECE_SIZE].try_into().unwrap();
+    rng.fill(pieces.as_mut());
+    plot.write_many(Arc::new(pieces), 0).await.unwrap();
 
     commitments.create(salt, plot).await.unwrap();
 
