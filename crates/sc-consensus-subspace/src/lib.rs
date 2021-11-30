@@ -49,7 +49,6 @@
 #![warn(missing_docs)]
 
 mod archiver;
-mod authorship;
 pub mod aux_schema;
 pub mod notification;
 mod slot_worker;
