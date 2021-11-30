@@ -91,9 +91,8 @@ pub trait Network: Clone + Send + 'static {
 	async fn remove_from_peers_set(&mut self, protocol: Cow<'static, str>, peers: Vec<PeerId>);
 
 	/// Send a request to a remote peer.
-	async fn start_request<AD: AuthorityDiscovery>(
+	async fn start_request(
 		&self,
-		authority_discovery: &mut AD,
 		req: Requests,
 		if_disconnected: IfDisconnected,
 	);
@@ -143,9 +142,8 @@ impl Network for Arc<NetworkService<Block, Hash>> {
 		);
 	}
 
-	async fn start_request<AD: AuthorityDiscovery>(
+	async fn start_request(
 		&self,
-		authority_discovery: &mut AD,
 		req: Requests,
 		if_disconnected: IfDisconnected,
 	) {
@@ -154,6 +152,8 @@ impl Network for Arc<NetworkService<Block, Hash>> {
 		let peer_id = match peer {
 			Recipient::Peer(peer_id) => Some(peer_id),
 			Recipient::Authority(authority) => {
+				unreachable!("No Authority in subspace")
+				/*
 				let mut found_peer_id = None;
 				// Note: `get_addresses_by_authority_id` searched in a cache, and it thus expected
 				// to be very quick.
@@ -171,6 +171,7 @@ impl Network for Arc<NetworkService<Block, Hash>> {
 					found_peer_id = Some(peer_id);
 				}
 				found_peer_id
+				*/
 			},
 		};
 

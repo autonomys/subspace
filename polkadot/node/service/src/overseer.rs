@@ -19,7 +19,6 @@ use lru::LruCache;
 use polkadot_node_network_protocol::request_response::{v1 as request_v1, IncomingRequestReceiver};
 #[cfg(any(feature = "malus", test))]
 pub use polkadot_overseer::{
-	dummy::{dummy_overseer_builder, DummySubsystem},
 	HeadSupportsParachains,
 };
 use polkadot_overseer::{
@@ -90,7 +89,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
 		RuntimeApiSubsystem<RuntimeClient>,
 		NetworkBridgeSubsystem<
 			Arc<sc_network::NetworkService<Block, Hash>>,
-			AuthorityDiscoveryService,
 		>,
 		ChainApiSubsystem<RuntimeClient>,
 		CollationGenerationSubsystem,
@@ -129,7 +127,6 @@ where
 		})
 		.network_bridge(NetworkBridgeSubsystem::new(
 			network_service.clone(),
-			authority_discovery_service.clone(),
 			Box::new(network_service.clone()),
 			Metrics::register(registry)?,
 		))

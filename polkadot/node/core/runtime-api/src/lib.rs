@@ -19,7 +19,7 @@
 //! This provides a clean, ownerless wrapper around the parachain-related runtime APIs. This crate
 //! can also be used to cache responses from heavy runtime APIs.
 
-#![deny(unused_crate_dependencies)]
+// #![deny(unused_crate_dependencies)]
 #![warn(missing_docs)]
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
@@ -32,7 +32,6 @@ use polkadot_subsystem::{
 };
 
 use sp_api::ProvideRuntimeApi;
-use sp_authority_discovery::AuthorityDiscoveryApi;
 use sp_core::traits::SpawnNamed;
 
 use cache::{RequestResult, RequestResultCache};
@@ -89,7 +88,6 @@ impl<Client> RuntimeApiSubsystem<Client> {
 impl<Client, Context> overseer::Subsystem<Context, SubsystemError> for RuntimeApiSubsystem<Client>
 where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
-	Client::Api: AuthorityDiscoveryApi<Block>,
 	Context: SubsystemContext<Message = RuntimeApiMessage>,
 	Context: overseer::SubsystemContext<Message = RuntimeApiMessage>,
 {
@@ -101,7 +99,6 @@ where
 impl<Client> RuntimeApiSubsystem<Client>
 where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
-	Client::Api: AuthorityDiscoveryApi<Block>,
 {
 	fn store_cache(&mut self, result: RequestResult) {
 		use RequestResult::*;
@@ -301,7 +298,6 @@ async fn run<Client, Context>(
 ) -> SubsystemResult<()>
 where
 	Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-	Client::Api: AuthorityDiscoveryApi<Block>,
 	Context: SubsystemContext<Message = RuntimeApiMessage>,
 	Context: overseer::SubsystemContext<Message = RuntimeApiMessage>,
 {
@@ -330,7 +326,6 @@ fn make_runtime_api_request<Client>(
 ) -> Option<RequestResult>
 where
 	Client: ProvideRuntimeApi<Block>,
-	Client::Api: AuthorityDiscoveryApi<Block>,
 {
 	let _timer = metrics.time_make_runtime_api_request();
 

@@ -264,33 +264,30 @@ pub enum WireMessage<M> {
 }
 
 /// The network bridge subsystem.
-pub struct NetworkBridge<N, AD> {
+pub struct NetworkBridge<N> {
 	/// `Network` trait implementing type.
 	network_service: N,
-	authority_discovery_service: AD,
 	sync_oracle: Box<dyn SyncOracle + Send>,
 	metrics: Metrics,
 }
 
-impl<N, AD> NetworkBridge<N, AD> {
+impl<N> NetworkBridge<N> {
 	/// Create a new network bridge subsystem with underlying network service and authority discovery service.
 	///
 	/// This assumes that the network service has had the notifications protocol for the network
 	/// bridge already registered. See [`peers_sets_info`](peers_sets_info).
 	pub fn new(
 		network_service: N,
-		authority_discovery_service: AD,
 		sync_oracle: Box<dyn SyncOracle + Send>,
 		metrics: Metrics,
 	) -> Self {
-		NetworkBridge { network_service, authority_discovery_service, sync_oracle, metrics }
+		NetworkBridge { network_service, sync_oracle, metrics }
 	}
 }
 
-impl<Net, AD, Context> Subsystem<Context, SubsystemError> for NetworkBridge<Net, AD>
+impl<Net, Context> Subsystem<Context, SubsystemError> for NetworkBridge<Net>
 where
 	Net: Network + Sync,
-	AD: validator_discovery::AuthorityDiscovery + Clone,
 	Context: SubsystemContext<Message = NetworkBridgeMessage>
 		+ overseer::SubsystemContext<Message = NetworkBridgeMessage>,
 {
@@ -348,10 +345,9 @@ enum Mode {
 	Active,
 }
 
-async fn handle_subsystem_messages<Context, N, AD>(
+async fn handle_subsystem_messages<Context, N>(
 	mut ctx: Context,
 	mut network_service: N,
-	mut authority_discovery_service: AD,
 	shared: Shared,
 	sync_oracle: Box<dyn SyncOracle + Send>,
 	metrics: Metrics,
@@ -360,12 +356,10 @@ where
 	Context: SubsystemContext<Message = NetworkBridgeMessage>,
 	Context: overseer::SubsystemContext<Message = NetworkBridgeMessage>,
 	N: Network,
-	AD: validator_discovery::AuthorityDiscovery + Clone,
 {
 	// This is kept sorted, descending, by block number.
 	let mut live_heads: Vec<ActivatedLeaf> = Vec::with_capacity(MAX_VIEW_HEADS);
 	let mut finalized_number = 0;
-	let mut validator_discovery = validator_discovery::Service::<N, AD>::new();
 
 	let mut mode = Mode::Syncing(sync_oracle);
 
@@ -522,7 +516,7 @@ where
 
 						for req in reqs {
 							network_service
-								.start_request(&mut authority_discovery_service, req, if_disconnected)
+								.start_request(req, if_disconnected)
 								.await;
 						}
 					}
@@ -541,6 +535,7 @@ where
 
 						metrics.note_desired_peer_count(peer_set, validator_ids.len());
 
+						/* XXX: AuthorityDiscovery has been removed.
 						let (ns, ads) = validator_discovery.on_request(
 							validator_ids,
 							peer_set,
@@ -551,6 +546,7 @@ where
 
 						network_service = ns;
 						authority_discovery_service = ads;
+						*/
 					}
 					NetworkBridgeMessage::ConnectToResolvedValidators {
 						validator_addrs,
@@ -564,6 +560,9 @@ where
 							"Received a resolved validator connection request",
 						);
 
+						unreachable!("AuthorityDiscovery has been removed")
+
+						/*
 						metrics.note_desired_peer_count(peer_set, validator_addrs.len());
 
 						let all_addrs = validator_addrs.into_iter().flatten().collect();
@@ -572,6 +571,7 @@ where
 							peer_set,
 							network_service,
 						).await;
+						*/
 					}
 					NetworkBridgeMessage::NewGossipTopology {
 						our_neighbors,
@@ -583,6 +583,9 @@ where
 							"Gossip topology has changed",
 						);
 
+						unreachable!("AuthorityDiscovery has been removed")
+
+						/*
 						let ads = &mut authority_discovery_service;
 						let mut gossip_peers = HashSet::with_capacity(our_neighbors.len());
 						for authority in our_neighbors {
@@ -600,6 +603,7 @@ where
 							NetworkBridgeEvent::NewGossipTopology(gossip_peers),
 							ctx.sender(),
 						);
+						*/
 					}
 				}
 				Err(e) => return Err(e.into()),
@@ -608,11 +612,10 @@ where
 	}
 }
 
-async fn handle_network_messages<AD: validator_discovery::AuthorityDiscovery>(
+async fn handle_network_messages(
 	mut sender: impl SubsystemSender,
 	mut network_service: impl Network,
 	network_stream: BoxStream<'static, NetworkEvent>,
-	mut authority_discovery_service: AD,
 	metrics: Metrics,
 	shared: Shared,
 ) -> Result<(), UnexpectedAbort> {
@@ -660,8 +663,7 @@ async fn handle_network_messages<AD: validator_discovery::AuthorityDiscovery>(
 					shared.local_view.clone().unwrap_or(View::default())
 				};
 
-				let maybe_authority =
-					authority_discovery_service.get_authority_ids_by_peer_id(peer).await;
+				let maybe_authority = None;
 
 				match peer_set {
 					PeerSet::Validation => {
@@ -850,27 +852,25 @@ async fn handle_network_messages<AD: validator_discovery::AuthorityDiscovery>(
 /// #fn is_send<T: Send>();
 /// #is_send::<parking_lot::MutexGuard<'static, ()>();
 /// ```
-async fn run_network<N, AD, Context>(
-	bridge: NetworkBridge<N, AD>,
+async fn run_network<N, Context>(
+	bridge: NetworkBridge<N>,
 	mut ctx: Context,
 	network_stream: BoxStream<'static, NetworkEvent>,
 ) -> SubsystemResult<()>
 where
 	N: Network,
-	AD: validator_discovery::AuthorityDiscovery + Clone,
 	Context: SubsystemContext<Message = NetworkBridgeMessage>
 		+ overseer::SubsystemContext<Message = NetworkBridgeMessage>,
 {
 	let shared = Shared::default();
 
-	let NetworkBridge { network_service, authority_discovery_service, metrics, sync_oracle } =
+	let NetworkBridge { network_service, metrics, sync_oracle } =
 		bridge;
 
 	let (remote, network_event_handler) = handle_network_messages(
 		ctx.sender().clone(),
 		network_service.clone(),
 		network_stream,
-		authority_discovery_service.clone(),
 		metrics.clone(),
 		shared.clone(),
 	)
@@ -881,7 +881,6 @@ where
 	let subsystem_event_handler = handle_subsystem_messages(
 		ctx,
 		network_service,
-		authority_discovery_service,
 		shared,
 		sync_oracle,
 		metrics,
