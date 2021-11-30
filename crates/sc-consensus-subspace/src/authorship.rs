@@ -21,21 +21,20 @@ use log::{debug, trace, warn};
 use sc_consensus::block_import::BlockImport;
 use sc_consensus_epochs::ViableEpochDescriptor;
 use sc_consensus_slots::BackoffAuthoringBlocksStrategy;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
+use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::SecretKey;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache};
 use sp_consensus::{Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest, Solution,
+    CompatibleDigestItem, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest,
 };
 use sp_consensus_subspace::{ConsensusLog, SubspaceApi, SUBSPACE_ENGINE_ID};
 use sp_core::sr25519::Pair;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, Zero};
 pub use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Randomness, Salt};
 
 type EpochData<B> = ViableEpochDescriptor<<B as BlockT>::Hash, NumberFor<B>, Epoch>;
 
@@ -113,94 +112,67 @@ where
 {
     debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
-    struct PreparedData<B: BlockT> {
-        block_id: BlockId<B>,
-        solution_range: u64,
-        epoch_randomness: Randomness,
-        salt: Salt,
-        solution_receiver: TracingUnboundedReceiver<(Solution, Vec<u8>)>,
-    }
-
     let parent_block_id = BlockId::Hash(parent_header.hash());
-    let maybe_prepared_data: Option<PreparedData<B>> = try {
-        let epoch_changes = worker.subspace_link.epoch_changes.shared_data();
-        let epoch = epoch_changes.viable_epoch(epoch_descriptor, |slot| {
+    let runtime_api = worker.client.runtime_api();
+
+    let epoch_randomness = worker
+        .subspace_link
+        .epoch_changes
+        .shared_data()
+        .viable_epoch(epoch_descriptor, |slot| {
             Epoch::genesis(&worker.subspace_link.config, slot)
+        })?
+        .as_ref()
+        .randomness;
+
+    // Here we always use parent block as the source of information, thus on the edge of the
+    // era the very first block of the era still uses solution range from the previous one,
+    // but the block after it uses "next" solution range deposited in the first block.
+    let solution_range = find_next_solution_range_digest::<B>(parent_header)
+        .ok()?
+        .map(|d| d.solution_range)
+        .or_else(|| {
+            // We use runtime API as it will fallback to default value for genesis when
+            // there is no solution range stored yet
+            runtime_api.solution_range(&parent_block_id).ok()
         })?;
-        let epoch_randomness = epoch.as_ref().randomness;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // era the very first block of the era still uses solution range from the previous one,
-        // but the block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_next_solution_range_digest::<B>(parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no solution range stored yet
-                worker
-                    .client
-                    .runtime_api()
-                    .solution_range(&parent_block_id)
-                    .ok()
-            })?;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // eon the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let salt = find_next_salt_digest::<B>(parent_header)
-            .ok()?
-            .map(|d| d.salt)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no salt stored yet
-                worker.client.runtime_api().salt(&parent_block_id).ok()
-            })?;
+    // Here we always use parent block as the source of information, thus on the edge of the
+    // eon the very first block of the eon still uses salt from the previous one, but the
+    // block after it uses "next" salt deposited in the first block.
+    let salt = find_next_salt_digest::<B>(parent_header)
+        .ok()?
+        .map(|d| d.salt)
+        .or_else(|| {
+            // We use runtime API as it will fallback to default value for genesis when
+            // there is no salt stored yet
+            runtime_api.salt(&parent_block_id).ok()
+        })?;
 
-        let new_slot_info = NewSlotInfo {
-            slot,
-            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
-            salt: salt.to_le_bytes(),
-            // TODO: This will not be the correct way in the future once salt is no longer
-            //  just an incremented number
-            next_salt: Some((salt + 1).to_le_bytes()),
-            solution_range,
-        };
-        let (solution_sender, solution_receiver) =
-            tracing_unbounded("subspace_slot_solution_stream");
-
-        worker
-            .subspace_link
-            .new_slot_notification_sender
-            .notify(|| NewSlotNotification {
-                new_slot_info,
-                solution_sender,
-            });
-
-        PreparedData {
-            block_id: parent_block_id,
-            solution_range,
-            epoch_randomness,
-            salt: salt.to_le_bytes(),
-            solution_receiver,
-        }
-    };
-
-    let client = worker.client.clone();
-    let signing_context = worker.signing_context.clone();
-
-    let PreparedData {
-        block_id,
+    let new_slot_info = NewSlotInfo {
+        slot,
+        global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+        salt: salt.to_le_bytes(),
+        // TODO: This will not be the correct way in the future once salt is no longer
+        //  just an incremented number
+        next_salt: Some((salt + 1).to_le_bytes()),
         solution_range,
-        epoch_randomness,
-        salt,
-        mut solution_receiver,
-    } = maybe_prepared_data?;
+    };
+    let (solution_sender, mut solution_receiver) =
+        tracing_unbounded("subspace_slot_solution_stream");
+
+    worker
+        .subspace_link
+        .new_slot_notification_sender
+        .notify(|| NewSlotNotification {
+            new_slot_info,
+            solution_sender,
+        });
 
     while let Some((solution, secret_key)) = solution_receiver.next().await {
         // TODO: We need also need to check for equivocation of farmers connected to *this node*
         //  during block import, currently farmers connected to this node are considered trusted
-        if client
-            .runtime_api()
-            .is_in_block_list(&block_id, &solution.public_key)
+        if runtime_api
+            .is_in_block_list(&parent_block_id, &solution.public_key)
             .ok()?
         {
             warn!(
@@ -213,22 +185,14 @@ where
             continue;
         }
 
-        let record_size = worker
-            .client
-            .runtime_api()
-            .record_size(&parent_block_id)
-            .ok()?;
-        let recorded_history_segment_size = worker
-            .client
-            .runtime_api()
+        let record_size = runtime_api.record_size(&parent_block_id).ok()?;
+        let recorded_history_segment_size = runtime_api
             .recorded_history_segment_size(&parent_block_id)
             .ok()?;
         let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
         let segment_index = solution.piece_index / merkle_num_leaves;
         let position = solution.piece_index % merkle_num_leaves;
-        let mut maybe_records_root = worker
-            .client
-            .runtime_api()
+        let mut maybe_records_root = runtime_api
             .records_root(&parent_block_id, segment_index)
             .ok()?;
 
@@ -269,11 +233,11 @@ where
                 epoch_randomness: &epoch_randomness,
                 solution_range,
                 slot,
-                salt,
+                salt: salt.to_le_bytes(),
                 records_root: &records_root,
                 position,
                 record_size,
-                signing_context: &signing_context,
+                signing_context: &worker.signing_context,
             },
         ) {
             Ok(_) => {
