@@ -235,8 +235,6 @@ where
                 }
             };
 
-            let secret_key = SecretKey::from_bytes(&secret_key).ok()?;
-
             match verification::verify_solution::<B>(
                 &solution,
                 verification::VerifySolutionParams {
@@ -253,7 +251,10 @@ where
                 Ok(_) => {
                     debug!(target: "subspace", "Claimed slot {}", slot);
 
-                    return Some((PreDigest { solution, slot }, secret_key.into()));
+                    return Some((
+                        PreDigest { solution, slot },
+                        SecretKey::from_bytes(&secret_key).ok()?.into(),
+                    ));
                 }
                 Err(error) => {
                     warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
