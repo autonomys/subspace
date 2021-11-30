@@ -16,27 +16,36 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    authorship, find_pre_digest, Epoch, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
+    find_pre_digest, subspace_err, verification, Epoch, Error, NewSlotInfo, NewSlotNotification,
+    SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
 };
+use futures::StreamExt;
 use futures::TryFutureExt;
+use log::{debug, trace, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus_epochs::{descendent_query, ViableEpochDescriptor};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
 };
 use sc_telemetry::TelemetryHandle;
+use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
+use schnorrkel::SecretKey;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-use sp_consensus_subspace::SubspaceApi;
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest,
+};
+use sp_consensus_subspace::{ConsensusLog, SubspaceApi, SUBSPACE_ENGINE_ID};
 use sp_core::sr25519::Pair;
 use sp_core::Pair as _;
-use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header};
+use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
+use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, Zero};
 use std::future::Future;
 use std::{borrow::Cow, pin::Pin, sync::Arc};
+pub use subspace_archiving::archiver::ArchivedSegment;
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     pub(super) client: Arc<C>,
@@ -112,7 +121,148 @@ where
         slot: Slot,
         epoch_descriptor: &Self::EpochData,
     ) -> Option<Self::Claim> {
-        authorship::claim_slot(self, parent_header, slot, epoch_descriptor).await
+        debug!(target: "subspace", "Attempting to claim slot {}", slot);
+
+        let parent_block_id = BlockId::Hash(parent_header.hash());
+        let runtime_api = self.client.runtime_api();
+
+        let epoch_randomness = self
+            .subspace_link
+            .epoch_changes
+            .shared_data()
+            .viable_epoch(epoch_descriptor, |slot| {
+                Epoch::genesis(&self.subspace_link.config, slot)
+            })?
+            .as_ref()
+            .randomness;
+
+        // Here we always use parent block as the source of information, thus on the edge of the
+        // era the very first block of the era still uses solution range from the previous one,
+        // but the block after it uses "next" solution range deposited in the first block.
+        let solution_range = find_next_solution_range_digest::<B>(parent_header)
+            .ok()?
+            .map(|d| d.solution_range)
+            .or_else(|| {
+                // We use runtime API as it will fallback to default value for genesis when
+                // there is no solution range stored yet
+                runtime_api.solution_range(&parent_block_id).ok()
+            })?;
+        // Here we always use parent block as the source of information, thus on the edge of the
+        // eon the very first block of the eon still uses salt from the previous one, but the
+        // block after it uses "next" salt deposited in the first block.
+        let salt = find_next_salt_digest::<B>(parent_header)
+            .ok()?
+            .map(|d| d.salt)
+            .or_else(|| {
+                // We use runtime API as it will fallback to default value for genesis when
+                // there is no salt stored yet
+                runtime_api.salt(&parent_block_id).ok()
+            })?;
+
+        let new_slot_info = NewSlotInfo {
+            slot,
+            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+            salt: salt.to_le_bytes(),
+            // TODO: This will not be the correct way in the future once salt is no longer
+            //  just an incremented number
+            next_salt: Some((salt + 1).to_le_bytes()),
+            solution_range,
+        };
+        let (solution_sender, mut solution_receiver) =
+            tracing_unbounded("subspace_slot_solution_stream");
+
+        self.subspace_link
+            .new_slot_notification_sender
+            .notify(|| NewSlotNotification {
+                new_slot_info,
+                solution_sender,
+            });
+
+        while let Some((solution, secret_key)) = solution_receiver.next().await {
+            // TODO: We need also need to check for equivocation of farmers connected to *this node*
+            //  during block import, currently farmers connected to this node are considered trusted
+            if runtime_api
+                .is_in_block_list(&parent_block_id, &solution.public_key)
+                .ok()?
+            {
+                warn!(
+                    target: "subspace",
+                    "Ignoring solution for slot {} provided by farmer in block list: {}",
+                    slot,
+                    solution.public_key,
+                );
+
+                continue;
+            }
+
+            let record_size = runtime_api.record_size(&parent_block_id).ok()?;
+            let recorded_history_segment_size = runtime_api
+                .recorded_history_segment_size(&parent_block_id)
+                .ok()?;
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            let segment_index = solution.piece_index / merkle_num_leaves;
+            let position = solution.piece_index % merkle_num_leaves;
+            let mut maybe_records_root = runtime_api
+                .records_root(&parent_block_id, segment_index)
+                .ok()?;
+
+            // This is not a very nice hack due to the fact that at the time first block is produced
+            // extrinsics with root blocks are not yet in runtime.
+            if maybe_records_root.is_none() && parent_header.number().is_zero() {
+                maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+                    |(_block_number, root_blocks)| {
+                        root_blocks.iter().find_map(|root_block| {
+                            if root_block.segment_index() == segment_index {
+                                Some(root_block.records_root())
+                            } else {
+                                None
+                            }
+                        })
+                    },
+                );
+            }
+
+            let records_root = match maybe_records_root {
+                Some(records_root) => records_root,
+                None => {
+                    warn!(
+                        target: "subspace",
+                        "Records root for segment index {} not found (slot {})",
+                        segment_index,
+                        slot,
+                    );
+                    continue;
+                }
+            };
+
+            match verification::verify_solution::<B>(
+                &solution,
+                verification::VerifySolutionParams {
+                    epoch_randomness: &epoch_randomness,
+                    solution_range,
+                    slot,
+                    salt: salt.to_le_bytes(),
+                    records_root: &records_root,
+                    position,
+                    record_size,
+                    signing_context: &self.signing_context,
+                },
+            ) {
+                Ok(_) => {
+                    debug!(target: "subspace", "Claimed slot {}", slot);
+
+                    return Some((
+                        PreDigest { solution, slot },
+                        SecretKey::from_bytes(&secret_key).ok()?.into(),
+                    ));
+                }
+                Err(error) => {
+                    warn!(target: "subspace", "Invalid solution received for slot {}: {:?}", slot, error);
+                }
+            }
+        }
+
+        None
     }
 
     fn pre_digest_data(
@@ -229,4 +379,52 @@ where
         // number smaller than `1` disables that functionality and we don't want it
         Some(2)
     }
+}
+
+/// Extract the next Subspace solution range digest from the given header if it exists.
+fn find_next_solution_range_digest<B: BlockT>(
+    header: &B::Header,
+) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>>
+where
+    DigestItemFor<B>: CompatibleDigestItem,
+{
+    let mut next_solution_range_digest: Option<_> = None;
+    for log in header.digest().logs() {
+        trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
+        match (log, next_solution_range_digest.is_some()) {
+            (Some(ConsensusLog::NextSolutionRangeData(_)), true) => {
+                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests))
+            }
+            (Some(ConsensusLog::NextSolutionRangeData(solution_range)), false) => {
+                next_solution_range_digest = Some(solution_range)
+            }
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
+        }
+    }
+
+    Ok(next_solution_range_digest)
+}
+
+/// Extract the next Subspace salt digest from the given header if it exists.
+fn find_next_salt_digest<B: BlockT>(
+    header: &B::Header,
+) -> Result<Option<NextSaltDescriptor>, Error<B>>
+where
+    DigestItemFor<B>: CompatibleDigestItem,
+{
+    let mut next_salt_digest: Option<_> = None;
+    for log in header.digest().logs() {
+        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
+        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
+        match (log, next_salt_digest.is_some()) {
+            (Some(ConsensusLog::NextSaltData(_)), true) => {
+                return Err(subspace_err(Error::MultipleSaltDigests))
+            }
+            (Some(ConsensusLog::NextSaltData(salt)), false) => next_salt_digest = Some(salt),
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
+        }
+    }
+
+    Ok(next_salt_digest)
 }
