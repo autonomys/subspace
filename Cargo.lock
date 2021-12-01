@@ -5153,6 +5153,7 @@ dependencies = [
  "sp-authority-discovery",
  "sp-consensus-babe",
  "sp-core",
+ "sp-executor",
  "tracing",
 ]
 
@@ -8373,6 +8374,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "sp-timestamp",
  "structopt",

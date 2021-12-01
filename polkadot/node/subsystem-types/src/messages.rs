@@ -667,6 +667,8 @@ pub enum RuntimeApiRequest {
 	CurrentBabeEpoch(RuntimeApiSender<BabeEpoch>),
 	/// Get all disputes in relation to a relay parent.
 	FetchOnChainVotes(RuntimeApiSender<Option<polkadot_primitives::v1::ScrapedOnChainVotes>>),
+	SubmitCandidateReceipt(u32, Hash),
+	PendingHead(RuntimeApiSender<Option<Hash>>),
 }
 
 /// A message to the Runtime API subsystem.

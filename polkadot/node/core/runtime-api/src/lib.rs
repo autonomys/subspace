@@ -33,6 +33,7 @@ use polkadot_subsystem::{
 
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnNamed;
+use sp_executor::ExecutorApi;
 
 use cache::{RequestResult, RequestResultCache};
 use futures::{channel::oneshot, prelude::*, select, stream::FuturesUnordered};
@@ -88,6 +89,7 @@ impl<Client> RuntimeApiSubsystem<Client> {
 impl<Client, Context> overseer::Subsystem<Context, SubsystemError> for RuntimeApiSubsystem<Client>
 where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
+	Client::Api: ExecutorApi<Block>,
 	Context: SubsystemContext<Message = RuntimeApiMessage>,
 	Context: overseer::SubsystemContext<Message = RuntimeApiMessage>,
 {
@@ -99,6 +101,7 @@ where
 impl<Client> RuntimeApiSubsystem<Client>
 where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
+	Client::Api: ExecutorApi<Block>
 {
 	fn store_cache(&mut self, result: RequestResult) {
 		use RequestResult::*;
@@ -150,6 +153,8 @@ where
 				self.requests_cache.cache_current_babe_epoch(relay_parent, epoch),
 			FetchOnChainVotes(relay_parent, scraped) =>
 				self.requests_cache.cache_on_chain_votes(relay_parent, scraped),
+			SubmitCandidateReceipt(..) => {}
+			PendingHead(..) => {}
 		}
 	}
 
@@ -233,6 +238,8 @@ where
 				query!(current_babe_epoch(), sender).map(|sender| Request::CurrentBabeEpoch(sender)),
 			Request::FetchOnChainVotes(sender) =>
 				query!(on_chain_votes(), sender).map(|sender| Request::FetchOnChainVotes(sender)),
+			Request::SubmitCandidateReceipt(..) => None,
+			Request::PendingHead(..) => None,
 		}
 	}
 
@@ -244,10 +251,11 @@ where
 		let metrics = self.metrics.clone();
 		let (sender, receiver) = oneshot::channel();
 
-		let request = match self.query_cache(relay_parent.clone(), request) {
-			Some(request) => request,
-			None => return,
-		};
+		// XXX Disable cache as it's broken now.
+		// let request = match self.query_cache(relay_parent.clone(), request) {
+			// Some(request) => request,
+			// None => return,
+		// };
 
 		let request = async move {
 			let result = make_runtime_api_request(client, metrics, relay_parent, request);
@@ -298,6 +306,7 @@ async fn run<Client, Context>(
 ) -> SubsystemResult<()>
 where
 	Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+	Client::Api: ExecutorApi<Block>,
 	Context: SubsystemContext<Message = RuntimeApiMessage>,
 	Context: overseer::SubsystemContext<Message = RuntimeApiMessage>,
 {
@@ -326,6 +335,7 @@ fn make_runtime_api_request<Client>(
 ) -> Option<RequestResult>
 where
 	Client: ProvideRuntimeApi<Block>,
+	Client::Api: ExecutorApi<Block>,
 {
 	let _timer = metrics.time_make_runtime_api_request();
 
@@ -343,6 +353,24 @@ where
 	}
 
 	match request {
+		Request::SubmitCandidateReceipt(head_number, head_hash) =>
+		{
+			let api = client.runtime_api();
+			let res = api.submit_candidate_receipt_unsigned(&BlockId::Hash(relay_parent), head_number, head_hash)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok().map(|res| RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash));
+		}
+		Request::PendingHead(sender) => {
+			let api = client.runtime_api();
+			let res = api.pending_head(&BlockId::Hash(relay_parent))
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+
+			let _ = sender.send(res.clone());
+
+			res.ok().map(|res| RequestResult::PendingHead(relay_parent, res));
+		}
 		_ => {
 			println!("Unsupported RuntimeApiRequest: {:?}", request);
 		}

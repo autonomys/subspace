@@ -19,6 +19,8 @@ polkadot-primitives = { path = "../../../primitives" }
 polkadot-subsystem = { package = "polkadot-node-subsystem", path = "../../subsystem" }
 polkadot-node-subsystem-util = { path = "../../subsystem-util" }
 
+sp-executor = { path = "../../../../crates/sp-executor" }
+
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 futures = { version = "0.3.17", features = ["thread-pool"] }

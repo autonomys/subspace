@@ -22,13 +22,13 @@ use futures::{channel::mpsc, future::FutureExt, join, select, sink::SinkExt, str
 use parity_scale_codec::Encode;
 use polkadot_node_primitives::{AvailableData, PoV};
 use polkadot_node_subsystem::{
-	messages::{AllMessages, CollationGenerationMessage, CollatorProtocolMessage},
+	messages::{AllMessages, CollationGenerationMessage, CollatorProtocolMessage, RuntimeApiMessage, RuntimeApiRequest},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
 	SubsystemError, SubsystemResult,
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_availability_cores, request_persisted_validation_data, request_validation_code,
+	request_availability_cores, request_persisted_validation_data, request_validation_code, request_pending_head,
 	request_validators,
 };
 use polkadot_primitives::v1::{
@@ -187,7 +187,31 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 ) -> crate::error::Result<()> {
 	for relay_parent in activated {
 		let task_config = config.clone();
-		let validation_data = PersistedValidationData::default();
+
+		// Request the current pending head of executor chain and send it back to the executor node at the end.
+		let pending_head: Hash = match request_pending_head(
+			relay_parent,
+			ctx.sender(),
+		)
+		.await
+		.await?
+		{
+			Ok(v) => v.unwrap_or_default(),
+			Err(e) => {
+				tracing::trace!(
+					target: LOG_TARGET,
+					relay_parent = ?relay_parent,
+					error = ?e,
+					"Pending head is not available",
+				);
+				continue
+			},
+		};
+
+
+		let mut validation_data = PersistedValidationData::default();
+		validation_data.parent_head = pending_head.encode();
+
 		let (collation, result_sender) =
 			match (task_config.collator)(relay_parent, &validation_data).await {
 				Some(collation) => collation.into_inner(),
@@ -199,6 +223,36 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 					return Ok(());
 				},
 			};
+
+		// Pretend we are processing the ER and then submit it to primary chain via an unsigned extrinsic.
+		let head_hash = collation.head_data.hash();
+		let head_number = collation.number;
+
+		let task_config = config.clone();
+		let mut task_sender = sender.clone();
+		let metrics = metrics.clone();
+		ctx.spawn(
+			"collation generation collation builder",
+			Box::pin(async move {
+				if let Err(err) = task_sender
+					.send(AllMessages::RuntimeApi(
+						RuntimeApiMessage::Request(relay_parent, RuntimeApiRequest::SubmitCandidateReceipt(head_number, head_hash))
+					))
+					.await
+				{
+					tracing::warn!(
+						target: LOG_TARGET,
+						err = ?err,
+						"failed to send RuntimeApiRequest::SubmitCandidateReceipt",
+					);
+				} else {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Sent RuntimeApiRequest::SubmitCandidateReceipt successfully",
+					);
+				}
+			}
+		));
 	}
 
 	Ok(())

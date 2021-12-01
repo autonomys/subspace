@@ -24,7 +24,7 @@ use polkadot_overseer::{
 use sc_client_api::AuxStore;
 use sc_keystore::LocalKeystore;
 use sp_api::ProvideRuntimeApi;
-// use sp_authority_discovery::AuthorityDiscoveryApi;
+use sp_executor::ExecutorApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
 use std::sync::Arc;
@@ -72,7 +72,7 @@ impl IsCollator {
 pub struct OverseerGenArgs<'a, Spawner, RuntimeClient>
 where
     RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-    // RuntimeClient::Api: AuthorityDiscoveryApi<Block>,
+    RuntimeClient::Api: ExecutorApi<Block>,
     Spawner: 'static + SpawnNamed + Clone + Unpin,
 {
     /// Set of initial relay chain leaves to track.
@@ -127,7 +127,7 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
 >
 where
     RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-    // RuntimeClient::Api: AuthorityDiscoveryApi<Block>,
+    RuntimeClient::Api: ExecutorApi<Block>,
     Spawner: 'static + SpawnNamed + Clone + Unpin,
 {
     use polkadot_node_subsystem_util::metrics::Metrics;
@@ -199,7 +199,7 @@ pub trait OverseerGen {
     ) -> Result<(Overseer<Spawner, Arc<RuntimeClient>>, OverseerHandle), Error>
     where
         RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-        // RuntimeClient::Api: AuthorityDiscoveryApi<Block>,
+        RuntimeClient::Api: ExecutorApi<Block>,
         Spawner: 'static + SpawnNamed + Clone + Unpin,
     {
         let gen = RealOverseerGen;
@@ -223,7 +223,7 @@ impl OverseerGen for RealOverseerGen {
     ) -> Result<(Overseer<Spawner, Arc<RuntimeClient>>, OverseerHandle), Error>
     where
         RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-        // RuntimeClient::Api: AuthorityDiscoveryApi<Block>,
+        RuntimeClient::Api: ExecutorApi<Block>,
         Spawner: 'static + SpawnNamed + Clone + Unpin,
     {
         prepared_overseer_builder(args)?
