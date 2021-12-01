@@ -1,0 +1,38 @@
+[package]
+name = "cumulus-primitives-utility"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+
+[dependencies]
+# Substrate dependencies
+sp-std = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-trie = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+frame-support = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+# Polkadot dependencies
+polkadot-parachain = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+polkadot-primitives = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+polkadot-core-primitives = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+xcm = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+
+cumulus-primitives-core = { path = "../core", default-features = false }
+
+# Other dependencies
+codec = { package = "parity-scale-codec", version = "2.3.0", default-features = false, features = [ "derive" ] }
+
+
+[features]
+default = [ "std" ]
+std = [
+	"codec/std",
+	"sp-std/std",
+	"polkadot-primitives/std",
+	"polkadot-parachain/std",
+	"polkadot-core-primitives/std",
+	"sp-runtime/std",
+	"sp-trie/std",
+	"frame-support/std",
+	"cumulus-primitives-core/std",
+]

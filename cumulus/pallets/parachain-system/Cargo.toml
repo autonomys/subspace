@@ -1,0 +1,76 @@
+[package]
+name = "cumulus-pallet-parachain-system"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+description = "Base pallet for cumulus-based parachains"
+
+[dependencies]
+# Cumulus dependencies
+cumulus-primitives-core = { path = "../../primitives/core", default-features = false }
+cumulus-primitives-parachain-inherent = { path = "../../primitives/parachain-inherent", default-features = false }
+cumulus-pallet-parachain-system-proc-macro = { path = "proc-macro", default-features = false }
+
+# Polkadot dependencies
+polkadot-parachain = { git = "https://github.com/liuchengxu/polkadot", default-features = false, features = [ "wasm-api" ], rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+xcm = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+
+# Substrate dependencies
+frame-support = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+pallet-balances = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-core = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-io = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-std = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-version = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+frame-system = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-state-machine = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-trie = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-externalities = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+# Other Dependencies
+codec = { package = "parity-scale-codec", version = "2.3.0", default-features = false, features = ["derive"]}
+scale-info = { version = "1.0.0", default-features = false, features = ["derive"] }
+serde = { version = "1.0.101", optional = true, features = ["derive"] }
+log = { version = "0.4.14", default-features = false }
+environmental = { version = "1.1.2", default-features = false }
+
+[dev-dependencies]
+# Other Dependencies
+hex-literal = "0.2.1"
+lazy_static = "1.4"
+
+# Substrate dependencies
+sp-version = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-tracing = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+# Cumulus dependencies
+# cumulus-test-client = { path = "../../test/client" }
+# cumulus-test-relay-sproof-builder = { path = "../../test/relay-sproof-builder" }
+
+[features]
+default = [ "std" ]
+std = [
+	"serde",
+	"codec/std",
+	"scale-info/std",
+	"frame-support/std",
+	"pallet-balances/std",
+	"sp-core/std",
+	"sp-runtime/std",
+	"sp-io/std",
+	"sp-std/std",
+	"log/std",
+	"sp-state-machine/std",
+	"sp-trie/std",
+	"sp-externalities/std",
+	"frame-system/std",
+	"cumulus-primitives-core/std",
+	"cumulus-primitives-parachain-inherent/std",
+	"cumulus-pallet-parachain-system-proc-macro/std",
+	"environmental/std",
+	"xcm/std"
+]
