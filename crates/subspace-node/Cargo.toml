@@ -55,7 +55,30 @@ sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/subst
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 structopt = "0.3.22"
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
+subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+futures = "0.3.17"
+lru = "0.7"
+thiserror = "1.0"
+codec = { package = "parity-scale-codec", version = "2.3.0", features = ["derive"] }
+scale-info = { version = "1.0", features = ["derive"] }
+
+sc-authority-discovery = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sc-keystore = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-authority-discovery = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+polkadot-overseer = { path = "../../polkadot/node/overseer" }
+polkadot-collator-protocol = { path = "../../polkadot/node/network/collator-protocol" }
+polkadot-network-bridge = { path = "../../polkadot/node/network/bridge" }
+polkadot-primitives = { path = "../../polkadot/primitives" }
+polkadot-node-core-chain-api = { path = "../../polkadot/node/core/chain-api" }
+polkadot-node-core-runtime-api = { path = "../../polkadot/node/core/runtime-api" }
+polkadot-node-collation-generation = { path = "../../polkadot/node/collation-generation" }
+polkadot-node-network-protocol = { path = "../../polkadot/node/network/protocol" }
+polkadot-node-subsystem-util = { path = "../../polkadot/node/subsystem-util" }
 
 [build-dependencies]
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }

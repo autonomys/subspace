@@ -19,8 +19,18 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(int_log)]
 
+use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+use sp_application_crypto::KeyTypeId;
+#[cfg(feature = "std")]
+use sp_core::bytes;
+use sp_core::RuntimeDebug;
+use sp_runtime::traits::Hash as HashT;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
+use sp_std::vec::Vec;
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
 
 // TODO: Proper value here
@@ -86,7 +96,9 @@ pub mod opaque {
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
+    pub type Block = generic::Block<Header, OpaqueExtrinsic>;
 
+    /* FIXME: this abstraction does not compile with overseer.
     /// Abstraction over a substrate block.
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
     #[cfg_attr(
@@ -134,6 +146,48 @@ pub mod opaque {
             (header, extrinsics).encode()
         }
     }
+    */
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
+}
+
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Debug, Default))]
+pub struct PersistedValidationData<H = Hash, N = BlockNumber> {
+    /// The parent head-data.
+    pub parent_head: Vec<u8>,
+    /// The relay-chain block number this is in the context of.
+    pub relay_parent_number: N,
+    /// The relay-chain block storage root this is in the context of.
+    pub relay_parent_storage_root: H,
+}
+
+/// The key type ID for a collator key.
+pub const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
+
+mod collator_app {
+    use sp_application_crypto::{app_crypto, sr25519};
+    app_crypto!(sr25519, super::COLLATOR_KEY_TYPE_ID);
+}
+
+/// Identity that collators use.
+pub type CollatorId = collator_app::Public;
+
+/// A Parachain collator keypair.
+#[cfg(feature = "std")]
+pub type CollatorPair = collator_app::Pair;
+
+/// Signature on candidate's block data by a collator.
+pub type CollatorSignature = collator_app::Signature;
+
+/// Parachain head data included in the chain.
+#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Encode, Decode, RuntimeDebug, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, Default, Hash))]
+pub struct HeadData(#[cfg_attr(feature = "std", serde(with = "bytes"))] pub Vec<u8>);
+
+impl HeadData {
+    /// Returns the hash of this head data.
+    pub fn hash(&self) -> Hash {
+        sp_runtime::traits::BlakeTwo256::hash(&self.0)
+    }
 }

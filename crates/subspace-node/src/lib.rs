@@ -16,7 +16,7 @@
 
 //! Subspace Node library.
 
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 
 mod chain_spec;
 #[macro_use]
@@ -25,4 +25,4 @@ pub mod cli;
 mod command;
 mod rpc;
 
-pub use self::command::run;
+pub use self::command::{run, Error};

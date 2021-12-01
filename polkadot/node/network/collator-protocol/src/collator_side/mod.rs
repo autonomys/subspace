@@ -41,7 +41,7 @@ use polkadot_node_subsystem_util::{
 	TimeoutExt,
 };
 use polkadot_primitives::v1::{
-	AuthorityDiscoveryId, CandidateHash, CandidateReceipt, CollatorPair, CoreIndex, CoreState,
+	AuthorityDiscoveryId, CandidateHash, CandidateReceipt, CoreIndex, CoreState,
 	GroupIndex, Hash, Id as ParaId,
 };
 use polkadot_subsystem::{
@@ -49,6 +49,8 @@ use polkadot_subsystem::{
 	messages::{CollatorProtocolMessage, NetworkBridgeEvent, NetworkBridgeMessage},
 	overseer, FromOverseer, OverseerSignal, PerLeafSpan, SubsystemContext,
 };
+
+use subspace_runtime_primitives::CollatorPair;
 
 use super::{Result, LOG_TARGET};
 use crate::error::{log_error, Fatal, FatalResult, NonFatal};

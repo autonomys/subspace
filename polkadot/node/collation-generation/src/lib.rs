@@ -20,7 +20,7 @@
 
 use futures::{channel::mpsc, future::FutureExt, join, select, sink::SinkExt, stream::StreamExt};
 use parity_scale_codec::Encode;
-use polkadot_node_primitives::{AvailableData, CollationGenerationConfig, PoV};
+use polkadot_node_primitives::{AvailableData, PoV};
 use polkadot_node_subsystem::{
 	messages::{AllMessages, CollationGenerationMessage, CollatorProtocolMessage},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
@@ -33,10 +33,13 @@ use polkadot_node_subsystem_util::{
 };
 use polkadot_primitives::v1::{
 	collator_signature_payload, CandidateCommitments, CandidateDescriptor, CandidateReceipt,
-	CoreState, Hash, OccupiedCoreAssumption, PersistedValidationData,
+	CoreState, Hash, OccupiedCoreAssumption,
 };
 use sp_core::crypto::Pair;
 use std::sync::Arc;
+
+use subspace_node_primitives::CollationGenerationConfig;
+use subspace_runtime_primitives::PersistedValidationData;
 
 mod error;
 
@@ -119,7 +122,7 @@ impl CollationGenerationSubsystem {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					let metrics = self.metrics.clone();
-					if let Err(err) = handle_new_activations(
+					if let Err(err) = handle_new_activations_subspace(
 						config.clone(),
 						activated.into_iter().map(|v| v.hash),
 						ctx,
@@ -175,6 +178,32 @@ where
 	}
 }
 
+async fn handle_new_activations_subspace<Context: SubsystemContext>(
+	config: Arc<CollationGenerationConfig>,
+	activated: impl IntoIterator<Item = Hash>,
+	ctx: &mut Context,
+	metrics: Metrics,
+	sender: &mpsc::Sender<AllMessages>,
+) -> crate::error::Result<()> {
+	for relay_parent in activated {
+		let task_config = config.clone();
+		let validation_data = PersistedValidationData::default();
+		let (collation, result_sender) =
+			match (task_config.collator)(relay_parent, &validation_data).await {
+				Some(collation) => collation.into_inner(),
+				None => {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"collator returned no collation on collate",
+					);
+					return Ok(());
+				},
+			};
+	}
+
+	Ok(())
+}
+
 async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
@@ -182,6 +211,7 @@ async fn handle_new_activations<Context: SubsystemContext>(
 	metrics: Metrics,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()> {
+	/*
 	// follow the procedure from the guide:
 	// https://w3f.github.io/parachain-implementers-guide/node/collators/collation-generation.html
 
@@ -410,6 +440,7 @@ async fn handle_new_activations<Context: SubsystemContext>(
 			)?;
 		}
 	}
+	*/
 
 	Ok(())
 }
@@ -419,11 +450,14 @@ fn erasure_root(
 	persisted_validation: PersistedValidationData,
 	pov: PoV,
 ) -> crate::error::Result<Hash> {
+	unreachable!("No erasure_root")
+	/*
 	let available_data =
 		AvailableData { validation_data: persisted_validation, pov: Arc::new(pov) };
 
 	let chunks = polkadot_erasure_coding::obtain_chunks_v1(n_validators, &available_data)?;
 	Ok(polkadot_erasure_coding::branches(&chunks).root())
+	*/
 }
 
 #[derive(Clone)]

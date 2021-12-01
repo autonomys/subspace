@@ -34,7 +34,7 @@ use polkadot_node_network_protocol::{
 };
 use polkadot_node_primitives::{
 	approval::{BlockApprovalMeta, IndirectAssignmentCert, IndirectSignedApprovalVote},
-	AvailableData, BabeEpoch, BlockWeight, CandidateVotes, CollationGenerationConfig,
+	AvailableData, BabeEpoch, BlockWeight, CandidateVotes,
 	CollationSecondedSignal, DisputeMessage, ErasureChunk, PoV, SignedDisputeStatement,
 	SignedFullStatement, ValidationResult,
 };
@@ -53,6 +53,8 @@ use std::{
 	sync::Arc,
 	time::Duration,
 };
+
+use subspace_node_primitives::CollationGenerationConfig;
 
 /// Network events as transmitted to other subsystems, wrapped in their message types.
 pub mod network_bridge_event;

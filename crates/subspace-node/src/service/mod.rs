@@ -16,6 +16,8 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+mod overseer;
+
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
@@ -25,6 +27,40 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
+
+use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
+use polkadot_overseer::{Handle, Overseer, OverseerConnector, OverseerHandle};
+
+pub use overseer::IsCollator;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    AddrFormatInvalid(#[from] std::net::AddrParseError),
+
+    #[error(transparent)]
+    Sub(#[from] sc_service::Error),
+
+    #[error(transparent)]
+    Blockchain(#[from] sp_blockchain::Error),
+
+    #[error(transparent)]
+    Consensus(#[from] sp_consensus::Error),
+
+    #[error("Failed to create an overseer")]
+    Overseer(#[from] polkadot_overseer::SubsystemError),
+
+    #[error(transparent)]
+    Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
+    // #[error(transparent)]
+    // Telemetry(#[from] telemetry::Error),
+
+    // #[error(transparent)]
+    // Jaeger(#[from] polkadot_subsystem::jaeger::JaegerError),
+}
 
 /// Subspace native executor instance.
 pub struct ExecutorDispatch;
@@ -165,12 +201,70 @@ pub fn new_partial(
     })
 }
 
+use polkadot_overseer::BlockInfo;
+use sp_api::ConstructRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus::SelectChain;
+use sp_runtime::traits::Header as HeaderT;
+
+/// Returns the active leaves the overseer should start with.
+async fn active_leaves(
+    select_chain: &impl SelectChain<Block>,
+    client: &FullClient,
+) -> Result<Vec<BlockInfo>, Error>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient> + Send + Sync + 'static,
+{
+    let best_block = select_chain.best_chain().await?;
+
+    let mut leaves = select_chain
+        .leaves()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|hash| {
+            let number = HeaderBackend::number(client, hash).ok()??;
+
+            // Only consider leaves that are in maximum an uncle of the best block.
+            if number < best_block.number().saturating_sub(1) {
+                return None;
+            } else if hash == best_block.hash() {
+                return None;
+            };
+
+            let parent_hash = client.header(&BlockId::Hash(hash)).ok()??.parent_hash;
+
+            Some(BlockInfo {
+                hash,
+                parent_hash,
+                number,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // Sort by block number and get the maximum number of leaves
+    leaves.sort_by_key(|b| b.number);
+
+    leaves.push(BlockInfo {
+        hash: best_block.hash(),
+        parent_hash: *best_block.parent_hash(),
+        number: *best_block.number(),
+    });
+
+    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+    const MAX_ACTIVE_LEAVES: usize = 4;
+
+    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
+}
+
 /// Full client along with some other components.
 pub struct NewFull<C> {
     /// Task manager.
     pub task_manager: TaskManager,
     /// Full client.
     pub client: C,
+    ///
+    pub overseer_handle: Option<Handle>,
     /// Network.
     pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
     /// RPC handlers.
@@ -180,7 +274,16 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, ServiceError> {
+pub fn new_full(mut config: Configuration, is_collator: IsCollator) -> Result<NewFull<Arc<FullClient>>, Error> {
+    let overseer_gen = overseer::RealOverseerGen;
+
+    use polkadot_node_network_protocol::request_response::IncomingRequest;
+
+    let prometheus_registry = config.prometheus_registry().cloned();
+
+    let overseer_connector = OverseerConnector::default();
+    let overseer_handle = Handle::new(overseer_connector.handle());
+
     let sc_service::PartialComponents {
         client,
         backend,
@@ -191,6 +294,11 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial(&config)?;
+
+    let local_keystore = keystore_container.local_keystore();
+
+    let (collation_req_receiver, cfg) = IncomingRequest::get_config_receiver();
+    config.network.request_response_protocols.push(cfg);
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -219,6 +327,62 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
+
+    let active_leaves = futures::executor::block_on(active_leaves(&select_chain, &*client))?;
+
+    let overseer_client = client.clone();
+    let spawner = task_manager.spawn_handle();
+
+    // let maybe_params = todo!("Handle maybe_params");
+
+    let overseer_handle = if let Some(keystore) = local_keystore {
+        let (overseer, overseer_handle) = overseer_gen
+            .generate::<sc_service::SpawnTaskHandle, FullClient>(
+                overseer_connector,
+                OverseerGenArgs {
+                    leaves: active_leaves,
+                    keystore,
+                    runtime_client: client.clone(),
+                    network_service: network.clone(),
+                    // authority_discovery_service,
+                    collation_req_receiver,
+                    registry: prometheus_registry.as_ref(),
+                    spawner,
+                    is_collator,
+                },
+            )
+            .map_err(|e| ServiceError::Other(e.to_string()))?;
+
+        let handle = Handle::new(overseer_handle);
+
+        {
+            let handle = handle.clone();
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "overseer",
+                Some("overseer"),
+                Box::pin(async move {
+                    use futures::{pin_mut, select, FutureExt};
+
+                    let forward = polkadot_overseer::forward_events(overseer_client, handle);
+
+                    let forward = forward.fuse();
+                    let overseer_fut = overseer.run().fuse();
+
+                    pin_mut!(overseer_fut);
+                    pin_mut!(forward);
+
+                    select! {
+                        _ = forward => (),
+                        _ = overseer_fut => (),
+                        complete => (),
+                    }
+                }),
+            );
+        }
+        Some(handle)
+    } else {
+        None
+    };
 
     if role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -328,6 +492,7 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
     Ok(NewFull {
         task_manager,
         client,
+        overseer_handle,
         network,
         rpc_handlers,
         backend,
