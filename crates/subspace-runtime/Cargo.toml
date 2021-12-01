@@ -48,6 +48,9 @@ sp-version = { version = "4.0.0-dev", default-features = false, git = "https://g
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
+pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
+sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
+
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -68,6 +71,8 @@ std = [
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"orml-vesting/std",
+	"pallet-executor/std",
+	"sp-executor/std",
 	"pallet-balances/std",
 	"pallet-feeds/std",
 	"pallet-object-store/std",

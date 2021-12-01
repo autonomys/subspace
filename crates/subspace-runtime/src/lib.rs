@@ -35,7 +35,7 @@ use frame_system::EnsureNever;
 use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{
     create_runtime_str, generic,
     transaction_validity::{TransactionSource, TransactionValidity},
@@ -312,6 +312,10 @@ impl pallet_offences_subspace::Config for Runtime {
     type OnOffenceHandler = Subspace;
 }
 
+impl pallet_executor::Config for Runtime {
+    type Event = Event;
+}
+
 parameter_types! {
     pub const BlockReward: Balance = SSC;
 }
@@ -366,6 +370,7 @@ construct_runtime!(
 
         Feeds: pallet_feeds = 6,
         ObjectStore: pallet_object_store = 10,
+        Executor: pallet_executor = 11,
 
         Vesting: orml_vesting = 7,
 
@@ -699,6 +704,23 @@ impl_runtime_apis! {
 
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
             extract_block_object_mapping(block)
+        }
+    }
+
+    impl sp_executor::ExecutorApi<Block> for Runtime {
+        fn submit_candidate_receipt_unsigned(
+            head_number: <<Block as BlockT>::Header as HeaderT>::Number,
+            head_hash: <Block as BlockT>::Hash,
+        ) -> Option<()> {
+            Executor::submit_candidate_receipt_unsigned(head_number, head_hash).ok()
+        }
+
+        fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {
+            Executor::head_hash(number)
+        }
+
+        fn pending_head() -> Option<<Block as BlockT>::Hash> {
+            Executor::pending_head()
         }
     }
 

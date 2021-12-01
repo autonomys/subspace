@@ -4246,6 +4246,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-executor"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "subspace-core-primitives",
+]
+
+[[package]]
 name = "pallet-feeds"
 version = "0.1.0"
 dependencies = [
@@ -7709,6 +7727,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-executor"
+version = "0.1.0"
+dependencies = [
+ "sp-api",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-externalities"
 version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
@@ -8387,6 +8414,7 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
+ "pallet-executor",
  "pallet-feeds",
  "pallet-object-store",
  "pallet-offences-subspace",
@@ -8404,6 +8432,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-offchain",
  "sp-runtime",
