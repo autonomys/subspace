@@ -74,7 +74,6 @@ where
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block>,
 	RA: ProvideRuntimeApi<Block>,
-	RA::Api: CollectCollationInfo<Block>,
 {
 	/// Create a new instance.
 	fn new(
@@ -345,7 +344,6 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-	RA::Api: CollectCollationInfo<Block>,
 {
 	use polkadot_node_subsystem::messages::{CollationGenerationMessage, CollatorProtocolMessage};
 	use subspace_node_primitives::CollationGenerationConfig;

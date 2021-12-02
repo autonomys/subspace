@@ -13,7 +13,6 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use cirrus_client_service::{
 	prepare_node_config, start_full_node, StartFullNodeParams,
 };
-use cumulus_primitives_core::ParaId;
 
 // Substrate Imports
 use sc_executor::NativeElseWasmExecutor;
@@ -167,7 +166,6 @@ where
 async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, BIC>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
-	id: ParaId,
 	_rpc_ext_builder: RB,
 	build_import_queue: BIQ,
 	build_consensus: BIC,
@@ -188,7 +186,6 @@ where
 			StateBackend = sc_client_api::StateBackendFor<TFullBackend<Block>, Block>,
 		> + sp_offchain::OffchainWorkerApi<Block>
 		+ sp_block_builder::BlockBuilder<Block>
-		+ cumulus_primitives_core::CollectCollationInfo<Block>
 		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
 		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
 	sc_client_api::StateBackendFor<TFullBackend<Block>, Block>: sp_api::StateBackend<BlakeTwo256>,
@@ -377,7 +374,6 @@ pub fn parachain_build_import_queue(
 pub async fn start_parachain_node(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
-	id: ParaId,
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
@@ -385,7 +381,6 @@ pub async fn start_parachain_node(
 	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _, _>(
 		parachain_config,
 		polkadot_config,
-		id,
 		|_| Ok(Default::default()),
 		parachain_build_import_queue,
 		|client,

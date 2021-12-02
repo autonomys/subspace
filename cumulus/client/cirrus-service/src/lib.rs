@@ -97,7 +97,6 @@ where
 		+ BlockchainEvents<Block>
 		+ ProvideRuntimeApi<Block>
 		+ 'static,
-	Client::Api: CollectCollationInfo<Block>,
 	RClient: Clone + cumulus_client_consensus_common::RelaychainClient + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<Block>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,

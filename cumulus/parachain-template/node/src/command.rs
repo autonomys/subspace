@@ -3,9 +3,8 @@ use crate::{
 	cli::{Cli, RelayChainCli, Subcommand},
 	service::{new_partial, TemplateRuntimeExecutor},
 };
-use codec::Encode;
 use cirrus_client_service::genesis::generate_genesis_block;
-use cumulus_primitives_core::ParaId;
+use codec::Encode;
 use log::info;
 use parachain_template_runtime::{Block, RuntimeApi};
 // use polkadot_parachain::primitives::AccountIdConversion;
@@ -252,10 +251,10 @@ pub fn run() -> Result<()> {
 					[RelayChainCli::executable_name()].iter().chain(cli.relaychain_args.iter()),
 				);
 
-				let id = ParaId::from(para_id);
+				// let id = ParaId::from(para_id);
 
 				// let parachain_account =
-					// AccountIdConversion::<polkadot_primitives::v0::AccountId>::into_account(&id);
+				// AccountIdConversion::<polkadot_primitives::v0::AccountId>::into_account(&id);
 
 				let block: Block =
 					generate_genesis_block(&config.chain_spec).map_err(|e| format!("{:?}", e))?;
@@ -266,12 +265,12 @@ pub fn run() -> Result<()> {
 					SubstrateCli::create_configuration(&polkadot_cli, &polkadot_cli, tokio_handle)
 						.map_err(|err| format!("Relay chain argument error: {}", err))?;
 
-				info!("Parachain id: {:?}", id);
+				// info!("Parachain id: {:?}", id);
 				// info!("Parachain Account: {}", parachain_account);
 				info!("Parachain genesis state: {}", genesis_state);
 				info!("Is collating: {}", if config.role.is_authority() { "yes" } else { "no" });
 
-				crate::service::start_parachain_node(config, polkadot_config, id)
+				crate::service::start_parachain_node(config, polkadot_config)
 					.await
 					.map(|r| r.0)
 					.map_err(Into::into)

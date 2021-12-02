@@ -81,8 +81,6 @@ sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "
 cumulus-client-cli = { path = "../../client/cli" }
 cumulus-client-consensus-common = { path = "../../client/consensus/common" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
-# FIXME: remove it
-cumulus-primitives-core = { path = "../../primitives/core" }
 
 # Subspace dependencies
 subspace-node = { path = "../../../crates/subspace-node" }
