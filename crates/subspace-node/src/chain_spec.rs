@@ -256,6 +256,7 @@ fn create_genesis_config(
         subspace: SubspaceConfig {
             epoch_config: Some(subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
         },
+        transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.
             key: sudo_account,
