@@ -31,4 +31,4 @@ tracing = "0.1.22"
 async-trait = "0.1.42"
 parking_lot = "0.10.2"
 
-subspace-node = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-node" }
+subspace-node = { path = "../../../../crates/subspace-node" }

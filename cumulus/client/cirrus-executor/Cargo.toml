@@ -31,10 +31,10 @@ parking_lot = "0.10.2"
 tracing = "0.1.25"
 
 # FIXME
-polkadot-overseer = { path = "/home/xlc/src/github.com/subspace/subspace/polkadot/node/overseer" }
-polkadot-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/polkadot/primitives" }
-polkadot-node-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/polkadot/node/primitives" }
-polkadot-node-subsystem = { path = "/home/xlc/src/github.com/subspace/subspace/polkadot/node/subsystem" }
+polkadot-overseer = { path = "../../../polkadot/node/overseer" }
+polkadot-primitives = { path = "../../../polkadot/primitives" }
+polkadot-node-primitives = { path = "../../../polkadot/node/primitives" }
+polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
-subspace-node-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-node-primitives" }
-subspace-runtime-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-runtime-primitives" }
+subspace-node-primitives = { path = "../../../crates/subspace-node-primitives" }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

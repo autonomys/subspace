@@ -29,6 +29,6 @@ parking_lot = "0.10.2"
 derive_more = "0.99.2"
 
 # Subspace
-subspace-node = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-node" }
-subspace-runtime-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-runtime-primitives" }
-subspace-node-primitives = { path = "/home/xlc/src/github.com/subspace/subspace/crates/subspace-node-primitives" }
+subspace-node = { path = "../../../crates/subspace-node" }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
+subspace-node-primitives = { path = "../../../crates/subspace-node-primitives" }
