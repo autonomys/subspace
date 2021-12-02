@@ -274,10 +274,11 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(mut config: Configuration, is_collator: IsCollator) -> Result<NewFull<Arc<FullClient>>, Error> {
+pub fn new_full(
+    mut config: Configuration,
+    is_collator: IsCollator,
+) -> Result<NewFull<Arc<FullClient>>, Error> {
     let overseer_gen = overseer::RealOverseerGen;
-
-    use polkadot_node_network_protocol::request_response::IncomingRequest;
 
     let prometheus_registry = config.prometheus_registry().cloned();
 
@@ -296,9 +297,6 @@ pub fn new_full(mut config: Configuration, is_collator: IsCollator) -> Result<Ne
     } = new_partial(&config)?;
 
     let local_keystore = keystore_container.local_keystore();
-
-    let (collation_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-    config.network.request_response_protocols.push(cfg);
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -345,7 +343,6 @@ pub fn new_full(mut config: Configuration, is_collator: IsCollator) -> Result<Ne
                     runtime_client: client.clone(),
                     network_service: network.clone(),
                     // authority_discovery_service,
-                    collation_req_receiver,
                     registry: prometheus_registry.as_ref(),
                     spawner,
                     is_collator,

@@ -416,9 +416,6 @@ pub struct Overseer<SupportsParachains> {
 	#[subsystem(no_dispatch, CollationGenerationMessage)]
 	collation_generation: CollationGeneration,
 
-	#[subsystem(no_dispatch, CollatorProtocolMessage)]
-	collator_protocol: CollatorProtocol,
-
 	/// External listeners waiting for a hash to be in the active-leave set.
 	pub activation_external_listeners: HashMap<Hash, Vec<oneshot::Sender<SubsystemResult<()>>>>,
 

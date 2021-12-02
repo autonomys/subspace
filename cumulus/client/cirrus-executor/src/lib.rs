@@ -93,7 +93,11 @@ where
 	/// Checks the status of the given block hash in the Parachain.
 	///
 	/// Returns `true` if the block could be found and is good to be build on.
-	fn check_block_status(&self, hash: Block::Hash, number: <Block::Header as HeaderT>::Number) -> bool {
+	fn check_block_status(
+		&self,
+		hash: Block::Hash,
+		number: <Block::Header as HeaderT>::Number,
+	) -> bool {
 		match self.block_status.block_status(&BlockId::Hash(hash)) {
 			Ok(BlockStatus::Queued) => {
 				tracing::debug!(
@@ -356,7 +360,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	);
 
 	let span = tracing::Span::current();
-	let para_id = 999.into();
+	// let para_id = 999.into();
 	let config = CollationGenerationConfig {
 		key,
 		collator: Box::new(move |relay_parent, validation_data| {
@@ -373,9 +377,9 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 		.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
 		.await;
 
-	overseer_handle
-		.send_msg(CollatorProtocolMessage::CollateOn(para_id), "StartCollator")
-		.await;
+	// overseer_handle
+	// 	.send_msg(CollatorProtocolMessage::CollateOn(para_id), "StartCollator")
+	// 	.await;
 }
 
 #[cfg(test)]

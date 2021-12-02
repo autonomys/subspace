@@ -15,7 +15,6 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use lru::LruCache;
-use polkadot_node_network_protocol::request_response::{v1 as request_v1, IncomingRequestReceiver};
 use polkadot_overseer::{
     metrics::Metrics as OverseerMetrics, BlockInfo, MetricsTrait, Overseer, OverseerBuilder,
     OverseerConnector, OverseerHandle,
@@ -31,7 +30,6 @@ use std::sync::Arc;
 use subspace_runtime::{opaque::Block, Hash};
 use substrate_prometheus_endpoint::Registry;
 
-pub use polkadot_collator_protocol::{CollatorProtocolSubsystem, ProtocolSide};
 pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
 pub use polkadot_node_core_chain_api::ChainApiSubsystem;
 pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
@@ -86,7 +84,6 @@ where
     /// Underlying authority discovery service.
     pub authority_discovery_service: AuthorityDiscoveryService,
     */
-    pub collation_req_receiver: IncomingRequestReceiver<request_v1::CollationFetchingRequest>,
     /// Prometheus registry, commonly used for production systems, less so for test.
     pub registry: Option<&'a Registry>,
     /// Task spawner to be used throughout the overseer and the APIs it provides.
@@ -104,7 +101,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
         runtime_client,
         network_service,
         // authority_discovery_service,
-        collation_req_receiver,
         registry,
         spawner,
         is_collator,
@@ -116,7 +112,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
         RuntimeApiSubsystem<RuntimeClient>,
         ChainApiSubsystem<RuntimeClient>,
         CollationGenerationSubsystem,
-        CollatorProtocolSubsystem,
     >,
     Error,
 >
@@ -137,22 +132,6 @@ where
         .collation_generation(CollationGenerationSubsystem::new(Metrics::register(
             registry,
         )?))
-        .collator_protocol({
-            let side = match is_collator {
-                IsCollator::Yes(collator_pair) => ProtocolSide::Collator(
-                    *network_service.local_peer_id(),
-                    collator_pair,
-                    collation_req_receiver,
-                    Metrics::register(registry)?,
-                ),
-                IsCollator::No => ProtocolSide::Validator {
-                    keystore,
-                    eviction_policy: Default::default(),
-                    metrics: Metrics::register(registry)?,
-                },
-            };
-            CollatorProtocolSubsystem::new(side)
-        })
         .runtime_api(RuntimeApiSubsystem::new(
             runtime_client.clone(),
             Metrics::register(registry)?,

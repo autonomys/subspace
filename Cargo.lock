@@ -6318,34 +6318,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-collator-protocol"
-version = "0.9.13"
-dependencies = [
- "always-assert",
- "assert_matches",
- "derive_more",
- "env_logger 0.9.0",
- "futures 0.3.18",
- "futures-timer 3.0.2",
- "log",
- "parity-scale-codec",
- "polkadot-node-network-protocol",
- "polkadot-node-primitives",
- "polkadot-node-subsystem",
- "polkadot-node-subsystem-test-helpers",
- "polkadot-node-subsystem-util",
- "polkadot-primitives",
- "sc-network",
- "sp-core",
- "sp-keyring",
- "sp-keystore",
- "sp-runtime",
- "subspace-runtime-primitives",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "polkadot-core-primitives"
 version = "0.9.13"
 dependencies = [
@@ -10167,11 +10139,9 @@ dependencies = [
  "lru 0.7.0",
  "pallet-transaction-payment-rpc",
  "parity-scale-codec",
- "polkadot-collator-protocol",
  "polkadot-node-collation-generation",
  "polkadot-node-core-chain-api",
  "polkadot-node-core-runtime-api",
- "polkadot-node-network-protocol",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
  "polkadot-primitives",
