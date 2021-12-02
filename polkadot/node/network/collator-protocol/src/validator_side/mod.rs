@@ -618,8 +618,8 @@ where
 	Context: overseer::SubsystemContext<Message = CollatorProtocolMessage>,
 	Context: SubsystemContext<Message = CollatorProtocolMessage>,
 {
-	ctx.send_message(NetworkBridgeMessage::DisconnectPeer(peer_id, PeerSet::Collation))
-		.await
+	// ctx.send_message(NetworkBridgeMessage::DisconnectPeer(peer_id, PeerSet::Collation))
+	// 	.await
 }
 
 /// Another subsystem has requested to fetch collations on a particular leaf for some para.
@@ -690,11 +690,11 @@ async fn notify_collation_seconded<Context>(
 {
 	let wire_message =
 		protocol_v1::CollatorProtocolMessage::CollationSeconded(relay_parent, statement.into());
-	ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
-		vec![peer_id],
-		protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
-	))
-	.await;
+	// ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
+	// 	vec![peer_id],
+	// 	protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
+	// ))
+	// .await;
 
 	modify_reputation(ctx, peer_id, BENEFIT_NOTIFY_GOOD).await;
 }
@@ -779,11 +779,11 @@ async fn request_collation<Context>(
 		"Requesting collation",
 	);
 
-	ctx.send_message(NetworkBridgeMessage::SendRequests(
-		vec![requests],
-		IfDisconnected::ImmediateError,
-	))
-	.await;
+	// ctx.send_message(NetworkBridgeMessage::SendRequests(
+	// 	vec![requests],
+	// 	IfDisconnected::ImmediateError,
+	// ))
+	// .await;
 }
 
 /// Networking message has been received.
@@ -1298,9 +1298,9 @@ async fn handle_collation_fetched_result<Context>(
 	if let Entry::Vacant(entry) = state.pending_candidates.entry(relay_parent) {
 		collation_event.1.commitments_hash = Some(candidate_receipt.commitments_hash);
 		// ctx.send_message(CandidateBackingMessage::Second(
-			// relay_parent.clone(),
-			// candidate_receipt,
-			// pov,
+		// relay_parent.clone(),
+		// candidate_receipt,
+		// pov,
 		// ))
 		// .await;
 

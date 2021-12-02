@@ -24,15 +24,14 @@ use polkadot_overseer::{
 use sc_client_api::AuxStore;
 use sc_keystore::LocalKeystore;
 use sp_api::ProvideRuntimeApi;
-use sp_executor::ExecutorApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
+use sp_executor::ExecutorApi;
 use std::sync::Arc;
 use subspace_runtime::{opaque::Block, Hash};
 use substrate_prometheus_endpoint::Registry;
 
 pub use polkadot_collator_protocol::{CollatorProtocolSubsystem, ProtocolSide};
-pub use polkadot_network_bridge::NetworkBridge as NetworkBridgeSubsystem;
 pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
 pub use polkadot_node_core_chain_api::ChainApiSubsystem;
 pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
@@ -115,10 +114,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
         Spawner,
         Arc<RuntimeClient>,
         RuntimeApiSubsystem<RuntimeClient>,
-        NetworkBridgeSubsystem<
-            Arc<sc_network::NetworkService<Block, Hash>>,
-            // AuthorityDiscoveryService,
-        >,
         ChainApiSubsystem<RuntimeClient>,
         CollationGenerationSubsystem,
         CollatorProtocolSubsystem,
@@ -158,12 +153,6 @@ where
             };
             CollatorProtocolSubsystem::new(side)
         })
-        .network_bridge(NetworkBridgeSubsystem::new(
-            network_service.clone(),
-            // authority_discovery_service,
-            Box::new(network_service),
-            Metrics::register(registry)?,
-        ))
         .runtime_api(RuntimeApiSubsystem::new(
             runtime_client.clone(),
             Metrics::register(registry)?,

@@ -140,5 +140,5 @@ where
 		"reputation change for peer",
 	);
 
-	ctx.send_message(NetworkBridgeMessage::ReportPeer(peer, rep)).await;
+	// ctx.send_message(NetworkBridgeMessage::ReportPeer(peer, rep)).await;
 }

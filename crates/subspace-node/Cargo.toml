@@ -74,7 +74,6 @@ substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate
 
 polkadot-overseer = { path = "../../polkadot/node/overseer" }
 polkadot-collator-protocol = { path = "../../polkadot/node/network/collator-protocol" }
-polkadot-network-bridge = { path = "../../polkadot/node/network/bridge" }
 polkadot-primitives = { path = "../../polkadot/primitives" }
 polkadot-node-core-chain-api = { path = "../../polkadot/node/core/chain-api" }
 polkadot-node-core-runtime-api = { path = "../../polkadot/node/core/runtime-api" }

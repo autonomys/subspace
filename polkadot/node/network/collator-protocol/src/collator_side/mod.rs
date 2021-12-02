@@ -41,8 +41,8 @@ use polkadot_node_subsystem_util::{
 	TimeoutExt,
 };
 use polkadot_primitives::v1::{
-	AuthorityDiscoveryId, CandidateHash, CandidateReceipt, CoreIndex, CoreState,
-	GroupIndex, Hash, Id as ParaId,
+	AuthorityDiscoveryId, CandidateHash, CandidateReceipt, CoreIndex, CoreState, GroupIndex, Hash,
+	Id as ParaId,
 };
 use polkadot_subsystem::{
 	jaeger,
@@ -521,11 +521,11 @@ where
 			state.collator_pair.sign(&declare_signature_payload),
 		);
 
-		ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
-			vec![peer],
-			protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
-		))
-		.await;
+		// ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
+		// 	vec![peer],
+		// 	protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
+		// ))
+		// .await;
 	}
 }
 
@@ -538,13 +538,13 @@ where
 {
 	// ignore address resolution failure
 	// will reissue a new request on new collation
-	let (failed, _) = oneshot::channel();
-	ctx.send_message(NetworkBridgeMessage::ConnectToValidators {
-		validator_ids,
-		peer_set: PeerSet::Collation,
-		failed,
-	})
-	.await;
+	// let (failed, _) = oneshot::channel();
+	// ctx.send_message(NetworkBridgeMessage::ConnectToValidators {
+	// 	validator_ids,
+	// 	peer_set: PeerSet::Collation,
+	// 	failed,
+	// })
+	// .await;
 }
 
 /// Advertise collation to the given `peer`.
@@ -598,11 +598,11 @@ async fn advertise_collation<Context>(
 
 	let wire_message = protocol_v1::CollatorProtocolMessage::AdvertiseCollation(relay_parent);
 
-	ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
-		vec![peer.clone()],
-		protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
-	))
-	.await;
+	// ctx.send_message(NetworkBridgeMessage::SendCollationMessage(
+	// 	vec![peer.clone()],
+	// 	protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
+	// ))
+	// .await;
 
 	if let Some(validators) = state.our_validators_groups.get_mut(&relay_parent) {
 		validators.advertised_to_peer(&state.peer_ids, &peer);
@@ -745,8 +745,8 @@ where
 			);
 
 			// If we are declared to, this is another collator, and we should disconnect.
-			ctx.send_message(NetworkBridgeMessage::DisconnectPeer(origin, PeerSet::Collation))
-				.await;
+			// ctx.send_message(NetworkBridgeMessage::DisconnectPeer(origin, PeerSet::Collation))
+			// 	.await;
 		},
 		AdvertiseCollation(_) => {
 			tracing::trace!(
@@ -755,15 +755,15 @@ where
 				"AdvertiseCollation message is not expected on the collator side of the protocol",
 			);
 
-			ctx.send_message(NetworkBridgeMessage::ReportPeer(
-				origin.clone(),
-				COST_UNEXPECTED_MESSAGE,
-			))
-			.await;
+			// ctx.send_message(NetworkBridgeMessage::ReportPeer(
+			// 	origin.clone(),
+			// 	COST_UNEXPECTED_MESSAGE,
+			// ))
+			// .await;
 
 			// If we are advertised to, this is another collator, and we should disconnect.
-			ctx.send_message(NetworkBridgeMessage::DisconnectPeer(origin, PeerSet::Collation))
-				.await;
+			// ctx.send_message(NetworkBridgeMessage::DisconnectPeer(origin, PeerSet::Collation))
+			// 	.await;
 		},
 		CollationSeconded(relay_parent, statement) => {
 			if !matches!(statement.unchecked_payload(), Statement::Seconded(_)) {
@@ -841,8 +841,8 @@ where
 					target: LOG_TARGET,
 					"Dropping incoming request as peer has a request in flight already."
 				);
-				ctx.send_message(NetworkBridgeMessage::ReportPeer(req.peer, COST_APPARENT_FLOOD))
-					.await;
+				// ctx.send_message(NetworkBridgeMessage::ReportPeer(req.peer, COST_APPARENT_FLOOD))
+				// 	.await;
 				return Ok(())
 			}
 

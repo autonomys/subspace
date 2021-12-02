@@ -6371,30 +6371,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-network-bridge"
-version = "0.9.13"
-dependencies = [
- "assert_matches",
- "async-trait",
- "futures 0.3.18",
- "futures-timer 3.0.2",
- "parity-scale-codec",
- "parking_lot 0.11.2",
- "polkadot-node-network-protocol",
- "polkadot-node-subsystem",
- "polkadot-node-subsystem-test-helpers",
- "polkadot-node-subsystem-util",
- "polkadot-overseer",
- "polkadot-primitives",
- "sc-network",
- "sp-consensus",
- "sp-core",
- "sp-keyring",
- "subspace-runtime-primitives",
- "tracing",
-]
-
-[[package]]
 name = "polkadot-node-collation-generation"
 version = "0.9.13"
 dependencies = [
@@ -10192,7 +10168,6 @@ dependencies = [
  "pallet-transaction-payment-rpc",
  "parity-scale-codec",
  "polkadot-collator-protocol",
- "polkadot-network-bridge",
  "polkadot-node-collation-generation",
  "polkadot-node-core-chain-api",
  "polkadot-node-core-runtime-api",

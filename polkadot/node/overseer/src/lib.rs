@@ -410,9 +410,6 @@ pub struct Overseer<SupportsParachains> {
 	#[subsystem(no_dispatch, blocking, RuntimeApiMessage)]
 	runtime_api: RuntimeApi,
 
-	#[subsystem(no_dispatch, NetworkBridgeMessage)]
-	network_bridge: NetworkBridge,
-
 	#[subsystem(no_dispatch, blocking, ChainApiMessage)]
 	chain_api: ChainApi,
 
