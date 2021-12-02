@@ -346,32 +346,30 @@ impl orml_vesting::Config for Runtime {
     type BlockNumberProvider = System;
 }
 
-// TODO: Use automatic pallet parts: https://github.com/paritytech/substrate/pull/9681
-// Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
         Block = Block,
         NodeBlock = opaque::Block,
         UncheckedExtrinsic = UncheckedExtrinsic
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
-        Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 1,
+        System: frame_system = 0,
+        Timestamp: pallet_timestamp = 1,
 
-        Subspace: pallet_subspace::{Pallet, Call, Config, Storage, Inherent, Event, ValidateUnsigned} = 2,
-        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event} = 3,
-        Rewards: pallet_rewards::{Pallet, Event<T>} = 9,
+        Subspace: pallet_subspace = 2,
+        OffencesSubspace: pallet_offences_subspace = 3,
+        Rewards: pallet_rewards = 9,
 
-        Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>} = 4,
-        TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 5,
-        Utility: pallet_utility::{Pallet, Call, Event} = 8,
+        Balances: pallet_balances = 4,
+        TransactionPayment: pallet_transaction_payment = 5,
+        Utility: pallet_utility = 8,
 
-        Feeds: pallet_feeds::{Pallet, Call, Storage, Event<T>} = 6,
-        ObjectStore: pallet_object_store::{Pallet, Call, Event<T>} = 10,
+        Feeds: pallet_feeds = 6,
+        ObjectStore: pallet_object_store = 10,
 
-        Vesting: orml_vesting::{Pallet, Call, Config<T>, Storage, Event<T>} = 7,
+        Vesting: orml_vesting = 7,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
-        Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>} = 100,
+        Sudo: pallet_sudo = 100,
     }
 );
 
