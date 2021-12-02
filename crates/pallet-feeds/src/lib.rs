@@ -150,21 +150,21 @@ mod pallet {
 
 /// Mapping to the object offset and size within an extrinsic
 #[derive(Debug)]
-pub struct CallObjectLocation {
+pub struct CallObject {
     /// Object hash
     pub hash: Sha256Hash,
-    /// Offset
+    /// Offset of object in the encoded call.
     pub offset: u32,
 }
 
 impl<T: Config> Call<T> {
-    /// Extract object location if an extrinsic corresponds to `put` call
-    pub fn extract_object_location(&self) -> Option<CallObjectLocation> {
+    /// Extract the call object if an extrinsic corresponds to `put` call
+    pub fn extract_call_object(&self) -> Option<CallObject> {
         match self {
             Self::put { data, .. } => {
                 // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
                 // enum variant encoding.
-                Some(CallObjectLocation {
+                Some(CallObject {
                     hash: crypto::sha256_hash(data),
                     offset: 1 + mem::size_of::<FeedId>() as u32,
                 })

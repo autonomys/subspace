@@ -414,10 +414,10 @@ fn extract_feeds_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
 ) {
-    if let Some(call_object_location) = call.extract_object_location() {
+    if let Some(call_object) = call.extract_call_object() {
         objects.push(BlockObject::V0 {
-            hash: call_object_location.hash,
-            offset: base_offset + call_object_location.offset,
+            hash: call_object.hash,
+            offset: base_offset + call_object.offset,
         });
     }
 }
@@ -427,10 +427,10 @@ fn extract_object_store_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_object_store::Call<Runtime>,
 ) {
-    if let Some(call_object_location) = call.extract_object_location() {
+    if let Some(call_object) = call.extract_call_object() {
         objects.push(BlockObject::V0 {
-            hash: call_object_location.hash,
-            offset: base_offset + call_object_location.offset,
+            hash: call_object.hash,
+            offset: base_offset + call_object.offset,
         });
     }
 }
