@@ -154,7 +154,7 @@ pub mod opaque {
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug, Default))]
 pub struct PersistedValidationData<H = Hash, N = BlockNumber> {
-    /// The parent head-data.
+    /// The encoded optional parent head hash.
     pub parent_head: Vec<u8>,
     /// The relay-chain block number this is in the context of.
     pub relay_parent_number: N,

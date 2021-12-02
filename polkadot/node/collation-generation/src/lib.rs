@@ -189,14 +189,14 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 		let task_config = config.clone();
 
 		// Request the current pending head of executor chain and send it back to the executor node at the end.
-		let pending_head: Hash = match request_pending_head(
+		let maybe_pending_head: Option<Hash> = match request_pending_head(
 			relay_parent,
 			ctx.sender(),
 		)
 		.await
 		.await?
 		{
-			Ok(v) => v.unwrap_or_default(),
+			Ok(v) => v,
 			Err(e) => {
 				tracing::trace!(
 					target: LOG_TARGET,
@@ -210,7 +210,7 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 
 
 		let mut validation_data = PersistedValidationData::default();
-		validation_data.parent_head = pending_head.encode();
+		validation_data.parent_head = maybe_pending_head.encode();
 
 		let (collation, result_sender) =
 			match (task_config.collator)(relay_parent, &validation_data).await {

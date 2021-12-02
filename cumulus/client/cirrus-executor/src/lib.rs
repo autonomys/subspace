@@ -212,27 +212,28 @@ where
 
 		// The last block we're building on is from the primary chain if the best local block is not
 		// genesis block.
-		let last_head_hash = if best_number.is_zero() {
-			self.client.info().best_hash
-		} else {
-			let last_head_hash = match <<Block::Header as HeaderT>::Hash>::decode(&mut &validation_data.parent_head[..]) {
-				Ok(x) => x,
-				Err(e) => {
-					tracing::error!(
-						target: LOG_TARGET,
-						error = ?e,
-						"Could not decode the pending head hash."
-					);
-					return None
-				},
-			};
-
-			if !self.check_block_status(last_head_hash, best_number) {
+		let maybe_pending_head = match <Option<<Block::Header as HeaderT>::Hash>>::decode(&mut &validation_data.parent_head[..]) {
+			Ok(x) => x,
+			Err(e) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					"Could not decode the pending head hash."
+				);
 				return None
-			}
-
-			last_head_hash
+			},
 		};
+
+		let last_head_hash = if let Some(pending_head) = maybe_pending_head {
+			pending_head
+		} else {
+			assert_eq!(best_number.saturated_into::<u32>(), 0u32);
+			self.client.info().best_hash
+		};
+
+		if !self.check_block_status(last_head_hash, best_number) {
+			return None
+		}
 
 		tracing::info!(
 			target: LOG_TARGET,
