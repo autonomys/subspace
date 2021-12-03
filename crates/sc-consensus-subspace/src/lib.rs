@@ -85,9 +85,7 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-use sp_blockchain::{
-    Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
-};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
     SelectChain, SlotData, SyncOracle,
@@ -105,7 +103,7 @@ use sp_consensus_subspace::{
 use sp_core::ExecutionContext;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
-use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use std::cmp::Ordering;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
@@ -455,7 +453,6 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
-        + ProvideCache<Block>
         + ProvideUncles<Block>
         + BlockchainEvents<Block>
         + HeaderBackend<Block>
@@ -533,7 +530,6 @@ async fn answer_requests<B: BlockT, C>(
     epoch_changes: SharedEpochChanges<B, Epoch>,
 ) where
     C: ProvideRuntimeApi<B>
-        + ProvideCache<B>
         + ProvideUncles<B>
         + BlockchainEvents<B>
         + HeaderBackend<B>
@@ -657,10 +653,7 @@ pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error
 /// Extract the Subspace epoch change digest from the given header, if it exists.
 fn find_next_epoch_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextEpochDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<Option<NextEpochDescriptor>, Error<B>> {
     let mut epoch_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
@@ -680,10 +673,7 @@ where
 /// Extract the Subspace config change digest from the given header, if it exists.
 fn find_next_config_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextConfigDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<Option<NextConfigDescriptor>, Error<B>> {
     let mut config_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
@@ -703,10 +693,7 @@ where
 /// Extract the Subspace solution range digest from the given header.
 fn find_solution_range_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<SolutionRangeDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<Option<SolutionRangeDescriptor>, Error<B>> {
     let mut solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
@@ -726,10 +713,7 @@ where
 }
 
 /// Extract the Subspace salt digest from the given header.
-fn find_salt_digest<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+fn find_salt_digest<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>> {
     let mut salt_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
@@ -927,8 +911,7 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync
-        + AuxStore
-        + ProvideCache<Block>,
+        + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync,
@@ -1235,7 +1218,6 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore
         + ProvideRuntimeApi<Block>
-        + ProvideCache<Block>
         + Send
         + Sync,
     Client::Api: SubspaceApi<Block> + ApiExt<Block>,
@@ -1743,7 +1725,6 @@ where
         + Sync
         + 'static,
     Client: ProvideRuntimeApi<Block>
-        + ProvideCache<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore

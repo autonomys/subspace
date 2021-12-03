@@ -97,7 +97,9 @@ pub fn new_partial(
     let client = Arc::new(client);
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
-        task_manager.spawn_handle().spawn("telemetry", worker.run());
+        task_manager
+            .spawn_handle()
+            .spawn("telemetry", None, worker.run());
         telemetry
     });
 
@@ -197,7 +199,6 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
-            on_demand: None,
             block_announce_validator_builder: None,
             warp_sync: None,
         })?;
@@ -284,9 +285,11 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
 
         // Subspace authoring task is considered essential, i.e. if it fails we take down the
         // service with it.
-        task_manager
-            .spawn_essential_handle()
-            .spawn_blocking("subspace-worker", subspace);
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "subspace-proposer-",
+            Some("block-authoring"),
+            subspace,
+        );
     }
 
     let rpc_extensions_builder = {
@@ -314,8 +317,6 @@ pub fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Servi
         task_manager: &mut task_manager,
         transaction_pool,
         rpc_extensions_builder,
-        on_demand: None,
-        remote_blockchain: None,
         backend: backend.clone(),
         system_rpc_tx,
         config,

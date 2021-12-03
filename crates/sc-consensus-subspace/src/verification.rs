@@ -23,7 +23,8 @@ use schnorrkel::context::SigningContext;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_core::Public;
-use sp_runtime::{traits::DigestItemFor, traits::Header, RuntimeAppPublic};
+use sp_runtime::traits::Header;
+use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
 use subspace_core_primitives::{Randomness, Salt, Sha256Hash};
 use subspace_solving::{derive_global_challenge, is_local_challenge_valid, SubspaceCodec};
@@ -64,10 +65,7 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
 pub(super) fn check_header<B: BlockT + Sized>(
     params: VerificationParams<B>,
-) -> Result<CheckedHeader<B::Header, VerifiedHeaderInfo<B>>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<CheckedHeader<B::Header, VerifiedHeaderInfo>, Error<B>> {
     let VerificationParams {
         mut header,
         pre_digest,
@@ -137,9 +135,9 @@ where
     Ok(CheckedHeader::Checked(header, info))
 }
 
-pub(super) struct VerifiedHeaderInfo<B: BlockT> {
-    pub(super) pre_digest: DigestItemFor<B>,
-    pub(super) seal: DigestItemFor<B>,
+pub(super) struct VerifiedHeaderInfo {
+    pub(super) pre_digest: DigestItem,
+    pub(super) seal: DigestItem,
 }
 
 /// Check the solution signature validity.
