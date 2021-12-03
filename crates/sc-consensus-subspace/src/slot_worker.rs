@@ -32,7 +32,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SecretKey;
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
@@ -42,7 +42,8 @@ use sp_consensus_subspace::{ConsensusLog, SubspaceApi, SUBSPACE_ENGINE_ID};
 use sp_core::sr25519::Pair;
 use sp_core::Pair as _;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
-use sp_runtime::traits::{Block as BlockT, DigestItemFor, Header, Zero};
+use sp_runtime::traits::{Block as BlockT, Header, Zero};
+use sp_runtime::DigestItem;
 use std::future::Future;
 use std::{borrow::Cow, pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
@@ -66,11 +67,7 @@ pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
 impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for SubspaceSlotWorker<B, C, E, I, SO, L, BS>
 where
     B: BlockT,
-    C: ProvideRuntimeApi<B>
-        + ProvideCache<B>
-        + HeaderBackend<B>
-        + HeaderMetadata<B, Error = ClientError>
-        + 'static,
+    C: ProvideRuntimeApi<B> + HeaderBackend<B> + HeaderMetadata<B, Error = ClientError> + 'static,
     C::Api: SubspaceApi<B>,
     E: Environment<B, Error = Error> + Send + Sync,
     E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
@@ -265,12 +262,10 @@ where
         None
     }
 
-    fn pre_digest_data(
-        &self,
-        _slot: Slot,
-        claim: &Self::Claim,
-    ) -> Vec<sp_runtime::DigestItem<B::Hash>> {
-        vec![<DigestItemFor<B> as CompatibleDigestItem>::subspace_pre_digest(claim.0.clone())]
+    fn pre_digest_data(&self, _slot: Slot, claim: &Self::Claim) -> Vec<sp_runtime::DigestItem> {
+        vec![<DigestItem as CompatibleDigestItem>::subspace_pre_digest(
+            claim.0.clone(),
+        )]
     }
 
     #[allow(clippy::type_complexity)]
@@ -300,7 +295,7 @@ where
                 // add it to a digest item.
                 let signature = keypair.sign(header_hash.as_ref());
                 let digest_item =
-                    <DigestItemFor<B> as CompatibleDigestItem>::subspace_seal(signature.into());
+                    <DigestItem as CompatibleDigestItem>::subspace_seal(signature.into());
 
                 let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
                 import_block.post_digests.push(digest_item);
@@ -384,10 +379,7 @@ where
 /// Extract the next Subspace solution range digest from the given header if it exists.
 fn find_next_solution_range_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>> {
     let mut next_solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
@@ -409,10 +401,7 @@ where
 /// Extract the next Subspace salt digest from the given header if it exists.
 fn find_next_salt_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextSaltDescriptor>, Error<B>>
-where
-    DigestItemFor<B>: CompatibleDigestItem,
-{
+) -> Result<Option<NextSaltDescriptor>, Error<B>> {
     let mut next_salt_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);

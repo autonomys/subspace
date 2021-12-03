@@ -62,8 +62,8 @@ use sp_consensus_subspace::{
 };
 use sp_core::Public;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
-use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{Block as BlockT, DigestFor, Zero};
+use sp_runtime::generic::{BlockId, Digest, DigestItem};
+use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -77,7 +77,7 @@ use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
-type Item = DigestItem<Hash>;
+type Item = DigestItem;
 
 type Error = sp_blockchain::Error;
 
@@ -136,7 +136,7 @@ impl Environment<TestBlock> for DummyFactory {
 impl DummyProposer {
     fn propose_with(
         &mut self,
-        pre_digests: DigestFor<TestBlock>,
+        pre_digests: Digest,
     ) -> future::Ready<
         Result<
             Proposal<
@@ -225,7 +225,7 @@ impl Proposer<TestBlock> for DummyProposer {
     fn propose(
         mut self,
         _: InherentData,
-        pre_digests: DigestFor<TestBlock>,
+        pre_digests: Digest,
         _: Duration,
         _: Option<usize>,
     ) -> Self::Proposal {
@@ -371,7 +371,7 @@ impl TestNetFactory for SubspaceTestNet {
         Option<BoxJustificationImport<TestBlock>>,
         Option<PeerData>,
     ) {
-        let client = client.as_full().expect("only full clients are tested");
+        let client = client.as_client();
 
         let config = Config::get_or_compute(&*client).expect("config available");
         let (block_import, link) = crate::block_import(config, client.clone(), client.clone())
@@ -402,9 +402,7 @@ impl TestNetFactory for SubspaceTestNet {
     ) -> Self::Verifier {
         use substrate_test_runtime_client::DefaultTestClientBuilderExt;
 
-        let client = client
-            .as_full()
-            .expect("only full clients are used in test");
+        let client = client.as_client();
         trace!(target: "subspace", "Creating a verifier");
 
         // ensure block import and verifier are linked correctly.
@@ -500,11 +498,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
     for peer_id in [0, 1, 2_usize].iter() {
         let mut net = net.lock();
         let peer = net.peer(*peer_id);
-        let client = peer
-            .client()
-            .as_full()
-            .expect("Only full clients are used in tests")
-            .clone();
+        let client = peer.client().as_client().clone();
         let select_chain = peer.select_chain().expect("Full client has select_chain");
 
         let mut got_own = false;
@@ -876,11 +870,7 @@ fn importing_block_one_sets_genesis_epoch() {
         .data
         .as_ref()
         .expect("Subspace link set up during initialization");
-    let client = peer
-        .client()
-        .as_full()
-        .expect("Only full clients are used in tests")
-        .clone();
+    let client = peer.client().as_client().clone();
 
     let mut proposer_factory = DummyFactory {
         client: client.clone(),
@@ -936,8 +926,7 @@ fn importing_block_one_sets_genesis_epoch() {
 //
 //     let client = peer
 //         .client()
-//         .as_full()
-//         .expect("Only full clients are used in tests")
+//         .as_client()
 //         .clone();
 //     let mut block_import = data
 //         .block_import
@@ -1064,11 +1053,7 @@ fn verify_slots_are_strictly_increasing() {
         .as_ref()
         .expect("Subspace link set up during initialization");
 
-    let client = peer
-        .client()
-        .as_full()
-        .expect("Only full clients are used in tests")
-        .clone();
+    let client = peer.client().as_client().clone();
     let mut block_import = data
         .block_import
         .lock()
@@ -1118,8 +1103,7 @@ fn verify_slots_are_strictly_increasing() {
 //         .expect("Subspace link set up during initialization");
 //     let client = peer
 //         .client()
-//         .as_full()
-//         .expect("Only full clients are used in tests")
+//         .as_client()
 //         .clone();
 //
 //     let mut proposer_factory = DummyFactory {

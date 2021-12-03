@@ -290,6 +290,7 @@ impl pallet_transaction_payment::Config for Runtime {
 impl pallet_utility::Config for Runtime {
     type Event = Event;
     type Call = Call;
+    type PalletsOrigin = OriginCaller;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
@@ -397,7 +398,7 @@ pub type Executive = frame_executive::Executive<
     Block,
     frame_system::ChainContext<Runtime>,
     Runtime,
-    AllPallets,
+    AllPalletsWithSystem,
 >;
 
 fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
@@ -448,6 +449,8 @@ fn extract_utility_block_object_mapping(
             base_nested_call_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
+                // TODO: De-duplicate this `match`, it is repeated 2 more times below and one more
+                //  time in slightly different form in `extract_block_object_mapping()`
                 match call {
                     Call::Feeds(call) => {
                         // `+1` for enum variant offset
@@ -473,6 +476,25 @@ fn extract_utility_block_object_mapping(
         }
         pallet_utility::Call::as_derivative { index, call } => {
             base_nested_call_offset += index.encoded_size() as u32;
+
+            match call.as_ref() {
+                Call::Feeds(call) => {
+                    // `+1` for enum variant offset
+                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
+                }
+                Call::ObjectStore(call) => {
+                    // `+1` for enum variant offset
+                    extract_object_store_block_object_mapping(
+                        base_nested_call_offset + 1,
+                        objects,
+                        call,
+                    );
+                }
+                _ => {}
+            }
+        }
+        pallet_utility::Call::dispatch_as { as_origin, call } => {
+            base_nested_call_offset += as_origin.encoded_size() as u32;
 
             match call.as_ref() {
                 Call::Feeds(call) => {

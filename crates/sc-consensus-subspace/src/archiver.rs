@@ -219,6 +219,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
     spawner.spawn_blocking(
         "subspace-archiver",
+        None,
         Box::pin({
             let mut imported_block_notification_stream =
                 subspace_link.imported_block_notification_stream.subscribe();

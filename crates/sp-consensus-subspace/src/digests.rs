@@ -20,7 +20,7 @@ use crate::{
     FarmerPublicKey, FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration,
     SUBSPACE_ENGINE_ID,
 };
-use codec::{Codec, Decode, Encode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
@@ -155,10 +155,7 @@ pub trait CompatibleDigestItem: Sized {
     fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor>;
 }
 
-impl<Hash> CompatibleDigestItem for DigestItem<Hash>
-where
-    Hash: Send + Sync + Eq + Clone + Codec + 'static,
-{
+impl CompatibleDigestItem for DigestItem {
     fn subspace_pre_digest(digest: PreDigest) -> Self {
         DigestItem::PreRuntime(SUBSPACE_ENGINE_ID, digest.encode())
     }
