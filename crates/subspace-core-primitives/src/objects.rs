@@ -41,7 +41,7 @@ pub enum BlockObject {
     V0 {
         /// Object hash
         hash: Sha256Hash,
-        /// Offset of the object.
+        /// Offset of object in the encoded block.
         offset: u32,
     },
 }
@@ -54,7 +54,7 @@ impl BlockObject {
         }
     }
 
-    /// Offset of the object.
+    /// Offset of object in the encoded block.
     pub fn offset(&self) -> u32 {
         match self {
             Self::V0 { offset, .. } => *offset,
