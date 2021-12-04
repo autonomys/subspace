@@ -23,13 +23,12 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
-use frame_support::{
-    construct_runtime, parameter_types,
-    weights::{
-        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-        IdentityFee,
-    },
+use frame_support::traits::Get;
+use frame_support::weights::{
+    constants::{RocksDbWeight, WEIGHT_PER_SECOND},
+    IdentityFee,
 };
+use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_transaction_payment::CurrencyAdapter;
@@ -49,7 +48,7 @@ use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
 pub use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, REPLICATION_FACTOR,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -218,6 +217,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
     pub const RecordSize: u32 = RECORD_SIZE;
     pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
+    pub const ReplicationFactor: u16 = REPLICATION_FACTOR;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -232,6 +232,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -274,8 +275,33 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 
+pub struct TransactionByteFee;
+
+impl Get<Balance> for TransactionByteFee {
+    fn get() -> Balance {
+        if cfg!(feature = "do-not-enforce-cost-of-storage") {
+            1
+        } else {
+            let credit_supply = Balances::total_issuance();
+            let total_space = Balance::from(
+                u64::MAX * SlotProbability::get().0
+                    / SlotProbability::get().1
+                    / (Subspace::solution_range()
+                        / u64::try_from(PIECE_SIZE)
+                            .expect("Piece size is definitely small enough to fit into u64; qed")),
+            );
+            let blockchain_size = Balance::from(Subspace::archived_history_size());
+
+            match total_space.checked_sub(blockchain_size * Balance::from(ReplicationFactor::get()))
+            {
+                Some(free_space) if free_space > 0 => credit_supply / free_space,
+                _ => Balance::MAX,
+            }
+        }
+    }
+}
+
 parameter_types! {
-    pub const TransactionByteFee: Balance = 1;
     pub const OperationalFeeMultiplier: u8 = 5;
 }
 
@@ -658,7 +684,7 @@ impl_runtime_apis! {
         }
 
         fn solution_range() -> u64 {
-            Subspace::solution_range().unwrap_or_else(InitialSolutionRange::get)
+            Subspace::solution_range()
         }
 
         fn salt() -> u64 {

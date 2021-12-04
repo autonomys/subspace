@@ -46,6 +46,10 @@ pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
 /// pieces of archival history.
 pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+/// Replication factor, defines minimum desired number of replicas of the blockchain to be
+/// stored by the network.
+// TODO: Proper value here
+pub const REPLICATION_FACTOR: u16 = 1;
 
 /// An index to a block.
 pub type BlockNumber = u32;

@@ -158,20 +158,20 @@ fn can_update_solution_range_on_era_change() {
             INITIAL_SOLUTION_RANGE
         );
         // There should be no solution range stored during first era
-        assert_eq!(Subspace::solution_range(), None);
+        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 4);
         // Still no solution range update
-        assert_eq!(Subspace::solution_range(), None);
+        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
         progress_to_block(&keypair, 5);
 
         // Second era should have solution range updated
-        assert!(Subspace::solution_range().is_some());
+        assert_ne!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
 
         // Because blocks were produced on every slot, apparent pledged space must increase and
         // solution range should decrease
-        let last_solution_range = Subspace::solution_range().unwrap();
+        let last_solution_range = Subspace::solution_range();
         assert!(last_solution_range < INITIAL_SOLUTION_RANGE);
 
         // Progress almost to era change
@@ -184,7 +184,7 @@ fn can_update_solution_range_on_era_change() {
                 + (4 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0 + 10),
         );
         // This should cause solution range to increase as apparent pledged space decreased
-        assert!(Subspace::solution_range().unwrap() > last_solution_range);
+        assert!(Subspace::solution_range() > last_solution_range);
     })
 }
 
