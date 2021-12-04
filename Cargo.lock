@@ -7443,6 +7443,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-node-primitives"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.17",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
 name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [

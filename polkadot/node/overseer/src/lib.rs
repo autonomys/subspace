@@ -92,10 +92,6 @@ pub use polkadot_node_subsystem_types::{
 pub mod metrics;
 pub use self::metrics::Metrics as OverseerMetrics;
 
-/// A dummy subsystem, mostly useful for placeholders and tests.
-pub mod dummy;
-pub use self::dummy::DummySubsystem;
-
 pub use polkadot_node_metrics::{
 	metrics::{prometheus, Metrics as MetricsTrait},
 	Metronome,
@@ -405,38 +401,10 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(client: Arc<P>, mut hand
 	event=Event,
 	signal=OverseerSignal,
 	error=SubsystemError,
-	network=NetworkBridgeEvent<protocol_v1::ValidationProtocol>,
 )]
 pub struct Overseer<SupportsParachains> {
-	#[subsystem(no_dispatch, CandidateValidationMessage)]
-	candidate_validation: CandidateValidation,
-
-	#[subsystem(no_dispatch, CandidateBackingMessage)]
-	candidate_backing: CandidateBacking,
-
-	#[subsystem(StatementDistributionMessage)]
-	statement_distribution: StatementDistribution,
-
-	#[subsystem(no_dispatch, AvailabilityDistributionMessage)]
-	availability_distribution: AvailabilityDistribution,
-
-	#[subsystem(no_dispatch, AvailabilityRecoveryMessage)]
-	availability_recovery: AvailabilityRecovery,
-
-	#[subsystem(blocking, no_dispatch, BitfieldSigningMessage)]
-	bitfield_signing: BitfieldSigning,
-
-	#[subsystem(BitfieldDistributionMessage)]
-	bitfield_distribution: BitfieldDistribution,
-
-	#[subsystem(no_dispatch, ProvisionerMessage)]
-	provisioner: Provisioner,
-
 	#[subsystem(no_dispatch, blocking, RuntimeApiMessage)]
 	runtime_api: RuntimeApi,
-
-	#[subsystem(no_dispatch, blocking, AvailabilityStoreMessage)]
-	availability_store: AvailabilityStore,
 
 	#[subsystem(no_dispatch, NetworkBridgeMessage)]
 	network_bridge: NetworkBridge,
@@ -449,24 +417,6 @@ pub struct Overseer<SupportsParachains> {
 
 	#[subsystem(no_dispatch, CollatorProtocolMessage)]
 	collator_protocol: CollatorProtocol,
-
-	#[subsystem(ApprovalDistributionMessage)]
-	approval_distribution: ApprovalDistribution,
-
-	#[subsystem(no_dispatch, ApprovalVotingMessage)]
-	approval_voting: ApprovalVoting,
-
-	#[subsystem(GossipSupportMessage)]
-	gossip_support: GossipSupport,
-
-	#[subsystem(no_dispatch, DisputeCoordinatorMessage)]
-	dispute_coordinator: DisputeCoordinator,
-
-	#[subsystem(no_dispatch, DisputeDistributionMessage)]
-	dispute_distribution: DisputeDistribution,
-
-	#[subsystem(no_dispatch, ChainSelectionMessage)]
-	chain_selection: ChainSelection,
 
 	/// External listeners waiting for a hash to be in the active-leave set.
 	pub activation_external_listeners: HashMap<Hash, Vec<oneshot::Sender<SubsystemResult<()>>>>,

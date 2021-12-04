@@ -21,7 +21,7 @@
 pub mod chain_spec;
 mod grandpa_support;
 mod parachains_db;
-mod relay_chain_selection;
+// mod relay_chain_selection;
 
 #[cfg(feature = "full-node")]
 pub mod overseer;
@@ -35,14 +35,6 @@ mod tests;
 #[cfg(feature = "full-node")]
 use {
 	grandpa::{self, FinalityProofProvider as GrandpaFinalityProofProvider},
-	polkadot_node_core_approval_voting::Config as ApprovalVotingConfig,
-	polkadot_node_core_av_store::Config as AvailabilityConfig,
-	polkadot_node_core_av_store::Error as AvailabilityError,
-	polkadot_node_core_candidate_validation::Config as CandidateValidationConfig,
-	polkadot_node_core_chain_selection::{
-		self as chain_selection_subsystem, Config as ChainSelectionConfig,
-	},
-	polkadot_node_core_dispute_coordinator::Config as DisputeCoordinatorConfig,
 	polkadot_overseer::BlockInfo,
 	sc_client_api::ExecutorProvider,
 	sp_trie::PrefixedMemoryDB,
@@ -54,7 +46,6 @@ pub use sp_core::traits::SpawnNamed;
 pub use {
 	polkadot_overseer::{Handle, Overseer, OverseerConnector, OverseerHandle},
 	polkadot_primitives::v1::ParachainHost,
-	relay_chain_selection::SelectRelayChain,
 	sc_client_api::AuxStore,
 	sp_authority_discovery::AuthorityDiscoveryApi,
 	sp_blockchain::HeaderBackend,
@@ -220,10 +211,6 @@ pub enum Error {
 	#[error(transparent)]
 	Jaeger(#[from] polkadot_subsystem::jaeger::JaegerError),
 
-	#[cfg(feature = "full-node")]
-	#[error(transparent)]
-	Availability(#[from] AvailabilityError),
-
 	#[error("Authorities require the real overseer implementation")]
 	AuthoritiesRequireRealOverseer,
 
@@ -301,7 +288,7 @@ fn jaeger_launch_collector_with_agent(
 }
 
 #[cfg(feature = "full-node")]
-type FullSelectChain = relay_chain_selection::SelectRelayChain<FullBackend>;
+type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 #[cfg(feature = "full-node")]
 type FullGrandpaBlockImport<RuntimeApi, ExecutorDispatch, ChainSelection = FullSelectChain> =
 	grandpa::GrandpaBlockImport<
@@ -722,20 +709,9 @@ where
 	let auth_or_collator = role.is_authority() || is_collator.is_collator();
 	let requires_overseer_for_chain_sel = local_keystore.is_some() && auth_or_collator;
 
-	let select_chain = if requires_overseer_for_chain_sel {
-		let metrics =
-			polkadot_node_subsystem_util::metrics::Metrics::register(prometheus_registry.as_ref())?;
+	let select_chain = sc_consensus::LongestChain::new(basics.backend.clone());
 
-		SelectRelayChain::new_disputes_aware(
-			basics.backend.clone(),
-			overseer_handle.clone(),
-			metrics,
-		)
-	} else {
-		SelectRelayChain::new_longest_chain(basics.backend.clone())
-	};
-
-	let service::PartialComponents::<_, _, SelectRelayChain<_>, _, _, _> {
+	let service::PartialComponents::<_, _, sc_consensus::LongestChain<_, _>, _, _, _> {
 		client,
 		backend,
 		mut task_manager,
@@ -744,7 +720,7 @@ where
 		import_queue,
 		transaction_pool,
 		other: (rpc_extensions_builder, import_setup, rpc_setup, slot_duration, mut telemetry),
-	} = new_partial::<RuntimeApi, ExecutorDispatch, SelectRelayChain<_>>(
+	} = new_partial::<RuntimeApi, ExecutorDispatch, sc_consensus::LongestChain<_, _>>(
 		&mut config,
 		basics,
 		select_chain,
@@ -768,17 +744,7 @@ where
 		config.network.extra_sets.extend(peer_sets_info(is_authority));
 	}
 
-	let (pov_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-	config.network.request_response_protocols.push(cfg);
-	let (chunk_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-	config.network.request_response_protocols.push(cfg);
 	let (collation_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-	config.network.request_response_protocols.push(cfg);
-	let (available_data_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-	config.network.request_response_protocols.push(cfg);
-	let (statement_req_receiver, cfg) = IncomingRequest::get_config_receiver();
-	config.network.request_response_protocols.push(cfg);
-	let (dispute_req_receiver, cfg) = IncomingRequest::get_config_receiver();
 	config.network.request_response_protocols.push(cfg);
 
 	let grandpa_hard_forks = if config.chain_spec.is_kusama() {
@@ -829,37 +795,6 @@ where
 		crate::parachains_db::CacheSizes::default(),
 	)?;
 
-	let availability_config = AvailabilityConfig {
-		col_data: crate::parachains_db::REAL_COLUMNS.col_availability_data,
-		col_meta: crate::parachains_db::REAL_COLUMNS.col_availability_meta,
-	};
-
-	let approval_voting_config = ApprovalVotingConfig {
-		col_data: crate::parachains_db::REAL_COLUMNS.col_approval_data,
-		slot_duration_millis: slot_duration.as_millis() as u64,
-	};
-
-	let candidate_validation_config = CandidateValidationConfig {
-		artifacts_cache_path: config
-			.database
-			.path()
-			.ok_or(Error::DatabasePathRequired)?
-			.join("pvf-artifacts"),
-		program_path: match program_path {
-			None => std::env::current_exe()?,
-			Some(p) => p,
-		},
-	};
-
-	let chain_selection_config = ChainSelectionConfig {
-		col_data: crate::parachains_db::REAL_COLUMNS.col_chain_selection_data,
-		stagnant_check_interval: chain_selection_subsystem::StagnantCheckInterval::never(),
-	};
-
-	let dispute_coordinator_config = DisputeCoordinatorConfig {
-		col_data: crate::parachains_db::REAL_COLUMNS.col_dispute_coordinator_data,
-	};
-
 	let rpc_handlers = service::spawn_tasks(service::SpawnTasksParams {
 		config,
 		backend: backend.clone(),
@@ -880,7 +815,7 @@ where
 	// Cannot use the `RelayChainSelection`, since that'd require a setup _and running_ overseer
 	// which we are about to setup.
 	let active_leaves =
-		futures::executor::block_on(active_leaves(select_chain.as_longest_chain(), &*client))?;
+		futures::executor::block_on(active_leaves(&select_chain, &*client))?;
 
 	let authority_discovery_service = if auth_or_collator {
 		use futures::StreamExt;
@@ -936,23 +871,12 @@ where
 					leaves: active_leaves,
 					keystore,
 					runtime_client: overseer_client.clone(),
-					parachains_db,
 					network_service: network.clone(),
 					authority_discovery_service,
-					pov_req_receiver,
-					chunk_req_receiver,
 					collation_req_receiver,
-					available_data_req_receiver,
-					statement_req_receiver,
-					dispute_req_receiver,
 					registry: prometheus_registry.as_ref(),
 					spawner,
 					is_collator,
-					approval_voting_config,
-					availability_config,
-					candidate_validation_config,
-					chain_selection_config,
-					dispute_coordinator_config,
 				},
 			)
 			.map_err(|e| {
@@ -1023,12 +947,6 @@ where
 				let overseer_handle = overseer_handle.clone();
 
 				async move {
-					let parachain = polkadot_node_core_parachains_inherent::ParachainsInherentDataProvider::create(
-						&*client_clone,
-						overseer_handle,
-						parent,
-					).await.map_err(|e| Box::new(e))?;
-
 					let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
 						&*client_clone,
 						parent,
@@ -1042,7 +960,7 @@ where
 							slot_duration,
 						);
 
-					Ok((timestamp, slot, uncles, parachain))
+					Ok((timestamp, slot, uncles))
 				}
 			},
 			force_authoring,
