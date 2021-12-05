@@ -53,11 +53,6 @@ pallet-timestamp = { git = "https://github.com/paritytech/substrate", default-fe
 pallet-transaction-payment = { git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
-# Cumulus dependencies
-cumulus-primitives-core = { path = "../../primitives/core", default-features = false }
-cumulus-primitives-timestamp = { path = "../../primitives/timestamp", default-features = false }
-cumulus-primitives-utility = { path = "../../primitives/utility", default-features = false }
-
 [features]
 default = [
 	"std",
@@ -88,9 +83,6 @@ std = [
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
-	"cumulus-primitives-core/std",
-	"cumulus-primitives-timestamp/std",
-	"cumulus-primitives-utility/std",
 ]
 
 runtime-benchmarks = [
