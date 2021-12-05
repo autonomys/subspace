@@ -23,7 +23,7 @@ use sp_runtime::traits::BlakeTwo256;
 use substrate_prometheus_endpoint::Registry;
 
 use cirrus_client_network::build_block_announce_validator;
-use cumulus_client_consensus_relay_chain::subspace::{
+use cumulus_client_consensus_relay_chain::{
 	build_primary_chain_consensus, BuildPrimaryChainConsensusParams,
 };
 use subspace_node::service as subspace_service;

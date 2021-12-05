@@ -14,13 +14,7 @@ sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d8
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
-# Polkadot deps
-# polkadot-primitives = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-node-primitives = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-client = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-parachain = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-
-# other deps
+# Other deps
 codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
 futures = { version = "0.3.1", features = ["compat"] }
 futures-timer = "3.0.2"

@@ -19,7 +19,6 @@
 //! Provides functions for starting an executor node or a normal full node.
 
 use cumulus_client_consensus_common::ParachainConsensus;
-use cumulus_primitives_core::{CollectCollationInfo, ParaId};
 
 use sc_client_api::{
 	Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
@@ -114,9 +113,7 @@ where
 	});
 	*/
 
-	let para_id = 2000.into();
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
-		para_id,
 		client.clone(),
 		primary_chain_full_node.client.clone(),
 		announce_block.clone(),
@@ -135,7 +132,6 @@ where
 			.clone()
 			.ok_or_else(|| "Subspace full node did not provide an `OverseerHandle`!")?,
 		spawner,
-		// para_id,
 		key: primary_chain_full_node.collator_key.clone(),
 		parachain_consensus,
 	})
@@ -148,7 +144,6 @@ where
 
 /// Parameters given to [`start_full_node`].
 pub struct StartFullNodeParams<'a, Block: BlockT, Client, PClient> {
-	pub para_id: ParaId,
 	pub client: Arc<Client>,
 	pub primary_chain_full_node: PrimaryFullNode<PClient>,
 	pub task_manager: &'a mut TaskManager,
@@ -165,7 +160,6 @@ pub fn start_full_node<Block, Client, Backend, PClient>(
 		announce_block,
 		task_manager,
 		primary_chain_full_node,
-		para_id,
 	}: StartFullNodeParams<Block, Client, PClient>,
 ) -> sc_service::error::Result<()>
 where

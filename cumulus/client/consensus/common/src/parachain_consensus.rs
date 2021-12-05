@@ -27,16 +27,13 @@ use sp_runtime::{
 	SaturatedConversion,
 };
 
-use polkadot_primitives::v1::{
-	Id as ParaId, OccupiedCoreAssumption, ParachainHost,
-};
-use subspace_runtime_primitives::opaque::Block as PBlock;
-
 use codec::{Decode, Encode};
 use futures::{future, select, FutureExt, Stream, StreamExt};
 
 use std::{pin::Pin, sync::Arc};
 
+use sp_executor::ExecutorApi;
+use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_runtime_primitives::{BlockNumber, Hash};
 
 /// Helper for the relay chain client. This is expected to be a lightweight handle like an `Arc`.
@@ -48,89 +45,16 @@ pub trait RelaychainClient: Clone + 'static {
 	type HeadStream: Stream<Item = Vec<u8>> + Send + Unpin;
 
 	/// Get a stream of new best heads for the given parachain.
-	fn new_best_heads(&self, para_id: ParaId) -> Self::HeadStream;
-
-	/// Get a stream of finalized heads for the given parachain.
-	fn finalized_heads(&self, para_id: ParaId) -> Self::HeadStream;
-
-	/// Returns the parachain head for the given `para_id` at the given block id.
-	fn parachain_head_at(
-		&self,
-		at: &BlockId<PBlock>,
-		para_id: ParaId,
-	) -> ClientResult<Option<Vec<u8>>>;
-
-	/// Get a stream of new best heads for the given parachain.
-	fn new_best_executor_heads<Block: BlockT, SecondaryClient: HeaderBackend<Block> + 'static>(
+	fn new_best_heads<Block: BlockT, SecondaryClient: HeaderBackend<Block> + 'static>(
 		&self,
 		client: Arc<SecondaryClient>,
-	) -> Self::HeadStream {
-		todo!("Impl `new_best_executor_heads`")
-	}
+	) -> Self::HeadStream;
 
-	fn executor_head_hash(
+	fn executor_head_at(
 		&self,
 		at: &BlockId<PBlock>,
 		number: BlockNumber,
-	) -> ClientResult<Option<Vec<u8>>> {
-		Ok(None)
-	}
-}
-
-/// Follow the finalized head of the given parachain.
-///
-/// For every finalized block of the relay chain, it will get the included parachain header
-/// corresponding to `para_id` and will finalize it in the parachain.
-async fn follow_finalized_head<P, Block, B, R>(para_id: ParaId, parachain: Arc<P>, relay_chain: R)
-where
-	Block: BlockT,
-	P: Finalizer<Block, B> + UsageProvider<Block>,
-	R: RelaychainClient,
-	B: Backend<Block>,
-{
-	let mut finalized_heads = relay_chain.finalized_heads(para_id);
-
-	loop {
-		let finalized_head = if let Some(h) = finalized_heads.next().await {
-			h
-		} else {
-			tracing::debug!(target: "cirrus::consensus", "Stopping following finalized head.");
-			return
-		};
-
-		let header = match Block::Header::decode(&mut &finalized_head[..]) {
-			Ok(header) => header,
-			Err(err) => {
-				tracing::debug!(
-					target: "cirrus::consensus",
-					error = ?err,
-					"Could not decode parachain header while following finalized heads.",
-				);
-				continue
-			},
-		};
-
-		let hash = header.hash();
-
-		// don't finalize the same block multiple times.
-		if parachain.usage_info().chain.finalized_hash != hash {
-			if let Err(e) = parachain.finalize_block(BlockId::hash(hash), None, true) {
-				match e {
-					ClientError::UnknownBlock(_) => tracing::debug!(
-						target: "cirrus::consensus",
-						block_hash = ?hash,
-						"Could not finalize block because it is unknown.",
-					),
-					_ => tracing::warn!(
-						target: "cirrus::consensus",
-						error = ?e,
-						block_hash = ?hash,
-						"Failed to finalize block",
-					),
-				}
-			}
-		}
-	}
+	) -> ClientResult<Option<Vec<u8>>>;
 }
 
 /// Run the parachain consensus.
@@ -144,7 +68,6 @@ where
 /// This will access the backend of the parachain and thus, this future should be spawned as blocking
 /// task.
 pub async fn run_parachain_consensus<P, R, Block, B>(
-	para_id: ParaId,
 	parachain: Arc<P>,
 	relay_chain: R,
 	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
@@ -162,104 +85,15 @@ pub async fn run_parachain_consensus<P, R, Block, B>(
 	R: RelaychainClient,
 	B: Backend<Block>,
 {
-	tracing::debug!(
-		target: "cirrus::consensus",
-		"=============== [run_parachain_consensus]",
-	);
-
-	let follow_new_best =
-		follow_new_best(para_id, parachain.clone(), relay_chain.clone(), announce_block.clone());
-	let follow_finalized_head =
-		follow_finalized_head(para_id, parachain.clone(), relay_chain.clone());
-
-	let follow_new_best_subspace =
-		follow_new_best_subspace(parachain.clone(), relay_chain.clone(), announce_block);
+	let follow_new_best = follow_new_best(parachain.clone(), relay_chain.clone(), announce_block);
 
 	select! {
 		_ = follow_new_best.fuse() => {},
-		_ = follow_finalized_head.fuse() => {},
-		_ = follow_new_best_subspace.fuse() => {},
-	}
-}
-
-/// Follow the relay chain new best head, to update the Parachain new best head.
-async fn follow_new_best_subspace<P, R, Block, B>(
-	parachain: Arc<P>,
-	relay_chain: R,
-	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-) where
-	Block: BlockT,
-	P: Finalizer<Block, B>
-		+ UsageProvider<Block>
-		+ Send
-		+ Sync
-		+ 'static
-		+ BlockBackend<Block>
-		+ HeaderBackend<Block>
-		+ BlockchainEvents<Block>,
-	for<'a> &'a P: BlockImport<Block>,
-	R: RelaychainClient,
-	B: Backend<Block>,
-{
-	tracing::debug!(
-		target: "cirrus::consensus",
-		"=============== [follow_new_best_subspace]",
-	);
-
-	let mut new_best_heads = relay_chain.new_best_executor_heads(parachain.clone()).fuse();
-	let mut imported_blocks = parachain.import_notification_stream().fuse();
-	// The unset best header of the parachain. Will be `Some(_)` when we have imported a relay chain
-	// block before the parachain block it included. In this case we need to wait for this block to
-	// be imported to set it as new best.
-	let mut unset_best_header = None;
-
-	loop {
-		select! {
-			h = new_best_heads.next() => {
-				tracing::debug!(
-					target: "cirrus::consensus",
-					new_best_executor_head = ?h,
-					"=============== [follow_new_best_subspace] New executor head",
-				);
-				match h {
-					Some(h) => handle_new_best_parachain_head_subspace(
-						h,
-						&*parachain,
-						&mut unset_best_header,
-					).await,
-					None => {
-						tracing::debug!(
-							target: "cirrus::consensus",
-							"Stopping following new best.",
-						);
-						return
-					}
-				}
-			},
-			i = imported_blocks.next() => {
-				match i {
-					Some(i) => handle_new_block_imported(
-						i,
-						&mut unset_best_header,
-						&*parachain,
-						&*announce_block,
-					).await,
-					None => {
-						tracing::debug!(
-							target: "cirrus::consensus",
-							"Stopping following imported blocks.",
-						);
-						return
-					}
-				}
-			},
-		}
 	}
 }
 
 /// Follow the relay chain new best head, to update the Parachain new best head.
 async fn follow_new_best<P, R, Block, B>(
-	para_id: ParaId,
 	parachain: Arc<P>,
 	relay_chain: R,
 	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
@@ -269,13 +103,15 @@ async fn follow_new_best<P, R, Block, B>(
 		+ UsageProvider<Block>
 		+ Send
 		+ Sync
+		+ 'static
 		+ BlockBackend<Block>
+		+ HeaderBackend<Block>
 		+ BlockchainEvents<Block>,
 	for<'a> &'a P: BlockImport<Block>,
 	R: RelaychainClient,
 	B: Backend<Block>,
 {
-	let mut new_best_heads = relay_chain.new_best_heads(para_id).fuse();
+	let mut new_best_heads = relay_chain.new_best_heads(parachain.clone()).fuse();
 	let mut imported_blocks = parachain.import_notification_stream().fuse();
 	// The unset best header of the parachain. Will be `Some(_)` when we have imported a relay chain
 	// block before the parachain block it included. In this case we need to wait for this block to
@@ -286,7 +122,7 @@ async fn follow_new_best<P, R, Block, B>(
 		select! {
 			h = new_best_heads.next() => {
 				match h {
-					Some(h) => handle_new_best_parachain_head(
+					Some(h) => handle_new_best_parachain_head_subspace(
 						h,
 						&*parachain,
 						&mut unset_best_header,
@@ -401,7 +237,6 @@ async fn handle_new_best_parachain_head_subspace<Block, P>(
 			return
 		},
 	};
-	println!("================= [handle_new_best_parachain_head_subspace] parachain_head_hash: {:?}", parachain_head_hash);
 
 	let parachain_head = parachain.header(BlockId::Hash(parachain_head_hash)).unwrap().unwrap();
 
@@ -554,53 +389,13 @@ where
 impl<T> RelaychainClient for Arc<T>
 where
 	T: sc_client_api::BlockchainEvents<PBlock> + ProvideRuntimeApi<PBlock> + 'static + Send + Sync,
-	// <T as ProvideRuntimeApi<PBlock>>::Api: ParachainHost<PBlock> + sp_executor::ExecutorApi<PBlock>,
 	<T as ProvideRuntimeApi<PBlock>>::Api: sp_executor::ExecutorApi<PBlock>,
 {
 	type Error = ClientError;
 
 	type HeadStream = Pin<Box<dyn Stream<Item = Vec<u8>> + Send>>;
 
-	fn new_best_heads(&self, para_id: ParaId) -> Self::HeadStream {
-		let relay_chain = self.clone();
-
-		self.import_notification_stream()
-			.filter_map(move |n| {
-				future::ready(if n.is_new_best {
-					relay_chain.parachain_head_at(&BlockId::hash(n.hash), para_id).ok().flatten()
-				} else {
-					None
-				})
-			})
-			.boxed()
-	}
-
-	fn finalized_heads(&self, para_id: ParaId) -> Self::HeadStream {
-		let relay_chain = self.clone();
-
-		self.finality_notification_stream()
-			.filter_map(move |n| {
-				future::ready(
-					relay_chain.parachain_head_at(&BlockId::hash(n.hash), para_id).ok().flatten(),
-				)
-			})
-			.boxed()
-	}
-
-	fn parachain_head_at(
-		&self,
-		at: &BlockId<PBlock>,
-		para_id: ParaId,
-	) -> ClientResult<Option<Vec<u8>>> {
-		Ok(None)
-		// TODO:
-		// self.runtime_api()
-			// .persisted_validation_data(at, para_id, OccupiedCoreAssumption::TimedOut)
-			// .map(|s| s.map(|s| s.parent_head.0))
-			// .map_err(Into::into)
-	}
-
-	fn new_best_executor_heads<
+	fn new_best_heads<
 		Block: BlockT,
 		SecondaryClient: sp_blockchain::HeaderBackend<Block> + 'static,
 	>(
@@ -612,18 +407,10 @@ where
 		self.import_notification_stream()
 			.filter_map(move |n| {
 				future::ready(if n.is_new_best {
-
-					tracing::debug!(
-						target: "cirrus::consensus",
-						is_new_best = n.is_new_best,
-						secondary_best_number = ?client.info().best_number,
-						"=================== [new_best_executor_heads] Received a new notification"
-					);
-
-					let number = client.info().best_number;
+					let best_number = client.info().best_number;
+					let pending_number = best_number.saturated_into::<BlockNumber>() + 1;
 					relay_chain
-						.executor_head_hash(&BlockId::hash(n.hash),
-						number.saturated_into::<BlockNumber>() + 1)
+						.executor_head_at(&BlockId::hash(n.hash), pending_number)
 						.ok()
 						.flatten()
 				} else {
@@ -633,22 +420,14 @@ where
 			.boxed()
 	}
 
-	fn executor_head_hash(
+	fn executor_head_at(
 		&self,
 		at: &BlockId<PBlock>,
 		number: BlockNumber,
 	) -> ClientResult<Option<Vec<u8>>> {
-		use sp_executor::ExecutorApi;
-		let head_hash = self.runtime_api().head_hash(at, number);
-
-		tracing::debug!(
-			target: "cirrus::consensus",
-			?head_hash,
-			number,
-			"=================== [executor_head_hash] Receive head_hash from runtime"
-		);
-
-		head_hash.map(|h| h.map(|h| h.encode()))
+		self.runtime_api()
+			.head_hash(at, number)
+			.map(|h| h.map(|h| h.encode()))
 			.map_err(Into::into)
 	}
 }

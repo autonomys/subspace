@@ -33,19 +33,6 @@ use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT},
 };
 
-// use polkadot_client::ClientHandle;
-// use polkadot_node_primitives::{CollationSecondedSignal, Statement};
-// use polkadot_parachain::primitives::HeadData;
-// use polkadot_primitives::v1::{
-// Block as PBlock, CandidateReceipt, CompactStatement, Hash as PHash, Id as ParaId,
-// OccupiedCoreAssumption, ParachainHost, SigningContext, UncheckedSigned,
-// };
-
-use subspace_runtime_primitives::{
-	opaque::Block as PBlock, Hash as PHash,
-};
-use subspace_node_primitives::CollationSecondedSignal;
-
 use codec::{Decode, DecodeAll, Encode};
 use futures::{
 	channel::oneshot,
@@ -54,6 +41,9 @@ use futures::{
 };
 
 use std::{convert::TryFrom, fmt, marker::PhantomData, pin::Pin, sync::Arc};
+
+use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
+use subspace_node_primitives::CollationSecondedSignal;
 
 use wait_on_relay_chain_block::WaitOnRelayChainBlock;
 
@@ -85,10 +75,6 @@ type CandidateReceipt = Vec<u8>;
 pub struct BlockAnnounceData {
 	/// The receipt identifying the candidate.
 	receipt: CandidateReceipt,
-	/*
-	/// The seconded statement issued by a relay chain validator that approves the candidate.
-	statement: UncheckedSigned<CompactStatement>,
-	*/
 	/// The relay parent that was used as context to sign the [`Self::statement`].
 	relay_parent: PHash,
 }
@@ -96,7 +82,6 @@ pub struct BlockAnnounceData {
 impl Decode for BlockAnnounceData {
 	fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
 		let receipt = CandidateReceipt::decode(input)?;
-		// let statement = UncheckedSigned::<CompactStatement>::decode(input)?;
 
 		let relay_parent = match PHash::decode(input) {
 			Ok(p) => p,
@@ -463,74 +448,6 @@ where
 		relay_chain_client,
 	))
 }
-
-/*
-/// Block announce validator builder.
-///
-/// Builds a [`BlockAnnounceValidator`] for a parachain. As this requires
-/// a concrete relay chain client instance, the builder takes a [`polkadot_client::Client`]
-/// that wraps this concrete instanace. By using [`polkadot_client::ExecuteWithClient`]
-/// the builder gets access to this concrete instance.
-struct BlockAnnounceValidatorBuilder<Block, B> {
-	phantom: PhantomData<Block>,
-	relay_chain_client: polkadot_client::Client,
-	// para_id: ParaId,
-	relay_chain_sync_oracle: Box<dyn SyncOracle + Send>,
-	relay_chain_backend: Arc<B>,
-}
-
-impl<Block: BlockT, B> BlockAnnounceValidatorBuilder<Block, B>
-where
-	B: Backend<PBlock> + Send + 'static,
-{
-	/// Create a new instance of the builder.
-	fn new(
-		relay_chain_client: polkadot_client::Client,
-		// para_id: ParaId,
-		relay_chain_sync_oracle: Box<dyn SyncOracle + Send>,
-		relay_chain_backend: Arc<B>,
-	) -> Self {
-		Self {
-			relay_chain_client,
-			para_id,
-			relay_chain_sync_oracle,
-			relay_chain_backend,
-			phantom: PhantomData,
-		}
-	}
-
-	/// Build the block announce validator.
-	fn build(self) -> Box<dyn BlockAnnounceValidatorT<Block> + Send> {
-		self.relay_chain_client.clone().execute_with(self)
-	}
-}
-
-impl<Block: BlockT, B> polkadot_client::ExecuteWithClient
-	for BlockAnnounceValidatorBuilder<Block, B>
-where
-	B: Backend<PBlock> + Send + 'static,
-{
-	type Output = Box<dyn BlockAnnounceValidatorT<Block> + Send>;
-
-	fn execute_with_client<PClient, Api, PBackend>(self, client: Arc<PClient>) -> Self::Output
-	where
-		<Api as sp_api::ApiExt<PBlock>>::StateBackend:
-			sp_api::StateBackend<sp_runtime::traits::BlakeTwo256>,
-		PBackend: Backend<PBlock>,
-		PBackend::State: sp_api::StateBackend<sp_runtime::traits::BlakeTwo256>,
-		Api: polkadot_client::RuntimeApiCollection<StateBackend = PBackend::State>,
-		PClient: polkadot_client::AbstractClient<PBlock, PBackend, Api = Api> + 'static,
-	{
-		Box::new(BlockAnnounceValidator::new(
-			client.clone(),
-			// self.para_id,
-			self.relay_chain_sync_oracle,
-			self.relay_chain_backend,
-			client,
-		))
-	}
-}
-*/
 
 /// Wait before announcing a block that a candidate message has been received for this block, then
 /// add this message as justification for the block announcement.
