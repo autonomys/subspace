@@ -16,9 +16,6 @@
 
 //! Cirrus Executor implementation for Substrate.
 
-use cumulus_client_network::WaitToAnnounce;
-use cumulus_primitives_core::{CollectCollationInfo, ParachainBlockData};
-
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -51,7 +48,6 @@ const LOG_TARGET: &str = "cirrus::executor";
 pub struct Executor<Block: BlockT, BS, RA, Client> {
 	block_status: Arc<BS>,
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
-	wait_to_announce: Arc<Mutex<WaitToAnnounce<Block>>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
 }
@@ -60,7 +56,6 @@ impl<Block: BlockT, BS, RA, Client> Clone for Executor<Block, BS, RA, Client> {
 	fn clone(&self) -> Self {
 		Self {
 			block_status: self.block_status.clone(),
-			wait_to_announce: self.wait_to_announce.clone(),
 			parachain_consensus: self.parachain_consensus.clone(),
 			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
@@ -84,9 +79,7 @@ where
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
 	) -> Self {
-		let wait_to_announce = Arc::new(Mutex::new(WaitToAnnounce::new(spawner, announce_block)));
-
-		Self { block_status, wait_to_announce, runtime_api, parachain_consensus, client }
+		Self { block_status, runtime_api, parachain_consensus, client }
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -149,46 +142,6 @@ where
 				false
 			},
 		}
-	}
-
-	fn build_collation(
-		&mut self,
-		block: ParachainBlockData<Block>,
-		block_hash: Block::Hash,
-	) -> Option<Collation> {
-		todo!("Impl `build_collation`")
-		// Some(b"Hey, a dummy Collation here.".to_vec())
-		/*
-		let block_data = BlockData(block.encode());
-		let header = block.into_header();
-		let head_data = HeadData(header.encode());
-
-		let collation_info = match self
-			.runtime_api
-			.runtime_api()
-			.collect_collation_info(&BlockId::Hash(block_hash))
-		{
-			Ok(ci) => ci,
-			Err(e) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to collect collation info.",
-				);
-				return None
-			},
-		};
-
-		Some(Collation {
-			upward_messages: collation_info.upward_messages,
-			new_validation_code: collation_info.new_validation_code,
-			processed_downward_messages: collation_info.processed_downward_messages,
-			horizontal_messages: collation_info.horizontal_messages,
-			hrmp_watermark: collation_info.hrmp_watermark,
-			head_data,
-			proof_of_validity: PoV { block_data },
-		})
-		*/
 	}
 
 	async fn produce_candidate(
@@ -276,41 +229,6 @@ where
 			},
 			result_sender: None,
 		})
-
-		/*
-		let compact_proof = match candidate
-			.proof
-			.into_compact_proof::<HashFor<Block>>(last_head.state_root().clone())
-		{
-			Ok(proof) => proof,
-			Err(e) => {
-				tracing::error!(target: "cumulus-collator", "Failed to compact proof: {:?}", e);
-				return None
-			},
-		};
-
-		// Create the parachain block data for the validators.
-		let b = ParachainBlockData::<Block>::new(header, extrinsics, compact_proof);
-
-		tracing::info!(
-			target: LOG_TARGET,
-			"PoV size {{ header: {}kb, extrinsics: {}kb, storage_proof: {}kb }}",
-			b.header().encode().len() as f64 / 1024f64,
-			b.extrinsics().encode().len() as f64 / 1024f64,
-			b.storage_proof().encode().len() as f64 / 1024f64,
-		);
-
-		let block_hash = b.header().hash();
-		let collation = self.build_collation(b, block_hash)?;
-
-		let (result_sender, signed_stmt_recv) = oneshot::channel();
-
-		self.wait_to_announce.lock().wait_to_announce(block_hash, signed_stmt_recv);
-
-		tracing::info!(target: LOG_TARGET, ?block_hash, "Produced proof-of-validity candidate.",);
-
-		Some(CollationResult { collation, result_sender: Some(result_sender) })
-		*/
 	}
 }
 
@@ -358,7 +276,6 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	);
 
 	let span = tracing::Span::current();
-	// let para_id = 999.into();
 	let config = CollationGenerationConfig {
 		key,
 		collator: Box::new(move |relay_parent, validation_data| {
@@ -374,10 +291,6 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	overseer_handle
 		.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
 		.await;
-
-	// overseer_handle
-	// 	.send_msg(CollatorProtocolMessage::CollateOn(para_id), "StartCollator")
-	// 	.await;
 }
 
 #[cfg(test)]
@@ -462,7 +375,6 @@ mod tests {
 			announce_block: Arc::new(announce_block),
 			overseer_handle: OverseerHandle::new(handle),
 			spawner,
-			para_id,
 			key: CollatorPair::generate().0,
 			parachain_consensus: Box::new(DummyParachainConsensus { client: client.clone() }),
 		});

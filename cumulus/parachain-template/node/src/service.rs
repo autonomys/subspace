@@ -10,9 +10,7 @@ use parachain_template_runtime::{
 
 // Cumulus Imports
 use cumulus_client_consensus_common::ParachainConsensus;
-use cirrus_client_service::{
-	prepare_node_config, start_full_node, StartFullNodeParams,
-};
+use cirrus_client_service::prepare_node_config;
 
 // Substrate Imports
 use sc_executor::NativeElseWasmExecutor;
@@ -231,7 +229,7 @@ where
 	let parachain_config = prepare_node_config(parachain_config);
 
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
-	let (mut telemetry, telemetry_worker_handle) = params.other;
+	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
 	let relay_chain_full_node = cirrus_client_service::build_subspace_full_node(polkadot_config)?;
 
@@ -345,8 +343,8 @@ where
 #[allow(clippy::type_complexity)]
 pub fn parachain_build_import_queue(
 	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
-	config: &Configuration,
-	telemetry: Option<TelemetryHandle>,
+	_config: &Configuration,
+	_telemetry: Option<TelemetryHandle>,
 	task_manager: &TaskManager,
 ) -> Result<
 	sc_consensus::DefaultImportQueue<
@@ -389,9 +387,9 @@ pub async fn start_parachain_node(
 		 task_manager,
 		 relay_chain_node,
 		 transaction_pool,
-		 sync_oracle,
-		 keystore,
-		 force_authoring| {
+		 _sync_oracle,
+		 _keystore,
+		 _force_authoring| {
 			let proposer_factory = sc_basic_authorship::ProposerFactory::with_proof_recording(
 				task_manager.spawn_handle(),
 				client.clone(),
@@ -405,7 +403,7 @@ pub async fn start_parachain_node(
 
 			Ok(build_primary_chain_consensus(BuildPrimaryChainConsensusParams {
 				proposer_factory,
-				create_inherent_data_providers: move |_, (relay_parent, validation_data)| async move {
+				create_inherent_data_providers: move |_, (_relay_parent, _validation_data)| async move {
 					let time = sp_timestamp::InherentDataProvider::from_system_time();
 					Ok(time)
 				},

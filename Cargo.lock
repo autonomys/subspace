@@ -982,8 +982,6 @@ name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
  "cumulus-client-consensus-common",
- "cumulus-client-network",
- "cumulus-primitives-core",
  "futures 0.3.18",
  "parity-scale-codec",
  "parking_lot 0.10.2",
@@ -1461,35 +1459,6 @@ dependencies = [
  "subspace-node",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
- "tracing",
-]
-
-[[package]]
-name = "cumulus-client-network"
-version = "0.1.0"
-dependencies = [
- "cumulus-primitives-core",
- "derive_more",
- "futures 0.3.18",
- "futures-timer 3.0.2",
- "parity-scale-codec",
- "parking_lot 0.10.2",
- "polkadot-client",
- "polkadot-node-primitives",
- "polkadot-parachain",
- "polkadot-primitives",
- "sc-cli",
- "sc-client-api",
- "sc-service",
- "sp-api",
- "sp-blockchain",
- "sp-consensus",
- "sp-core",
- "sp-keyring",
- "sp-keystore",
- "sp-runtime",
- "substrate-test-utils",
- "tokio",
  "tracing",
 ]
 
@@ -10084,27 +10053,6 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime",
  "substrate-test-runtime-client",
-]
-
-[[package]]
-name = "substrate-test-utils"
-version = "4.0.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
-dependencies = [
- "futures 0.3.18",
- "substrate-test-utils-derive",
- "tokio",
-]
-
-[[package]]
-name = "substrate-test-utils-derive"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
-dependencies = [
- "proc-macro-crate 1.1.0",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

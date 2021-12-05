@@ -13,16 +13,8 @@ sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d8
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
-# Polkadot dependencies
-# polkadot-primitives = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-node-primitives = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-overseer = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-# polkadot-node-subsystem = { git = "https://github.com/liuchengxu/polkadot", rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-
 # Cumulus dependencies
-cumulus-client-network = { path = "../network" }
 cumulus-client-consensus-common = { path = "../consensus/common" }
-cumulus-primitives-core = { path = "../../primitives/core" }
 
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
