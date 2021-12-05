@@ -33,10 +33,12 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_core::{traits::SpawnNamed, Pair};
 use sp_runtime::{
-	traits::{BlakeTwo256, Block as BlockT, NumberFor},
+	traits::{Block as BlockT, NumberFor},
 	Justifications,
 };
-use std::{marker::PhantomData, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
+
+use cumulus_client_consensus_common::RelaychainClient;
 
 pub mod genesis;
 
@@ -81,7 +83,7 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		task_manager,
 		primary_chain_full_node,
 		parachain_consensus,
-		import_queue,
+		import_queue: _,
 	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ>,
 ) -> sc_service::error::Result<()>
 where
@@ -96,23 +98,12 @@ where
 		+ BlockchainEvents<Block>
 		+ ProvideRuntimeApi<Block>
 		+ 'static,
-	RClient: Clone + cumulus_client_consensus_common::RelaychainClient + Send + Sync + 'static,
+	RClient: RelaychainClient + Clone + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<Block>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 	IQ: ImportQueue<Block> + 'static,
 {
-	// FIXME: This should be used to start the parachain consensus, but we can skip it for now?
-	/*
-	primary_chain_full_node.client.execute_with(StartConsensus {
-		para_id,
-		announce_block: announce_block.clone(),
-		client: client.clone(),
-		task_manager,
-		_phantom: PhantomData,
-	});
-	*/
-
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
 		client.clone(),
 		primary_chain_full_node.client.clone(),
@@ -150,6 +141,7 @@ pub struct StartFullNodeParams<'a, Block: BlockT, Client, PClient> {
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 }
 
+// TODO: verify the full node runs as expected.
 /// Start a full node for a parachain.
 ///
 /// A full node will only sync the given parachain and will follow the
@@ -169,25 +161,25 @@ where
 		+ Send
 		+ Sync
 		+ BlockBackend<Block>
+		+ HeaderBackend<Block>
 		+ BlockchainEvents<Block>
 		+ 'static,
 	for<'a> &'a Client: BlockImport<Block>,
+	PClient: RelaychainClient + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 {
-	todo!("Impl `start_full_node`");
-	/*
-	primary_chain_full_node.client.execute_with(StartConsensus {
-		announce_block,
-		para_id,
-		client,
-		task_manager,
-		_phantom: PhantomData,
-	});
+	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
+		client.clone(),
+		primary_chain_full_node.client.clone(),
+		announce_block.clone(),
+	);
+	task_manager
+		.spawn_essential_handle()
+		.spawn("cumulus-consensus", None, consensus);
 
 	task_manager.add_child(primary_chain_full_node.primary_chain_full_node.task_manager);
 
 	Ok(())
-	*/
 }
 
 /// Prepare the parachain's node condifugration

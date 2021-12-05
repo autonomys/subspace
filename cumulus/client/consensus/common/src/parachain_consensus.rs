@@ -33,8 +33,7 @@ use futures::{future, select, FutureExt, Stream, StreamExt};
 use std::{pin::Pin, sync::Arc};
 
 use sp_executor::ExecutorApi;
-use subspace_runtime_primitives::opaque::Block as PBlock;
-use subspace_runtime_primitives::{BlockNumber, Hash};
+use subspace_runtime_primitives::{opaque::Block as PBlock, BlockNumber};
 
 /// Helper for the relay chain client. This is expected to be a lightweight handle like an `Arc`.
 pub trait RelaychainClient: Clone + 'static {
@@ -197,7 +196,6 @@ async fn handle_new_block_imported<Block, P>(
 
 	match parachain.block_status(&BlockId::Hash(unset_hash)) {
 		Ok(BlockStatus::InChainWithState) => {
-			drop(unset_best_header);
 			let unset_best_header = unset_best_header_opt
 				.take()
 				.expect("We checked above that the value is set; qed");
@@ -247,73 +245,6 @@ async fn handle_new_best_parachain_head_subspace<Block, P>(
 			target: "cirrus::consensus",
 			block_hash = ?hash,
 			usage_info = ?parachain.usage_info(),
-			"Skipping set new best block, because block is already the best.",
-		)
-	} else {
-		// Make sure the block is already known or otherwise we skip setting new best.
-		match parachain.block_status(&BlockId::Hash(hash)) {
-			Ok(BlockStatus::InChainWithState) => {
-				unset_best_header.take();
-
-				import_block_as_new_best(hash, parachain_head, parachain).await;
-			},
-			Ok(BlockStatus::InChainPruned) => {
-				tracing::error!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					"Trying to set pruned block as new best!",
-				);
-			},
-			Ok(BlockStatus::Unknown) => {
-				*unset_best_header = Some(parachain_head);
-
-				tracing::debug!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					"Parachain block not yet imported, waiting for import to enact as best block.",
-				);
-			},
-			Err(e) => {
-				tracing::error!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					error = ?e,
-					"Failed to get block status of block.",
-				);
-			},
-			_ => {},
-		}
-	}
-}
-
-/// Handle the new best parachain head as extracted from the new best relay chain.
-async fn handle_new_best_parachain_head<Block, P>(
-	head: Vec<u8>,
-	parachain: &P,
-	unset_best_header: &mut Option<Block::Header>,
-) where
-	Block: BlockT,
-	P: UsageProvider<Block> + Send + Sync + BlockBackend<Block>,
-	for<'a> &'a P: BlockImport<Block>,
-{
-	let parachain_head = match <<Block as BlockT>::Header>::decode(&mut &head[..]) {
-		Ok(header) => header,
-		Err(err) => {
-			tracing::debug!(
-				target: "cirrus::consensus",
-				error = ?err,
-				"Could not decode Parachain header while following best heads.",
-			);
-			return
-		},
-	};
-
-	let hash = parachain_head.hash();
-
-	if parachain.usage_info().chain.best_hash == hash {
-		tracing::debug!(
-			target: "cirrus::consensus",
-			block_hash = ?hash,
 			"Skipping set new best block, because block is already the best.",
 		)
 	} else {
