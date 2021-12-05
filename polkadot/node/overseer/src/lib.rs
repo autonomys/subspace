@@ -71,26 +71,17 @@ use futures::{channel::oneshot, future::BoxFuture, select, Future, FutureExt, St
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
-// use polkadot_primitives::v1::{Block, BlockId, BlockNumber, Hash, ParachainHost};
-use polkadot_primitives::v1::{BlockNumber, Hash, ParachainHost};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 
-use polkadot_node_network_protocol::v1 as protocol_v1;
 use polkadot_node_subsystem_types::messages::{
-	ApprovalDistributionMessage, ApprovalVotingMessage, AvailabilityDistributionMessage,
-	AvailabilityRecoveryMessage, AvailabilityStoreMessage, BitfieldDistributionMessage,
-	BitfieldSigningMessage, CandidateBackingMessage, CandidateValidationMessage, ChainApiMessage,
-	ChainSelectionMessage, CollationGenerationMessage, CollatorProtocolMessage,
-	DisputeCoordinatorMessage, DisputeDistributionMessage, GossipSupportMessage,
-	NetworkBridgeEvent, NetworkBridgeMessage, ProvisionerMessage, RuntimeApiMessage,
-	StatementDistributionMessage,
+	ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
 };
 pub use polkadot_node_subsystem_types::{
 	errors::{SubsystemError, SubsystemResult},
 	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
-use subspace_runtime_primitives::opaque::{Block, BlockId};
+use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
 pub mod metrics;
 pub use self::metrics::Metrics as OverseerMetrics;
@@ -116,6 +107,7 @@ pub const KNOWN_LEAVES_CACHE_SIZE: usize = 2 * 24 * 3600 / 6;
 #[cfg(test)]
 mod tests;
 
+// FIXME:
 /// Whether a header supports parachain consensus or not.
 pub trait HeadSupportsParachains {
 	/// Return true if the given header supports parachain consensus. Otherwise, false.
@@ -125,12 +117,9 @@ pub trait HeadSupportsParachains {
 impl<Client> HeadSupportsParachains for Arc<Client>
 where
 	Client: ProvideRuntimeApi<Block>,
-	// Client::Api: ParachainHost<Block>,
 {
 	fn head_supports_parachains(&self, head: &Hash) -> bool {
 		true
-		// let id = BlockId::Hash(*head);
-		// self.runtime_api().has_api::<dyn ParachainHost<Block>>(&id).unwrap_or(false)
 	}
 }
 

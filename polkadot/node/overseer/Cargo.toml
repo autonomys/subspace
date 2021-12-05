@@ -10,11 +10,8 @@ sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d8
 futures = "0.3.17"
 futures-timer = "3.0.2"
 parking_lot = "0.11.1"
-polkadot-node-network-protocol = { path = "../network/protocol" }
-polkadot-node-primitives = { path = "../primitives" }
 polkadot-node-subsystem-types = { path = "../subsystem-types" }
 polkadot-node-metrics = { path = "../metrics" }
-polkadot-primitives = { path = "../../primitives" }
 polkadot-overseer-gen = { path = "./overseer-gen" }
 tracing = "0.1.29"
 lru = "0.7"
