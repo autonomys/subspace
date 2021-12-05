@@ -20,6 +20,7 @@ polkadot-subsystem = { package = "polkadot-node-subsystem", path = "../../subsys
 polkadot-node-subsystem-util = { path = "../../subsystem-util" }
 
 sp-executor = { path = "../../../../crates/sp-executor" }
+subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
 
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }

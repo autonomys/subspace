@@ -96,9 +96,7 @@ pub mod opaque {
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
-    pub type Block = generic::Block<Header, OpaqueExtrinsic>;
 
-    /* FIXME: this abstraction does not compile with overseer.
     /// Abstraction over a substrate block.
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
     #[cfg_attr(
@@ -146,7 +144,7 @@ pub mod opaque {
             (header, extrinsics).encode()
         }
     }
-    */
+
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
 }

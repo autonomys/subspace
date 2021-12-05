@@ -14,6 +14,8 @@ polkadot-node-subsystem-util = { path = "../../subsystem-util" }
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-consensus-babe = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
+subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
+
 [dev-dependencies]
 futures = { version = "0.3.17", features = ["thread-pool"] }
 maplit = "1.0.2"

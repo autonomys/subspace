@@ -1038,7 +1038,6 @@ dependencies = [
  "cumulus-primitives-core",
  "parity-scale-codec",
  "parking_lot 0.10.2",
- "polkadot-primitives",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
@@ -1466,6 +1465,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime",
  "subspace-node",
+ "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "tracing",
 ]
@@ -6390,6 +6390,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-keyring",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -6552,6 +6553,7 @@ dependencies = [
  "sc-consensus-babe",
  "sp-blockchain",
  "sp-core",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -6684,6 +6686,7 @@ dependencies = [
  "sp-consensus-babe",
  "sp-core",
  "sp-executor",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -6853,6 +6856,7 @@ dependencies = [
  "sc-client-api",
  "sp-api",
  "sp-core",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 

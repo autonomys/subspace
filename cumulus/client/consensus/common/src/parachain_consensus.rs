@@ -28,8 +28,9 @@ use sp_runtime::{
 };
 
 use polkadot_primitives::v1::{
-	Block as PBlock, Id as ParaId, OccupiedCoreAssumption, ParachainHost,
+	Id as ParaId, OccupiedCoreAssumption, ParachainHost,
 };
+use subspace_runtime_primitives::opaque::Block as PBlock;
 
 use codec::{Decode, Encode};
 use futures::{future, select, FutureExt, Stream, StreamExt};

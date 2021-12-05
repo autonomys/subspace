@@ -71,7 +71,8 @@ use futures::{channel::oneshot, future::BoxFuture, select, Future, FutureExt, St
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
-use polkadot_primitives::v1::{Block, BlockId, BlockNumber, Hash, ParachainHost};
+// use polkadot_primitives::v1::{Block, BlockId, BlockNumber, Hash, ParachainHost};
+use polkadot_primitives::v1::{BlockNumber, Hash, ParachainHost};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 
 use polkadot_node_network_protocol::v1 as protocol_v1;
@@ -88,6 +89,8 @@ pub use polkadot_node_subsystem_types::{
 	errors::{SubsystemError, SubsystemResult},
 	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
+
+use subspace_runtime_primitives::opaque::{Block, BlockId};
 
 pub mod metrics;
 pub use self::metrics::Metrics as OverseerMetrics;

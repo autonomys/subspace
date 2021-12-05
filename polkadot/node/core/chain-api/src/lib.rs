@@ -28,7 +28,7 @@
 //! * Last finalized block number
 //! * Ancestors
 
-#![deny(unused_crate_dependencies, unused_results)]
+#![deny(unused_results)]
 #![warn(missing_docs)]
 
 use std::sync::Arc;
@@ -38,7 +38,7 @@ use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
-use polkadot_primitives::v1::{Block, BlockId};
+use subspace_runtime_primitives::opaque::{Block, BlockId};
 use polkadot_subsystem::{
 	messages::ChainApiMessage, overseer, FromOverseer, OverseerSignal, SpawnedSubsystem,
 	SubsystemContext, SubsystemError, SubsystemResult,

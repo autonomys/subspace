@@ -20,6 +20,8 @@ tracing = "0.1.29"
 lru = "0.7"
 parity-util-mem = { version = ">= 0.10.1", default-features = false }
 
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
+
 [dev-dependencies]
 metered-channel = { path = "../metered-channel" }
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }

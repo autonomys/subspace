@@ -37,9 +37,10 @@ use cumulus_client_consensus_common::{
 	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
 };
 use cumulus_primitives_core::{
-	relay_chain::v1::{Block as PBlock, Hash as PHash, ParachainHost},
+	relay_chain::v1::{Hash as PHash, ParachainHost},
 	ParaId, PersistedValidationData,
 };
+use subspace_runtime_primitives::opaque::Block as PBlock;
 use parking_lot::Mutex;
 use polkadot_client::ClientHandle;
 use sc_client_api::Backend;

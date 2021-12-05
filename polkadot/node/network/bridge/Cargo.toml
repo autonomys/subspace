@@ -18,6 +18,8 @@ polkadot-node-network-protocol = { path = "../protocol" }
 polkadot-node-subsystem-util = { path = "../../subsystem-util"}
 parking_lot = "0.11.1"
 
+subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
+
 [dev-dependencies]
 assert_matches = "1.4.0"
 polkadot-node-subsystem-test-helpers = { path = "../../subsystem-test-helpers" }
