@@ -22,7 +22,7 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::BlakeTwo256;
 use substrate_prometheus_endpoint::Registry;
 
-use cirrus_client_network::build_block_announce_validator;
+// use cirrus_client_network::build_block_announce_validator;
 use cumulus_client_consensus_relay_chain::{
 	build_primary_chain_consensus, BuildPrimaryChainConsensusParams,
 };
@@ -236,11 +236,11 @@ where
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	let block_announce_validator = build_block_announce_validator(
-		relay_chain_full_node.client.clone(),
-		Box::new(relay_chain_full_node.network.clone()),
-		relay_chain_full_node.backend.clone(),
-	);
+	// let block_announce_validator = build_block_announce_validator(
+		// relay_chain_full_node.client.clone(),
+		// Box::new(relay_chain_full_node.network.clone()),
+		// relay_chain_full_node.backend.clone(),
+	// );
 
 	let force_authoring = parachain_config.force_authoring;
 	let validator = parachain_config.role.is_authority();
@@ -255,7 +255,8 @@ where
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
 			import_queue: import_queue.clone(),
-			block_announce_validator_builder: Some(Box::new(|_| block_announce_validator)),
+			// TODO: we might want to re-enable this some day.
+			block_announce_validator_builder: None,
 			warp_sync: None,
 		})?;
 

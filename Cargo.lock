@@ -823,27 +823,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-client-network"
-version = "0.1.0"
-dependencies = [
- "derive_more",
- "futures 0.3.18",
- "futures-timer 3.0.2",
- "parity-scale-codec",
- "parking_lot 0.10.2",
- "sc-client-api",
- "sp-api",
- "sp-blockchain",
- "sp-consensus",
- "sp-core",
- "sp-runtime",
- "subspace-node",
- "subspace-node-primitives",
- "subspace-runtime-primitives",
- "tracing",
-]
-
-[[package]]
 name = "cirrus-client-service"
 version = "0.1.0"
 dependencies = [
@@ -1270,37 +1249,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "tracing",
-]
-
-[[package]]
-name = "cumulus-primitives-core"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "impl-trait-for-tuples",
- "parity-scale-codec",
- "polkadot-core-primitives",
- "polkadot-parachain",
- "polkadot-primitives",
- "sp-api",
- "sp-runtime",
- "sp-std",
- "sp-trie",
-]
-
-[[package]]
-name = "cumulus-primitives-timestamp"
-version = "0.1.0"
-dependencies = [
- "cumulus-primitives-core",
- "futures 0.3.18",
- "parity-scale-codec",
- "sp-consensus",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
- "sp-timestamp",
- "sp-tracing",
 ]
 
 [[package]]
@@ -4625,7 +4573,6 @@ name = "parachain-template-node"
 version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
- "cirrus-client-network",
  "cirrus-client-service",
  "cumulus-client-cli",
  "cumulus-client-consensus-common",

@@ -23,21 +23,21 @@ use sp_consensus::BlockStatus;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, HashFor, Header as HeaderT, Zero},
+	traits::{Block as BlockT, Header as HeaderT, Zero},
 	SaturatedConversion,
 };
 
 use cumulus_client_consensus_common::ParachainConsensus;
 
-// FIXME
 use polkadot_overseer::Handle as OverseerHandle;
+use polkadot_node_subsystem::messages::CollationGenerationMessage;
+use subspace_node_primitives::CollationGenerationConfig;
 
 use subspace_node_primitives::{Collation, CollationResult};
 use subspace_runtime_primitives::{CollatorPair, Hash as PHash, HeadData, PersistedValidationData};
 
 use codec::{Decode, Encode};
-use futures::{channel::oneshot, FutureExt};
-use parking_lot::Mutex;
+use futures::FutureExt;
 use std::sync::Arc;
 use tracing::Instrument;
 
@@ -73,8 +73,6 @@ where
 	/// Create a new instance.
 	fn new(
 		block_status: Arc<BS>,
-		spawner: Arc<dyn SpawnNamed + Send + Sync>,
-		announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 		runtime_api: Arc<RA>,
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
@@ -152,23 +150,15 @@ where
 		tracing::trace!(
 			target: LOG_TARGET,
 			relay_parent = ?relay_parent,
+			validation_data = ?validation_data,
 			"Producing candidate",
 		);
 
-		// FIXME: We only sync the primary chain and does not attempt to produce candidate at the
-		// very first step.
-		tracing::trace!(
-			target: LOG_TARGET,
-			relay_parent = ?relay_parent,
-			validation_data = ?validation_data,
-			"Should be producing candidate...",
-		);
-
-		let best_number = self.client.info().best_number;
-
-		// The last block we're building on is from the primary chain if the best local block is not
-		// genesis block.
-		let maybe_pending_head = match <Option<<Block::Header as HeaderT>::Hash>>::decode(&mut &validation_data.parent_head[..]) {
+		// Try retrieving the latest pending head from primary chain, otherwise fall back to the
+		// local best hash which should definitely be genesis hash.
+		let maybe_pending_head = match <Option<<Block::Header as HeaderT>::Hash>>::decode(
+			&mut &validation_data.parent_head[..],
+		) {
 			Ok(x) => x,
 			Err(e) => {
 				tracing::error!(
@@ -176,9 +166,11 @@ where
 					error = ?e,
 					"Could not decode the pending head hash."
 				);
-				return None
-			},
+				return None;
+			}
 		};
+
+		let best_number = self.client.info().best_number;
 
 		let last_head_hash = if let Some(pending_head) = maybe_pending_head {
 			pending_head
@@ -204,28 +196,22 @@ where
 			.ok()?
 			.expect("Failed to fetch the best header");
 
-		tracing::info!(
-			target: LOG_TARGET,
-			last_head = ?last_head,
-			?last_head_hash,
-			"=========== Producing candidate.",
-		);
-
-		// FIXME: replace cumulus_primitives_core::PersistedValidationData
+		// FIXME: handle PersistedValidationData
 		let validation_data = Default::default();
 		let candidate = self
 			.parachain_consensus
 			.produce_candidate(&last_head, relay_parent, &validation_data)
 			.await?;
 
-		let (header, extrinsics) = candidate.block.deconstruct();
+		let (header, _extrinsics) = candidate.block.deconstruct();
 
 		let head_data = HeadData(header.encode());
+		let number = best_number.saturated_into::<u32>() + 1u32;
 
 		Some(CollationResult {
 			collation: Collation {
 				head_data,
-				number: self.client.info().best_number.saturated_into::<u32>() + 1u32,
+				number,
 			},
 			result_sender: None,
 		})
@@ -249,9 +235,9 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	StartExecutorParams {
 		client,
 		block_status,
-		announce_block,
+		announce_block: _,
 		mut overseer_handle,
-		spawner,
+		spawner: _,
 		key,
 		parachain_consensus,
 		runtime_api,
@@ -263,13 +249,8 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
 {
-	use polkadot_node_subsystem::messages::{CollationGenerationMessage, CollatorProtocolMessage};
-	use subspace_node_primitives::CollationGenerationConfig;
-
 	let executor = Executor::new(
 		block_status,
-		Arc::new(spawner),
-		announce_block,
 		runtime_api,
 		parachain_consensus,
 		client,
@@ -291,133 +272,4 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	overseer_handle
 		.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
 		.await;
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use cumulus_client_consensus_common::ParachainCandidate;
-	use cumulus_test_client::{
-		Client, ClientBlockImportExt, DefaultTestClientBuilderExt, InitBlockBuilder,
-		TestClientBuilder, TestClientBuilderExt,
-	};
-	use cumulus_test_runtime::{Block, Header};
-	use futures::{channel::mpsc, executor::block_on, StreamExt};
-	use polkadot_node_subsystem_test_helpers::ForwardSubsystem;
-	use polkadot_overseer::{dummy::dummy_overseer_builder, HeadSupportsParachains};
-	use sp_consensus::BlockOrigin;
-	use sp_core::{testing::TaskExecutor, Pair};
-	use sp_runtime::traits::BlakeTwo256;
-	use sp_state_machine::Backend;
-
-	struct AlwaysSupportsParachains;
-	impl HeadSupportsParachains for AlwaysSupportsParachains {
-		fn head_supports_parachains(&self, _head: &PHash) -> bool {
-			true
-		}
-	}
-
-	#[derive(Clone)]
-	struct DummyParachainConsensus {
-		client: Arc<Client>,
-	}
-
-	#[async_trait::async_trait]
-	impl ParachainConsensus<Block> for DummyParachainConsensus {
-		async fn produce_candidate(
-			&mut self,
-			parent: &Header,
-			_: PHash,
-			validation_data: &PersistedValidationData,
-		) -> Option<ParachainCandidate<Block>> {
-			let block_id = BlockId::Hash(parent.hash());
-			let builder = self.client.init_block_builder_at(
-				&block_id,
-				Some(validation_data.clone()),
-				Default::default(),
-			);
-
-			let (block, _, proof) = builder.build().expect("Creates block").into_inner();
-
-			self.client
-				.import(BlockOrigin::Own, block.clone())
-				.await
-				.expect("Imports the block");
-
-			Some(ParachainCandidate { block, proof: proof.expect("Proof is returned") })
-		}
-	}
-
-	#[test]
-	fn collates_produces_a_block_and_storage_proof_does_not_contains_code() {
-		sp_tracing::try_init_simple();
-
-		let spawner = TaskExecutor::new();
-		let para_id = ParaId::from(100);
-		let announce_block = |_, _| ();
-		let client = Arc::new(TestClientBuilder::new().build());
-		let header = client.header(&BlockId::Number(0)).unwrap().unwrap();
-
-		let (sub_tx, sub_rx) = mpsc::channel(64);
-
-		let (overseer, handle) =
-			dummy_overseer_builder(spawner.clone(), AlwaysSupportsParachains, None)
-				.expect("Creates overseer builder")
-				.replace_collation_generation(|_| ForwardSubsystem(sub_tx))
-				.build()
-				.expect("Builds overseer");
-
-		spawner.spawn("overseer", overseer.run().then(|_| async { () }).boxed());
-
-		let collator_start = start_collator(StartExecutorParams {
-			runtime_api: client.clone(),
-			block_status: client.clone(),
-			announce_block: Arc::new(announce_block),
-			overseer_handle: OverseerHandle::new(handle),
-			spawner,
-			key: CollatorPair::generate().0,
-			parachain_consensus: Box::new(DummyParachainConsensus { client: client.clone() }),
-		});
-		block_on(collator_start);
-
-		let msg = block_on(sub_rx.into_future())
-			.0
-			.expect("message should be send by `start_collator` above.");
-
-		let config = match msg {
-			CollationGenerationMessage::Initialize(config) => config,
-		};
-
-		let mut validation_data = PersistedValidationData::default();
-		validation_data.parent_head = header.encode().into();
-		let relay_parent = Default::default();
-
-		let collation = block_on((config.collator)(relay_parent, &validation_data))
-			.expect("Collation is build")
-			.collation;
-
-		let block_data = collation.proof_of_validity.block_data;
-
-		let block =
-			ParachainBlockData::<Block>::decode(&mut &block_data.0[..]).expect("Is a valid block");
-
-		assert_eq!(1, *block.header().number());
-
-		// Ensure that we did not include `:code` in the proof.
-		let db = block
-			.storage_proof()
-			.to_storage_proof::<BlakeTwo256>(Some(header.state_root()))
-			.unwrap()
-			.0
-			.into_memory_db();
-
-		let backend =
-			sp_state_machine::new_in_mem::<BlakeTwo256>().update_backend(*header.state_root(), db);
-
-		// Should return an error, as it was not included while building the proof.
-		assert!(backend
-			.storage(sp_core::storage::well_known_keys::CODE)
-			.unwrap_err()
-			.contains("Trie lookup error: Database missing expected key"));
-	}
 }
