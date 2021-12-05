@@ -12,8 +12,8 @@ cumulus-primitives-parachain-inherent = { path = "../../primitives/parachain-inh
 cumulus-pallet-parachain-system-proc-macro = { path = "proc-macro", default-features = false }
 
 # Polkadot dependencies
-polkadot-parachain = { git = "https://github.com/liuchengxu/polkadot", default-features = false, features = [ "wasm-api" ], rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-xcm = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+polkadot-parachain = { path = "../../../polkadot/parachain", default-features = false, features = [ "wasm-api" ] }
+xcm = { path = "../../../polkadot/xcm", default-features = false }
 
 # Substrate dependencies
 frame-support = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }

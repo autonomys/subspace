@@ -124,7 +124,9 @@ where
 		primary_chain_full_node.client.clone(),
 		announce_block.clone(),
 	);
-	task_manager.spawn_essential_handle().spawn("cumulus-consensus", consensus);
+	task_manager
+		.spawn_essential_handle()
+		.spawn("cumulus-consensus", None, consensus);
 
 	cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
 		runtime_api: client.clone(),

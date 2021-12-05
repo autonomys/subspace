@@ -61,8 +61,8 @@ cumulus-primitives-timestamp = { path = "../../primitives/timestamp", default-fe
 cumulus-primitives-utility = { path = "../../primitives/utility", default-features = false }
 
 # Polkadot Dependencies
-polkadot-parachain = { git = "https://github.com/liuchengxu/polkadot", default-features = false , rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
-polkadot-runtime-common = { git = "https://github.com/liuchengxu/polkadot", default-features = false, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+polkadot-parachain = { path = "../../../polkadot/parachain", default-features = false }
+polkadot-runtime-common = { path = "../../../polkadot/runtime/common", default-features = false }
 
 [features]
 default = [

@@ -16,7 +16,7 @@ sp-trie = { git = "https://github.com/paritytech/substrate", default-features = 
 sp-api = { git = "https://github.com/paritytech/substrate", optional = true , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
 # Polkadot dependencies
-polkadot-client = { git = "https://github.com/liuchengxu/polkadot", optional = true, rev = "a528e4488bee22cf84e554d7ca3045065af7d850" }
+polkadot-client = { path = "../../../polkadot/node/client", optional = true }
 
 # Cumulus dependencies
 cumulus-primitives-core = { path = "../core", default-features = false }
