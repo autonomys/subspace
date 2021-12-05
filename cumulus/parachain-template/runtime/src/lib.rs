@@ -22,28 +22,21 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
 use frame_support::{
-	construct_runtime, match_type, parameter_types,
+	construct_runtime, parameter_types,
 	traits::Everything,
 	weights::{
-		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_PER_SECOND},
-		DispatchClass, IdentityFee, Weight, WeightToFeeCoefficient, WeightToFeeCoefficients,
+		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_PER_SECOND, RocksDbWeight},
+		DispatchClass, Weight, WeightToFeeCoefficient, WeightToFeeCoefficients,
 		WeightToFeePolynomial,
 	},
-	PalletId,
 };
 use frame_system::{
 	limits::{BlockLength, BlockWeights},
-	EnsureOneOf, EnsureRoot,
 };
-pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
-
-// Polkadot Imports
-use polkadot_parachain::primitives::Sibling;
-use polkadot_runtime_common::{BlockHashCount, RocksDbWeight, SlowAdjustingFeeUpdate};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -102,7 +95,7 @@ pub type Executive = frame_executive::Executive<
 	Block,
 	frame_system::ChainContext<Runtime>,
 	Runtime,
-	AllPallets,
+	AllPalletsWithSystem,
 	OnRuntimeUpgrade,
 >;
 
@@ -221,6 +214,7 @@ pub fn native_version() -> NativeVersion {
 
 parameter_types! {
 	pub const Version: RuntimeVersion = VERSION;
+	pub const BlockHashCount: BlockNumber = 2400;
 
 	// This part is copied from Substrate's `bin/node/runtime/src/lib.rs`.
 	//  The `RuntimeBlockLength` and `RuntimeBlockWeights` exist here because the
@@ -297,7 +291,7 @@ impl frame_system::Config for Runtime {
 	/// This is used as an identifier of the chain. 42 is the generic substrate prefix.
 	type SS58Prefix = SS58Prefix;
 	/// The action to take on a Runtime Upgrade
-	type OnSetCode = cumulus_pallet_parachain_system::ParachainSetCode<Self>;
+	type OnSetCode = ();
 }
 
 parameter_types! {
@@ -342,24 +336,8 @@ impl pallet_transaction_payment::Config for Runtime {
 	type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, ()>;
 	type TransactionByteFee = TransactionByteFee;
 	type WeightToFee = WeightToFee;
-	type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
+	type FeeMultiplierUpdate = ();
 	type OperationalFeeMultiplier = OperationalFeeMultiplier;
-}
-
-parameter_types! {
-	pub const ReservedXcmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT / 4;
-	pub const ReservedDmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT / 4;
-}
-
-impl cumulus_pallet_parachain_system::Config for Runtime {
-	type Event = Event;
-	type OnValidationData = ();
-	type SelfParaId = ();
-	type DmpMessageHandler = ();
-	type ReservedDmpWeight = ReservedDmpWeight;
-	type OutboundXcmpMessageSource = ();
-	type XcmpMessageHandler = ();
-	type ReservedXcmpWeight = ReservedXcmpWeight;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -371,12 +349,7 @@ construct_runtime!(
 	{
 		// System support stuff.
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
-		ParachainSystem: cumulus_pallet_parachain_system::{
-			// Pallet, Call, Config, Storage, Inherent, Event<T>, ValidateUnsigned,
-			Pallet, Call, Config, Storage, Event<T>, ValidateUnsigned,
-		} = 1,
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 3,
-		// ParachainInfo: parachain_info::{Pallet, Storage, Config} = 4,
 
 		// Monetary stuff.
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>} = 10,
@@ -477,7 +450,8 @@ impl_runtime_apis! {
 
 	impl cumulus_primitives_core::CollectCollationInfo<Block> for Runtime {
 		fn collect_collation_info() -> cumulus_primitives_core::CollationInfo {
-			ParachainSystem::collect_collation_info()
+			todo!("Impl `collect_collation_info`")
+			// ParachainSystem::collect_collation_info()
 		}
 	}
 
@@ -543,43 +517,4 @@ impl_runtime_apis! {
 			Ok(batches)
 		}
 	}
-}
-
-struct CheckInherents;
-
-impl cumulus_pallet_parachain_system::CheckInherents<Block> for CheckInherents {
-	fn check_inherents(
-		block: &Block,
-		relay_state_proof: &cumulus_pallet_parachain_system::RelayChainStateProof,
-	) -> sp_inherents::CheckInherentsResult {
-		let relay_chain_slot = relay_state_proof
-			.read_slot()
-			.expect("Could not read the relay chain slot from the proof");
-
-		let inherent_data =
-			cumulus_primitives_timestamp::InherentDataProvider::from_relay_chain_slot_and_duration(
-				relay_chain_slot,
-				sp_std::time::Duration::from_secs(6),
-			)
-			.create_inherent_data()
-			.expect("Could not create the timestamp inherent data");
-
-		inherent_data.check_extrinsics(block)
-	}
-}
-
-/// Based on `cumulus_pallet_aura_ext::BlockExecutor::<Runtime, Executive>` with the aura seal check
-/// removed.
-pub struct BlockExecutor;
-
-impl frame_support::traits::ExecuteBlock<Block> for BlockExecutor {
-	fn execute_block(block: Block) {
-		Executive::execute_block(block)
-	}
-}
-
-cumulus_pallet_parachain_system::register_validate_block! {
-	Runtime = Runtime,
-	BlockExecutor = BlockExecutor,
-	CheckInherents = CheckInherents,
 }

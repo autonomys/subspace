@@ -13,7 +13,8 @@ members = [
     "cumulus/primitives/core",
     # "cumulus/primitives/parachain-inherent",
     "cumulus/primitives/timestamp",
-    "polkadot/node/core/*",
+    "polkadot/node/core/chain-api",
+    "polkadot/node/core/runtime-api",
     "substrate/*",
 ]
 

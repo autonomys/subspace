@@ -10,10 +10,6 @@ use parachain_template_runtime::{
 
 // Cumulus Imports
 use cumulus_client_consensus_common::ParachainConsensus;
-use cumulus_client_consensus_relay_chain::{
-	build_relay_chain_consensus, BuildRelayChainConsensusParams,
-};
-// use cumulus_client_network::build_block_announce_validator;
 use cirrus_client_service::{
 	prepare_node_config, start_full_node, StartFullNodeParams,
 };
@@ -411,9 +407,6 @@ pub async fn start_parachain_node(
 
 			let relay_chain_backend = relay_chain_node.backend.clone();
 			let relay_chain_client = relay_chain_node.client.clone();
-
-			let relay_chain_client_clone = relay_chain_node.client.clone();
-			let relay_chain_backend_clone = relay_chain_node.backend.clone();
 
 			Ok(build_primary_chain_consensus(BuildPrimaryChainConsensusParams {
 				proposer_factory,

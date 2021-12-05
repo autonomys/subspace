@@ -1,5 +1,4 @@
-use cumulus_primitives_core::ParaId;
-use parachain_template_runtime::{AccountId, AuraId, Signature, EXISTENTIAL_DEPOSIT};
+use parachain_template_runtime::{AccountId, Signature};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
@@ -36,26 +35,12 @@ impl Extensions {
 
 type AccountPublic = <Signature as Verify>::Signer;
 
-/// Generate collator keys from seed.
-///
-/// This function's return type must always match the session keys of the chain in tuple format.
-pub fn get_collator_keys_from_seed(seed: &str) -> AuraId {
-	get_pair_from_seed::<AuraId>(seed)
-}
-
 /// Helper function to generate an account ID from seed
 pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
 where
 	AccountPublic: From<<TPublic::Pair as Pair>::Public>,
 {
 	AccountPublic::from(get_pair_from_seed::<TPublic>(seed)).into_account()
-}
-
-/// Generate the session keys from individual elements.
-///
-/// The input must be a tuple of individual keys (a single arg for now since we have just one key).
-pub fn template_session_keys(keys: AuraId) -> parachain_template_runtime::SessionKeys {
-	parachain_template_runtime::SessionKeys { }
 }
 
 pub fn development_config() -> ChainSpec {
@@ -73,17 +58,6 @@ pub fn development_config() -> ChainSpec {
 		ChainType::Development,
 		move || {
 			testnet_genesis(
-				// initial collators.
-				vec![
-					(
-						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						get_collator_keys_from_seed("Alice"),
-					),
-					(
-						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						get_collator_keys_from_seed("Bob"),
-					),
-				],
 				vec![
 					get_account_id_from_seed::<sr25519::Public>("Alice"),
 					get_account_id_from_seed::<sr25519::Public>("Bob"),
@@ -98,7 +72,6 @@ pub fn development_config() -> ChainSpec {
 					get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
 					get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
 				],
-				1000.into(),
 			)
 		},
 		vec![],
@@ -127,17 +100,6 @@ pub fn local_testnet_config() -> ChainSpec {
 		ChainType::Local,
 		move || {
 			testnet_genesis(
-				// initial collators.
-				vec![
-					(
-						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						get_collator_keys_from_seed("Alice"),
-					),
-					(
-						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						get_collator_keys_from_seed("Bob"),
-					),
-				],
 				vec![
 					get_account_id_from_seed::<sr25519::Public>("Alice"),
 					get_account_id_from_seed::<sr25519::Public>("Bob"),
@@ -152,7 +114,6 @@ pub fn local_testnet_config() -> ChainSpec {
 					get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
 					get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
 				],
-				1000.into(),
 			)
 		},
 		// Bootnodes
@@ -172,9 +133,7 @@ pub fn local_testnet_config() -> ChainSpec {
 }
 
 fn testnet_genesis(
-	invulnerables: Vec<(AccountId, AuraId)>,
 	endowed_accounts: Vec<AccountId>,
-	id: ParaId,
 ) -> parachain_template_runtime::GenesisConfig {
 	parachain_template_runtime::GenesisConfig {
 		system: parachain_template_runtime::SystemConfig {
@@ -185,7 +144,5 @@ fn testnet_genesis(
 		balances: parachain_template_runtime::BalancesConfig {
 			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 		},
-		// parachain_info: parachain_template_runtime::ParachainInfoConfig { parachain_id: id },
-		parachain_system: Default::default(),
 	}
 }
