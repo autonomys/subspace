@@ -17,6 +17,7 @@
 
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
+#![feature(int_log)]
 
 pub(crate) mod commitments;
 pub(crate) mod farming;

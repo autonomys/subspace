@@ -15,6 +15,7 @@
 //! converted back to bytes.
 #![feature(try_blocks)]
 #![feature(hash_drain_filter)]
+#![feature(int_log)]
 
 mod commands;
 mod commitments;
