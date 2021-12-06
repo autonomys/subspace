@@ -736,12 +736,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "cfg_aliases"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
-
-[[package]]
 name = "chacha20"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1879,12 +1873,6 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
 ]
-
-[[package]]
-name = "fs-err"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ebd3504ad6116843b8375ad70df74e7bfe83cac77a1f3fe73200c844d43bfe0"
 
 [[package]]
 name = "fs-swap"
@@ -5019,30 +5007,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-erasure-coding"
-version = "0.9.13"
-dependencies = [
- "parity-scale-codec",
- "polkadot-node-primitives",
- "polkadot-primitives",
- "reed-solomon-novelpoly",
- "sp-core",
- "sp-trie",
- "thiserror",
-]
-
-[[package]]
 name = "polkadot-node-collation-generation"
 version = "0.9.13"
 dependencies = [
  "futures 0.3.18",
  "parity-scale-codec",
- "polkadot-erasure-coding",
- "polkadot-node-primitives",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-test-helpers",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
  "sp-core",
  "sp-maybe-compressed-blob",
  "subspace-node-primitives",
@@ -5121,7 +5092,6 @@ dependencies = [
  "bounded-vec",
  "futures 0.3.18",
  "parity-scale-codec",
- "polkadot-erasure-coding",
  "polkadot-parachain",
  "polkadot-primitives",
  "schnorrkel",
@@ -5183,18 +5153,13 @@ dependencies = [
 name = "polkadot-node-subsystem-util"
 version = "0.9.13"
 dependencies = [
- "assert_matches",
  "async-trait",
- "env_logger 0.9.0",
  "futures 0.3.18",
- "lazy_static",
- "log",
  "metered-channel",
  "pin-project 1.0.8",
  "polkadot-node-jaeger",
  "polkadot-node-metrics",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-test-helpers",
  "polkadot-overseer",
  "sp-core",
  "subspace-runtime-primitives",
@@ -5744,19 +5709,6 @@ dependencies = [
  "cc",
  "libc",
  "smallvec",
-]
-
-[[package]]
-name = "reed-solomon-novelpoly"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bd8f48b2066e9f69ab192797d66da804d1935bf22763204ed3675740cb0f221"
-dependencies = [
- "derive_more",
- "fs-err",
- "itertools",
- "static_init",
- "thiserror",
 ]
 
 [[package]]
@@ -8024,31 +7976,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "static_init"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11b73400442027c4adedda20a9f9b7945234a5bd8d5f7e86da22bd5d0622369c"
-dependencies = [
- "cfg_aliases",
- "libc",
- "parking_lot 0.11.2",
- "static_init_macro",
-]
-
-[[package]]
-name = "static_init_macro"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2261c91034a1edc3fc4d1b80e89d82714faede0515c14a75da10cb941546bbf"
-dependencies = [
- "cfg_aliases",
- "memchr",
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "statrs"

@@ -36,9 +36,6 @@ use subspace_runtime_primitives::{Hash, PersistedValidationData};
 
 mod error;
 
-#[cfg(test)]
-mod tests;
-
 const LOG_TARGET: &'static str = "parachain::collation-generation";
 
 /// Collation Generation Subsystem
