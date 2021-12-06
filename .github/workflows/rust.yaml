@@ -67,10 +67,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.4
-        id: cuda-toolkit
-        with:
-          cuda: '11.2.2'
+        uses: Jimver/cuda-toolkit@v0.2.5
         if: runner.os != 'macOS'
 
       - name: Configure cache
@@ -124,10 +121,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.4
-        id: cuda-toolkit
-        with:
-          cuda: '11.2.2'
+        uses: Jimver/cuda-toolkit@v0.2.5
         if: runner.os == 'Linux'
 
       - name: Configure cache
