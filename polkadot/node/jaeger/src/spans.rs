@@ -86,9 +86,10 @@
 use parity_scale_codec::Encode;
 // use polkadot_node_primitives::PoV;
 use polkadot_primitives::v1::{
-	BlakeTwo256, CandidateHash, Hash, HashT, 
+	BlakeTwo256, HashT, 
 };
 use sc_network::PeerId;
+use subspace_runtime_primitives::Hash;
 
 use std::{fmt, sync::Arc};
 
@@ -227,16 +228,6 @@ impl LazyIdent for &Hash {
 	}
 }
 
-impl LazyIdent for CandidateHash {
-	fn eval(&self) -> TraceIdentifier {
-		hash_to_identifier(self.0)
-	}
-
-	fn extra_tags(&self, span: &mut Span) {
-		span.add_string_fmt_debug_tag("candidate-hash", &self.0);
-	}
-}
-
 impl Span {
 	/// Creates a new span builder based on anything that can be lazily evaluated
 	/// to and identifier.
@@ -281,12 +272,6 @@ impl Span {
 	#[inline(always)]
 	pub fn with_peer_id(self, peer: &PeerId) -> Self {
 		self.with_string_tag("peer-id", &peer.to_base58())
-	}
-
-	/// Attach a candidate hash to the span.
-	#[inline(always)]
-	pub fn with_candidate(self, candidate_hash: CandidateHash) -> Self {
-		self.with_string_fmt_debug_tag("candidate-hash", &candidate_hash.0)
 	}
 
 	/// Attach a candidate stage.

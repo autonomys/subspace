@@ -4957,18 +4957,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8d0eef3571242013a0d5dc84861c3ae4a652e56e12adf8bdc26ff5f8cb34c94"
 
 [[package]]
-name = "polkadot-core-primitives"
-version = "0.9.13"
-dependencies = [
- "parity-scale-codec",
- "parity-util-mem",
- "scale-info",
- "sp-core",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "polkadot-node-collation-generation"
 version = "0.9.13"
 dependencies = [
@@ -5034,6 +5022,7 @@ dependencies = [
  "polkadot-primitives",
  "sc-network",
  "sp-core",
+ "subspace-runtime-primitives",
  "thiserror",
 ]
 
@@ -5186,7 +5175,6 @@ dependencies = [
  "hex-literal",
  "parity-scale-codec",
  "parity-util-mem",
- "polkadot-core-primitives",
  "scale-info",
  "serde",
  "sp-api",

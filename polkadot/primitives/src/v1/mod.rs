@@ -29,29 +29,12 @@ use sp_arithmetic::traits::{BaseArithmetic, Saturating};
 
 pub use runtime_primitives::traits::{BlakeTwo256, Hash as HashT};
 
-// Export some core primitives.
-pub use polkadot_core_primitives::v1::{
-	AccountId, AccountIndex, AccountPublic, Balance, Block, BlockId, BlockNumber, CandidateHash,
-	ChainId, DownwardMessage, Hash, Header, InboundDownwardMessage, InboundHrmpMessage, Moment,
-	Nonce, OutboundHrmpMessage, Remark, Signature, UncheckedExtrinsic,
-};
-
-// Export some polkadot-parachain primitives
-// pub use polkadot_parachain::primitives::{
-	// HeadData, HrmpChannelId, Id, UpwardMessage, ValidationCode, ValidationCodeHash,
-	// LOWEST_PUBLIC_ID, LOWEST_USER_ID,
-// };
-
 #[cfg(feature = "std")]
 use parity_util_mem::{MallocSizeOf, MallocSizeOfOps};
 
 pub use sp_authority_discovery::AuthorityId as AuthorityDiscoveryId;
 pub use sp_consensus_slots::Slot;
 pub use sp_staking::SessionIndex;
-
-/// Signed data.
-// mod signed;
-// pub use signed::{EncodeAs, Signed, UncheckedSigned};
 
 /// A declarations of storage keys where an external observer can find some interesting data.
 pub mod well_known_keys {
@@ -147,19 +130,6 @@ impl MallocSizeOf for AssignmentId {
 /// The index of the candidate in the list of candidates fully included as-of the block.
 pub type CandidateIndex = u32;
 
-/// A vote of approval on a candidate.
-#[derive(Clone, RuntimeDebug)]
-pub struct ApprovalVote(pub CandidateHash);
-
-impl ApprovalVote {
-	/// Yields the signing payload for this approval vote.
-	pub fn signing_payload(&self, session_index: SessionIndex) -> Vec<u8> {
-		const MAGIC: [u8; 4] = *b"APPR";
-
-		(MAGIC, &self.0, session_index).encode()
-	}
-}
-
 /// Custom validity errors used in Polkadot while validating transactions.
 #[repr(u8)]
 pub enum ValidityError {
@@ -177,66 +147,6 @@ impl From<ValidityError> for u8 {
 	fn from(err: ValidityError) -> Self {
 		err as u8
 	}
-}
-
-/// Abridged version of `HostConfiguration` (from the `Configuration` parachains host runtime module)
-/// meant to be used by a parachain or PDK such as cumulus.
-#[derive(Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-#[cfg_attr(feature = "std", derive(PartialEq))]
-pub struct AbridgedHostConfiguration {
-	/// The maximum validation code size, in bytes.
-	pub max_code_size: u32,
-	/// The maximum head-data size, in bytes.
-	pub max_head_data_size: u32,
-	/// Total number of individual messages allowed in the parachain -> relay-chain message queue.
-	pub max_upward_queue_count: u32,
-	/// Total size of messages allowed in the parachain -> relay-chain message queue before which
-	/// no further messages may be added to it. If it exceeds this then the queue may contain only
-	/// a single message.
-	pub max_upward_queue_size: u32,
-	/// The maximum size of an upward message that can be sent by a candidate.
-	///
-	/// This parameter affects the size upper bound of the `CandidateCommitments`.
-	pub max_upward_message_size: u32,
-	/// The maximum number of messages that a candidate can contain.
-	///
-	/// This parameter affects the size upper bound of the `CandidateCommitments`.
-	pub max_upward_message_num_per_candidate: u32,
-	/// The maximum number of outbound HRMP messages can be sent by a candidate.
-	///
-	/// This parameter affects the upper bound of size of `CandidateCommitments`.
-	pub hrmp_max_message_num_per_candidate: u32,
-	/// The minimum frequency at which parachains can update their validation code.
-	pub validation_upgrade_frequency: BlockNumber,
-	/// The delay, in blocks, before a validation upgrade is applied.
-	pub validation_upgrade_delay: BlockNumber,
-}
-
-/// Abridged version of `HrmpChannel` (from the `Hrmp` parachains host runtime module) meant to be
-/// used by a parachain or PDK such as cumulus.
-#[derive(Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-#[cfg_attr(feature = "std", derive(PartialEq))]
-pub struct AbridgedHrmpChannel {
-	/// The maximum number of messages that can be pending in the channel at once.
-	pub max_capacity: u32,
-	/// The maximum total size of the messages that can be pending in the channel at once.
-	pub max_total_size: u32,
-	/// The maximum message size that could be put into the channel.
-	pub max_message_size: u32,
-	/// The current number of messages pending in the channel.
-	/// Invariant: should be less or equal to `max_capacity`.s`.
-	pub msg_count: u32,
-	/// The total size in bytes of all message payloads in the channel.
-	/// Invariant: should be less or equal to `max_total_size`.
-	pub total_size: u32,
-	/// A head of the Message Queue Chain for this channel. Each link in this chain has a form:
-	/// `(prev_head, B, H(M))`, where
-	/// - `prev_head`: is the previous value of `mqc_head` or zero if none.
-	/// - `B`: is the [relay-chain] block number in which a message was appended
-	/// - `H(M)`: is the hash of the message being appended.
-	/// This value is initialized to a special value that consists of all zeroes which indicates
-	/// that no messages were previously added.
-	pub mqc_head: Option<Hash>,
 }
 
 /// A possible upgrade restriction that prevents a parachain from performing an upgrade.
@@ -274,24 +184,6 @@ pub enum UpgradeGoAhead {
 /// Consensus engine id for polkadot v1 consensus engine.
 pub const POLKADOT_ENGINE_ID: runtime_primitives::ConsensusEngineId = *b"POL1";
 
-/// Different kinds of statements of validity on  a candidate.
-#[derive(Encode, Decode, Clone, PartialEq, RuntimeDebug, TypeInfo)]
-#[cfg_attr(feature = "std", derive(MallocSizeOf))]
-pub enum ValidDisputeStatementKind {
-	/// An explicit statement issued as part of a dispute.
-	#[codec(index = 0)]
-	Explicit,
-	/// A seconded statement on a candidate from the backing phase.
-	#[codec(index = 1)]
-	BackingSeconded(Hash),
-	/// A valid statement on a candidate from the backing phase.
-	#[codec(index = 2)]
-	BackingValid(Hash),
-	/// An approval vote from the approval checking phase.
-	#[codec(index = 3)]
-	ApprovalChecking,
-}
-
 /// Different kinds of statements of invalidity on a candidate.
 #[derive(Encode, Decode, Clone, PartialEq, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(MallocSizeOf))]
@@ -299,39 +191,6 @@ pub enum InvalidDisputeStatementKind {
 	/// An explicit statement issued as part of a dispute.
 	#[codec(index = 0)]
 	Explicit,
-}
-
-/// An explicit statement on a candidate issued as part of a dispute.
-#[derive(Clone, PartialEq, RuntimeDebug)]
-pub struct ExplicitDisputeStatement {
-	/// Whether the candidate is valid
-	pub valid: bool,
-	/// The candidate hash.
-	pub candidate_hash: CandidateHash,
-	/// The session index of the candidate.
-	pub session: SessionIndex,
-}
-
-impl ExplicitDisputeStatement {
-	/// Produce the payload used for signing this type of statement.
-	pub fn signing_payload(&self) -> Vec<u8> {
-		const MAGIC: [u8; 4] = *b"DISP";
-
-		(MAGIC, self.valid, self.candidate_hash, self.session).encode()
-	}
-}
-
-/// The entire state of a dispute.
-#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct DisputeState<N = BlockNumber> {
-	/// A bitfield indicating all validators for the candidate.
-	pub validators_for: BitVec<bitvec::order::Lsb0, u8>, // one bit per validator.
-	/// A bitfield indicating all validators against the candidate.
-	pub validators_against: BitVec<bitvec::order::Lsb0, u8>, // one bit per validator.
-	/// The block number at which the dispute started on-chain.
-	pub start: N,
-	/// The block number at which the dispute concluded on-chain.
-	pub concluded_at: Option<N>,
 }
 
 /// The maximum number of validators `f` which may safely be faulty.

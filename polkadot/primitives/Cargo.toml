@@ -21,7 +21,6 @@ sp-staking = { git = "https://github.com/paritytech/substrate", default-features
 sp-arithmetic = { git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-authority-discovery = { git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 runtime_primitives = { package = "sp-runtime", git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-polkadot-core-primitives = { path = "../core-primitives", default-features = false }
 trie = { package = "sp-trie", git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 bitvec = { version = "0.20.1", default-features = false, features = ["alloc"] }
 frame-system = { git = "https://github.com/paritytech/substrate", default-features = false , rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -50,7 +49,6 @@ std = [
 	"runtime_primitives/std",
 	"serde",
 	"parity-util-mem",
-	"polkadot-core-primitives/std",
 	"bitvec/std",
 	"frame-system/std",
 ]

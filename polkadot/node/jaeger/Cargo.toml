@@ -17,3 +17,5 @@ sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d
 thiserror = "1.0.30"
 log = "0.4.13"
 parity-scale-codec = { version = "2.3.1", default-features = false }
+
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
