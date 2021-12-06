@@ -25,8 +25,8 @@ pub mod inherents;
 pub mod offence;
 
 use crate::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, NextSaltDescriptor,
-    NextSolutionRangeDescriptor, SaltDescriptor, SolutionRangeDescriptor,
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, SaltDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -36,7 +36,7 @@ use sp_consensus_slots::Slot;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
+use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash};
 
 /// Key type for Subspace pallet.
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"sub_");
@@ -92,10 +92,10 @@ pub enum ConsensusLog {
     SaltData(SaltDescriptor),
     /// The era has changed and the solution range has changed because of that.
     #[codec(index = 5)]
-    NextSolutionRangeData(NextSolutionRangeDescriptor),
+    NextSolutionRangeData(UpdatedSolutionRangeDescriptor),
     /// The eon has changed and the salt has changed because of that.
     #[codec(index = 6)]
-    NextSaltData(NextSaltDescriptor),
+    UpdatedSaltData(UpdatedSaltDescriptor),
 }
 
 /// Configuration data used by the Subspace consensus engine.
@@ -241,6 +241,15 @@ pub struct Epoch {
     pub config: SubspaceEpochConfiguration,
 }
 
+/// Subspace salts used for challenges.
+#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
+pub struct Salts {
+    /// Salt used for challenges.
+    pub salt: Salt,
+    /// Salt used for challenges after `salt`.
+    pub next_salt: Salt,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi {
@@ -260,8 +269,8 @@ sp_api::decl_runtime_apis! {
         /// Current solution range.
         fn solution_range() -> u64;
 
-        /// Current salt.
-        fn salt() -> u64;
+        /// Subspace salts used for challenges.
+        fn salts() -> Salts;
 
         /// Returns the slot that started the current epoch.
         fn current_epoch_start() -> Slot;

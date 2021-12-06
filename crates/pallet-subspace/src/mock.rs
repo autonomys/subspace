@@ -192,7 +192,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_solving.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&encoding, Subspace::salt().to_le_bytes());
+    let tag: Tag = subspace_solving::create_tag(&encoding, Subspace::salt());
 
     let pre_digest = make_pre_digest(
         slot.into(),

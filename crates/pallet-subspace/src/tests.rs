@@ -195,25 +195,25 @@ fn can_update_salt_on_eon_change() {
 
         assert_eq!(<Test as Config>::EonDuration::get(), 5);
         // Initial salt equals to eon
-        assert_eq!(Subspace::salt(), 0);
+        assert_eq!(Subspace::salt(), 0u64.to_le_bytes());
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 5);
         // Still no salt update
-        assert_eq!(Subspace::salt(), 0);
+        assert_eq!(Subspace::salt(), 0u64.to_le_bytes());
         progress_to_block(&keypair, 6);
 
         // Second eon should have salt updated
-        assert_eq!(Subspace::salt(), 1);
+        assert_eq!(Subspace::salt(), 1u64.to_le_bytes());
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 10);
         // Just before eon update, still the same salt as before
-        assert_eq!(Subspace::salt(), 1);
+        assert_eq!(Subspace::salt(), 1u64.to_le_bytes());
         progress_to_block(&keypair, 11);
 
         // Third eon should have salt updated again
-        assert_eq!(Subspace::salt(), 2);
+        assert_eq!(Subspace::salt(), 2u64.to_le_bytes());
     })
 }
 

@@ -42,8 +42,8 @@ pub use pallet::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{
     digests::{
-        NextEpochDescriptor, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest,
-        SaltDescriptor, SolutionRangeDescriptor,
+        NextEpochDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
+        UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
     },
     offence::{OffenceDetails, OnOffenceHandler},
     ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
@@ -297,7 +297,12 @@ mod pallet {
     /// Salt for *current* eon.
     #[pallet::storage]
     #[pallet::getter(fn salt)]
-    pub type Salt<T> = StorageValue<_, u64, ValueQuery>;
+    pub type Salt<T> = StorageValue<_, subspace_core_primitives::Salt, ValueQuery>;
+
+    /// Salt for *next* eon.
+    #[pallet::storage]
+    #[pallet::getter(fn next_salt)]
+    pub type NextSalt<T> = StorageValue<_, subspace_core_primitives::Salt, ValueQuery>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
@@ -396,6 +401,7 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             SegmentIndex::<T>::put(0);
+            NextSalt::<T>::put(1u64.to_le_bytes());
             EpochConfig::<T>::put(
                 self.epoch_config
                     .clone()
@@ -705,15 +711,12 @@ impl<T: Config> Pallet<T> {
         EraStartSlot::<T>::put(current_slot);
 
         Self::deposit_consensus(ConsensusLog::NextSolutionRangeData(
-            NextSolutionRangeDescriptor { solution_range },
+            UpdatedSolutionRangeDescriptor { solution_range },
         ));
     }
 
-    /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has returned `true`,
-    /// and the caller is the only caller of this function.
-    ///
-    /// Typically, this is not handled directly by the user, but by higher-level validator-set manager logic like
-    /// `pallet-session`.
+    /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
+    /// returned `true`, and the caller is the only caller of this function.
     pub fn enact_eon_change() {
         // PRECONDITION: caller has done initialization and is guaranteed
         // by the session module to be called before this.
@@ -727,11 +730,17 @@ impl<T: Config> Pallet<T> {
 
         EonIndex::<T>::put(eon_index);
 
-        let salt = eon_index;
+        // TODO: Include randomness into the next salt
+        let next_salt = (eon_index + 1).to_le_bytes();
 
+        let salt = NextSalt::<T>::get();
+        NextSalt::<T>::put(next_salt);
         Salt::<T>::put(salt);
 
-        Self::deposit_consensus(ConsensusLog::NextSaltData(NextSaltDescriptor { salt }));
+        Self::deposit_consensus(ConsensusLog::UpdatedSaltData(UpdatedSaltDescriptor {
+            salt,
+            next_salt,
+        }));
     }
 
     /// Finds the start slot of the current epoch. only guaranteed to
