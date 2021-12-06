@@ -23,6 +23,7 @@
 //! This crate also reexports Prometheus metric types which are expected to be implemented by subsystems.
 
 #![warn(missing_docs)]
+#![deny(unused_crate_dependencies)]
 
 use polkadot_node_subsystem::{
 	errors::{RuntimeApiError, SubsystemError},
@@ -48,10 +49,8 @@ use futures::{
 };
 use pin_project::pin_project;
 use polkadot_node_jaeger as jaeger;
-use polkadot_primitives::v1::{GroupIndex, Hash, ValidatorId, ValidatorIndex, ValidatorSignature};
-use sp_application_crypto::AppKey;
-use sp_core::{traits::SpawnNamed, Public};
-use sp_keystore::{CryptoStore, Error as KeystoreError, SyncCryptoStorePtr};
+use subspace_runtime_primitives::Hash;
+use sp_core::traits::SpawnNamed;
 use std::{
 	collections::{hash_map::Entry, HashMap},
 	convert::TryFrom,
@@ -65,20 +64,10 @@ use std::{
 use thiserror::Error;
 
 pub use metered_channel as metered;
-pub use polkadot_node_network_protocol::MIN_GOSSIP_PEERS;
-
-pub use determine_new_blocks::determine_new_blocks;
-
 /// These reexports are required so that external crates can use the `delegated_subsystem` macro properly.
 pub mod reexports {
 	pub use polkadot_overseer::gen::{SpawnNamed, SpawnedSubsystem, Subsystem, SubsystemContext};
 }
-
-/// A rolling session window cache.
-// pub mod rolling_session_window;
-/// Convenient and efficient runtime info access.
-// pub mod runtime;
-mod determine_new_blocks;
 
 #[cfg(test)]
 mod tests;
@@ -195,95 +184,6 @@ macro_rules! specialize_requests {
 
 specialize_requests! {
 	fn request_pending_head() -> Option<Hash>; PendingHead;
-}
-
-/// From the given set of validators, find the first key we can sign with, if any.
-pub async fn signing_key(
-	validators: &[ValidatorId],
-	keystore: &SyncCryptoStorePtr,
-) -> Option<ValidatorId> {
-	signing_key_and_index(validators, keystore).await.map(|(k, _)| k)
-}
-
-/// From the given set of validators, find the first key we can sign with, if any, and return it
-/// along with the validator index.
-pub async fn signing_key_and_index(
-	validators: &[ValidatorId],
-	keystore: &SyncCryptoStorePtr,
-) -> Option<(ValidatorId, ValidatorIndex)> {
-	for (i, v) in validators.iter().enumerate() {
-		if CryptoStore::has_keys(&**keystore, &[(v.to_raw_vec(), ValidatorId::ID)]).await {
-			return Some((v.clone(), ValidatorIndex(i as _)))
-		}
-	}
-	None
-}
-
-/// Sign the given data with the given validator ID.
-///
-/// Returns `Ok(None)` if the private key that correponds to that validator ID is not found in the
-/// given keystore. Returns an error if the key could not be used for signing.
-pub async fn sign(
-	keystore: &SyncCryptoStorePtr,
-	key: &ValidatorId,
-	data: &[u8],
-) -> Result<Option<ValidatorSignature>, KeystoreError> {
-	use std::convert::TryInto;
-
-	let signature =
-		CryptoStore::sign_with(&**keystore, ValidatorId::ID, &key.into(), &data).await?;
-
-	match signature {
-		Some(sig) =>
-			Ok(Some(sig.try_into().map_err(|_| KeystoreError::KeyNotSupported(ValidatorId::ID))?)),
-		None => Ok(None),
-	}
-}
-
-/// Find the validator group the given validator index belongs to.
-pub fn find_validator_group(
-	groups: &[Vec<ValidatorIndex>],
-	index: ValidatorIndex,
-) -> Option<GroupIndex> {
-	groups.iter().enumerate().find_map(|(i, g)| {
-		if g.contains(&index) {
-			Some(GroupIndex(i as _))
-		} else {
-			None
-		}
-	})
-}
-
-/// Choose a random subset of `min` elements.
-/// But always include `is_priority` elements.
-pub fn choose_random_subset<T, F: FnMut(&T) -> bool>(
-	is_priority: F,
-	mut v: Vec<T>,
-	min: usize,
-) -> Vec<T> {
-	use rand::seq::SliceRandom as _;
-
-	// partition the elements into priority first
-	// the returned index is when non_priority elements start
-	let i = itertools::partition(&mut v, is_priority);
-
-	if i >= min || v.len() <= i {
-		v.truncate(i);
-		return v
-	}
-
-	let mut rng = rand::thread_rng();
-	v[i..].shuffle(&mut rng);
-
-	v.truncate(min);
-	v
-}
-
-/// Returns a `bool` with a probability of `a / b` of being true.
-pub fn gen_ratio(a: usize, b: usize) -> bool {
-	use rand::Rng as _;
-	let mut rng = rand::thread_rng();
-	rng.gen_ratio(a as u32, b as u32)
 }
 
 struct AbortOnDrop(future::AbortHandle);

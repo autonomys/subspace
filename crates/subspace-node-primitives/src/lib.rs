@@ -39,6 +39,9 @@ pub struct CollationResult {
 
 pub type CollationSecondedSignal = Vec<u8>;
 
+/// The cumulative weight of a block in a fork-choice rule.
+pub type BlockWeight = u32;
+
 impl CollationResult {
     /// Convert into the inner values.
     pub fn into_inner(

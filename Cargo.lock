@@ -5193,14 +5193,11 @@ dependencies = [
  "derive_more",
  "futures 0.3.18",
  "polkadot-node-jaeger",
- "polkadot-node-network-protocol",
- "polkadot-node-primitives",
  "polkadot-overseer-gen",
- "polkadot-primitives",
- "polkadot-statement-table",
  "sc-network",
  "smallvec",
  "subspace-node-primitives",
+ "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
 ]
@@ -5211,28 +5208,19 @@ version = "0.9.13"
 dependencies = [
  "assert_matches",
  "async-trait",
- "derive_more",
  "env_logger 0.9.0",
  "futures 0.3.18",
- "itertools",
  "lazy_static",
  "log",
- "lru 0.7.0",
  "metered-channel",
- "parity-scale-codec",
  "pin-project 1.0.8",
  "polkadot-node-jaeger",
  "polkadot-node-metrics",
- "polkadot-node-network-protocol",
- "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-test-helpers",
  "polkadot-overseer",
- "polkadot-primitives",
- "rand 0.8.4",
- "sp-application-crypto",
  "sp-core",
- "sp-keystore",
+ "subspace-runtime-primitives",
  "thiserror",
  "tracing",
 ]
@@ -5330,15 +5318,6 @@ dependencies = [
  "sp-std",
  "sp-trie",
  "sp-version",
-]
-
-[[package]]
-name = "polkadot-statement-table"
-version = "0.9.13"
-dependencies = [
- "parity-scale-codec",
- "polkadot-primitives",
- "sp-core",
 ]
 
 [[package]]
