@@ -719,10 +719,11 @@ impl<T: Config> Pallet<T> {
         // by the session module to be called before this.
         debug_assert!(Self::initialized().is_some());
 
-        // Update eon index
-        let eon_index = EonIndex::<T>::get()
-            .checked_add(1)
-            .expect("eon indices will never reach 2^64 before the death of the universe; qed");
+        let eon_index = (*CurrentSlot::<T>::get())
+            .checked_sub(*GenesisSlot::<T>::get())
+            .expect("Current slot is never lower than genesis slot; qed")
+            .checked_div(T::EonDuration::get())
+            .expect("Eon duration is never zero; qed");
 
         EonIndex::<T>::put(eon_index);
 
