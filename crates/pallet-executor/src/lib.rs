@@ -17,6 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 
 #[frame_support::pallet]
@@ -35,10 +36,10 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// The head has been included.
+        /// The head has been already included.
         HeadAlreadyExists,
-        ///
-        WrongHeadNumber,
+        /// The head number was wrong against the latest head.
+        UnexpectedHeadNumber,
     }
 
     #[pallet::event]
@@ -58,15 +59,17 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            frame_support::log::info!(
-                "[submit_candidate_receipt] Processing CandidateReceipt, head_number: {:?}, head_hash: {:?}",
+            log::debug!(
+                target: "runtime::subspace::executor",
+                "Submitting candidate receipt, head_number: {:?}, head_hash: {:?}",
                 head_number, head_hash
             );
 
             ensure!(
                 head_number == Self::last_head_number() + 1u32.into(),
-                Error::<T>::WrongHeadNumber
+                Error::<T>::UnexpectedHeadNumber
             );
+
             ensure!(
                 !Heads::<T>::contains_key(head_number),
                 Error::<T>::HeadAlreadyExists
@@ -77,21 +80,18 @@ mod pallet {
 
             Self::deposit_event(Event::CandidateReceiptStored(head_number, head_hash));
 
-            frame_support::log::info!(
-                "[submit_candidate_receipt] CandidateReceiptStored emitted, head_hash: {:?}",
-                head_hash
-            );
-
             Ok(())
         }
     }
 
-    /// Latest block number of executor chain, may or may not yet imported by the executor chain.
+    /// Latest block number of executor chain.
+    ///
+    /// This block is either waiting to be imported or already has been imported by the executor chain.
     #[pallet::storage]
     #[pallet::getter(fn last_head_number)]
     pub(super) type LastHeadNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
 
-    /// The head-data of each executor block hash.
+    /// Map of executor block number to the hash of that block.
     #[pallet::storage]
     #[pallet::getter(fn heads)]
     pub(super) type Heads<T: Config> = StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash>;
@@ -112,7 +112,7 @@ mod pallet {
                     head_number,
                     head_hash,
                 } => {
-                    ValidTransaction::with_tag_prefix("SubspaceCandidateReceipt")
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitCandidateReceipt")
                         .priority(TransactionPriority::MAX)
                         .and_provides((head_number, head_hash))
                         .longevity(TransactionLongevity::MAX)
@@ -130,20 +130,21 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
+    /// Returns the block hash given the block number.
     pub fn head_hash(number: T::BlockNumber) -> Option<T::Hash> {
         <Heads<T>>::get(number)
     }
 
+    /// Returns the latest block hash of executor chain.
     pub fn pending_head() -> Option<T::Hash> {
         <Heads<T>>::get(Self::last_head_number())
     }
 
+    /// Submits an unsigned extrinsic [`Call::submit_candidate_receipt`].
     pub fn submit_candidate_receipt_unsigned(
         head_number: T::BlockNumber,
         head_hash: T::Hash,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        use frame_system::offchain::SubmitTransaction;
-
         let call = Call::submit_candidate_receipt {
             head_number,
             head_hash,
@@ -152,7 +153,7 @@ where
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
                 target: "runtime::subspace::executor",
-                "Submitted Subspace executor candidate receipt.",
+                "Submitted Subspace candidate receipt.",
             ),
             Err(e) => log::error!(
                 target: "runtime::subspace::executor",

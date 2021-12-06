@@ -14,7 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
+use super::Error;
 use lru::LruCache;
+pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
+pub use polkadot_node_core_chain_api::ChainApiSubsystem;
+pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
 use polkadot_overseer::{
     metrics::Metrics as OverseerMetrics, BlockInfo, MetricsTrait, Overseer, OverseerBuilder,
     OverseerConnector, OverseerHandle,
@@ -27,15 +31,8 @@ use sp_core::traits::SpawnNamed;
 use sp_executor::ExecutorApi;
 use std::sync::Arc;
 use subspace_runtime::{opaque::Block, Hash};
-use substrate_prometheus_endpoint::Registry;
-
-pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
-pub use polkadot_node_core_chain_api::ChainApiSubsystem;
-pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
-
 use subspace_runtime_primitives::CollatorPair;
-
-use super::Error;
+use substrate_prometheus_endpoint::Registry;
 
 /// Is this node a collator?
 #[derive(Clone)]
@@ -88,7 +85,7 @@ where
 
 /// Obtain a prepared `OverseerBuilder`, that is initialized
 /// with all default values.
-pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
+pub fn prepared_overseer_builder<Spawner, RuntimeClient>(
     OverseerGenArgs {
         leaves,
         keystore: _,
@@ -97,7 +94,7 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
         registry,
         spawner,
         is_collator: _,
-    }: OverseerGenArgs<'a, Spawner, RuntimeClient>,
+    }: OverseerGenArgs<Spawner, RuntimeClient>,
 ) -> Result<
     OverseerBuilder<
         Spawner,
@@ -125,7 +122,7 @@ where
             registry,
         )?))
         .runtime_api(RuntimeApiSubsystem::new(
-            runtime_client.clone(),
+            runtime_client,
             Metrics::register(registry)?,
             spawner.clone(),
         ))

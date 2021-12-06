@@ -18,20 +18,22 @@
 
 mod overseer;
 
+pub use overseer::IsCollator;
+use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
+use polkadot_overseer::{BlockInfo, Handle, OverseerConnector};
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
+use sp_api::ConstructRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus::SelectChain;
 use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::Header as HeaderT;
 use std::sync::Arc;
 use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
-
-use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
-use polkadot_overseer::{Handle, OverseerConnector};
-
-pub use overseer::IsCollator;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -201,12 +203,6 @@ pub fn new_partial(
     })
 }
 
-use polkadot_overseer::BlockInfo;
-use sp_api::ConstructRuntimeApi;
-use sp_blockchain::HeaderBackend;
-use sp_consensus::SelectChain;
-use sp_runtime::traits::Header as HeaderT;
-
 /// Returns the active leaves the overseer should start with.
 async fn active_leaves(
     select_chain: &impl SelectChain<Block>,
@@ -263,7 +259,7 @@ pub struct NewFull<C> {
     pub task_manager: TaskManager,
     /// Full client.
     pub client: C,
-    ///
+    /// Handle to communicate with the overseer.
     pub overseer_handle: Option<Handle>,
     /// Network.
     pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
@@ -321,11 +317,9 @@ pub fn new_full(
 
     let active_leaves = futures::executor::block_on(active_leaves(&select_chain, &*client))?;
 
-    let overseer_client = client.clone();
-    let spawner = task_manager.spawn_handle();
-
     let overseer_handle = if let Some(keystore) = local_keystore {
         let overseer_connector = OverseerConnector::default();
+        let spawner = task_manager.spawn_handle();
 
         let (overseer, overseer_handle) = RealOverseerGen
             .generate::<sc_service::SpawnTaskHandle, FullClient>(
@@ -335,7 +329,6 @@ pub fn new_full(
                     keystore,
                     runtime_client: client.clone(),
                     network_service: network.clone(),
-                    // authority_discovery_service,
                     registry: prometheus_registry.as_ref(),
                     spawner,
                     is_collator,
@@ -347,6 +340,7 @@ pub fn new_full(
 
         {
             let handle = handle.clone();
+            let overseer_client = client.clone();
             task_manager.spawn_essential_handle().spawn_blocking(
                 "overseer",
                 Some("overseer"),

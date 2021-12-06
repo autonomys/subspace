@@ -5811,33 +5811,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-authority-discovery"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
-dependencies = [
- "async-trait",
- "derive_more",
- "futures 0.3.18",
- "futures-timer 3.0.2",
- "ip_network",
- "libp2p",
- "log",
- "parity-scale-codec",
- "prost",
- "prost-build",
- "rand 0.7.3",
- "sc-client-api",
- "sc-network",
- "sp-api",
- "sp-authority-discovery",
- "sp-blockchain",
- "sp-core",
- "sp-keystore",
- "sp-runtime",
- "substrate-prometheus-endpoint",
-]
-
-[[package]]
 name = "sc-basic-authorship"
 version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
@@ -7145,19 +7118,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-authority-discovery"
-version = "4.0.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-application-crypto",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "sp-authorship"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
@@ -7961,7 +7921,6 @@ dependencies = [
  "polkadot-node-core-runtime-api",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "sc-authority-discovery",
  "sc-basic-authorship",
  "sc-cli",
  "sc-client-api",
@@ -7983,7 +7942,6 @@ dependencies = [
  "serde_json",
  "sp-api",
  "sp-application-crypto",
- "sp-authority-discovery",
  "sp-authorship",
  "sp-block-builder",
  "sp-blockchain",
