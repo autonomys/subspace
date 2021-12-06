@@ -5120,24 +5120,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-network-protocol"
-version = "0.9.13"
-dependencies = [
- "async-trait",
- "derive_more",
- "futures 0.3.18",
- "parity-scale-codec",
- "polkadot-node-jaeger",
- "polkadot-node-primitives",
- "polkadot-primitives",
- "sc-authority-discovery",
- "sc-network",
- "strum 0.23.0",
- "subspace-runtime-primitives",
- "thiserror",
-]
-
-[[package]]
 name = "polkadot-node-primitives"
 version = "0.9.13"
 dependencies = [
@@ -5256,9 +5238,8 @@ dependencies = [
  "futures-timer 3.0.2",
  "metered-channel",
  "pin-project 1.0.8",
- "polkadot-node-network-protocol",
- "polkadot-node-primitives",
  "polkadot-overseer-gen-proc-macro",
+ "sp-core",
  "thiserror",
  "tracing",
  "trybuild",
@@ -5999,12 +5980,6 @@ dependencies = [
  "schannel",
  "security-framework",
 ]
-
-[[package]]
-name = "rustversion"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61b3909d758bb75c79f23d4736fac9433868679d3ad2ea7a61e3c25cfda9a088"
 
 [[package]]
 name = "rw-stream-sink"
@@ -7720,7 +7695,7 @@ dependencies = [
  "lazy_static",
  "sp-core",
  "sp-runtime",
- "strum 0.22.0",
+ "strum",
 ]
 
 [[package]]
@@ -8135,16 +8110,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7ac893c7d471c8a21f31cfe213ec4f6d9afeed25537c772e08ef3f005f8729e"
 dependencies = [
- "strum_macros 0.22.0",
-]
-
-[[package]]
-name = "strum"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cae14b91c7d11c9a851d3fbc80a963198998c2a64eec840477fa92d8ce9b70bb"
-dependencies = [
- "strum_macros 0.23.1",
+ "strum_macros",
 ]
 
 [[package]]
@@ -8156,19 +8122,6 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb0dc7ee9c15cea6199cde9a127fa16a4c5819af85395457ad72d68edc85a38"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "rustversion",
  "syn",
 ]
 

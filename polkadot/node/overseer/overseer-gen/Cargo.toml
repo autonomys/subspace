@@ -12,9 +12,8 @@ async-trait = "0.1"
 thiserror = "1"
 metered = { package = "metered-channel", path = "../../metered-channel" }
 polkadot-overseer-gen-proc-macro = { path = "./proc-macro" }
-polkadot-node-network-protocol = { path = "../../network/protocol"}
 # trait SpawnNamed
-polkadot-node-primitives = { path = "../../primitives" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 futures-timer = "3.0.2"
 pin-project = "1.0"
 

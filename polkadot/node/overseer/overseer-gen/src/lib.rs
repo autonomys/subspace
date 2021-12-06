@@ -65,7 +65,7 @@ pub use polkadot_overseer_gen_proc_macro::overlord;
 #[doc(hidden)]
 pub use metered;
 #[doc(hidden)]
-pub use polkadot_node_primitives::SpawnNamed;
+pub use sp_core::traits::SpawnNamed;
 #[doc(hidden)]
 pub use tracing;
 
@@ -93,8 +93,6 @@ pub use std::time::Duration;
 
 #[doc(hidden)]
 pub use futures_timer::Delay;
-
-pub use polkadot_node_network_protocol::WrongVariant;
 
 use std::fmt;
 
