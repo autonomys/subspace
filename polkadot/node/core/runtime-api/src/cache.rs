@@ -17,7 +17,7 @@
 use memory_lru::ResidentSize;
 use parity_util_mem::{MallocSizeOf, MallocSizeOfExt};
 
-use polkadot_primitives::v1::Hash;
+use subspace_runtime_primitives::Hash;
 
 struct ResidentSizeOf<T>(T);
 

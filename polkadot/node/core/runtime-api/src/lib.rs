@@ -41,9 +41,6 @@ use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 mod cache;
 
-#[cfg(test)]
-mod tests;
-
 const LOG_TARGET: &str = "parachain::runtime-api";
 
 /// The number of maximum runtime API requests can be executed in parallel. Further requests will be buffered.

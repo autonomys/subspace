@@ -106,12 +106,13 @@ where
 					subsystem.metrics.on_request(result.is_ok());
 					let _ = response_channel.send(result);
 				},
-				ChainApiMessage::BlockWeight(hash, response_channel) => {
+				ChainApiMessage::BlockWeight(_hash, _response_channel) => {
 					let _timer = subsystem.metrics.time_block_weight();
-					let result = sc_consensus_babe::block_weight(&*subsystem.client, hash)
-						.map_err(|e| e.to_string().into());
-					subsystem.metrics.on_request(result.is_ok());
-					let _ = response_channel.send(result);
+					// let result = sc_consensus_babe::block_weight(&*subsystem.client, hash)
+						// .map_err(|e| e.to_string().into());
+					todo!("Impl `sc_consensus_subspace::block_weight`?");
+					// subsystem.metrics.on_request(result.is_ok());
+					// let _ = response_channel.send(result);
 				},
 				ChainApiMessage::FinalizedBlockHash(number, response_channel) => {
 					let _timer = subsystem.metrics.time_finalized_block_hash();
