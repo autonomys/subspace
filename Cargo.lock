@@ -4983,8 +4983,6 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "sp-api",
- "sp-authority-discovery",
- "sp-consensus-babe",
  "sp-core",
  "sp-executor",
  "subspace-runtime-primitives",

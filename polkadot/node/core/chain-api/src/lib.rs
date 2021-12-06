@@ -28,7 +28,7 @@
 //! * Last finalized block number
 //! * Ancestors
 
-#![deny(unused_results)]
+#![deny(unused_results, unused_crate_dependencies)]
 #![warn(missing_docs)]
 
 use std::sync::Arc;
