@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::iter;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_solving::SubspaceCodec;
@@ -28,10 +27,7 @@ fn batch() {
 
     let mut pieces: Vec<u8> = vec![0u8; PIECE_SIZE * piece_count];
     pieces.chunks_exact_mut(PIECE_SIZE).for_each(|piece| {
-        piece
-            .as_mut()
-            .write_all(&rand::random::<[u8; PIECE_SIZE]>())
-            .unwrap()
+        piece.copy_from_slice(&rand::random::<[u8; PIECE_SIZE]>());
     });
     let original_pieces = pieces.clone();
     let piece_indexes: Vec<u64> = iter::repeat_with(|| rand::random())

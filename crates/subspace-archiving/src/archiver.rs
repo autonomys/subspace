@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::io::Write;
 use std::iter;
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
@@ -629,10 +628,7 @@ impl Archiver {
                     .zip(shard.into_iter())
             })
             .for_each(|(piece_chunk, shard_chunk)| {
-                piece_chunk
-                    .as_mut()
-                    .write_all(&shard_chunk)
-                    .expect("Both source and target are exactly the same size; qed");
+                piece_chunk.copy_from_slice(&shard_chunk);
             });
 
         // Build a Merkle tree over all records
@@ -651,10 +647,7 @@ impl Archiver {
                     .get_witness(position)
                     .expect("We use the same indexes as during Merkle tree creation; qed");
 
-                (&mut piece[self.record_size..]).write_all(&witness).expect(
-                    "Parameters are verified in the archiver constructor to make sure this \
-                    never happens; qed",
-                );
+                piece[self.record_size..].copy_from_slice(&witness);
             });
 
         // Now produce root block
