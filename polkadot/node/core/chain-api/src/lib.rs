@@ -44,9 +44,6 @@ use polkadot_subsystem::{
 	SubsystemContext, SubsystemError, SubsystemResult,
 };
 
-#[cfg(test)]
-mod tests;
-
 const LOG_TARGET: &str = "parachain::chain-api";
 
 /// The Chain API Subsystem implementation.

@@ -590,15 +590,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bounded-vec"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afdd1dffefe5fc66262a524b91087c43b16e478b2e3dc49eb11b0e2fd6b6ec90"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "bs58"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -801,7 +792,6 @@ dependencies = [
  "futures 0.3.18",
  "parity-scale-codec",
  "parking_lot 0.10.2",
- "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-overseer",
  "sc-client-api",
@@ -4975,15 +4965,10 @@ name = "polkadot-node-core-chain-api"
 version = "0.9.13"
 dependencies = [
  "futures 0.3.18",
- "maplit",
- "parity-scale-codec",
- "polkadot-node-primitives",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-test-helpers",
  "polkadot-node-subsystem-util",
  "sc-client-api",
  "sp-blockchain",
- "sp-core",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -5016,7 +5001,6 @@ dependencies = [
  "mick-jaeger",
  "parity-scale-codec",
  "parking_lot 0.11.2",
- "polkadot-node-primitives",
  "sc-network",
  "sp-core",
  "sp-runtime",
@@ -5035,48 +5019,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-primitives"
-version = "0.9.13"
-dependencies = [
- "bounded-vec",
- "futures 0.3.18",
- "parity-scale-codec",
- "schnorrkel",
- "serde",
- "sp-application-crypto",
- "sp-consensus-babe",
- "sp-consensus-vrf",
- "sp-core",
- "sp-keystore",
- "sp-maybe-compressed-blob",
- "thiserror",
- "zstd",
-]
-
-[[package]]
 name = "polkadot-node-subsystem"
 version = "0.9.13"
 dependencies = [
  "polkadot-node-jaeger",
  "polkadot-node-subsystem-types",
  "polkadot-overseer",
-]
-
-[[package]]
-name = "polkadot-node-subsystem-test-helpers"
-version = "0.9.13"
-dependencies = [
- "async-trait",
- "futures 0.3.18",
- "parking_lot 0.11.2",
- "polkadot-node-subsystem",
- "polkadot-node-subsystem-util",
- "polkadot-overseer",
- "sc-keystore",
- "sp-application-crypto",
- "sp-core",
- "sp-keyring",
- "sp-keystore",
 ]
 
 [[package]]

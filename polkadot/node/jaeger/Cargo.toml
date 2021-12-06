@@ -10,7 +10,6 @@ async-std = "1.8.0"
 mick-jaeger = "0.1.6"
 lazy_static = "1.4"
 parking_lot = "0.11.1"
-polkadot-node-primitives = { path = "../primitives" }
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
