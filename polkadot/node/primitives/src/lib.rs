@@ -34,23 +34,23 @@ pub use sp_consensus_babe::{
 };
 pub use sp_core::traits::SpawnNamed;
 
-use polkadot_primitives::v1::{
-	BlakeTwo256, CandidateCommitments, CandidateHash, CollatorPair, CommittedCandidateReceipt,
-	CompactStatement, EncodeAs, Hash, HashT, HeadData, Id as ParaId, OutboundHrmpMessage,
-	PersistedValidationData, SessionIndex, Signed, UncheckedSigned, UpwardMessage, ValidationCode,
-	ValidatorIndex, MAX_CODE_SIZE, MAX_POV_SIZE,
-};
+// use polkadot_primitives::v1::{
+	// BlakeTwo256, CandidateCommitments, CandidateHash, CollatorPair, CommittedCandidateReceipt,
+	// CompactStatement, EncodeAs, Hash, HashT, HeadData, Id as ParaId, OutboundHrmpMessage,
+	// PersistedValidationData, SessionIndex, Signed, UncheckedSigned, UpwardMessage, ValidationCode,
+	// ValidatorIndex, MAX_CODE_SIZE, MAX_POV_SIZE,
+// };
 
-pub use polkadot_parachain::primitives::BlockData;
+// pub use polkadot_parachain::primitives::BlockData;
 
-pub mod approval;
+// pub mod approval;
 
 /// Disputes related types.
-pub mod disputes;
-pub use disputes::{
-	CandidateVotes, DisputeMessage, DisputeMessageCheckError, InvalidDisputeVote,
-	SignedDisputeStatement, UncheckedDisputeMessage, ValidDisputeVote,
-};
+// pub mod disputes;
+// pub use disputes::{
+	// CandidateVotes, DisputeMessage, DisputeMessageCheckError, InvalidDisputeVote,
+	// SignedDisputeStatement, UncheckedDisputeMessage, ValidDisputeVote,
+// };
 
 // For a 16-ary Merkle Prefix Trie, we can expect at most 16 32-byte hashes per node
 // plus some overhead:
@@ -60,10 +60,10 @@ const MERKLE_NODE_MAX_SIZE: usize = 512 + 100;
 const MERKLE_PROOF_MAX_DEPTH: usize = 8;
 
 /// The bomb limit for decompressing code blobs.
-pub const VALIDATION_CODE_BOMB_LIMIT: usize = (MAX_CODE_SIZE * 4u32) as usize;
+// pub const VALIDATION_CODE_BOMB_LIMIT: usize = (MAX_CODE_SIZE * 4u32) as usize;
 
 /// The bomb limit for decompressing PoV blobs.
-pub const POV_BOMB_LIMIT: usize = (MAX_POV_SIZE * 4u32) as usize;
+// pub const POV_BOMB_LIMIT: usize = (MAX_POV_SIZE * 4u32) as usize;
 
 /// The amount of time to spend on execution during backing.
 pub const BACKING_EXECUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -76,131 +76,8 @@ pub const BACKING_EXECUTION_TIMEOUT: Duration = Duration::from_secs(2);
 /// dispute participants.
 pub const APPROVAL_EXECUTION_TIMEOUT: Duration = Duration::from_secs(6);
 
-/// Type of a session window size.
-///
-/// We are not using `NonZeroU32` here because `expect` and `unwrap` are not yet const, so global
-/// constants of `SessionWindowSize` would require `lazy_static` in that case.
-///
-/// See: https://github.com/rust-lang/rust/issues/67441
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct SessionWindowSize(SessionIndex);
-
-#[macro_export]
-/// Create a new checked `SessionWindowSize`
-///
-/// which cannot be 0.
-macro_rules! new_session_window_size {
-	(0) => {
-		compile_error!("Must be non zero");
-	};
-	(0_u32) => {
-		compile_error!("Must be non zero");
-	};
-	(0 as u32) => {
-		compile_error!("Must be non zero");
-	};
-	(0 as _) => {
-		compile_error!("Must be non zero");
-	};
-	($l:literal) => {
-		SessionWindowSize::unchecked_new($l as _)
-	};
-}
-
-/// It would be nice to draw this from the chain state, but we have no tools for it right now.
-/// On Polkadot this is 1 day, and on Kusama it's 6 hours.
-///
-/// Number of sessions we want to consider in disputes.
-pub const DISPUTE_WINDOW: SessionWindowSize = new_session_window_size!(6);
-
-impl SessionWindowSize {
-	/// Get the value as `SessionIndex` for doing comparisons with those.
-	pub fn get(self) -> SessionIndex {
-		self.0
-	}
-
-	/// Helper function for `new_session_window_size`.
-	///
-	/// Don't use it. The only reason it is public, is because otherwise the
-	/// `new_session_window_size` macro would not work outside of this module.
-	#[doc(hidden)]
-	pub const fn unchecked_new(size: SessionIndex) -> Self {
-		Self(size)
-	}
-}
-
 /// The cumulative weight of a block in a fork-choice rule.
 pub type BlockWeight = u32;
-
-/// A statement, where the candidate receipt is included in the `Seconded` variant.
-///
-/// This is the committed candidate receipt instead of the bare candidate receipt. As such,
-/// it gives access to the commitments to validators who have not executed the candidate. This
-/// is necessary to allow a block-producing validator to include candidates from outside the para
-/// it is assigned to.
-#[derive(Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Statement {
-	/// A statement that a validator seconds a candidate.
-	#[codec(index = 1)]
-	Seconded(CommittedCandidateReceipt),
-	/// A statement that a validator has deemed a candidate valid.
-	#[codec(index = 2)]
-	Valid(CandidateHash),
-}
-
-impl std::fmt::Debug for Statement {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Statement::Seconded(seconded) => write!(f, "Seconded: {:?}", seconded.descriptor),
-			Statement::Valid(hash) => write!(f, "Valid: {:?}", hash),
-		}
-	}
-}
-
-impl Statement {
-	/// Get the candidate hash referenced by this statement.
-	///
-	/// If this is a `Statement::Seconded`, this does hash the candidate receipt, which may be expensive
-	/// for large candidates.
-	pub fn candidate_hash(&self) -> CandidateHash {
-		match *self {
-			Statement::Valid(ref h) => *h,
-			Statement::Seconded(ref c) => c.hash(),
-		}
-	}
-
-	/// Transform this statement into its compact version, which references only the hash
-	/// of the candidate.
-	pub fn to_compact(&self) -> CompactStatement {
-		match *self {
-			Statement::Seconded(ref c) => CompactStatement::Seconded(c.hash()),
-			Statement::Valid(hash) => CompactStatement::Valid(hash),
-		}
-	}
-}
-
-impl From<&'_ Statement> for CompactStatement {
-	fn from(stmt: &Statement) -> Self {
-		stmt.to_compact()
-	}
-}
-
-impl EncodeAs<CompactStatement> for Statement {
-	fn encode_as(&self) -> Vec<u8> {
-		self.to_compact().encode()
-	}
-}
-
-/// A statement, the corresponding signature, and the index of the sender.
-///
-/// Signing context and validator set should be apparent from context.
-///
-/// This statement is "full" in the sense that the `Seconded` variant includes the candidate receipt.
-/// Only the compact `SignedStatement` is suitable for submission to the chain.
-pub type SignedFullStatement = Signed<Statement, CompactStatement>;
-
-/// Variant of `SignedFullStatement` where the signature has not yet been verified.
-pub type UncheckedSignedFullStatement = UncheckedSigned<Statement, CompactStatement>;
 
 /// Candidate invalidity details
 #[derive(Debug)]
@@ -231,126 +108,6 @@ pub enum InvalidCandidate {
 	ParaHeadHashMismatch,
 	/// Validation code hash does not match.
 	CodeHashMismatch,
-}
-
-/// Result of the validation of the candidate.
-#[derive(Debug)]
-pub enum ValidationResult {
-	/// Candidate is valid. The validation process yields these outputs and the persisted validation
-	/// data used to form inputs.
-	Valid(CandidateCommitments, PersistedValidationData),
-	/// Candidate is invalid.
-	Invalid(InvalidCandidate),
-}
-
-/// A Proof-of-Validity
-#[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
-pub struct PoV {
-	/// The block witness data.
-	pub block_data: BlockData,
-}
-
-impl PoV {
-	/// Get the blake2-256 hash of the PoV.
-	pub fn hash(&self) -> Hash {
-		BlakeTwo256::hash_of(self)
-	}
-}
-
-/// The output of a collator.
-///
-/// This differs from `CandidateCommitments` in two ways:
-///
-/// - does not contain the erasure root; that's computed at the Polkadot level, not at Cumulus
-/// - contains a proof of validity.
-#[derive(Clone, Encode, Decode)]
-pub struct Collation<BlockNumber = polkadot_primitives::v1::BlockNumber> {
-	/// Messages destined to be interpreted by the Relay chain itself.
-	pub upward_messages: Vec<UpwardMessage>,
-	/// The horizontal messages sent by the parachain.
-	pub horizontal_messages: Vec<OutboundHrmpMessage<ParaId>>,
-	/// New validation code.
-	pub new_validation_code: Option<ValidationCode>,
-	/// The head-data produced as a result of execution.
-	pub head_data: HeadData,
-	/// Proof to verify the state transition of the parachain.
-	pub proof_of_validity: PoV,
-	/// The number of messages processed from the DMQ.
-	pub processed_downward_messages: u32,
-	/// The mark which specifies the block number up to which all inbound HRMP messages are processed.
-	pub hrmp_watermark: BlockNumber,
-}
-
-/// Signal that is being returned when a collation was seconded by a validator.
-#[derive(Debug)]
-pub struct CollationSecondedSignal {
-	/// The hash of the relay chain block that was used as context to sign [`Self::statement`].
-	pub relay_parent: Hash,
-	/// The statement about seconding the collation.
-	///
-	/// Anything else than [`Statement::Seconded`](Statement::Seconded) is forbidden here.
-	pub statement: SignedFullStatement,
-}
-
-/// Result of the [`CollatorFn`] invocation.
-pub struct CollationResult {
-	/// The collation that was build.
-	pub collation: Collation,
-	/// An optional result sender that should be informed about a successfully seconded collation.
-	///
-	/// There is no guarantee that this sender is informed ever about any result, it is completely okay to just drop it.
-	/// However, if it is called, it should be called with the signed statement of a parachain validator seconding the
-	/// collation.
-	pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
-}
-
-impl CollationResult {
-	/// Convert into the inner values.
-	pub fn into_inner(
-		self,
-	) -> (Collation, Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>) {
-		(self.collation, self.result_sender)
-	}
-}
-
-/// Collation function.
-///
-/// Will be called with the hash of the relay chain block the parachain block should be build on and the
-/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
-///
-/// Returns an optional [`CollationResult`].
-pub type CollatorFn = Box<
-	dyn Fn(
-			Hash,
-			&PersistedValidationData,
-		) -> Pin<Box<dyn Future<Output = Option<CollationResult>> + Send>>
-		+ Send
-		+ Sync,
->;
-
-/// Configuration for the collation generator
-pub struct CollationGenerationConfig {
-	/// Collator's authentication key, so it can sign things.
-	pub key: CollatorPair,
-	/// Collation function. See [`CollatorFn`] for more details.
-	pub collator: CollatorFn,
-	/// The parachain that this collator collates for
-	pub para_id: ParaId,
-}
-
-impl std::fmt::Debug for CollationGenerationConfig {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "CollationGenerationConfig {{ ... }}")
-	}
-}
-
-/// This is the data we keep available for each candidate included in the relay chain.
-#[derive(Clone, Encode, Decode, PartialEq, Eq, Debug)]
-pub struct AvailableData {
-	/// The Proof-of-Validation of the candidate.
-	pub pov: std::sync::Arc<PoV>,
-	/// The persisted validation data needed for secondary checks.
-	pub validation_data: PersistedValidationData,
 }
 
 /// This is a convenience type to allow the Erasure chunk proof to Decode into a nested BoundedVec
@@ -447,32 +204,4 @@ impl<'de> Deserialize<'de> for Proof {
 		let mut slice = s.as_slice();
 		Decode::decode(&mut slice).map_err(de::Error::custom)
 	}
-}
-
-/// A chunk of erasure-encoded block data.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, Serialize, Deserialize, Debug, Hash)]
-pub struct ErasureChunk {
-	/// The erasure-encoded chunk of data belonging to the candidate block.
-	pub chunk: Vec<u8>,
-	/// The index of this erasure-encoded chunk of data.
-	pub index: ValidatorIndex,
-	/// Proof for this chunk's branch in the Merkle tree.
-	pub proof: Proof,
-}
-
-impl ErasureChunk {
-	/// Convert bounded Vec Proof to regular Vec<Vec<u8>>
-	pub fn proof(&self) -> &Proof {
-		&self.proof
-	}
-}
-
-/// Compress a PoV, unless it exceeds the [`POV_BOMB_LIMIT`].
-#[cfg(not(target_os = "unknown"))]
-pub fn maybe_compress_pov(pov: PoV) -> PoV {
-	let PoV { block_data: BlockData(raw) } = pov;
-	let raw = sp_maybe_compressed_blob::compress(&raw, POV_BOMB_LIMIT).unwrap_or(raw);
-
-	let pov = PoV { block_data: BlockData(raw) };
-	pov
 }

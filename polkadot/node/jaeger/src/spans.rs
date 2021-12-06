@@ -84,9 +84,9 @@
 //! ```
 
 use parity_scale_codec::Encode;
-use polkadot_node_primitives::PoV;
+// use polkadot_node_primitives::PoV;
 use polkadot_primitives::v1::{
-	BlakeTwo256, CandidateHash, Hash, HashT, Id as ParaId, ValidatorIndex,
+	BlakeTwo256, CandidateHash, Hash, HashT, 
 };
 use sc_network::PeerId;
 
@@ -197,15 +197,15 @@ impl<'a> LazyIdent for &'a [u8] {
 	}
 }
 
-impl LazyIdent for &PoV {
-	fn eval(&self) -> TraceIdentifier {
-		hash_to_identifier(self.hash())
-	}
+// impl LazyIdent for &PoV {
+	// fn eval(&self) -> TraceIdentifier {
+		// hash_to_identifier(self.hash())
+	// }
 
-	fn extra_tags(&self, span: &mut Span) {
-		span.add_pov(self)
-	}
-}
+	// fn extra_tags(&self, span: &mut Span) {
+		// span.add_pov(self)
+	// }
+// }
 
 impl LazyIdent for Hash {
 	fn eval(&self) -> TraceIdentifier {
@@ -289,22 +289,11 @@ impl Span {
 		self.with_string_fmt_debug_tag("candidate-hash", &candidate_hash.0)
 	}
 
-	/// Attach a para-id to the span.
-	#[inline(always)]
-	pub fn with_para_id(self, para_id: ParaId) -> Self {
-		self.with_int_tag("para-id", u32::from(para_id) as i64)
-	}
-
 	/// Attach a candidate stage.
 	/// Should always come with a `CandidateHash`.
 	#[inline(always)]
 	pub fn with_stage(self, stage: Stage) -> Self {
 		self.with_string_tag("candidate-stage", stage as u8)
-	}
-
-	#[inline(always)]
-	pub fn with_validator_index(self, validator: ValidatorIndex) -> Self {
-		self.with_string_tag("validator-index", &validator.0)
 	}
 
 	#[inline(always)]
@@ -317,16 +306,11 @@ impl Span {
 		self.with_string_fmt_debug_tag("relay-parent", relay_parent)
 	}
 
-	#[inline(always)]
-	pub fn with_claimed_validator_index(self, claimed_validator_index: ValidatorIndex) -> Self {
-		self.with_string_tag("claimed-validator", &claimed_validator_index.0)
-	}
-
-	#[inline(always)]
-	pub fn with_pov(mut self, pov: &PoV) -> Self {
-		self.add_pov(pov);
-		self
-	}
+	// #[inline(always)]
+	// pub fn with_pov(mut self, pov: &PoV) -> Self {
+		// self.add_pov(pov);
+		// self
+	// }
 
 	/// Add an additional int tag to the span without consuming.
 	///
@@ -359,6 +343,7 @@ impl Span {
 		}
 	}
 
+    /*
 	/// Add a PoV hash meta tag with lazy hash evaluation, without consuming the span.
 	#[inline(always)]
 	pub fn add_pov(&mut self, pov: &PoV) {
@@ -367,11 +352,7 @@ impl Span {
 			self.add_string_fmt_debug_tag("pov", pov.hash());
 		}
 	}
-
-	#[inline(always)]
-	pub fn add_para_id(&mut self, para_id: ParaId) {
-		self.add_int_tag("para-id", u32::from(para_id) as i64);
-	}
+    */
 
 	/// Add a string tag, without consuming the span.
 	pub fn add_string_tag<V: ToString>(&mut self, tag: &'static str, val: V) {

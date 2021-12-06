@@ -36,9 +36,9 @@ pub use parity_scale_codec::Compact;
 pub use polkadot_core_primitives::*;
 pub use runtime_primitives::traits::{BlakeTwo256, Hash as HashT, IdentifyAccount, Verify};
 
-pub use polkadot_parachain::primitives::{
-	BlockData, HeadData, Id, UpwardMessage, ValidationCode, LOWEST_USER_ID,
-};
+// pub use polkadot_parachain::primitives::{
+	// BlockData, HeadData, Id, UpwardMessage, ValidationCode, LOWEST_USER_ID,
+// };
 
 /// The key type ID for a collator key.
 pub const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
@@ -150,6 +150,7 @@ pub enum Retriable {
 	WithRetries(u32),
 }
 
+/*
 /// Type determining the active set of parachains in current block.
 pub trait ActiveParas {
 	/// Return the active set of parachains in current block. This attempts to keep any IDs in the
@@ -161,6 +162,7 @@ pub trait ActiveParas {
 	/// parachain IDs with the (unordered) set of parathread IDs selected for this block.
 	fn active_paras() -> Vec<(Id, Option<(CollatorId, Retriable)>)>;
 }
+*/
 
 /// Description of how often/when this parachain is scheduled for progression.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
@@ -181,6 +183,7 @@ pub struct Info {
 /// An `Info` value for a standard leased parachain.
 pub const PARACHAIN_INFO: Info = Info { scheduling: Scheduling::Always };
 
+/*
 /// Auxiliary for when there's an attempt to swap two parachains/parathreads.
 pub trait SwapAux {
 	/// Result describing whether it is possible to swap two parachains. Doesn't mutate state.
@@ -204,6 +207,7 @@ impl SwapAux for () {
 		Err("Swapping disabled")
 	}
 }
+*/
 
 /// Identifier for a chain, either one of a number of parachains or the relay chain.
 #[derive(Copy, Clone, PartialEq, Encode, Decode, TypeInfo)]
