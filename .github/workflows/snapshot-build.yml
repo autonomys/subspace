@@ -1,0 +1,145 @@
+name: Snapshot build
+
+on:
+  push:
+    tags:
+      - 'snapshot-*'
+
+jobs:
+  container-images:
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - node
+          - farmer
+
+    steps:
+      - name: Log into registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ghcr.io/subspace/${{ matrix.image }}
+          tags: |
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Build and push ${{ matrix.image }} image
+        id: build
+        uses: docker/build-push-action@v2
+        with:
+          file: Dockerfile-${{ matrix.image }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Generate testnet chain specifications
+        run: |
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw.json
+        if: matrix.image == 'node'
+
+      - name: Upload testnet chain specifictions to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: chain-specifications
+          path: |
+            chain-spec.json
+            chain-spec-raw.json
+          if-no-files-found: error
+        if: matrix.image == 'node'
+
+      - name: Upload testnet chain specifictions to assets
+        uses: alexellis/upload-assets@0.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["chain-spec.json", "chain-spec-raw.json"]'
+        if: matrix.image == 'node'
+
+  executables:
+    # Wait for chain spec files to be uploaded to artifacts
+    needs: container-images
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-20.04
+          - macos-11
+          - windows-2019
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Download testnet chain specifictions from artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: chain-specifications
+          path: .
+
+      - name: Rust toolchain
+        uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
+        with:
+          toolchain: nightly
+          target: wasm32-unknown-unknown
+          override: true
+
+      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
+      - name: Remove msys64
+        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
+        if: runner.os == 'Windows'
+
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@v0.2.5
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+
+      - name: Build (Linux or Windows with CUDA)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --bins --features=subspace-node/json-chain-spec,subspace-farmer/cuda
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+
+      - name: Build (macOS without CUDA)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --bins --features=subspace-node/json-chain-spec
+        if: runner.os == 'macOS'
+
+      - name: Prepare executables for uploading (Linux or macOS)
+        run: |
+          mkdir executables
+          mv target/release/subspace-node executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}
+          mv target/release/subspace-farmer executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+
+      - name: Prepare executables for uploading (Windows)
+        run: |
+          mkdir executables
+          move target/release/subspace-node.exe executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
+          move target/release/subspace-farmer.exe executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
+        if: runner.os == 'Windows'
+
+      - name: Upload node and farmer executables to assets
+        uses: alexellis/upload-assets@0.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["executables/*"]'
