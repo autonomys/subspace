@@ -22,7 +22,6 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::BlakeTwo256;
 use substrate_prometheus_endpoint::Registry;
 
-// use cirrus_client_network::build_block_announce_validator;
 use cumulus_client_consensus_relay_chain::{
 	build_primary_chain_consensus, BuildPrimaryChainConsensusParams,
 };
@@ -236,12 +235,6 @@ where
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	// let block_announce_validator = build_block_announce_validator(
-		// relay_chain_full_node.client.clone(),
-		// Box::new(relay_chain_full_node.network.clone()),
-		// relay_chain_full_node.backend.clone(),
-	// );
-
 	let force_authoring = parachain_config.force_authoring;
 	let validator = parachain_config.role.is_authority();
 	let prometheus_registry = parachain_config.prometheus_registry().cloned();
@@ -321,18 +314,14 @@ where
 
 		cirrus_client_service::start_executor(params).await?;
 	} else {
-		todo!("Impl `start_full_node`");
-		/*
-		let params = StartFullNodeParams {
+		let params = cirrus_client_service::StartFullNodeParams {
 			client: client.clone(),
-			announce_block,
+			primary_chain_full_node: relay_chain_full_node,
 			task_manager: &mut task_manager,
-			para_id: id,
-			relay_chain_full_node,
+			announce_block,
 		};
 
-		start_full_node(params)?;
-		*/
+		cirrus_client_service::start_full_node(params)?;
 	}
 
 	start_network.start_network();

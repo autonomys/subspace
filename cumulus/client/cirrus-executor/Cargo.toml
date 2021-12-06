@@ -22,7 +22,6 @@ futures = { version = "0.3.1", features = ["compat"] }
 parking_lot = "0.10.2"
 tracing = "0.1.25"
 
-# FIXME
 polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 

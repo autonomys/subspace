@@ -15,12 +15,12 @@ sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1
 sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
-subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
-sp-executor = { path = "../../../../crates/sp-executor" }
-
 # Other deps
 futures = { version = "0.3.8", features = ["compat"] }
 codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
 tracing = "0.1.25"
 async-trait = "0.1.42"
 dyn-clone = "1.0.4"
+
+sp-executor = { path = "../../../../crates/sp-executor" }
+subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

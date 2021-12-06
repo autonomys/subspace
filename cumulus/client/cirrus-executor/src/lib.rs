@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cirrus Executor implementation for Substrate.
+//! Cirrus Executor implementation for Subspace.
 
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
