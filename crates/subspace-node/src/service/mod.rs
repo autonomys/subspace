@@ -29,7 +29,7 @@ use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
 
 use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
-use polkadot_overseer::{Handle, Overseer, OverseerConnector, OverseerHandle};
+use polkadot_overseer::{Handle, OverseerConnector};
 
 pub use overseer::IsCollator;
 
@@ -278,13 +278,6 @@ pub fn new_full(
     config: Configuration,
     is_collator: IsCollator,
 ) -> Result<NewFull<Arc<FullClient>>, Error> {
-    let overseer_gen = overseer::RealOverseerGen;
-
-    let prometheus_registry = config.prometheus_registry().cloned();
-
-    let overseer_connector = OverseerConnector::default();
-    let overseer_handle = Handle::new(overseer_connector.handle());
-
     let sc_service::PartialComponents {
         client,
         backend,
@@ -331,10 +324,10 @@ pub fn new_full(
     let overseer_client = client.clone();
     let spawner = task_manager.spawn_handle();
 
-    // let maybe_params = todo!("Handle maybe_params");
-
     let overseer_handle = if let Some(keystore) = local_keystore {
-        let (overseer, overseer_handle) = overseer_gen
+        let overseer_connector = OverseerConnector::default();
+
+        let (overseer, overseer_handle) = RealOverseerGen
             .generate::<sc_service::SpawnTaskHandle, FullClient>(
                 overseer_connector,
                 OverseerGenArgs {

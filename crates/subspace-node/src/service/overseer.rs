@@ -58,7 +58,7 @@ impl std::fmt::Debug for IsCollator {
 
 impl IsCollator {
     /// Is this a collator?
-    fn is_collator(&self) -> bool {
+    pub fn is_collator(&self) -> bool {
         matches!(self, Self::Yes(_))
     }
 }
@@ -91,12 +91,12 @@ where
 pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
     OverseerGenArgs {
         leaves,
-        keystore,
+        keystore: _,
         runtime_client,
-        network_service,
+        network_service: _,
         registry,
         spawner,
-        is_collator,
+        is_collator: _,
     }: OverseerGenArgs<'a, Spawner, RuntimeClient>,
 ) -> Result<
     OverseerBuilder<

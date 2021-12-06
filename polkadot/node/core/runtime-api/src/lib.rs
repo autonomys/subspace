@@ -58,6 +58,7 @@ pub struct RuntimeApiSubsystem<Client> {
 	metrics: Metrics,
 	spawn_handle: Box<dyn SpawnNamed>,
 	/// If there are [`MAX_PARALLEL_REQUESTS`] requests being executed, we buffer them in here until they can be executed.
+	#[allow(unused)]
 	waiting_requests: VecDeque<(
 		Pin<Box<dyn Future<Output = ()> + Send>>,
 		oneshot::Receiver<Option<RequestResult>>,
@@ -65,6 +66,7 @@ pub struct RuntimeApiSubsystem<Client> {
 	/// All the active runtime API requests that are currently being executed.
 	active_requests: FuturesUnordered<oneshot::Receiver<Option<RequestResult>>>,
 	/// Requests results cache
+	#[allow(unused)]
 	requests_cache: RequestResultCache,
 }
 
@@ -112,6 +114,7 @@ where
 		}
 	}
 
+	#[allow(unused)]
 	fn query_cache(&mut self, _relay_parent: Hash, request: Request) -> Option<Request> {
 		macro_rules! query {
 			// Just query by relay parent
@@ -285,6 +288,7 @@ impl Metrics {
 		}
 	}
 
+	#[allow(unused)]
 	fn on_cached_request(&self) {
 		self.0
 			.as_ref()

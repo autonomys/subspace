@@ -175,7 +175,7 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
-	metrics: Metrics,
+	_metrics: Metrics,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()> {
 	for relay_parent in activated {
@@ -246,6 +246,8 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 	Ok(())
 }
 
+// TODO: fix unused
+#[allow(unused)]
 #[derive(Clone)]
 struct MetricsInner {
 	collations_generated_total: prometheus::Counter<prometheus::U64>,
@@ -258,6 +260,8 @@ struct MetricsInner {
 #[derive(Default, Clone)]
 pub struct Metrics(Option<MetricsInner>);
 
+// TODO: fix unused
+#[allow(unused)]
 impl Metrics {
 	fn on_collation_generated(&self) {
 		if let Some(metrics) = &self.0 {
