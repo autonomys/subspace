@@ -21,7 +21,8 @@ use crate::{
     NormalEpochChange, NormalEraChange,
 };
 use codec::Encode;
-use frame_support::{parameter_types, traits::OnInitialize};
+use frame_support::parameter_types;
+use frame_support::traits::OnInitialize;
 use frame_system::InitKind;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;

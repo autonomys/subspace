@@ -29,6 +29,7 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode};
+use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
     dispatch::{DispatchResult, DispatchResultWithPostInfo},
@@ -58,7 +59,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
-use subspace_core_primitives::{RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH};
+use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
@@ -730,12 +731,17 @@ impl<T: Config> Pallet<T> {
 
         EonIndex::<T>::put(eon_index);
 
-        // TODO: Include randomness into the next salt
-        let next_salt = (eon_index + 1).to_le_bytes();
-
         let salt = NextSalt::<T>::get();
-        NextSalt::<T>::put(next_salt);
         Salt::<T>::put(salt);
+        let next_salt = crypto::sha256_hash({
+            let mut input = [0u8; RANDOMNESS_LENGTH + mem::size_of::<u64>()];
+            input[..RANDOMNESS_LENGTH].copy_from_slice(&Randomness::<T>::get());
+            input[RANDOMNESS_LENGTH..].copy_from_slice(&eon_index.to_le_bytes());
+            input
+        })[..SALT_SIZE]
+            .try_into()
+            .expect("Sice as exactly the size needed; qed");
+        NextSalt::<T>::put(next_salt);
 
         Self::deposit_consensus(ConsensusLog::UpdatedSaltData(UpdatedSaltDescriptor {
             salt,
