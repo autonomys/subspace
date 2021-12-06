@@ -101,7 +101,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
 ) -> Result<
     OverseerBuilder<
         Spawner,
-        Arc<RuntimeClient>,
         RuntimeApiSubsystem<RuntimeClient>,
         ChainApiSubsystem<RuntimeClient>,
         CollationGenerationSubsystem,
@@ -140,7 +139,6 @@ where
         .activation_external_listeners(Default::default())
         .span_per_active_leaf(Default::default())
         .active_leaves(Default::default())
-        .supports_parachains(runtime_client)
         .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
         .metrics(metrics)
         .spawner(spawner);
@@ -157,7 +155,7 @@ pub trait OverseerGen {
         &self,
         connector: OverseerConnector,
         args: OverseerGenArgs<Spawner, RuntimeClient>,
-    ) -> Result<(Overseer<Spawner, Arc<RuntimeClient>>, OverseerHandle), Error>
+    ) -> Result<(Overseer<Spawner>, OverseerHandle), Error>
     where
         RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
         RuntimeClient::Api: ExecutorApi<Block>,
@@ -181,7 +179,7 @@ impl OverseerGen for RealOverseerGen {
         &self,
         connector: OverseerConnector,
         args: OverseerGenArgs<Spawner, RuntimeClient>,
-    ) -> Result<(Overseer<Spawner, Arc<RuntimeClient>>, OverseerHandle), Error>
+    ) -> Result<(Overseer<Spawner>, OverseerHandle), Error>
     where
         RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
         RuntimeClient::Api: ExecutorApi<Block>,

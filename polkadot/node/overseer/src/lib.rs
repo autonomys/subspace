@@ -71,7 +71,6 @@ use futures::{channel::oneshot, future::BoxFuture, select, Future, FutureExt, St
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
-use sp_api::ProvideRuntimeApi;
 
 use polkadot_node_subsystem_types::messages::{
 	ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
@@ -106,22 +105,6 @@ pub const KNOWN_LEAVES_CACHE_SIZE: usize = 2 * 24 * 3600 / 6;
 
 #[cfg(test)]
 mod tests;
-
-// FIXME:
-/// Whether a header supports parachain consensus or not.
-pub trait HeadSupportsParachains {
-	/// Return true if the given header supports parachain consensus. Otherwise, false.
-	fn head_supports_parachains(&self, head: &Hash) -> bool;
-}
-
-impl<Client> HeadSupportsParachains for Arc<Client>
-where
-	Client: ProvideRuntimeApi<Block>,
-{
-	fn head_supports_parachains(&self, _head: &Hash) -> bool {
-		true
-	}
-}
 
 /// A handle used to communicate with the [`Overseer`].
 ///
@@ -395,7 +378,7 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(client: Arc<P>, mut hand
 	signal=OverseerSignal,
 	error=SubsystemError,
 )]
-pub struct Overseer<SupportsParachains> {
+pub struct Overseer {
 	#[subsystem(no_dispatch, blocking, RuntimeApiMessage)]
 	runtime_api: RuntimeApi,
 
@@ -419,9 +402,6 @@ pub struct Overseer<SupportsParachains> {
 	/// The set of the "active leaves".
 	pub active_leaves: HashMap<Hash, BlockNumber>,
 
-	/// An implementation for checking whether a header supports parachain consensus.
-	pub supports_parachains: SupportsParachains,
-
 	/// An LRU cache for keeping track of relay-chain heads that have already been seen.
 	pub known_leaves: LruCache<Hash, ()>,
 
@@ -430,13 +410,12 @@ pub struct Overseer<SupportsParachains> {
 }
 
 /// Spawn the metrics metronome task.
-pub fn spawn_metronome_metrics<S, SupportsParachains>(
-	overseer: &mut Overseer<S, SupportsParachains>,
+pub fn spawn_metronome_metrics<S>(
+	overseer: &mut Overseer<S>,
 	metronome_metrics: OverseerMetrics,
 ) -> Result<(), SubsystemError>
 where
 	S: SpawnNamed,
-	SupportsParachains: HeadSupportsParachains,
 {
 	struct ExtractNameAndMeters;
 
@@ -503,9 +482,8 @@ where
 	Ok(())
 }
 
-impl<S, SupportsParachains> Overseer<S, SupportsParachains>
+impl<S> Overseer<S>
 where
-	SupportsParachains: HeadSupportsParachains,
 	S: SpawnNamed,
 {
 	/// Stop the overseer.
@@ -645,10 +623,6 @@ where
 		hash: &Hash,
 		parent_hash: Option<Hash>,
 	) -> Option<(Arc<jaeger::Span>, LeafStatus)> {
-		if !self.supports_parachains.head_supports_parachains(hash) {
-			return None
-		}
-
 		self.metrics.on_head_activated();
 		if let Some(listeners) = self.activation_external_listeners.remove(hash) {
 			for listener in listeners {
