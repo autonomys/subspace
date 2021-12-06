@@ -18,11 +18,13 @@
 
 use futures::Future;
 use std::pin::Pin;
-use subspace_runtime_primitives::{CollatorPair, Hash, HeadData, PersistedValidationData, BlockNumber};
+use subspace_runtime_primitives::{
+    BlockNumber, CollatorPair, Hash, HeadData, PersistedValidationData,
+};
 
 pub struct Collation {
     pub number: BlockNumber,
-    pub head_data: HeadData
+    pub head_data: HeadData,
 }
 
 /// Result of the [`CollatorFn`] invocation.
