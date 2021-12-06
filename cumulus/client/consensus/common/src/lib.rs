@@ -19,8 +19,6 @@ use sc_consensus::BlockImport;
 use sp_runtime::traits::Block as BlockT;
 
 mod parachain_consensus;
-#[cfg(test)]
-mod tests;
 pub use parachain_consensus::{RelaychainClient, run_parachain_consensus};
 
 /// The result of [`ParachainConsensus::produce_candidate`].
