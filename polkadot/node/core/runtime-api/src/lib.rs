@@ -107,58 +107,12 @@ where
 		use RequestResult::*;
 
 		match result {
-			Authorities(relay_parent, authorities) =>
-				self.requests_cache.cache_authorities(relay_parent, authorities),
-			Validators(relay_parent, validators) =>
-				self.requests_cache.cache_validators(relay_parent, validators),
-			ValidatorGroups(relay_parent, groups) =>
-				self.requests_cache.cache_validator_groups(relay_parent, groups),
-			AvailabilityCores(relay_parent, cores) =>
-				self.requests_cache.cache_availability_cores(relay_parent, cores),
-			PersistedValidationData(relay_parent, para_id, assumption, data) => self
-				.requests_cache
-				.cache_persisted_validation_data((relay_parent, para_id, assumption), data),
-			AssumedValidationData(
-				_relay_parent,
-				para_id,
-				expected_persisted_validation_data_hash,
-				data,
-			) => self.requests_cache.cache_assumed_validation_data(
-				(para_id, expected_persisted_validation_data_hash),
-				data,
-			),
-			CheckValidationOutputs(relay_parent, para_id, commitments, b) => self
-				.requests_cache
-				.cache_check_validation_outputs((relay_parent, para_id, commitments), b),
-			SessionIndexForChild(relay_parent, session_index) =>
-				self.requests_cache.cache_session_index_for_child(relay_parent, session_index),
-			ValidationCode(relay_parent, para_id, assumption, code) => self
-				.requests_cache
-				.cache_validation_code((relay_parent, para_id, assumption), code),
-			ValidationCodeByHash(_relay_parent, validation_code_hash, code) =>
-				self.requests_cache.cache_validation_code_by_hash(validation_code_hash, code),
-			CandidatePendingAvailability(relay_parent, para_id, candidate) => self
-				.requests_cache
-				.cache_candidate_pending_availability((relay_parent, para_id), candidate),
-			CandidateEvents(relay_parent, events) =>
-				self.requests_cache.cache_candidate_events(relay_parent, events),
-			SessionInfo(_relay_parent, session_index, info) =>
-				self.requests_cache.cache_session_info(session_index, info),
-			DmqContents(relay_parent, para_id, messages) =>
-				self.requests_cache.cache_dmq_contents((relay_parent, para_id), messages),
-			InboundHrmpChannelsContents(relay_parent, para_id, contents) => self
-				.requests_cache
-				.cache_inbound_hrmp_channel_contents((relay_parent, para_id), contents),
-			CurrentBabeEpoch(relay_parent, epoch) =>
-				self.requests_cache.cache_current_babe_epoch(relay_parent, epoch),
-			FetchOnChainVotes(relay_parent, scraped) =>
-				self.requests_cache.cache_on_chain_votes(relay_parent, scraped),
 			SubmitCandidateReceipt(..) => {}
 			PendingHead(..) => {}
 		}
 	}
 
-	fn query_cache(&mut self, relay_parent: Hash, request: Request) -> Option<Request> {
+	fn query_cache(&mut self, _relay_parent: Hash, request: Request) -> Option<Request> {
 		macro_rules! query {
 			// Just query by relay parent
 			($cache_api_name:ident (), $sender:expr) => {{
@@ -185,59 +139,6 @@ where
 		}
 
 		match request {
-			Request::Authorities(sender) =>
-				query!(authorities(), sender).map(|sender| Request::Authorities(sender)),
-			Request::Validators(sender) =>
-				query!(validators(), sender).map(|sender| Request::Validators(sender)),
-			Request::ValidatorGroups(sender) =>
-				query!(validator_groups(), sender).map(|sender| Request::ValidatorGroups(sender)),
-			Request::AvailabilityCores(sender) => query!(availability_cores(), sender)
-				.map(|sender| Request::AvailabilityCores(sender)),
-			Request::PersistedValidationData(para, assumption, sender) =>
-				query!(persisted_validation_data(para, assumption), sender)
-					.map(|sender| Request::PersistedValidationData(para, assumption, sender)),
-			Request::AssumedValidationData(
-				para,
-				expected_persisted_validation_data_hash,
-				sender,
-			) => query!(
-				assumed_validation_data(para, expected_persisted_validation_data_hash),
-				sender
-			)
-			.map(|sender| {
-				Request::AssumedValidationData(
-					para,
-					expected_persisted_validation_data_hash,
-					sender,
-				)
-			}),
-			Request::CheckValidationOutputs(para, commitments, sender) =>
-				query!(check_validation_outputs(para, commitments), sender)
-					.map(|sender| Request::CheckValidationOutputs(para, commitments, sender)),
-			Request::SessionIndexForChild(sender) => query!(session_index_for_child(), sender)
-				.map(|sender| Request::SessionIndexForChild(sender)),
-			Request::ValidationCode(para, assumption, sender) =>
-				query!(validation_code(para, assumption), sender)
-					.map(|sender| Request::ValidationCode(para, assumption, sender)),
-			Request::ValidationCodeByHash(validation_code_hash, sender) =>
-				query!(validation_code_by_hash(validation_code_hash), sender)
-					.map(|sender| Request::ValidationCodeByHash(validation_code_hash, sender)),
-			Request::CandidatePendingAvailability(para, sender) =>
-				query!(candidate_pending_availability(para), sender)
-					.map(|sender| Request::CandidatePendingAvailability(para, sender)),
-			Request::CandidateEvents(sender) =>
-				query!(candidate_events(), sender).map(|sender| Request::CandidateEvents(sender)),
-			Request::SessionInfo(index, sender) => query!(session_info(index), sender)
-				.map(|sender| Request::SessionInfo(index, sender)),
-			Request::DmqContents(id, sender) =>
-				query!(dmq_contents(id), sender).map(|sender| Request::DmqContents(id, sender)),
-			Request::InboundHrmpChannelsContents(id, sender) =>
-				query!(inbound_hrmp_channels_contents(id), sender)
-					.map(|sender| Request::InboundHrmpChannelsContents(id, sender)),
-			Request::CurrentBabeEpoch(sender) =>
-				query!(current_babe_epoch(), sender).map(|sender| Request::CurrentBabeEpoch(sender)),
-			Request::FetchOnChainVotes(sender) =>
-				query!(on_chain_votes(), sender).map(|sender| Request::FetchOnChainVotes(sender)),
 			Request::SubmitCandidateReceipt(..) => None,
 			Request::PendingHead(..) => None,
 		}
@@ -251,7 +152,7 @@ where
 		let metrics = self.metrics.clone();
 		let (sender, receiver) = oneshot::channel();
 
-		// XXX Disable cache as it's broken now.
+		// FIXME: Re-enable the cache
 		// let request = match self.query_cache(relay_parent.clone(), request) {
 			// Some(request) => request,
 			// None => return,
@@ -339,19 +240,6 @@ where
 {
 	let _timer = metrics.time_make_runtime_api_request();
 
-	macro_rules! query {
-		($req_variant:ident, $api_name:ident ($($param:expr),*), $sender:expr) => {{
-			let sender = $sender;
-			let api = client.runtime_api();
-			let res = api.$api_name(&BlockId::Hash(relay_parent) $(, $param.clone() )*)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
-			metrics.on_request(res.is_ok());
-			let _ = sender.send(res.clone());
-
-			res.ok().map(|res| RequestResult::$req_variant(relay_parent, $( $param, )* res))
-		}}
-	}
-
 	match request {
 		Request::SubmitCandidateReceipt(head_number, head_hash) =>
 		{
@@ -359,7 +247,7 @@ where
 			let res = api.submit_candidate_receipt_unsigned(&BlockId::Hash(relay_parent), head_number, head_hash)
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
-			res.ok().map(|res| RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash));
+			res.ok().map(|_res| RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash));
 		}
 		Request::PendingHead(sender) => {
 			let api = client.runtime_api();
@@ -370,9 +258,6 @@ where
 			let _ = sender.send(res.clone());
 
 			res.ok().map(|res| RequestResult::PendingHead(relay_parent, res));
-		}
-		_ => {
-			println!("Unsupported RuntimeApiRequest: {:?}", request);
 		}
 	}
 

@@ -19,7 +19,6 @@ use polkadot_overseer::{
     metrics::Metrics as OverseerMetrics, BlockInfo, MetricsTrait, Overseer, OverseerBuilder,
     OverseerConnector, OverseerHandle,
 };
-// use sc_authority_discovery::Service as AuthorityDiscoveryService;
 use sc_client_api::AuxStore;
 use sc_keystore::LocalKeystore;
 use sp_api::ProvideRuntimeApi;
@@ -34,7 +33,6 @@ pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
 pub use polkadot_node_core_chain_api::ChainApiSubsystem;
 pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
 
-// use polkadot_primitives::v1::CollatorPair;
 use subspace_runtime_primitives::CollatorPair;
 
 use super::Error;
@@ -80,10 +78,6 @@ where
     pub runtime_client: Arc<RuntimeClient>,
     /// Underlying network service implementation.
     pub network_service: Arc<sc_network::NetworkService<Block, Hash>>,
-    /*
-    /// Underlying authority discovery service.
-    pub authority_discovery_service: AuthorityDiscoveryService,
-    */
     /// Prometheus registry, commonly used for production systems, less so for test.
     pub registry: Option<&'a Registry>,
     /// Task spawner to be used throughout the overseer and the APIs it provides.
@@ -100,7 +94,6 @@ pub fn prepared_overseer_builder<'a, Spawner, RuntimeClient>(
         keystore,
         runtime_client,
         network_service,
-        // authority_discovery_service,
         registry,
         spawner,
         is_collator,

@@ -275,7 +275,7 @@ pub struct NewFull<C> {
 
 /// Builds a new service for a full client.
 pub fn new_full(
-    mut config: Configuration,
+    config: Configuration,
     is_collator: IsCollator,
 ) -> Result<NewFull<Arc<FullClient>>, Error> {
     let overseer_gen = overseer::RealOverseerGen;

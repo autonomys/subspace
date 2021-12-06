@@ -118,7 +118,7 @@ impl<Client> HeadSupportsParachains for Arc<Client>
 where
 	Client: ProvideRuntimeApi<Block>,
 {
-	fn head_supports_parachains(&self, head: &Hash) -> bool {
+	fn head_supports_parachains(&self, _head: &Hash) -> bool {
 		true
 	}
 }

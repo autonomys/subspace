@@ -46,15 +46,9 @@ use futures::{
 	select,
 	stream::{SelectAll, Stream},
 };
-use parity_scale_codec::Encode;
 use pin_project::pin_project;
 use polkadot_node_jaeger as jaeger;
-use polkadot_primitives::v1::{
-	AuthorityDiscoveryId, CandidateEvent, CommittedCandidateReceipt, CoreState, EncodeAs,
-	GroupIndex, GroupRotationInfo, Hash, Id as ParaId, OccupiedCoreAssumption,
-	PersistedValidationData, SessionIndex, SessionInfo, Signed, SigningContext, ValidationCode,
-	ValidationCodeHash, ValidatorId, ValidatorIndex, ValidatorSignature,
-};
+use polkadot_primitives::v1::{GroupIndex, Hash, ValidatorId, ValidatorIndex, ValidatorSignature};
 use sp_application_crypto::AppKey;
 use sp_core::{traits::SpawnNamed, Public};
 use sp_keystore::{CryptoStore, Error as KeystoreError, SyncCryptoStorePtr};
@@ -81,10 +75,9 @@ pub mod reexports {
 }
 
 /// A rolling session window cache.
-pub mod rolling_session_window;
+// pub mod rolling_session_window;
 /// Convenient and efficient runtime info access.
-pub mod runtime;
-
+// pub mod runtime;
 mod determine_new_blocks;
 
 #[cfg(test)]
@@ -201,18 +194,6 @@ macro_rules! specialize_requests {
 }
 
 specialize_requests! {
-	fn request_authorities() -> Vec<AuthorityDiscoveryId>; Authorities;
-	fn request_validators() -> Vec<ValidatorId>; Validators;
-	fn request_validator_groups() -> (Vec<Vec<ValidatorIndex>>, GroupRotationInfo); ValidatorGroups;
-	fn request_availability_cores() -> Vec<CoreState>; AvailabilityCores;
-	fn request_persisted_validation_data(para_id: ParaId, assumption: OccupiedCoreAssumption) -> Option<PersistedValidationData>; PersistedValidationData;
-	fn request_assumed_validation_data(para_id: ParaId, expected_persisted_validation_data_hash: Hash) -> Option<(PersistedValidationData, ValidationCodeHash)>; AssumedValidationData;
-	fn request_session_index_for_child() -> SessionIndex; SessionIndexForChild;
-	fn request_validation_code(para_id: ParaId, assumption: OccupiedCoreAssumption) -> Option<ValidationCode>; ValidationCode;
-	fn request_validation_code_by_hash(validation_code_hash: ValidationCodeHash) -> Option<ValidationCode>; ValidationCodeByHash;
-	fn request_candidate_pending_availability(para_id: ParaId) -> Option<CommittedCandidateReceipt>; CandidatePendingAvailability;
-	fn request_candidate_events() -> Vec<CandidateEvent>; CandidateEvents;
-	fn request_session_info(index: SessionIndex) -> Option<SessionInfo>; SessionInfo;
 	fn request_pending_head() -> Option<Hash>; PendingHead;
 }
 
@@ -303,78 +284,6 @@ pub fn gen_ratio(a: usize, b: usize) -> bool {
 	use rand::Rng as _;
 	let mut rng = rand::thread_rng();
 	rng.gen_ratio(a as u32, b as u32)
-}
-
-/// Local validator information
-///
-/// It can be created if the local node is a validator in the context of a particular
-/// relay chain block.
-#[derive(Debug)]
-pub struct Validator {
-	signing_context: SigningContext,
-	key: ValidatorId,
-	index: ValidatorIndex,
-}
-
-impl Validator {
-	/// Get a struct representing this node's validator if this node is in fact a validator in the context of the given block.
-	pub async fn new(
-		parent: Hash,
-		keystore: SyncCryptoStorePtr,
-		sender: &mut impl SubsystemSender,
-	) -> Result<Self, Error> {
-		// Note: request_validators and request_session_index_for_child do not and cannot
-		// run concurrently: they both have a mutable handle to the same sender.
-		// However, each of them returns a oneshot::Receiver, and those are resolved concurrently.
-		let (validators, session_index) = futures::try_join!(
-			request_validators(parent, sender).await,
-			request_session_index_for_child(parent, sender).await,
-		)?;
-
-		let signing_context = SigningContext { session_index: session_index?, parent_hash: parent };
-
-		let validators = validators?;
-
-		Self::construct(&validators, signing_context, keystore).await
-	}
-
-	/// Construct a validator instance without performing runtime fetches.
-	///
-	/// This can be useful if external code also needs the same data.
-	pub async fn construct(
-		validators: &[ValidatorId],
-		signing_context: SigningContext,
-		keystore: SyncCryptoStorePtr,
-	) -> Result<Self, Error> {
-		let (key, index) =
-			signing_key_and_index(validators, &keystore).await.ok_or(Error::NotAValidator)?;
-
-		Ok(Validator { signing_context, key, index })
-	}
-
-	/// Get this validator's id.
-	pub fn id(&self) -> ValidatorId {
-		self.key.clone()
-	}
-
-	/// Get this validator's local index.
-	pub fn index(&self) -> ValidatorIndex {
-		self.index
-	}
-
-	/// Get the current signing context.
-	pub fn signing_context(&self) -> &SigningContext {
-		&self.signing_context
-	}
-
-	/// Sign a payload with this validator
-	pub async fn sign<Payload: EncodeAs<RealPayload>, RealPayload: Encode>(
-		&self,
-		keystore: SyncCryptoStorePtr,
-		payload: Payload,
-	) -> Result<Option<Signed<Payload, RealPayload>>, KeystoreError> {
-		Signed::sign(&keystore, payload, &self.signing_context, self.index, &self.key).await
-	}
 }
 
 struct AbortOnDrop(future::AbortHandle);

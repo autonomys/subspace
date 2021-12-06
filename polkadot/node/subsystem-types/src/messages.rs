@@ -34,25 +34,18 @@ use polkadot_node_network_protocol::{
 };
 use polkadot_node_primitives::{
 	approval::{BlockApprovalMeta, IndirectAssignmentCert, IndirectSignedApprovalVote},
-	AvailableData, BabeEpoch, BlockWeight, CandidateVotes,
-	CollationSecondedSignal, DisputeMessage, ErasureChunk, PoV, SignedDisputeStatement,
-	SignedFullStatement, ValidationResult,
+	AvailableData, BlockWeight, CandidateVotes, CollationSecondedSignal, DisputeMessage,
+	ErasureChunk, PoV, SignedDisputeStatement, SignedFullStatement, ValidationResult,
 };
 use polkadot_primitives::v1::{
-	AuthorityDiscoveryId, BackedCandidate, BlockNumber, CandidateDescriptor, CandidateEvent,
-	CandidateHash, CandidateIndex, CandidateReceipt, CollatorId, CommittedCandidateReceipt,
-	CoreState, GroupIndex, GroupRotationInfo, Hash, Header as BlockHeader, Id as ParaId,
-	InboundDownwardMessage, InboundHrmpMessage, MultiDisputeStatementSet, OccupiedCoreAssumption,
-	PersistedValidationData, SessionIndex, SessionInfo, SignedAvailabilityBitfield,
-	SignedAvailabilityBitfields, ValidationCode, ValidationCodeHash, ValidatorId, ValidatorIndex,
-	ValidatorSignature,
+	AuthorityDiscoveryId, BackedCandidate, BlockNumber, CandidateDescriptor, CandidateHash,
+	CandidateIndex, CandidateReceipt, CollatorId, GroupIndex, Hash, Header as BlockHeader,
+	Id as ParaId, MultiDisputeStatementSet, PersistedValidationData, SessionIndex,
+	SignedAvailabilityBitfield, SignedAvailabilityBitfields, ValidationCode, ValidationCodeHash,
+	ValidatorIndex, ValidatorSignature,
 };
 use polkadot_statement_table::v1::Misbehavior;
-use std::{
-	collections::{BTreeMap, HashSet},
-	sync::Arc,
-	time::Duration,
-};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use subspace_node_primitives::CollationGenerationConfig;
 
@@ -610,64 +603,9 @@ pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeA
 /// A request to the Runtime API subsystem.
 #[derive(Debug)]
 pub enum RuntimeApiRequest {
-	/// Get the next, current and some previous authority discovery set deduplicated.
-	Authorities(RuntimeApiSender<Vec<AuthorityDiscoveryId>>),
-	/// Get the current validator set.
-	Validators(RuntimeApiSender<Vec<ValidatorId>>),
-	/// Get the validator groups and group rotation info.
-	ValidatorGroups(RuntimeApiSender<(Vec<Vec<ValidatorIndex>>, GroupRotationInfo)>),
-	/// Get information on all availability cores.
-	AvailabilityCores(RuntimeApiSender<Vec<CoreState>>),
-	/// Get the persisted validation data for a particular para, taking the given
-	/// `OccupiedCoreAssumption`, which will inform on how the validation data should be computed
-	/// if the para currently occupies a core.
-	PersistedValidationData(
-		ParaId,
-		OccupiedCoreAssumption,
-		RuntimeApiSender<Option<PersistedValidationData>>,
-	),
-	/// Get the persisted validation data for a particular para along with the current validation code
-	/// hash, matching the data hash against an expected one.
-	AssumedValidationData(
-		ParaId,
-		Hash,
-		RuntimeApiSender<Option<(PersistedValidationData, ValidationCodeHash)>>,
-	),
-	/// Sends back `true` if the validation outputs pass all acceptance criteria checks.
-	CheckValidationOutputs(
-		ParaId,
-		polkadot_primitives::v1::CandidateCommitments,
-		RuntimeApiSender<bool>,
-	),
-	/// Get the session index that a child of the block will have.
-	SessionIndexForChild(RuntimeApiSender<SessionIndex>),
-	/// Get the validation code for a para, taking the given `OccupiedCoreAssumption`, which
-	/// will inform on how the validation data should be computed if the para currently
-	/// occupies a core.
-	ValidationCode(ParaId, OccupiedCoreAssumption, RuntimeApiSender<Option<ValidationCode>>),
-	/// Get validation code by its hash, either past, current or future code can be returned, as long as state is still
-	/// available.
-	ValidationCodeByHash(ValidationCodeHash, RuntimeApiSender<Option<ValidationCode>>),
-	/// Get a the candidate pending availability for a particular parachain by parachain / core index
-	CandidatePendingAvailability(ParaId, RuntimeApiSender<Option<CommittedCandidateReceipt>>),
-	/// Get all events concerning candidates (backing, inclusion, time-out) in the parent of
-	/// the block in whose state this request is executed.
-	CandidateEvents(RuntimeApiSender<Vec<CandidateEvent>>),
-	/// Get the session info for the given session, if stored.
-	SessionInfo(SessionIndex, RuntimeApiSender<Option<SessionInfo>>),
-	/// Get all the pending inbound messages in the downward message queue for a para.
-	DmqContents(ParaId, RuntimeApiSender<Vec<InboundDownwardMessage<BlockNumber>>>),
-	/// Get the contents of all channels addressed to the given recipient. Channels that have no
-	/// messages in them are also included.
-	InboundHrmpChannelsContents(
-		ParaId,
-		RuntimeApiSender<BTreeMap<ParaId, Vec<InboundHrmpMessage<BlockNumber>>>>,
-	),
-	/// Get information about the BABE epoch the block was included in.
-	CurrentBabeEpoch(RuntimeApiSender<BabeEpoch>),
-	/// Get all disputes in relation to a relay parent.
-	FetchOnChainVotes(RuntimeApiSender<Option<polkadot_primitives::v1::ScrapedOnChainVotes>>),
+	/// Submit the candidate receipt to primary chain.
 	SubmitCandidateReceipt(u32, Hash),
+	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),
 }
 
