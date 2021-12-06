@@ -24,7 +24,6 @@ tracing = "0.1.25"
 
 # FIXME
 polkadot-overseer = { path = "../../../polkadot/node/overseer" }
-polkadot-primitives = { path = "../../../polkadot/primitives" }
 polkadot-node-primitives = { path = "../../../polkadot/node/primitives" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 

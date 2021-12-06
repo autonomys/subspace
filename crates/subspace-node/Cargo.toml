@@ -73,7 +73,6 @@ sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/parit
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
 polkadot-overseer = { path = "../../polkadot/node/overseer" }
-polkadot-primitives = { path = "../../polkadot/primitives" }
 polkadot-node-core-chain-api = { path = "../../polkadot/node/core/chain-api" }
 polkadot-node-core-runtime-api = { path = "../../polkadot/node/core/runtime-api" }
 polkadot-node-collation-generation = { path = "../../polkadot/node/collation-generation" }

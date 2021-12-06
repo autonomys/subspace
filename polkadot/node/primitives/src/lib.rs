@@ -34,36 +34,12 @@ pub use sp_consensus_babe::{
 };
 pub use sp_core::traits::SpawnNamed;
 
-// use polkadot_primitives::v1::{
-	// BlakeTwo256, CandidateCommitments, CandidateHash, CollatorPair, CommittedCandidateReceipt,
-	// CompactStatement, EncodeAs, Hash, HashT, HeadData, Id as ParaId, OutboundHrmpMessage,
-	// PersistedValidationData, SessionIndex, Signed, UncheckedSigned, UpwardMessage, ValidationCode,
-	// ValidatorIndex, MAX_CODE_SIZE, MAX_POV_SIZE,
-// };
-
-// pub use polkadot_parachain::primitives::BlockData;
-
-// pub mod approval;
-
-/// Disputes related types.
-// pub mod disputes;
-// pub use disputes::{
-	// CandidateVotes, DisputeMessage, DisputeMessageCheckError, InvalidDisputeVote,
-	// SignedDisputeStatement, UncheckedDisputeMessage, ValidDisputeVote,
-// };
-
 // For a 16-ary Merkle Prefix Trie, we can expect at most 16 32-byte hashes per node
 // plus some overhead:
 // header 1 + bitmap 2 + max partial_key 8 + children 16 * (32 + len 1) + value 32 + value len 1
 const MERKLE_NODE_MAX_SIZE: usize = 512 + 100;
 // 16-ary Merkle Prefix Trie for 32-bit ValidatorIndex has depth at most 8.
 const MERKLE_PROOF_MAX_DEPTH: usize = 8;
-
-/// The bomb limit for decompressing code blobs.
-// pub const VALIDATION_CODE_BOMB_LIMIT: usize = (MAX_CODE_SIZE * 4u32) as usize;
-
-/// The bomb limit for decompressing PoV blobs.
-// pub const POV_BOMB_LIMIT: usize = (MAX_POV_SIZE * 4u32) as usize;
 
 /// The amount of time to spend on execution during backing.
 pub const BACKING_EXECUTION_TIMEOUT: Duration = Duration::from_secs(2);

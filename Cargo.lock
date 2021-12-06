@@ -804,7 +804,6 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-overseer",
- "polkadot-primitives",
  "sc-client-api",
  "sp-api",
  "sp-blockchain",
@@ -1209,7 +1208,6 @@ dependencies = [
  "dyn-clone",
  "futures 0.3.18",
  "parity-scale-codec",
- "polkadot-primitives",
  "sc-client-api",
  "sc-consensus",
  "sp-api",
@@ -5019,9 +5017,9 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.11.2",
  "polkadot-node-primitives",
- "polkadot-primitives",
  "sc-network",
  "sp-core",
+ "sp-runtime",
  "subspace-runtime-primitives",
  "thiserror",
 ]
@@ -5043,7 +5041,6 @@ dependencies = [
  "bounded-vec",
  "futures 0.3.18",
  "parity-scale-codec",
- "polkadot-primitives",
  "schnorrkel",
  "serde",
  "sp-application-crypto",
@@ -5075,7 +5072,6 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
  "sc-keystore",
  "sp-application-crypto",
  "sp-core",
@@ -5164,33 +5160,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "polkadot-primitives"
-version = "0.9.13"
-dependencies = [
- "bitvec",
- "frame-system",
- "hex-literal",
- "parity-scale-codec",
- "parity-util-mem",
- "scale-info",
- "serde",
- "sp-api",
- "sp-application-crypto",
- "sp-arithmetic",
- "sp-authority-discovery",
- "sp-consensus-slots",
- "sp-core",
- "sp-inherents",
- "sp-io",
- "sp-keystore",
- "sp-runtime",
- "sp-staking",
- "sp-std",
- "sp-trie",
- "sp-version",
 ]
 
 [[package]]
@@ -8046,7 +8015,6 @@ dependencies = [
  "polkadot-node-core-runtime-api",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
  "sc-authority-discovery",
  "sc-basic-authorship",
  "sc-cli",

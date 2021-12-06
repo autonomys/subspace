@@ -84,12 +84,9 @@
 //! ```
 
 use parity_scale_codec::Encode;
-// use polkadot_node_primitives::PoV;
-use polkadot_primitives::v1::{
-	BlakeTwo256, HashT, 
-};
 use sc_network::PeerId;
 use subspace_runtime_primitives::Hash;
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 
 use std::{fmt, sync::Arc};
 

@@ -36,9 +36,6 @@ use std::{
 	time::Duration,
 };
 
-/// Generally useful mock data providers for unit tests.
-pub mod mock;
-
 enum SinkState<T> {
 	Empty { read_waker: Option<Waker> },
 	Item { item: T, ready_waker: Option<Waker>, flush_waker: Option<Waker> },
@@ -365,59 +362,4 @@ macro_rules! arbitrary_order {
 			_ => unreachable!("neither first nor second pattern matched"),
 		}
 	};
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use futures::executor::block_on;
-	use polkadot_node_subsystem::messages::CollatorProtocolMessage;
-	use polkadot_overseer::{dummy::dummy_overseer_builder, Handle, HeadSupportsParachains};
-	use polkadot_primitives::v1::Hash;
-
-	struct AlwaysSupportsParachains;
-	impl HeadSupportsParachains for AlwaysSupportsParachains {
-		fn head_supports_parachains(&self, _head: &Hash) -> bool {
-			true
-		}
-	}
-
-	#[test]
-	fn forward_subsystem_works() {
-		let spawner = sp_core::testing::TaskExecutor::new();
-		let (tx, rx) = mpsc::channel(2);
-		let (overseer, handle) =
-			dummy_overseer_builder(spawner.clone(), AlwaysSupportsParachains, None)
-				.unwrap()
-				.replace_collator_protocol(|_| ForwardSubsystem(tx))
-				.leaves(vec![])
-				.build()
-				.unwrap();
-
-		let mut handle = Handle::new(handle);
-
-		spawner.spawn("overseer", None, overseer.run().then(|_| async { () }).boxed());
-
-		block_on(handle.send_msg_anon(CollatorProtocolMessage::CollateOn(Default::default())));
-		assert!(matches!(
-			block_on(rx.into_future()).0.unwrap(),
-			CollatorProtocolMessage::CollateOn(_)
-		));
-	}
-
-	#[test]
-	fn macro_arbitrary_order() {
-		let mut vals = vec![Some(15_usize), None];
-		let (first, second) = arbitrary_order!(vals.pop().unwrap(); Some(fx) => fx; None => 0);
-		assert_eq!(first, 15_usize);
-		assert_eq!(second, 0_usize);
-	}
-
-	#[test]
-	fn macro_arbitrary_order_swapped() {
-		let mut vals = vec![None, Some(11_usize)];
-		let (first, second) = arbitrary_order!(vals.pop().unwrap(); Some(fx) => fx; None => 0);
-		assert_eq!(first, 11_usize);
-		assert_eq!(second, 0);
-	}
 }
