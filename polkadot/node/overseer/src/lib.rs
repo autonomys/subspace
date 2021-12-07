@@ -103,9 +103,6 @@ pub use polkadot_overseer_gen::{
 /// in the LRU cache. Assumes a 6-second block time.
 pub const KNOWN_LEAVES_CACHE_SIZE: usize = 2 * 24 * 3600 / 6;
 
-#[cfg(test)]
-mod tests;
-
 /// A handle used to communicate with the [`Overseer`].
 ///
 /// [`Overseer`]: struct.Overseer.html

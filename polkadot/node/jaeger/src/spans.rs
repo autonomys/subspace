@@ -16,7 +16,7 @@
 
 //! Polkadot Jaeger span definitions.
 //!
-//! ```rust
+//! ```ignore
 //! # use polkadot_primitives::v1::{CandidateHash, Hash};
 //! # fn main() {
 //! use polkadot_node_jaeger as jaeger;
@@ -50,7 +50,7 @@
 //! In a few cases additional annotations might want to be added
 //! over the course of a function, for this purpose use the non-consuming
 //! `fn` variants, i.e.
-//! ```rust
+//! ```ignore
 //! # use polkadot_primitives::v1::{CandidateHash, Hash};
 //! # fn main() {
 //! # use polkadot_node_jaeger as jaeger;
