@@ -1,5 +1,5 @@
 [package]
-name = "subspace-node-primitives"
+name = "cirrus-node-primitives"
 description = "Node primitives for Subspace Network"
 license = "GPL-3.0-or-later"
 version = "0.1.0"

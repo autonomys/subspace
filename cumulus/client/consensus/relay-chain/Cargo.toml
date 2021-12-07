@@ -27,6 +27,6 @@ tracing = "0.1.22"
 async-trait = "0.1.42"
 parking_lot = "0.10.2"
 
+cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
 subspace-node = { path = "../../../../crates/subspace-node" }
-subspace-node-primitives = { path = "../../../../crates/subspace-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

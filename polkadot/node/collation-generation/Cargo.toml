@@ -14,5 +14,5 @@ sp-maybe-compressed-blob  = { git = "https://github.com/paritytech/substrate", r
 thiserror = "1.0.30"
 parity-scale-codec = { version = "2.3.1", default-features = false, features = ["bit-vec", "derive"] }
 
-subspace-node-primitives = { path = "../../../crates/subspace-node-primitives" }
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

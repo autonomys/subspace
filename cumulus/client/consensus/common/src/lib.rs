@@ -16,7 +16,7 @@
 
 #![allow(clippy::all)]
 
-use subspace_node_primitives::PersistedValidationData;
+use cirrus_node_primitives::PersistedValidationData;
 use subspace_runtime_primitives::Hash as PHash;
 use sc_consensus::BlockImport;
 use sp_runtime::traits::Block as BlockT;

@@ -26,7 +26,7 @@ use futures::channel::oneshot;
 
 pub use sc_network::IfDisconnected;
 
-use subspace_node_primitives::{BlockWeight, CollationGenerationConfig};
+use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
 /// Subsystem messages where each message is always bound to a relay parent.

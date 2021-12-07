@@ -50,7 +50,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use subspace_runtime_primitives::Hash as PHash;
 use subspace_runtime_primitives::opaque::Block as PBlock;
-use subspace_node_primitives::PersistedValidationData;
+use cirrus_node_primitives::PersistedValidationData;
 
 mod import_queue;
 pub use import_queue::{import_queue, Verifier};

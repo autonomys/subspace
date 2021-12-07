@@ -32,7 +32,7 @@ use polkadot_node_subsystem_util::{
 };
 use std::sync::Arc;
 
-use subspace_node_primitives::{CollationGenerationConfig, PersistedValidationData};
+use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
 use subspace_runtime_primitives::{Hash};
 
 mod error;

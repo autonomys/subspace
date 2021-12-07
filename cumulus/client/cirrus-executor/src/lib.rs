@@ -32,9 +32,9 @@ use cumulus_client_consensus_common::ParachainConsensus;
 
 use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
-use subspace_node_primitives::CollationGenerationConfig;
+use cirrus_node_primitives::CollationGenerationConfig;
 
-use subspace_node_primitives::{
+use cirrus_node_primitives::{
 	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData
 };
 use subspace_runtime_primitives::Hash as PHash;
