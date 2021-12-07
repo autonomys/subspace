@@ -28,4 +28,5 @@ async-trait = "0.1.42"
 parking_lot = "0.10.2"
 
 subspace-node = { path = "../../../../crates/subspace-node" }
+subspace-node-primitives = { path = "../../../../crates/subspace-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

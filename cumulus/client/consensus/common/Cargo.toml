@@ -23,4 +23,5 @@ async-trait = "0.1.42"
 dyn-clone = "1.0.4"
 
 sp-executor = { path = "../../../../crates/sp-executor" }
+subspace-node-primitives = { path = "../../../../crates/subspace-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

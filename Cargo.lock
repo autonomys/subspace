@@ -826,7 +826,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "subspace-node",
- "subspace-runtime-primitives",
+ "subspace-node-primitives",
  "tracing",
 ]
 
@@ -1206,6 +1206,7 @@ dependencies = [
  "sp-executor",
  "sp-runtime",
  "sp-trie",
+ "subspace-node-primitives",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -1228,6 +1229,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime",
  "subspace-node",
+ "subspace-node-primitives",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "tracing",
@@ -7950,6 +7952,12 @@ name = "subspace-node-primitives"
 version = "0.1.0"
 dependencies = [
  "futures 0.3.18",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-runtime",
  "subspace-runtime-primitives",
 ]
 
@@ -8012,9 +8020,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "parity-util-mem",
- "scale-info",
  "serde",
- "sp-application-crypto",
  "sp-core",
  "sp-runtime",
  "sp-std",

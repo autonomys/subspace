@@ -34,8 +34,10 @@ use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use subspace_node_primitives::CollationGenerationConfig;
 
-use subspace_node_primitives::{Collation, CollationResult};
-use subspace_runtime_primitives::{CollatorPair, Hash as PHash, HeadData, PersistedValidationData};
+use subspace_node_primitives::{
+	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData
+};
+use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
 use futures::FutureExt;

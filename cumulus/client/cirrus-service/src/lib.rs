@@ -44,7 +44,7 @@ use cumulus_client_consensus_common::RelaychainClient;
 
 pub mod genesis;
 
-use subspace_runtime_primitives::CollatorPair;
+use subspace_node_primitives::CollatorPair;
 use subspace_node::service as subspace_service;
 
 /// The primary chain full node handle.
