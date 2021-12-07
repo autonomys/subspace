@@ -66,7 +66,7 @@ sp-executor = { version = "0.1.0", path = "../sp-executor" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 structopt = "0.3.22"
-subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
+subspace-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
