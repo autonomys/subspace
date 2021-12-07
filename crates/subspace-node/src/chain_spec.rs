@@ -72,6 +72,11 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
     AccountPublic::from(get_from_seed::<sr25519::Public>(seed)).into_account()
 }
 
+#[cfg(feature = "json-chain-spec")]
+pub fn testnet_config() -> Result<ChainSpec, String> {
+    ChainSpec::from_json_bytes(&include_bytes!("../../../chain-spec.json")[..])
+}
+#[cfg(not(feature = "json-chain-spec"))]
 pub fn testnet_config() -> Result<ChainSpec, String> {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), SS58Prefix::get().into());

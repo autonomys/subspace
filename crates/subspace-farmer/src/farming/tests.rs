@@ -7,7 +7,6 @@ use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
-use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
 fn init() {
@@ -35,50 +34,44 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let (_metadata_sender, metadata_recv) = mpsc::channel(10);
-    let (_block_sender, block_recv) = mpsc::channel(10);
-    let (_new_head_sender, new_head_recv) = mpsc::channel(10);
-    let (slot_sender, slot_recv) = mpsc::channel(10);
-    let (solution_sender, mut solution_recv) = mpsc::channel(1);
-
-    let client = MockRpc::new(
-        metadata_recv,
-        block_recv,
-        new_head_recv,
-        slot_recv,
-        solution_sender,
-    );
+    let client = MockRpc::new();
 
     // start the farming task
-    let farming_instance =
-        Farming::start(plot.clone(), commitments.clone(), client, identity.clone());
+    let farming_instance = Farming::start(
+        plot.clone(),
+        commitments.clone(),
+        client.clone(),
+        identity.clone(),
+    );
 
-    // send only the first slot, so that farmer can start
-    slot_sender.send(slots[0].clone()).await.unwrap();
+    for (slot, tag) in slots.into_iter().zip(tags) {
+        let client_copy = client.clone();
+        async move {
+            // commitment in the background cannot keep up with the speed, so putting a little delay in here
+            // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
+            sleep(Duration::from_millis(100)).await;
+            client_copy.send_slot(slot.clone()).await;
 
-    for index in 0..slots.len() - 1 {
-        // race between receiving a solution, and waiting for 1 sec
-        tokio::select! {
-            Some(solution) = solution_recv.recv() => {
-                if let Some(solution) = solution.maybe_solution {
-                    if solution.tag != tags[index] {
-                        panic!("Wrong Tag! The expected value was: {:?}", tags[index]);
+            tokio::select! {
+                Some(solution) = client_copy.receive_solution() => {
+                    if let Some(solution) = solution.maybe_solution {
+                        if solution.tag != tag {
+                            panic!("Wrong Tag! The expected value was: {:?}", tag);
+                        }
+                    } else {
+                        panic!("Solution was None!")
                     }
-                } else {
-                    panic!("Solution was None!")
-                }
-            },
-            _ = sleep(Duration::from_secs(1)) => {},
+                },
+                _ = sleep(Duration::from_secs(1)) => {},
+            }
         }
-        // commitment in the background cannot keep up with the speed, so putting a little delay in here
-        // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
-        sleep(Duration::from_millis(100)).await;
-        slot_sender.send(slots[index + 1].clone()).await.unwrap();
+        .await;
     }
 
-    // let the farmer know we are done by closing the channels
-    drop(slot_sender);
+    // let the farmer know we are done by closing the channel(s)
+    client.drop_slot_sender().await;
 
+    // wait for farmer to finish
     if let Err(e) = farming_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }

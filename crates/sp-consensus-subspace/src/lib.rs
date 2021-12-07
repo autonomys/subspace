@@ -69,9 +69,8 @@ pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerP
 /// The cumulative weight of a Subspace block, i.e. sum of block weights starting
 /// at this block until the genesis block.
 ///
-/// Primary blocks have a weight of 1 whereas secondary blocks have a weight
-/// of 0 (regardless of whether they are plain or vrf secondary blocks).
-pub type SubspaceBlockWeight = u32;
+/// The closer solution's tag is to the target, the heavier it is.
+pub type SubspaceBlockWeight = u128;
 
 /// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
