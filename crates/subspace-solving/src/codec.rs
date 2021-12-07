@@ -180,7 +180,6 @@ impl SubspaceCodec {
         pieces: &mut [u8],
         piece_indexes: &[u64],
     ) -> Result<(), cuda::EncodeError> {
-        use std::io::Write;
         use subspace_core_primitives::SHA256_HASH_SIZE;
 
         let mut expanded_ivs = vec![0u8; pieces.len() * SHA256_HASH_SIZE];
@@ -188,10 +187,7 @@ impl SubspaceCodec {
             .par_chunks_exact_mut(SHA256_HASH_SIZE)
             .zip_eq(piece_indexes)
             .for_each(|(expanded_iv, &piece_index)| {
-                expanded_iv
-                    .as_mut()
-                    .write_all(&self.farmer_public_key_hash)
-                    .expect("Chunked target is exactly the same size as written data; qed");
+                expanded_iv.copy_from_slice(&self.farmer_public_key_hash);
 
                 mix_public_key_hash_with_piece_index(expanded_iv, piece_index);
             });

@@ -1048,7 +1048,7 @@ where
                 slot_now: slot_now + 1,
                 epoch: viable_epoch.as_ref(),
                 solution_range,
-                salt: salt.to_le_bytes(),
+                salt,
                 records_root: &records_root,
                 position,
                 record_size,

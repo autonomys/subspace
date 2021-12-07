@@ -198,7 +198,10 @@ impl DummyProposer {
             block.header.digest_mut().push(digest)
         }
         {
-            let digest_data = ConsensusLog::SaltData(SaltDescriptor { salt: 0 }).encode();
+            let digest_data = ConsensusLog::SaltData(SaltDescriptor {
+                salt: 0u64.to_le_bytes(),
+            })
+            .encode();
             let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
             block.header.digest_mut().push(digest)
         }

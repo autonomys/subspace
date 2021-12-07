@@ -36,9 +36,9 @@ use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextSaltDescriptor, NextSolutionRangeDescriptor, PreDigest,
+    CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
-use sp_consensus_subspace::{ConsensusLog, SubspaceApi, SUBSPACE_ENGINE_ID};
+use sp_consensus_subspace::{ConsensusLog, Salts, SubspaceApi, SUBSPACE_ENGINE_ID};
 use sp_core::sr25519::Pair;
 use sp_core::Pair as _;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
@@ -147,22 +147,21 @@ where
         // Here we always use parent block as the source of information, thus on the edge of the
         // eon the very first block of the eon still uses salt from the previous one, but the
         // block after it uses "next" salt deposited in the first block.
-        let salt = find_next_salt_digest::<B>(parent_header)
+        let Salts { salt, next_salt } = find_updated_salt_digest::<B>(parent_header)
             .ok()?
-            .map(|d| d.salt)
+            .map(|UpdatedSaltDescriptor { salt, next_salt }| Salts { salt, next_salt })
             .or_else(|| {
                 // We use runtime API as it will fallback to default value for genesis when
                 // there is no salt stored yet
-                runtime_api.salt(&parent_block_id).ok()
+                runtime_api.salts(&parent_block_id).ok()
             })?;
 
         let new_slot_info = NewSlotInfo {
             slot,
             global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
-            salt: salt.to_le_bytes(),
-            // TODO: This will not be the correct way in the future once salt is no longer
-            //  just an incremented number
-            next_salt: Some((salt + 1).to_le_bytes()),
+            salt,
+            // TODO: This probably needs to change from `Option<Salt>` to just `Salt`
+            next_salt: Some(next_salt),
             solution_range,
         };
         let (solution_sender, mut solution_receiver) =
@@ -238,7 +237,7 @@ where
                     epoch_randomness: &epoch_randomness,
                     solution_range,
                     slot,
-                    salt: salt.to_le_bytes(),
+                    salt,
                     records_root: &records_root,
                     position,
                     record_size,
@@ -379,19 +378,21 @@ where
 /// Extract the next Subspace solution range digest from the given header if it exists.
 fn find_next_solution_range_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextSolutionRangeDescriptor>, Error<B>> {
+) -> Result<Option<UpdatedSolutionRangeDescriptor>, Error<B>> {
     let mut next_solution_range_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_solution_range_digest.is_some()) {
             (Some(ConsensusLog::NextSolutionRangeData(_)), true) => {
-                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests))
+                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests));
             }
             (Some(ConsensusLog::NextSolutionRangeData(solution_range)), false) => {
-                next_solution_range_digest = Some(solution_range)
+                next_solution_range_digest.replace(solution_range);
             }
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
+            _ => {
+                trace!(target: "subspace", "Ignoring digest not meant for us");
+            }
         }
     }
 
@@ -399,19 +400,23 @@ fn find_next_solution_range_digest<B: BlockT>(
 }
 
 /// Extract the next Subspace salt digest from the given header if it exists.
-fn find_next_salt_digest<B: BlockT>(
+fn find_updated_salt_digest<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextSaltDescriptor>, Error<B>> {
+) -> Result<Option<UpdatedSaltDescriptor>, Error<B>> {
     let mut next_salt_digest: Option<_> = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
         match (log, next_salt_digest.is_some()) {
-            (Some(ConsensusLog::NextSaltData(_)), true) => {
-                return Err(subspace_err(Error::MultipleSaltDigests))
+            (Some(ConsensusLog::UpdatedSaltData(_)), true) => {
+                return Err(subspace_err(Error::MultipleSaltDigests));
             }
-            (Some(ConsensusLog::NextSaltData(salt)), false) => next_salt_digest = Some(salt),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
+            (Some(ConsensusLog::UpdatedSaltData(salt)), false) => {
+                next_salt_digest.replace(salt);
+            }
+            _ => {
+                trace!(target: "subspace", "Ignoring digest not meant for us");
+            }
         }
     }
 

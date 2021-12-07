@@ -33,6 +33,10 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_transaction_payment::CurrencyAdapter;
 use sp_api::impl_runtime_apis;
+use sp_consensus_subspace::{
+    Epoch, EquivocationProof, FarmerPublicKey, Salts, SubspaceEpochConfiguration,
+    SubspaceGenesisConfiguration,
+};
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{
@@ -127,10 +131,9 @@ const EPOCH_DURATION_IN_SLOTS: u64 =
 const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
 
 /// The Subspace epoch configuration at genesis.
-pub const SUBSPACE_GENESIS_EPOCH_CONFIG: sp_consensus_subspace::SubspaceEpochConfiguration =
-    sp_consensus_subspace::SubspaceEpochConfiguration {
-        c: SLOT_PROBABILITY,
-    };
+pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEpochConfiguration {
+    c: SLOT_PROBABILITY,
+};
 
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
@@ -674,13 +677,13 @@ impl_runtime_apis! {
             RecordedHistorySegmentSize::get()
         }
 
-        fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
+        fn configuration() -> SubspaceGenesisConfiguration {
             // The choice of `c` parameter (where `1 - c` represents the
             // probability of a slot being empty), is done in accordance to the
             // slot duration and expected target block time, for safely
             // resisting network delays of maximum two seconds.
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
-            sp_consensus_subspace::SubspaceGenesisConfiguration {
+            SubspaceGenesisConfiguration {
                 slot_duration: Subspace::slot_duration(),
                 epoch_length: EpochDuration::get(),
                 c: SlotProbability::get(),
@@ -692,29 +695,32 @@ impl_runtime_apis! {
             Subspace::solution_range()
         }
 
-        fn salt() -> u64 {
-            Subspace::salt()
+        fn salts() -> Salts {
+            Salts {
+                salt: Subspace::salt(),
+                next_salt: Subspace::next_salt(),
+            }
         }
 
         fn current_epoch_start() -> sp_consensus_slots::Slot {
             Subspace::current_epoch_start()
         }
 
-        fn current_epoch() -> sp_consensus_subspace::Epoch {
+        fn current_epoch() -> Epoch {
             Subspace::current_epoch()
         }
 
-        fn next_epoch() -> sp_consensus_subspace::Epoch {
+        fn next_epoch() -> Epoch {
             Subspace::next_epoch()
         }
 
         fn submit_report_equivocation_extrinsic(
-            equivocation_proof: sp_consensus_subspace::EquivocationProof<<Block as BlockT>::Header>,
+            equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
         ) -> Option<()> {
             Subspace::submit_equivocation_report(equivocation_proof)
         }
 
-        fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
+        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             Subspace::is_in_block_list(farmer_public_key)
