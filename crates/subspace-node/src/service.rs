@@ -16,10 +16,15 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-mod overseer;
-
-use overseer::CreateOverseerArgs;
-use polkadot_overseer::{BlockInfo, Handle, OverseerConnector};
+use lru::LruCache;
+use polkadot_node_collation_generation::CollationGenerationSubsystem;
+use polkadot_node_core_chain_api::ChainApiSubsystem;
+use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
+use polkadot_node_subsystem_util::metrics::Metrics;
+use polkadot_overseer::{
+    metrics::Metrics as OverseerMetrics, BlockInfo, Handle, MetricsTrait, Overseer,
+    OverseerConnector, KNOWN_LEAVES_CACHE_SIZE,
+};
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
@@ -311,18 +316,44 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     let overseer_handle = if let Some(_keystore) = keystore_container.local_keystore() {
-        let leaves = active_leaves(&select_chain, &*client).await?;
+        let active_leaves = active_leaves(&select_chain, &*client).await?;
 
         let spawner = task_manager.spawn_handle();
 
-        let (overseer, overseer_handle) = overseer::create_overseer(CreateOverseerArgs {
-            connector: OverseerConnector::default(),
-            leaves,
-            runtime_client: client.clone(),
-            registry: prometheus_registry.as_ref(),
-            spawner,
-        })
-        .map_err(|e| ServiceError::Other(e.to_string()))?;
+        let (overseer, overseer_handle) = Overseer::builder()
+            .chain_api(ChainApiSubsystem::new(
+                client.clone(),
+                Metrics::register(prometheus_registry.as_ref())?,
+            ))
+            .collation_generation(CollationGenerationSubsystem::new(Metrics::register(
+                prometheus_registry.as_ref(),
+            )?))
+            .runtime_api(RuntimeApiSubsystem::new(
+                client.clone(),
+                Metrics::register(prometheus_registry.as_ref())?,
+                spawner.clone(),
+            ))
+            .leaves(
+                active_leaves
+                    .into_iter()
+                    .map(
+                        |BlockInfo {
+                             hash,
+                             parent_hash: _,
+                             number,
+                         }| (hash, number),
+                    )
+                    .collect(),
+            )
+            .activation_external_listeners(Default::default())
+            .span_per_active_leaf(Default::default())
+            .active_leaves(Default::default())
+            .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
+            .metrics(<OverseerMetrics as MetricsTrait>::register(
+                prometheus_registry.as_ref(),
+            )?)
+            .spawner(spawner)
+            .build_with_connector(OverseerConnector::default())?;
 
         let handle = Handle::new(overseer_handle);
 

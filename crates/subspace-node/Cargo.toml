@@ -43,7 +43,6 @@ sc-consensus-subspace-rpc = { version = "0.1.0", path = "../sc-consensus-subspac
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5", features = ["wasmtime"] }
-sc-keystore = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
