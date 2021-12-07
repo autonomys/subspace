@@ -271,7 +271,7 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(
+pub async fn new_full(
     config: Configuration,
     is_collator: IsCollator,
 ) -> Result<NewFull<Arc<FullClient>>, Error> {
@@ -285,8 +285,6 @@ pub fn new_full(
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial(&config)?;
-
-    let local_keystore = keystore_container.local_keystore();
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -316,9 +314,9 @@ pub fn new_full(
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let active_leaves = futures::executor::block_on(active_leaves(&select_chain, &*client))?;
+    let overseer_handle = if let Some(keystore) = keystore_container.local_keystore() {
+        let leaves = active_leaves(&select_chain, &*client).await?;
 
-    let overseer_handle = if let Some(keystore) = local_keystore {
         let overseer_connector = OverseerConnector::default();
         let spawner = task_manager.spawn_handle();
 
@@ -326,7 +324,7 @@ pub fn new_full(
             .generate::<sc_service::SpawnTaskHandle, FullClient>(
                 overseer_connector,
                 OverseerGenArgs {
-                    leaves: active_leaves,
+                    leaves,
                     keystore,
                     runtime_client: client.clone(),
                     network_service: network.clone(),

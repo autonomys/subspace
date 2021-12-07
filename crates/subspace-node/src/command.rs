@@ -195,6 +195,7 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             runner.run_node_until_exit(|config| async move {
                 service::new_full(config, IsCollator::No)
+                    .await
                     .map(|full| full.task_manager)
                     .map_err(Into::into)
             })
