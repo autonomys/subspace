@@ -19,35 +19,33 @@ use lru::LruCache;
 pub use polkadot_node_collation_generation::CollationGenerationSubsystem;
 pub use polkadot_node_core_chain_api::ChainApiSubsystem;
 pub use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
+use polkadot_node_subsystem_util::metrics::Metrics;
 use polkadot_overseer::{
-    metrics::Metrics as OverseerMetrics, BlockInfo, MetricsTrait, Overseer, OverseerBuilder,
-    OverseerConnector, OverseerHandle,
+    metrics::Metrics as OverseerMetrics, BlockInfo, MetricsTrait, Overseer, OverseerConnector,
+    OverseerHandle, KNOWN_LEAVES_CACHE_SIZE,
 };
 use sc_client_api::AuxStore;
-use sc_keystore::LocalKeystore;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
 use sp_executor::ExecutorApi;
 use std::sync::Arc;
-use subspace_runtime::{opaque::Block, Hash};
+use subspace_runtime::opaque::Block;
 use substrate_prometheus_endpoint::Registry;
 
 /// Arguments passed for overseer construction.
-pub struct OverseerGenArgs<'a, Spawner, RuntimeClient>
+pub struct CreateOverseerArgs<'a, Spawner, RuntimeClient>
 where
     RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
     RuntimeClient::Api: ExecutorApi<Block>,
     Spawner: 'static + SpawnNamed + Clone + Unpin,
 {
+    /// Overseer connector.
+    pub connector: OverseerConnector,
     /// Set of initial relay chain leaves to track.
     pub leaves: Vec<BlockInfo>,
-    /// The keystore to use for i.e. validator keys.
-    pub keystore: Arc<LocalKeystore>,
     /// Runtime client generic, providing the `ProvieRuntimeApi` trait besides others.
     pub runtime_client: Arc<RuntimeClient>,
-    /// Underlying network service implementation.
-    pub network_service: Arc<sc_network::NetworkService<Block, Hash>>,
     /// Prometheus registry, commonly used for production systems, less so for test.
     pub registry: Option<&'a Registry>,
     /// Task spawner to be used throughout the overseer and the APIs it provides.
@@ -56,34 +54,23 @@ where
 
 /// Obtain a prepared `OverseerBuilder`, that is initialized
 /// with all default values.
-pub fn prepared_overseer_builder<Spawner, RuntimeClient>(
-    OverseerGenArgs {
+pub fn create_overseer<Spawner, RuntimeClient>(
+    CreateOverseerArgs {
+        connector,
         leaves,
-        keystore: _,
         runtime_client,
-        network_service: _,
         registry,
         spawner,
-    }: OverseerGenArgs<Spawner, RuntimeClient>,
-) -> Result<
-    OverseerBuilder<
-        Spawner,
-        RuntimeApiSubsystem<RuntimeClient>,
-        ChainApiSubsystem<RuntimeClient>,
-        CollationGenerationSubsystem,
-    >,
-    Error,
->
+    }: CreateOverseerArgs<Spawner, RuntimeClient>,
+) -> Result<(Overseer<Spawner>, OverseerHandle), Error>
 where
     RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
     RuntimeClient::Api: ExecutorApi<Block>,
     Spawner: 'static + SpawnNamed + Clone + Unpin,
 {
-    use polkadot_node_subsystem_util::metrics::Metrics;
-
     let metrics = <OverseerMetrics as MetricsTrait>::register(registry)?;
 
-    let builder = Overseer::builder()
+    Overseer::builder()
         .chain_api(ChainApiSubsystem::new(
             runtime_client.clone(),
             Metrics::register(registry)?,
@@ -108,52 +95,7 @@ where
         .active_leaves(Default::default())
         .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
         .metrics(metrics)
-        .spawner(spawner);
-    Ok(builder)
-}
-
-/// Trait for the `fn` generating the overseer.
-///
-/// Default behavior is to create an unmodified overseer, as `RealOverseerGen`
-/// would do.
-pub trait OverseerGen {
-    /// Overwrite the full generation of the overseer, including the subsystems.
-    fn generate<Spawner, RuntimeClient>(
-        &self,
-        connector: OverseerConnector,
-        args: OverseerGenArgs<Spawner, RuntimeClient>,
-    ) -> Result<(Overseer<Spawner>, OverseerHandle), Error>
-    where
-        RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-        RuntimeClient::Api: ExecutorApi<Block>,
-        Spawner: 'static + SpawnNamed + Clone + Unpin,
-    {
-        let gen = RealOverseerGen;
-        RealOverseerGen::generate::<Spawner, RuntimeClient>(&gen, connector, args)
-    }
-    // It would be nice to make `create_subsystems` part of this trait,
-    // but the amount of generic arguments that would be required as
-    // as consequence make this rather annoying to implement and use.
-}
-
-use polkadot_overseer::KNOWN_LEAVES_CACHE_SIZE;
-
-/// The regular set of subsystems.
-pub struct RealOverseerGen;
-
-impl OverseerGen for RealOverseerGen {
-    fn generate<Spawner, RuntimeClient>(
-        &self,
-        connector: OverseerConnector,
-        args: OverseerGenArgs<Spawner, RuntimeClient>,
-    ) -> Result<(Overseer<Spawner>, OverseerHandle), Error>
-    where
-        RuntimeClient: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-        RuntimeClient::Api: ExecutorApi<Block>,
-        Spawner: 'static + SpawnNamed + Clone + Unpin,
-    {
-        prepared_overseer_builder(args)?
-            .build_with_connector(connector)
-            .map_err(|e| e.into())
-    }
+        .spawner(spawner)
+        .build_with_connector(connector)
+        .map_err(Into::into)
 }

@@ -18,7 +18,7 @@
 
 mod overseer;
 
-use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
+use overseer::CreateOverseerArgs;
 use polkadot_overseer::{BlockInfo, Handle, OverseerConnector};
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
@@ -310,25 +310,19 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let overseer_handle = if let Some(keystore) = keystore_container.local_keystore() {
+    let overseer_handle = if let Some(_keystore) = keystore_container.local_keystore() {
         let leaves = active_leaves(&select_chain, &*client).await?;
 
-        let overseer_connector = OverseerConnector::default();
         let spawner = task_manager.spawn_handle();
 
-        let (overseer, overseer_handle) = RealOverseerGen
-            .generate::<sc_service::SpawnTaskHandle, FullClient>(
-                overseer_connector,
-                OverseerGenArgs {
-                    leaves,
-                    keystore,
-                    runtime_client: client.clone(),
-                    network_service: network.clone(),
-                    registry: prometheus_registry.as_ref(),
-                    spawner,
-                },
-            )
-            .map_err(|e| ServiceError::Other(e.to_string()))?;
+        let (overseer, overseer_handle) = overseer::create_overseer(CreateOverseerArgs {
+            connector: OverseerConnector::default(),
+            leaves,
+            runtime_client: client.clone(),
+            registry: prometheus_registry.as_ref(),
+            spawner,
+        })
+        .map_err(|e| ServiceError::Other(e.to_string()))?;
 
         let handle = Handle::new(overseer_handle);
 
