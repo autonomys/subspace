@@ -72,7 +72,13 @@ impl PreDigest {
     /// Returns the weight _added_ by this digest, not the cumulative weight
     /// of the chain.
     pub fn added_weight(&self) -> SubspaceBlockWeight {
-        1
+        let target = u64::from_be_bytes(self.solution.local_challenge.derive_target());
+        let tag = u64::from_be_bytes(self.solution.tag);
+        let diff = target.wrapping_sub(tag);
+        let diff2 = tag.wrapping_sub(target);
+        // Find smaller diff between 2 directions.
+        let bidirectional_diff = (diff).min(diff2);
+        u128::from(u64::MAX - bidirectional_diff)
     }
 }
 
