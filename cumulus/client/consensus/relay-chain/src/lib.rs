@@ -33,6 +33,8 @@
 //!
 //! 5. After the parachain candidate got backed and included, all collators start at 1.
 
+#![allow(clippy::all)]
+
 use cumulus_client_consensus_common::{
 	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
 };

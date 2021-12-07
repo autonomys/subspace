@@ -45,6 +45,7 @@
 //! ```
 
 #![forbid(unused_imports)]
+#![allow(clippy::all)]
 
 mod config;
 mod errors;

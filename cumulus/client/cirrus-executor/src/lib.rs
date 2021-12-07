@@ -15,6 +15,7 @@
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Cirrus Executor implementation for Subspace.
+#![allow(clippy::all)]
 
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;

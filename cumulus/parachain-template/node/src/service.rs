@@ -385,7 +385,7 @@ pub async fn start_parachain_node(
 				client.clone(),
 				transaction_pool,
 				prometheus_registry,
-				telemetry.clone(),
+				telemetry,
 			);
 
 			let relay_chain_backend = relay_chain_node.backend.clone();
@@ -397,7 +397,7 @@ pub async fn start_parachain_node(
 					let time = sp_timestamp::InherentDataProvider::from_system_time();
 					Ok(time)
 				},
-				block_import: client.clone(),
+				block_import: client,
 				relay_chain_client,
 				relay_chain_backend,
 			}))

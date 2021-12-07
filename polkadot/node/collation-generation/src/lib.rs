@@ -17,6 +17,7 @@
 //! The collation generation subsystem is the interface between polkadot and the collators.
 
 #![deny(missing_docs)]
+#![allow(clippy::all)]
 
 use futures::{channel::mpsc, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use parity_scale_codec::Encode;

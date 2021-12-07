@@ -15,6 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 #![deny(unused_crate_dependencies)]
+#![allow(clippy::all)]
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};

@@ -23,6 +23,7 @@
 
 #![deny(missing_docs)]
 #![deny(unused_imports)]
+#![allow(clippy::all)]
 
 pub use metered_channel as metered;
 

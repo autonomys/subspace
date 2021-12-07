@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+#![allow(clippy::all)]
+
 use subspace_runtime_primitives::{Hash as PHash, PersistedValidationData};
 use sc_consensus::BlockImport;
 use sp_runtime::traits::Block as BlockT;

@@ -222,9 +222,7 @@ where
             let number = HeaderBackend::number(client, hash).ok()??;
 
             // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(1) {
-                return None;
-            } else if hash == best_block.hash() {
+            if number < best_block.number().saturating_sub(1) || hash == best_block.hash() {
                 return None;
             };
 

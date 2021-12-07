@@ -17,8 +17,8 @@
 //! Cumulus CLI library.
 
 #![warn(missing_docs)]
+#![allow(clippy::all)]
 
-use sc_cli;
 use sc_service::{
 	config::{PrometheusConfig, TelemetryEndpoints},
 	BasePath, TransactionPoolOptions,

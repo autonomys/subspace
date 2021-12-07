@@ -21,6 +21,7 @@
 
 #![deny(unused_crate_dependencies)]
 #![warn(missing_docs)]
+#![allow(clippy::all)]
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
 use subspace_runtime_primitives::{opaque::{Block, BlockId}, Hash};

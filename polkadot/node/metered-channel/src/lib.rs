@@ -15,6 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Metered variant of mpsc channels to be able to extract metrics.
+#![allow(clippy::all)]
 
 use std::sync::{
 	atomic::{AtomicUsize, Ordering},

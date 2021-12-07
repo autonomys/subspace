@@ -18,6 +18,8 @@
 //!
 //! Provides functions for starting an executor node or a normal full node.
 
+#![allow(clippy::all)]
+
 use cumulus_client_consensus_common::ParachainConsensus;
 
 use sc_client_api::{
@@ -204,7 +206,7 @@ pub fn build_subspace_full_node(
 		let collator_key = CollatorPair::generate().0;
 		let primary_chain_full_node = subspace_service::new_full(
 			config,
-			subspace_service::IsCollator::Yes(collator_key.clone()),
+			subspace_service::IsCollator::Yes(Box::new(collator_key.clone())),
 		)
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
 		Ok(PrimaryFullNode { primary_chain_full_node, collator_key })

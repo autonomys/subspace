@@ -24,6 +24,7 @@
 
 #![warn(missing_docs)]
 #![deny(unused_crate_dependencies)]
+#![allow(clippy::all)]
 
 use polkadot_node_subsystem::{
 	errors::{RuntimeApiError, SubsystemError},

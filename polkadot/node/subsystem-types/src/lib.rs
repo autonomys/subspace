@@ -21,6 +21,7 @@
 //! separate crate.
 
 #![warn(missing_docs)]
+#![allow(clippy::all)]
 
 use std::{fmt, sync::Arc};
 

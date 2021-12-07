@@ -38,7 +38,7 @@ use substrate_prometheus_endpoint::Registry;
 #[derive(Clone)]
 pub enum IsCollator {
     /// This node is a collator.
-    Yes(CollatorPair),
+    Yes(Box<CollatorPair>),
     /// This node is not a collator.
     No,
 }
