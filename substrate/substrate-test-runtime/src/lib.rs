@@ -648,9 +648,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
-    pub const PreGenesisObjectSize: u32 = 3840 * 256 / 2;
-    pub const PreGenesisObjectCount: u32 = 5;
-    pub const PreGenesisObjectSeed: &'static [u8] = b"subspace";
+    pub const ReplicationFactor: u16 = 1;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -664,6 +662,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -949,7 +948,6 @@ cfg_if! {
 
                 fn solution_range() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::solution_range()
-                        .unwrap_or_else(InitialSolutionRange::get)
                 }
 
                 fn salt() -> u64 {
@@ -1275,7 +1273,6 @@ cfg_if! {
 
                 fn solution_range() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::solution_range()
-                        .unwrap_or_else(InitialSolutionRange::get)
                 }
 
                 fn salt() -> u64 {

@@ -58,7 +58,7 @@ use sp_runtime::{
     traits::{One, SaturatedConversion, Saturating, Zero},
 };
 use sp_std::prelude::*;
-use subspace_core_primitives::{RootBlock, RANDOMNESS_LENGTH};
+use subspace_core_primitives::{RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH};
 
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
@@ -199,6 +199,11 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
+        /// Replication factor, defines minimum desired number of replicas of the blockchain to be
+        /// stored by the network.
+        #[pallet::constant]
+        type ReplicationFactor: Get<u16>;
+
         /// Subspace requires some logic to be triggered on every block to query for whether an epoch
         /// has ended and to perform the transition to the next epoch.
         ///
@@ -286,7 +291,8 @@ mod pallet {
     /// The solution range for *current* era.
     #[pallet::storage]
     #[pallet::getter(fn solution_range)]
-    pub type SolutionRange<T> = StorageValue<_, u64>;
+    pub type SolutionRange<T> =
+        StorageValue<_, u64, ValueQuery, <T as Config>::InitialSolutionRange>;
 
     /// Salt for *current* eon.
     #[pallet::storage]
@@ -378,7 +384,7 @@ mod pallet {
     /// Mapping from segment index to corresponding merkle tree root of segment records.
     #[pallet::storage]
     #[pallet::getter(fn records_root)]
-    pub(super) type RecordsRoot<T> = StorageMap<_, Twox64Concat, u64, Sha256Hash>;
+    pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::genesis_config]
     #[cfg_attr(feature = "std", derive(Default))]
@@ -669,8 +675,7 @@ impl<T: Config> Pallet<T> {
 
         let slot_probability = T::SlotProbability::get();
 
-        let previous_solution_range =
-            SolutionRange::<T>::get().unwrap_or_else(T::InitialSolutionRange::get);
+        let previous_solution_range = SolutionRange::<T>::get();
 
         let current_slot = CurrentSlot::<T>::get();
         // If Era start slot is not found it means we have just finished the first era
@@ -884,7 +889,7 @@ impl<T: Config> Pallet<T> {
 
         // Deposit solution range data such that light client can validate blocks later.
         Self::deposit_consensus(ConsensusLog::SolutionRangeData(SolutionRangeDescriptor {
-            solution_range: SolutionRange::<T>::get().unwrap_or_else(T::InitialSolutionRange::get),
+            solution_range: SolutionRange::<T>::get(),
         }));
         // Deposit salt data such that light client can validate blocks later.
         Self::deposit_consensus(ConsensusLog::SaltData(SaltDescriptor {
@@ -966,6 +971,18 @@ impl<T: Config> Pallet<T> {
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
+    }
+
+    /// Size of the archived history of the blockchain in bytes
+    pub fn archived_history_size() -> u64 {
+        let archived_segments = RecordsRoot::<T>::count();
+        // `*2` because we need to include both data and parity pieces
+        let archived_segment_size = T::RecordedHistorySegmentSize::get() / T::RecordSize::get()
+            * u32::try_from(PIECE_SIZE)
+                .expect("Piece size is definitely small enough to fit into u32; qed")
+            * 2;
+
+        u64::from(archived_segments) * u64::from(archived_segment_size)
     }
 }
 

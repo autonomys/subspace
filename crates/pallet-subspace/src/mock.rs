@@ -149,9 +149,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
-    pub const PreGenesisObjectSize: u32 = 3840 * 256 / 2;
-    pub const PreGenesisObjectCount: u32 = 5;
-    pub const PreGenesisObjectSeed: &'static [u8] = b"subspace";
+    pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
 }
 
@@ -166,6 +164,7 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
