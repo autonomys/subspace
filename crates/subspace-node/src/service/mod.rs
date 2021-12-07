@@ -35,33 +35,36 @@ use std::sync::Arc;
 use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
 
+/// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
+    /// Address parsing error.
     #[error(transparent)]
     AddrFormatInvalid(#[from] std::net::AddrParseError),
 
+    /// Substrate service error.
     #[error(transparent)]
     Sub(#[from] sc_service::Error),
 
+    /// Substrate client error.
     #[error(transparent)]
     Blockchain(#[from] sp_blockchain::Error),
 
+    /// Substrate consensus error.
     #[error(transparent)]
     Consensus(#[from] sp_consensus::Error),
 
+    /// Polkadot overseer error.
     #[error("Failed to create an overseer")]
     Overseer(#[from] polkadot_overseer::SubsystemError),
 
+    /// Prometheus error.
     #[error(transparent)]
     Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
-    // #[error(transparent)]
-    // Telemetry(#[from] telemetry::Error),
-
-    // #[error(transparent)]
-    // Jaeger(#[from] polkadot_subsystem::jaeger::JaegerError),
 }
 
 /// Subspace native executor instance.

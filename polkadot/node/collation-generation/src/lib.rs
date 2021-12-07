@@ -169,6 +169,7 @@ where
 	}
 }
 
+/// Produces collations on each tip of primary chain.
 async fn handle_new_activations_subspace<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
@@ -179,10 +180,11 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 	for relay_parent in activated {
 		let task_config = config.clone();
 
-		// Request the current pending head of executor chain and send it back to the executor node at the end.
+		// Request the current pending head of executor chain because the executor chain
+		// needs it to form a chain correctly.
 		let maybe_pending_head: Option<Hash> =
 			match request_pending_head(relay_parent, ctx.sender()).await.await? {
-				Ok(v) => v,
+				Ok(h) => h,
 				Err(e) => {
 					tracing::trace!(
 						target: LOG_TARGET,
@@ -211,7 +213,8 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 				},
 			};
 
-		// Pretend we are processing the ER and then submit it to primary chain via an unsigned extrinsic.
+		// Pretend we are processing the ER and then submit it
+		// to primary chain via an unsigned extrinsic.
 		let head_hash = collation.head_data.hash();
 		let head_number = collation.number;
 

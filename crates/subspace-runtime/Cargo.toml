@@ -23,6 +23,7 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 hex-literal = { version = "0.3.3", optional = true }
 orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https://github.com/subspace/open-runtime-module-library", branch = "substrate-monthly-2021-12" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
@@ -38,6 +39,7 @@ sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "b6c
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
 sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5", default-features = false, version = "4.0.0-dev"}
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -47,9 +49,6 @@ sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "
 sp-version = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
-
-pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
-sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -71,9 +70,8 @@ std = [
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"orml-vesting/std",
-	"pallet-executor/std",
-	"sp-executor/std",
 	"pallet-balances/std",
+	"pallet-executor/std",
 	"pallet-feeds/std",
 	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
@@ -90,6 +88,7 @@ std = [
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
+	"sp-executor/std",
 	"sp-inherents/std",
 	"sp-offchain/std",
 	"sp-runtime/std",

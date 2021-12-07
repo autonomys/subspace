@@ -16,7 +16,7 @@
 
 //! Subspace Node library.
 
-// #![warn(missing_docs)]
+#![warn(missing_docs)]
 
 mod chain_spec;
 #[macro_use]

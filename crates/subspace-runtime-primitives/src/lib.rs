@@ -27,8 +27,7 @@ use sp_application_crypto::KeyTypeId;
 #[cfg(feature = "std")]
 use sp_core::bytes;
 use sp_core::RuntimeDebug;
-use sp_runtime::traits::Hash as HashT;
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::traits::{Hash as HashT, IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
 use sp_std::vec::Vec;
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
@@ -152,6 +151,7 @@ pub mod opaque {
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug, Default))]
 pub struct PersistedValidationData<H = Hash, N = BlockNumber> {
+    // TODO: use a proper wrapper type?
     /// The encoded optional parent head hash.
     pub parent_head: Vec<u8>,
     /// The relay-chain block number this is in the context of.

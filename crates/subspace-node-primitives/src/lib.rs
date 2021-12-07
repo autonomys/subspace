@@ -31,6 +31,7 @@ pub struct Collation {
 pub struct CollationResult {
     /// The collation that was build.
     pub collation: Collation,
+    // TODO: can be useful in the future?
     /// An optional result sender that should be informed about a successfully seconded collation.
     ///
     /// There is no guarantee that this sender is informed ever about any result, it is completely okay to just drop it.
@@ -39,8 +40,10 @@ pub struct CollationResult {
     pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
 }
 
+// TODO: proper signal?
 pub type CollationSecondedSignal = Vec<u8>;
 
+// TODO: SubspaceBlockWeight
 /// The cumulative weight of a block in a fork-choice rule.
 pub type BlockWeight = u32;
 

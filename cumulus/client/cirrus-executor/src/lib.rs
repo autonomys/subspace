@@ -155,12 +155,12 @@ where
 			"Producing candidate",
 		);
 
-		// Try retrieving the latest pending head from primary chain, otherwise fall back to the
-		// local best hash which should definitely be genesis hash.
+		// Try retrieving the latest pending head from primary chain,otherwise fall
+		// back to the local best hash which should definitely be the genesis hash.
 		let maybe_pending_head = match <Option<<Block::Header as HeaderT>::Hash>>::decode(
 			&mut &validation_data.parent_head[..],
 		) {
-			Ok(x) => x,
+			Ok(h) => h,
 			Err(e) => {
 				tracing::error!(
 					target: LOG_TARGET,
@@ -209,13 +209,7 @@ where
 		let head_data = HeadData(header.encode());
 		let number = best_number.saturated_into::<u32>() + 1u32;
 
-		Some(CollationResult {
-			collation: Collation {
-				head_data,
-				number,
-			},
-			result_sender: None,
-		})
+		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
 }
 

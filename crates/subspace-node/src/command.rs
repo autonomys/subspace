@@ -23,22 +23,22 @@ use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
 use subspace_runtime::Block;
 
-///
+/// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    ///
+    /// Subspace service error.
     #[error(transparent)]
     SubspaceService(#[from] crate::service::Error),
 
-    ///
+    /// CLI error.
     #[error(transparent)]
     SubstrateCli(#[from] sc_cli::Error),
 
-    ///
+    /// Substrate service error.
     #[error(transparent)]
     SubstrateService(#[from] sc_service::Error),
 
-    ///
+    /// Other kind of error.
     #[error("Other: {0}")]
     Other(String),
 }
