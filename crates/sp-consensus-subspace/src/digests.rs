@@ -24,7 +24,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
 
 // TODO: better documentation here
 /// Solution
@@ -121,23 +121,25 @@ pub struct SolutionRangeDescriptor {
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct SaltDescriptor {
     /// Salt used with challenges.
-    pub salt: u64,
+    pub salt: Salt,
 }
 
-/// Information about the solution range, if changed. This is broadcast in the first
-/// block of the era, but only applies to the block after that.
+/// S solution range update. This is broadcast in the first block of the era, but only applies to
+/// the block after that.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct NextSolutionRangeDescriptor {
+pub struct UpdatedSolutionRangeDescriptor {
     /// Solution range used for challenges.
     pub solution_range: u64,
 }
 
-/// Salt, if changed. This is broadcast in the each block of the eon, but only applies to the block
+/// Salt update, this is broadcast in the first block of the eon, but only applies to the block
 /// after that.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct NextSaltDescriptor {
-    /// Salt used with challenges.
-    pub salt: u64,
+pub struct UpdatedSaltDescriptor {
+    /// Salt used for challenges.
+    pub salt: Salt,
+    /// Salt used for challenges after `salt`.
+    pub next_salt: Salt,
 }
 
 /// A digest item which is usable with Subspace consensus.

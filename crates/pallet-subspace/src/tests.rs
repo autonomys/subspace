@@ -23,7 +23,7 @@ use crate::mock::{
 };
 use crate::{
     compute_randomness, Call, Config, CurrentSlot, EpochConfig, EpochStart, Error, NextEpochConfig,
-    NextRandomness, SegmentIndex, UnderConstruction, WeightInfo,
+    NextRandomness, NextSalt, SegmentIndex, UnderConstruction, WeightInfo,
 };
 use codec::Encode;
 use frame_support::weights::Pays;
@@ -193,27 +193,30 @@ fn can_update_salt_on_eon_change() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
+        let genesis_salt = 0u64.to_le_bytes();
+        let first_eon_salt = 1u64.to_le_bytes();
+        NextSalt::<Test>::put(first_eon_salt);
         assert_eq!(<Test as Config>::EonDuration::get(), 5);
         // Initial salt equals to eon
-        assert_eq!(Subspace::salt(), 0);
+        assert_eq!(Subspace::salt(), genesis_salt);
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 5);
         // Still no salt update
-        assert_eq!(Subspace::salt(), 0);
+        assert_eq!(Subspace::salt(), genesis_salt);
         progress_to_block(&keypair, 6);
 
         // Second eon should have salt updated
-        assert_eq!(Subspace::salt(), 1);
+        assert_eq!(Subspace::salt(), first_eon_salt);
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 10);
         // Just before eon update, still the same salt as before
-        assert_eq!(Subspace::salt(), 1);
+        assert_eq!(Subspace::salt(), first_eon_salt);
         progress_to_block(&keypair, 11);
 
         // Third eon should have salt updated again
-        assert_eq!(Subspace::salt(), 2);
+        assert_ne!(Subspace::salt(), first_eon_salt);
     })
 }
 

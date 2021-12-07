@@ -56,8 +56,11 @@ pub const TAG_SIZE: usize = 8;
 /// Type of the commitment for a particular piece.
 pub type Tag = [u8; TAG_SIZE];
 
+/// Size of `Tag` in bytes.
+pub const SALT_SIZE: usize = 8;
+
 /// Salt used for creating commitment tags for pieces.
-pub type Salt = [u8; TAG_SIZE];
+pub type Salt = [u8; SALT_SIZE];
 
 const PUBLIC_KEY_LENGTH: usize = 32;
 

@@ -950,8 +950,11 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::solution_range()
                 }
 
-                fn salt() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::salt()
+                fn salts() -> sp_consensus_subspace::Salts {
+                    sp_consensus_subspace::Salts {
+                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
+                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
+                    }
                 }
 
                 fn current_epoch_start() -> Slot {
@@ -1275,8 +1278,11 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::solution_range()
                 }
 
-                fn salt() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::salt()
+                fn salts() -> sp_consensus_subspace::Salts {
+                    sp_consensus_subspace::Salts {
+                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
+                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
+                    }
                 }
 
                 fn current_epoch_start() -> Slot {
