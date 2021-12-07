@@ -31,34 +31,7 @@ use sp_core::traits::SpawnNamed;
 use sp_executor::ExecutorApi;
 use std::sync::Arc;
 use subspace_runtime::{opaque::Block, Hash};
-use subspace_runtime_primitives::CollatorPair;
 use substrate_prometheus_endpoint::Registry;
-
-/// Is this node a collator?
-#[derive(Clone)]
-pub enum IsCollator {
-    /// This node is a collator.
-    Yes(Box<CollatorPair>),
-    /// This node is not a collator.
-    No,
-}
-
-impl std::fmt::Debug for IsCollator {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use sp_core::Pair;
-        match self {
-            Self::Yes(pair) => write!(fmt, "Yes({})", pair.public()),
-            Self::No => write!(fmt, "No"),
-        }
-    }
-}
-
-impl IsCollator {
-    /// Is this a collator?
-    pub fn is_collator(&self) -> bool {
-        matches!(self, Self::Yes(_))
-    }
-}
 
 /// Arguments passed for overseer construction.
 pub struct OverseerGenArgs<'a, Spawner, RuntimeClient>
@@ -79,8 +52,6 @@ where
     pub registry: Option<&'a Registry>,
     /// Task spawner to be used throughout the overseer and the APIs it provides.
     pub spawner: Spawner,
-    /// Determines the behavior of the collator.
-    pub is_collator: IsCollator,
 }
 
 /// Obtain a prepared `OverseerBuilder`, that is initialized
@@ -93,7 +64,6 @@ pub fn prepared_overseer_builder<Spawner, RuntimeClient>(
         network_service: _,
         registry,
         spawner,
-        is_collator: _,
     }: OverseerGenArgs<Spawner, RuntimeClient>,
 ) -> Result<
     OverseerBuilder<

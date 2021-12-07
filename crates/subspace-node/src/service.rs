@@ -18,7 +18,6 @@
 
 mod overseer;
 
-pub use overseer::IsCollator;
 use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
 use polkadot_overseer::{BlockInfo, Handle, OverseerConnector};
 use sc_client_api::ExecutorProvider;
@@ -222,7 +221,7 @@ where
         .unwrap_or_default()
         .into_iter()
         .filter_map(|hash| {
-            let number = HeaderBackend::number(client, hash).ok()??;
+            let number = client.number(hash).ok()??;
 
             // Only consider leaves that are in maximum an uncle of the best block.
             if number < best_block.number().saturating_sub(1) || hash == best_block.hash() {
@@ -271,10 +270,7 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub async fn new_full(
-    config: Configuration,
-    is_collator: IsCollator,
-) -> Result<NewFull<Arc<FullClient>>, Error> {
+pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Error> {
     let sc_service::PartialComponents {
         client,
         backend,
@@ -330,7 +326,6 @@ pub async fn new_full(
                     network_service: network.clone(),
                     registry: prometheus_registry.as_ref(),
                     spawner,
-                    is_collator,
                 },
             )
             .map_err(|e| ServiceError::Other(e.to_string()))?;

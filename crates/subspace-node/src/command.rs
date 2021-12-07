@@ -15,10 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::cli::{Cli, Subcommand};
-use crate::{
-    chain_spec,
-    service::{self, IsCollator},
-};
+use crate::{chain_spec, service};
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
 use subspace_runtime::Block;
@@ -28,7 +25,7 @@ use subspace_runtime::Block;
 pub enum Error {
     /// Subspace service error.
     #[error(transparent)]
-    SubspaceService(#[from] crate::service::Error),
+    SubspaceService(#[from] service::Error),
 
     /// CLI error.
     #[error(transparent)]
@@ -178,7 +175,7 @@ pub fn run() -> std::result::Result<(), Error> {
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config, IsCollator::No)
+                service::new_full(config)
                     .await
                     .map(|full| full.task_manager)
             })?;
