@@ -20,6 +20,32 @@ use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
 use subspace_runtime::Block;
 
+/// Subspace node error.
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    /// Subspace service error.
+    #[error(transparent)]
+    SubspaceService(#[from] service::Error),
+
+    /// CLI error.
+    #[error(transparent)]
+    SubstrateCli(#[from] sc_cli::Error),
+
+    /// Substrate service error.
+    #[error(transparent)]
+    SubstrateService(#[from] sc_service::Error),
+
+    /// Other kind of error.
+    #[error("Other: {0}")]
+    Other(String),
+}
+
+impl From<String> for Error {
+    fn from(s: String) -> Self {
+        Self::Other(s)
+    }
+}
+
 impl SubstrateCli for Cli {
     fn impl_name() -> String {
         "Subspace".into()
@@ -62,14 +88,14 @@ impl SubstrateCli for Cli {
 }
 
 /// Parse and run command line arguments
-pub fn run() -> sc_cli::Result<()> {
+pub fn run() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
 
     match &cli.subcommand {
-        Some(Subcommand::Key(cmd)) => cmd.run(&cli),
+        Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
         Some(Subcommand::BuildSpec(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner.sync_run(|config| cmd.run(config.chain_spec, config.network))
+            runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
         }
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -81,7 +107,7 @@ pub fn run() -> sc_cli::Result<()> {
                     ..
                 } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
-            })
+            })?;
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -92,7 +118,7 @@ pub fn run() -> sc_cli::Result<()> {
                     ..
                 } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.database), task_manager))
-            })
+            })?;
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -103,7 +129,7 @@ pub fn run() -> sc_cli::Result<()> {
                     ..
                 } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.chain_spec), task_manager))
-            })
+            })?;
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -115,11 +141,11 @@ pub fn run() -> sc_cli::Result<()> {
                     ..
                 } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
-            })
+            })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner.sync_run(|config| cmd.run(config.database))
+            runner.sync_run(|config| cmd.run(config.database))?
         }
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -131,28 +157,30 @@ pub fn run() -> sc_cli::Result<()> {
                     ..
                 } = service::new_partial(&config)?;
                 Ok((cmd.run(client, backend), task_manager))
-            })
+            })?;
         }
         Some(Subcommand::Benchmark(cmd)) => {
             if cfg!(feature = "runtime-benchmarks") {
                 let runner = cli.create_runner(cmd)?;
 
-                runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))
+                runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))?;
             } else {
-                Err(
+                return Err(Error::Other(
                     "Benchmarking wasn't enabled when building the node. You can enable it with \
                     `--features runtime-benchmarks`."
                         .into(),
-                )
+                ));
             }
         }
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
             runner.run_node_until_exit(|config| async move {
                 service::new_full(config)
+                    .await
                     .map(|full| full.task_manager)
-                    .map_err(sc_cli::Error::Service)
-            })
+            })?;
         }
     }
+
+    Ok(())
 }

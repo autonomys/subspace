@@ -1,0 +1,18 @@
+[package]
+name = "polkadot-node-collation-generation"
+version = "0.9.13"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+
+[dependencies]
+futures = "0.3.17"
+tracing = "0.1.29"
+polkadot-node-subsystem = { path = "../subsystem" }
+polkadot-node-subsystem-util = { path = "../subsystem-util" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-maybe-compressed-blob  = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+thiserror = "1.0.30"
+parity-scale-codec = { version = "2.3.1", default-features = false, features = ["bit-vec", "derive"] }
+
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

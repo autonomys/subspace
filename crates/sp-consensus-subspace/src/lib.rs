@@ -33,13 +33,14 @@ use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_consensus_slots::Slot;
+use sp_core::crypto::KeyTypeId;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash};
 
 /// Key type for Subspace pallet.
-pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"sub_");
+const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
 
 mod app {
     use super::KEY_TYPE;

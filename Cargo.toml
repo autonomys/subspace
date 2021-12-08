@@ -2,6 +2,25 @@
 resolver = "2"
 members = [
     "crates/*",
+    "cumulus/client/cli",
+    "cumulus/client/cirrus-service",
+    "cumulus/client/cirrus-executor",
+    "cumulus/client/consensus/common",
+    "cumulus/client/consensus/relay-chain",
+    "cumulus/parachain-template/node",
+    "cumulus/parachain-template/runtime",
+    "polkadot/node/collation-generation",
+    "polkadot/node/core/chain-api",
+    "polkadot/node/core/runtime-api",
+    "polkadot/node/jaeger",
+    "polkadot/node/metered-channel",
+    "polkadot/node/metrics",
+    "polkadot/node/overseer",
+    "polkadot/node/overseer/overseer-gen",
+    "polkadot/node/overseer/overseer-gen/proc-macro",
+    "polkadot/node/subsystem",
+    "polkadot/node/subsystem-types",
+    "polkadot/node/subsystem-util",
     "substrate/*",
 ]
 

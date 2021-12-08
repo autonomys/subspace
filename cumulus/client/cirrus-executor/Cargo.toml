@@ -1,0 +1,29 @@
+[package]
+name = "cirrus-client-executor"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+
+[dependencies]
+# Substrate dependencies
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+# Cumulus dependencies
+cumulus-client-consensus-common = { path = "../consensus/common" }
+
+# Other dependencies
+codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
+futures = { version = "0.3.1", features = ["compat"] }
+parking_lot = "0.10.2"
+tracing = "0.1.25"
+
+polkadot-overseer = { path = "../../../polkadot/node/overseer" }
+polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
+
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

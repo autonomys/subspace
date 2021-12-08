@@ -1,0 +1,19 @@
+[package]
+name = "polkadot-node-subsystem-types"
+version = "0.9.13"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+description = "Subsystem traits and message definitions"
+
+[dependencies]
+derive_more = "0.99.17"
+futures = "0.3.17"
+polkadot-node-jaeger = { path = "../jaeger" }
+polkadot-overseer-gen = { path = "../overseer/overseer-gen" }
+sc-network = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+smallvec = "1.6.1"
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+thiserror = "1.0.30"
+
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
