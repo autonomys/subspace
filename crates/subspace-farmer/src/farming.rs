@@ -272,6 +272,7 @@ fn update_commitments(
                         hex::encode(new_next_salt),
                         started.elapsed().as_secs_f32()
                     );
+                    #[cfg(test)]
                     commitment_signal_sender
                         .send(())
                         .await
