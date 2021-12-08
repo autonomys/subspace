@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
-fn main() -> sc_cli::Result<()> {
-    subspace_node::run()
+fn main() -> std::result::Result<(), subspace_node::Error> {
+    subspace_node::run()?;
+    Ok(())
 }

@@ -1,0 +1,23 @@
+[package]
+name = "polkadot-node-subsystem-util"
+version = "0.9.13"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+description = "Subsystem traits and message definitions"
+
+[dependencies]
+async-trait = "0.1.51"
+futures = "0.3.17"
+pin-project = "1.0.8"
+thiserror = "1.0.30"
+tracing = "0.1.29"
+
+polkadot-node-subsystem = { package = "polkadot-node-subsystem", path = "../subsystem" }
+polkadot-node-jaeger = { path = "../jaeger" }
+polkadot-node-metrics = { path = "../metrics" }
+polkadot-overseer = { path = "../overseer" }
+metered-channel = { path = "../metered-channel" }
+
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

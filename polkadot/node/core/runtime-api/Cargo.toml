@@ -1,0 +1,20 @@
+[package]
+name = "polkadot-node-core-runtime-api"
+version = "0.9.13"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+
+[dependencies]
+futures = "0.3.17"
+tracing = "0.1.29"
+memory-lru = "0.1.0"
+parity-util-mem = { version = "0.10.0", default-features = false }
+
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+
+polkadot-subsystem = { package = "polkadot-node-subsystem", path = "../../subsystem" }
+polkadot-node-subsystem-util = { path = "../../subsystem-util" }
+
+sp-executor = { path = "../../../../crates/sp-executor" }
+subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

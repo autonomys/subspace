@@ -138,6 +138,7 @@ pub mod opaque {
             (header, extrinsics).encode()
         }
     }
+
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
 }

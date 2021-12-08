@@ -25,8 +25,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+futures = "0.3.17"
 jsonrpc-core = "18.0.0"
+lru = "0.7"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+polkadot-overseer = { path = "../../polkadot/node/overseer" }
+polkadot-node-collation-generation = { path = "../../polkadot/node/collation-generation" }
+polkadot-node-core-chain-api = { path = "../../polkadot/node/core/chain-api" }
+polkadot-node-core-runtime-api = { path = "../../polkadot/node/core/runtime-api" }
+polkadot-node-subsystem-util = { path = "../../polkadot/node/subsystem-util" }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5", features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -56,6 +63,8 @@ sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/sub
 structopt = "0.3.22"
 subspace-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-runtime" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+thiserror = "1.0"
 
 [build-dependencies]
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }

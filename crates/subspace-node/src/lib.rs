@@ -25,4 +25,4 @@ pub mod cli;
 mod command;
 mod rpc;
 
-pub use self::command::run;
+pub use self::command::{run, Error};
