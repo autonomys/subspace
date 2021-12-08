@@ -128,7 +128,7 @@ const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
 const EPOCH_DURATION_IN_SLOTS: u64 =
     EPOCH_DURATION_IN_BLOCKS as u64 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0;
 
-const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
+const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
 
 /// The Subspace epoch configuration at genesis.
 pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEpochConfiguration {
