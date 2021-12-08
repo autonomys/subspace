@@ -37,19 +37,24 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let client = MockRpc::new();
 
     // start the farming task
-    let farming_instance = Farming::start(
+    let mut farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
         client.clone(),
         identity.clone(),
     );
 
+    let mut current_salt = slots.first().unwrap().salt;
     for (slot, tag) in slots.into_iter().zip(tags) {
         let client_copy = client.clone();
-        async move {
-            // commitment in the background cannot keep up with the speed, so putting a little delay in here
-            // commitment usually takes around 0.002-0.003 second on my machine (M1 iMac), putting 100 microseconds here to be safe
-            sleep(Duration::from_millis(100)).await;
+        async {
+            // if salt is changed, wait for background recommitment to finish first
+            if slot.salt != current_salt {
+                current_salt = slot.salt;
+                farming_instance.wait_commitment().await;
+            }
+
+            // after background recommitment is finished, we are good to go for sending the new challenge
             client_copy.send_slot(slot.clone()).await;
 
             tokio::select! {
@@ -59,10 +64,10 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
                             panic!("Wrong Tag! The expected value was: {:?}", tag);
                         }
                     } else {
-                        panic!("Solution was None!")
+                        panic!("Solution was None!");
                     }
                 },
-                _ = sleep(Duration::from_secs(1)) => {},
+                _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
             }
         }
         .await;
