@@ -788,6 +788,7 @@ dependencies = [
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
+ "cirrus-node-primitives",
  "cumulus-client-consensus-common",
  "futures 0.3.18",
  "parity-scale-codec",
@@ -800,7 +801,6 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-runtime",
- "subspace-node-primitives",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -810,6 +810,7 @@ name = "cirrus-client-service"
 version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
+ "cirrus-node-primitives",
  "cumulus-client-consensus-common",
  "parity-scale-codec",
  "parking_lot 0.10.2",
@@ -826,8 +827,21 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "subspace-node",
- "subspace-runtime-primitives",
  "tracing",
+]
+
+[[package]]
+name = "cirrus-node-primitives"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.18",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-runtime",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -1195,6 +1209,7 @@ name = "cumulus-client-consensus-common"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cirrus-node-primitives",
  "dyn-clone",
  "futures 0.3.18",
  "parity-scale-codec",
@@ -1215,6 +1230,7 @@ name = "cumulus-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cirrus-node-primitives",
  "cumulus-client-consensus-common",
  "futures 0.3.18",
  "parking_lot 0.10.2",
@@ -4938,13 +4954,13 @@ checksum = "e8d0eef3571242013a0d5dc84861c3ae4a652e56e12adf8bdc26ff5f8cb34c94"
 name = "polkadot-node-collation-generation"
 version = "0.9.13"
 dependencies = [
+ "cirrus-node-primitives",
  "futures 0.3.18",
  "parity-scale-codec",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "sp-core",
  "sp-maybe-compressed-blob",
- "subspace-node-primitives",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -5019,13 +5035,13 @@ dependencies = [
 name = "polkadot-node-subsystem-types"
 version = "0.9.13"
 dependencies = [
+ "cirrus-node-primitives",
  "derive_more",
  "futures 0.3.18",
  "polkadot-node-jaeger",
  "polkadot-overseer-gen",
  "sc-network",
  "smallvec",
- "subspace-node-primitives",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -7905,7 +7921,6 @@ dependencies = [
  "jsonrpc-core",
  "lru 0.7.0",
  "pallet-transaction-payment-rpc",
- "parity-scale-codec",
  "polkadot-node-collation-generation",
  "polkadot-node-core-chain-api",
  "polkadot-node-core-runtime-api",
@@ -7920,7 +7935,6 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-consensus-uncles",
  "sc-executor",
- "sc-keystore",
  "sc-network",
  "sc-rpc",
  "sc-rpc-api",
@@ -7928,34 +7942,22 @@ dependencies = [
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "scale-info",
  "serde_json",
  "sp-api",
- "sp-application-crypto",
  "sp-authorship",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
  "sp-runtime",
  "sp-timestamp",
  "structopt",
  "subspace-runtime",
- "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
-]
-
-[[package]]
-name = "subspace-node-primitives"
-version = "0.1.0"
-dependencies = [
- "futures 0.3.18",
- "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -8017,9 +8019,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "parity-util-mem",
- "scale-info",
  "serde",
- "sp-application-crypto",
  "sp-core",
  "sp-runtime",
  "sp-std",

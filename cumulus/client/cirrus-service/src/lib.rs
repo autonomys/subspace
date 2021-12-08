@@ -44,8 +44,8 @@ use cumulus_client_consensus_common::RelaychainClient;
 
 pub mod genesis;
 
-use subspace_runtime_primitives::CollatorPair;
-use subspace_node::service::{self as subspace_service, FullClient};
+use cirrus_node_primitives::CollatorPair;
+use subspace_node::service as subspace_service;
 
 /// The primary chain full node handle.
 pub struct PrimaryFullNode<C> {
@@ -196,19 +196,17 @@ pub fn prepare_node_config(mut parachain_config: Configuration) -> Configuration
 
 /// Build the Subspace full node using the given `config`.
 #[sc_tracing::logging::prefix_logs_with("Primarychain")]
-pub fn build_subspace_full_node(
+pub async fn build_subspace_full_node(
 	config: Configuration,
-) -> Result<PrimaryFullNode<Arc<FullClient>>, sc_service::Error> {
+) -> Result<PrimaryFullNode<Arc<subspace_service::FullClient>>, sc_service::Error> {
 	let is_light = matches!(config.role, Role::Light);
 	if is_light {
 		Err(sc_service::Error::Other("Light client not supported.".into()))
 	} else {
 		let collator_key = CollatorPair::generate().0;
-		let primary_chain_full_node = subspace_service::new_full(
-			config,
-			subspace_service::IsCollator::Yes(Box::new(collator_key.clone())),
-		)
-		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
+		let primary_chain_full_node = subspace_service::new_full(config)
+			.await
+			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
 		Ok(PrimaryFullNode { primary_chain_full_node, collator_key })
 	}
 }

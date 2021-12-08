@@ -23,7 +23,6 @@ path = "bin/main.rs"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "2.3.0", features = ["derive"] }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 futures = "0.3.17"
@@ -35,7 +34,6 @@ polkadot-node-collation-generation = { path = "../../polkadot/node/collation-gen
 polkadot-node-core-chain-api = { path = "../../polkadot/node/core/chain-api" }
 polkadot-node-core-runtime-api = { path = "../../polkadot/node/core/runtime-api" }
 polkadot-node-subsystem-util = { path = "../../polkadot/node/subsystem-util" }
-scale-info = { version = "1.0", features = ["derive"] }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5", features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -45,7 +43,6 @@ sc-consensus-subspace-rpc = { version = "0.1.0", path = "../sc-consensus-subspac
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-consensus-uncles = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5", features = ["wasmtime"] }
-sc-keystore = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -55,19 +52,16 @@ sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/parityt
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 serde_json = "1.0.68"
 sp-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-authorship = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-executor = { version = "0.1.0", path = "../sp-executor" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 structopt = "0.3.22"
 subspace-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-runtime" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 thiserror = "1.0"

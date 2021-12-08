@@ -15,5 +15,5 @@ smallvec = "1.6.1"
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 thiserror = "1.0.30"
 
-subspace-node-primitives = { path = "../../../crates/subspace-node-primitives" }
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

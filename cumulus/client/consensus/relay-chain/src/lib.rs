@@ -38,7 +38,6 @@
 use cumulus_client_consensus_common::{
 	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
 };
-use subspace_runtime_primitives::opaque::Block as PBlock;
 use parking_lot::Mutex;
 use sc_client_api::Backend;
 use sc_consensus::{BlockImport, BlockImportParams};
@@ -49,8 +48,9 @@ use sp_consensus::{
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
-
-use subspace_runtime_primitives::{Hash as PHash, PersistedValidationData};
+use subspace_runtime_primitives::Hash as PHash;
+use subspace_runtime_primitives::opaque::Block as PBlock;
+use cirrus_node_primitives::PersistedValidationData;
 
 mod import_queue;
 pub use import_queue::{import_queue, Verifier};

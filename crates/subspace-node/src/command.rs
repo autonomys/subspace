@@ -15,10 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::cli::{Cli, Subcommand};
-use crate::{
-    chain_spec,
-    service::{self, IsCollator},
-};
+use crate::{chain_spec, service};
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
 use subspace_runtime::Block;
@@ -28,7 +25,7 @@ use subspace_runtime::Block;
 pub enum Error {
     /// Subspace service error.
     #[error(transparent)]
-    SubspaceService(#[from] crate::service::Error),
+    SubspaceService(#[from] service::Error),
 
     /// CLI error.
     #[error(transparent)]
@@ -95,109 +92,95 @@ pub fn run() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
 
     match &cli.subcommand {
-        Some(Subcommand::Key(cmd)) => cmd.run(&cli).map_err(Into::into),
+        Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
         Some(Subcommand::BuildSpec(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .sync_run(|config| cmd.run(config.chain_spec, config.network))
-                .map_err(Into::into)
+            runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
         }
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .async_run(|config| {
-                    let PartialComponents {
-                        client,
-                        task_manager,
-                        import_queue,
-                        ..
-                    } = service::new_partial(&config)?;
-                    Ok((cmd.run(client, import_queue), task_manager))
-                })
-                .map_err(Into::into)
+            runner.async_run(|config| {
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    import_queue,
+                    ..
+                } = service::new_partial(&config)?;
+                Ok((cmd.run(client, import_queue), task_manager))
+            })?;
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .async_run(|config| {
-                    let PartialComponents {
-                        client,
-                        task_manager,
-                        ..
-                    } = service::new_partial(&config)?;
-                    Ok((cmd.run(client, config.database), task_manager))
-                })
-                .map_err(Into::into)
+            runner.async_run(|config| {
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = service::new_partial(&config)?;
+                Ok((cmd.run(client, config.database), task_manager))
+            })?;
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .async_run(|config| {
-                    let PartialComponents {
-                        client,
-                        task_manager,
-                        ..
-                    } = service::new_partial(&config)?;
-                    Ok((cmd.run(client, config.chain_spec), task_manager))
-                })
-                .map_err(Into::into)
+            runner.async_run(|config| {
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = service::new_partial(&config)?;
+                Ok((cmd.run(client, config.chain_spec), task_manager))
+            })?;
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .async_run(|config| {
-                    let PartialComponents {
-                        client,
-                        task_manager,
-                        import_queue,
-                        ..
-                    } = service::new_partial(&config)?;
-                    Ok((cmd.run(client, import_queue), task_manager))
-                })
-                .map_err(Into::into)
+            runner.async_run(|config| {
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    import_queue,
+                    ..
+                } = service::new_partial(&config)?;
+                Ok((cmd.run(client, import_queue), task_manager))
+            })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .sync_run(|config| cmd.run(config.database))
-                .map_err(Into::into)
+            runner.sync_run(|config| cmd.run(config.database))?
         }
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
-            runner
-                .async_run(|config| {
-                    let PartialComponents {
-                        client,
-                        task_manager,
-                        backend,
-                        ..
-                    } = service::new_partial(&config)?;
-                    Ok((cmd.run(client, backend), task_manager))
-                })
-                .map_err(Into::into)
+            runner.async_run(|config| {
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    backend,
+                    ..
+                } = service::new_partial(&config)?;
+                Ok((cmd.run(client, backend), task_manager))
+            })?;
         }
         Some(Subcommand::Benchmark(cmd)) => {
             if cfg!(feature = "runtime-benchmarks") {
                 let runner = cli.create_runner(cmd)?;
 
-                runner
-                    .sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))
-                    .map_err(Into::into)
+                runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))?;
             } else {
-                Err(Error::Other(
+                return Err(Error::Other(
                     "Benchmarking wasn't enabled when building the node. You can enable it with \
                     `--features runtime-benchmarks`."
                         .into(),
-                ))
+                ));
             }
         }
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config, IsCollator::No)
+                service::new_full(config)
+                    .await
                     .map(|full| full.task_manager)
-                    .map_err(Into::into)
-            })
+            })?;
         }
     }
+
+    Ok(())
 }

@@ -16,11 +16,15 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-mod overseer;
-
-pub use overseer::IsCollator;
-use overseer::{OverseerGen, OverseerGenArgs, RealOverseerGen};
-use polkadot_overseer::{BlockInfo, Handle, OverseerConnector};
+use lru::LruCache;
+use polkadot_node_collation_generation::CollationGenerationSubsystem;
+use polkadot_node_core_chain_api::ChainApiSubsystem;
+use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
+use polkadot_node_subsystem_util::metrics::Metrics;
+use polkadot_overseer::{
+    metrics::Metrics as OverseerMetrics, BlockInfo, Handle, MetricsTrait, Overseer,
+    OverseerConnector, KNOWN_LEAVES_CACHE_SIZE,
+};
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
@@ -29,8 +33,7 @@ use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::ConstructRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
-use sp_runtime::traits::Block as BlockT;
-use sp_runtime::traits::Header as HeaderT;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use subspace_runtime::opaque::BlockId;
 use subspace_runtime::{self, opaque::Block, RuntimeApi};
@@ -222,7 +225,7 @@ where
         .unwrap_or_default()
         .into_iter()
         .filter_map(|hash| {
-            let number = HeaderBackend::number(client, hash).ok()??;
+            let number = client.number(hash).ok()??;
 
             // Only consider leaves that are in maximum an uncle of the best block.
             if number < best_block.number().saturating_sub(1) || hash == best_block.hash() {
@@ -271,10 +274,7 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(
-    config: Configuration,
-    is_collator: IsCollator,
-) -> Result<NewFull<Arc<FullClient>>, Error> {
+pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Error> {
     let sc_service::PartialComponents {
         client,
         backend,
@@ -285,8 +285,6 @@ pub fn new_full(
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial(&config)?;
-
-    let local_keystore = keystore_container.local_keystore();
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -316,26 +314,45 @@ pub fn new_full(
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let active_leaves = futures::executor::block_on(active_leaves(&select_chain, &*client))?;
+    let overseer_handle = if let Some(_keystore) = keystore_container.local_keystore() {
+        let active_leaves = active_leaves(&select_chain, &*client).await?;
 
-    let overseer_handle = if let Some(keystore) = local_keystore {
-        let overseer_connector = OverseerConnector::default();
         let spawner = task_manager.spawn_handle();
 
-        let (overseer, overseer_handle) = RealOverseerGen
-            .generate::<sc_service::SpawnTaskHandle, FullClient>(
-                overseer_connector,
-                OverseerGenArgs {
-                    leaves: active_leaves,
-                    keystore,
-                    runtime_client: client.clone(),
-                    network_service: network.clone(),
-                    registry: prometheus_registry.as_ref(),
-                    spawner,
-                    is_collator,
-                },
+        let (overseer, overseer_handle) = Overseer::builder()
+            .chain_api(ChainApiSubsystem::new(
+                client.clone(),
+                Metrics::register(prometheus_registry.as_ref())?,
+            ))
+            .collation_generation(CollationGenerationSubsystem::new(Metrics::register(
+                prometheus_registry.as_ref(),
+            )?))
+            .runtime_api(RuntimeApiSubsystem::new(
+                client.clone(),
+                Metrics::register(prometheus_registry.as_ref())?,
+                spawner.clone(),
+            ))
+            .leaves(
+                active_leaves
+                    .into_iter()
+                    .map(
+                        |BlockInfo {
+                             hash,
+                             parent_hash: _,
+                             number,
+                         }| (hash, number),
+                    )
+                    .collect(),
             )
-            .map_err(|e| ServiceError::Other(e.to_string()))?;
+            .activation_external_listeners(Default::default())
+            .span_per_active_leaf(Default::default())
+            .active_leaves(Default::default())
+            .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
+            .metrics(<OverseerMetrics as MetricsTrait>::register(
+                prometheus_registry.as_ref(),
+            )?)
+            .spawner(spawner)
+            .build_with_connector(OverseerConnector::default())?;
 
         let handle = Handle::new(overseer_handle);
 

@@ -29,7 +29,7 @@ parking_lot = "0.10.2"
 
 # Cirrus
 cirrus-client-executor = { path = "../cirrus-executor" }
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 
 # Subspace
 subspace-node = { path = "../../../crates/subspace-node" }
-subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

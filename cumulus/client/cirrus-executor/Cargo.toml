@@ -25,5 +25,5 @@ tracing = "0.1.25"
 polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
-subspace-node-primitives = { path = "../../../crates/subspace-node-primitives" }
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
