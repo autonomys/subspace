@@ -29,7 +29,7 @@ pub enum FarmingError {
 /// Farming Instance that stores a channel to stop/pause the background farming task
 /// and a handle to make it possible to wait on this background task
 pub struct Farming {
-    stop_sender: Option<async_oneshot::Sender<()>>,
+    stop_sender: async_oneshot::Sender<()>,
     handle: Option<JoinHandle<Result<(), FarmingError>>>,
 }
 
@@ -70,7 +70,7 @@ impl Farming {
         });
 
         Farming {
-            stop_sender: Some(stop_sender),
+            stop_sender,
             handle: Some(farming_handle),
         }
     }
@@ -87,7 +87,7 @@ impl Farming {
 
 impl Drop for Farming {
     fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
+        let _ = self.stop_sender.send(());
     }
 }
 

@@ -5,6 +5,8 @@ use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;
+#[cfg(test)]
+use log::info;
 use log::{error, trace};
 use lru::LruCache;
 use rayon::prelude::*;
@@ -14,6 +16,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
+#[cfg(test)]
+use tokio::{sync::mpsc, time::sleep, time::Duration};
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 const COMMITMENTS_CACHE_SIZE: usize = 2;
@@ -410,5 +414,44 @@ impl Commitments {
         });
 
         solutions_fut.await.unwrap().into_iter().next()
+    }
+
+    #[cfg(test)]
+    pub async fn on_recommitment(&self, salt: Salt) -> mpsc::Receiver<()> {
+        let (sender, receiver) = mpsc::channel(1);
+
+        let commitment_clone = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let guard = commitment_clone.inner.commitment_databases.lock().await;
+                let status = guard.metadata_cache.get(&salt);
+                if status.is_none() {
+                    info!(
+                        "Could not retrieve the DB with salt: {:?}, will try again VERY soon...",
+                        salt
+                    );
+                    drop(guard);
+                    sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                info!("Successfully retrieved the DB with salt: {:?}", salt);
+                match status.unwrap() {
+                    CommitmentStatus::InProgress => {
+                        // drop the guard, so commitment can make progress
+                        drop(guard);
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                    CommitmentStatus::Created => {
+                        sender
+                            .send(())
+                            .await
+                            .expect("Cannot send the notification to the test environment!");
+                        break;
+                    }
+                }
+            }
+        });
+
+        receiver
     }
 }
