@@ -9,10 +9,12 @@ use crate::plot::Plot;
 use crate::rpc::RpcClient;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
+use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
 use thiserror::Error;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Error)]
@@ -29,8 +31,10 @@ pub enum FarmingError {
 /// Farming Instance that stores a channel to stop/pause the background farming task
 /// and a handle to make it possible to wait on this background task
 pub struct Farming {
-    stop_sender: Option<async_oneshot::Sender<()>>,
+    stop_sender: async_oneshot::Sender<()>,
     handle: Option<JoinHandle<Result<(), FarmingError>>>,
+    #[cfg(test)]
+    commitment_signal_recv: mpsc::Receiver<()>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
@@ -45,11 +49,24 @@ impl Farming {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = async_oneshot::oneshot();
 
+        // mpsc channel to notify the test environment on commitment has finished
+        #[cfg(test)]
+        let (commitment_signal_sender, commitment_signal_recv) = mpsc::channel(8);
+        #[cfg(not(test))]
+        let (commitment_signal_sender, _commitment_signal_recv) = mpsc::channel(8);
+
         // Get a handle for the background task, so that we can wait on it later if we want to
         let farming_handle = tokio::spawn(async {
             match future::select(
                 Box::pin(async move {
-                    subscribe_to_slot_info(&client, &plot, &commitments, &identity).await
+                    subscribe_to_slot_info(
+                        &client,
+                        &plot,
+                        &commitments,
+                        &identity,
+                        Arc::new(commitment_signal_sender),
+                    )
+                    .await
                 }),
                 stop_receiver,
             )
@@ -70,8 +87,10 @@ impl Farming {
         });
 
         Farming {
-            stop_sender: Some(stop_sender),
+            stop_sender,
             handle: Some(farming_handle),
+            #[cfg(test)]
+            commitment_signal_recv,
         }
     }
 
@@ -83,11 +102,19 @@ impl Farming {
             .await
             .map_err(FarmingError::JoinTask)?
     }
+
+    /// returns true if background recommitment is finished
+    /// returning false means something is wrong with the background recommitment
+    #[cfg(test)]
+    pub(crate) async fn wait_commitment(&mut self) {
+        debug!("waiting for the background recommitment to finish...");
+        self.commitment_signal_recv.recv().await;
+    }
 }
 
 impl Drop for Farming {
     fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
+        let _ = self.stop_sender.send(());
     }
 }
 
@@ -104,6 +131,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,
+    commitment_signal_sender: Arc<mpsc::Sender<()>>,
 ) -> Result<(), FarmingError> {
     info!("Subscribing to slot info");
     let mut new_slots = client
@@ -116,7 +144,13 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     while let Some(slot_info) = new_slots.recv().await {
         debug!("New slot: {:?}", slot_info);
 
-        update_commitments(plot, commitments, &mut salts, &slot_info);
+        update_commitments(
+            plot,
+            commitments,
+            &mut salts,
+            &slot_info,
+            commitment_signal_sender.clone(),
+        );
 
         let local_challenge = derive_local_challenge(slot_info.global_challenge, identity);
 
@@ -173,6 +207,7 @@ fn update_commitments(
     commitments: &Commitments,
     salts: &mut Salts,
     slot_info: &SlotInfo,
+    _commitment_signal_sender: Arc<mpsc::Sender<()>>,
 ) {
     // Check if current salt has changed
     if salts.current != Some(slot_info.salt) {
@@ -237,6 +272,11 @@ fn update_commitments(
                         hex::encode(new_next_salt),
                         started.elapsed().as_secs_f32()
                     );
+                    #[cfg(test)]
+                    _commitment_signal_sender
+                        .send(())
+                        .await
+                        .expect("Cannot send commitment signal to receiver!");
                 }
             });
         }
