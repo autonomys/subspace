@@ -4,6 +4,8 @@
 !/.git/config
 !/.git/HEAD
 !/crates
+!/cumulus
+!/polkadot
 !/substrate
 !/Cargo.lock
 !/Cargo.toml
