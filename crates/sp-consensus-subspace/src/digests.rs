@@ -77,7 +77,7 @@ impl PreDigest {
         let diff = target.wrapping_sub(tag);
         let diff2 = tag.wrapping_sub(target);
         // Find smaller diff between 2 directions.
-        let bidirectional_diff = (diff).min(diff2);
+        let bidirectional_diff = diff.min(diff2);
         u128::from(u64::MAX - bidirectional_diff)
     }
 }
@@ -124,8 +124,8 @@ pub struct SaltDescriptor {
     pub salt: Salt,
 }
 
-/// S solution range update. This is broadcast in the first block of the era, but only applies to
-/// the block after that.
+/// Solution range update. This is broadcast in the first block of the era, but only applies to the
+/// block after that.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct UpdatedSolutionRangeDescriptor {
     /// Solution range used for challenges.

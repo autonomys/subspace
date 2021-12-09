@@ -15,10 +15,6 @@ include = [
 	"/README.md"
 ]
 
-[[bin]]
-name = "subspace-node"
-path = "bin/main.rs"
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
