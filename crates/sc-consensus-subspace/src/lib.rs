@@ -120,7 +120,7 @@ pub struct NewSlotInfo {
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon
-    pub next_salt: Option<Salt>,
+    pub next_salt: Salt,
     /// Acceptable solution range
     pub solution_range: u64,
 }

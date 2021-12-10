@@ -160,8 +160,7 @@ where
             slot,
             global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
             salt,
-            // TODO: This probably needs to change from `Option<Salt>` to just `Salt`
-            next_salt: Some(next_salt),
+            next_salt,
             solution_range,
         };
         let (solution_sender, mut solution_receiver) =
