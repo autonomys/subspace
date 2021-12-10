@@ -45,42 +45,24 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     );
 
     let mut counter = 0;
-    let mut latest_salt = slots.first().unwrap().salt;
     for (slot, tag) in slots.into_iter().zip(tags) {
         let client_copy = client.clone();
         counter += 1;
-        async {
-            client_copy.send_slot(slot.clone()).await;
 
-            // if salt will change, wait for background recommitment to finish first
-            if slot.next_salt.unwrap() != latest_salt {
-                latest_salt = slot.next_salt.unwrap();
-                let mut current_commitment_notifier = commitments.clone().on_recommitment(slot.salt).await;
-                let mut upcoming_commitment_notifier = commitments.clone().on_recommitment(latest_salt).await;
-                tokio::select! {
-                    _ = current_commitment_notifier.recv() => {
-                        // also wait for the recommitment for the upcoming salt
-                        // it locks the commitment database, and causing racy behavior
-                        upcoming_commitment_notifier.recv().await;
-                    },
-                    _ = sleep(Duration::from_secs(3)) => { panic!("Cannot finish recommitments......"); }
-                }
-            }
+        client_copy.send_slot(slot.clone()).await;
 
-            tokio::select! {
-                Some(solution) = client_copy.receive_solution() => {
-                    if let Some(solution) = solution.maybe_solution {
-                        if solution.tag != tag {
-                            panic!("Wrong Tag! The expected value was: {:?}", tag);
-                        }
-                    } else {
-                        panic!("Solution was None! For challenge #: {}", counter);
+        tokio::select! {
+            Some(solution) = client_copy.receive_solution() => {
+                if let Some(solution) = solution.maybe_solution {
+                    if solution.tag != tag {
+                        panic!("Wrong Tag! The expected value was: {:?}", tag);
                     }
-                },
-                _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
-            }
+                } else {
+                    panic!("Solution was None! For challenge #: {}", counter);
+                }
+            },
+            _ = sleep(Duration::from_secs(2)) => { panic!("Something is taking too much time!"); },
         }
-        .await;
     }
 
     // let the farmer know we are done by closing the channel(s)
@@ -129,7 +111,7 @@ async fn farming_salt_change() {
         slot_number: 3,
         global_challenge: [1; TAG_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 2],
-        next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
+        next_salt: Some([1, 1, 1, 1, 1, 1, 1, 3]),
         solution_range: u64::MAX,
     };
     let slots = vec![first_slot, second_slot, third_slot];

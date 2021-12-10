@@ -5,8 +5,6 @@ use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
 use async_std::path::PathBuf;
-#[cfg(test)]
-use log::info;
 use log::{error, trace};
 use lru::LruCache;
 use rayon::prelude::*;
@@ -423,31 +421,30 @@ impl Commitments {
         let commitment_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                let guard = commitment_clone.inner.commitment_databases.lock().await;
-                let status = guard.metadata_cache.get(&salt);
-                if status.is_none() {
-                    info!(
-                        "Could not retrieve the DB with salt: {:?}, will try again VERY soon...",
-                        salt
-                    );
-                    drop(guard);
-                    sleep(Duration::from_millis(100)).await;
-                    continue;
-                }
-                info!("Successfully retrieved the DB with salt: {:?}", salt);
-                match status.unwrap() {
-                    CommitmentStatus::InProgress => {
-                        // drop the guard, so commitment can make progress
+                if let Some(guard) = commitment_clone.inner.commitment_databases.try_lock() {
+                    let status = guard.metadata_cache.get(&salt);
+                    if status.is_none() {
                         drop(guard);
                         sleep(Duration::from_millis(100)).await;
+                        continue;
                     }
-                    CommitmentStatus::Created => {
-                        sender
-                            .send(())
-                            .await
-                            .expect("Cannot send the notification to the test environment!");
-                        break;
+                    match status.unwrap() {
+                        CommitmentStatus::InProgress => {
+                            // drop the guard, so commitment can make progress
+                            drop(guard);
+                            sleep(Duration::from_millis(100)).await;
+                        }
+                        CommitmentStatus::Created => {
+                            drop(guard);
+                            sender
+                                .send(())
+                                .await
+                                .expect("Cannot send the notification to the test environment!");
+                            break;
+                        }
                     }
+                } else {
+                    sleep(Duration::from_millis(100)).await;
                 }
             }
         });

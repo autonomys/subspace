@@ -14,6 +14,8 @@ use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
+#[cfg(test)]
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -112,11 +114,35 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .map_err(FarmingError::RpcError)?;
 
     let mut salts = Salts::default();
+    #[cfg(test)]
+    let mut latest_salt: Salt = Salt::default();
 
     while let Some(slot_info) = new_slots.recv().await {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
+
+        // if salt will change, wait for background recommitment to finish first
+        #[cfg(test)]
+        if slot_info.next_salt.unwrap() != latest_salt {
+            latest_salt = slot_info.next_salt.unwrap();
+            let mut current_commitment_notifier =
+                commitments.clone().on_recommitment(slot_info.salt).await;
+            let mut upcoming_commitment_notifier =
+                commitments.clone().on_recommitment(latest_salt).await;
+            tokio::select! {
+                _ = current_commitment_notifier.recv() => {
+                    // also wait for the recommitment for the upcoming salt
+                    // it locks the commitment database, and can cause racy behavior otherwise
+                    tokio::select! {
+                        _ = upcoming_commitment_notifier.recv() => {
+                        },
+                        _ = sleep(Duration::from_secs(1)) => { panic!("Cannot finish the 2nd recommitments..."); }
+                    }
+                },
+                _ = sleep(Duration::from_secs(1)) => { panic!("Cannot finish the 1st recommitments..."); }
+            }
+        }
 
         let local_challenge = derive_local_challenge(slot_info.global_challenge, identity);
 
