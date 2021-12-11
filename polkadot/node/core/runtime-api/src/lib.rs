@@ -108,6 +108,7 @@ where
 
 		match result {
 			SubmitCandidateReceipt(..) => {}
+            SubmitTransactionBundle(..) => {}
 			PendingHead(..) => {}
 		}
 	}
@@ -141,6 +142,7 @@ where
 
 		match request {
 			Request::SubmitCandidateReceipt(..) => None,
+			Request::SubmitTransactionBundle(..) => None,
 			Request::PendingHead(..) => None,
 		}
 	}
@@ -250,6 +252,14 @@ where
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash));
+		}
+		Request::SubmitTransactionBundle(bundle) => {
+			let api = client.runtime_api();
+			let bundle_hash = bundle.hash();
+			let res = api.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), bundle)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok().map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
 		}
 		Request::PendingHead(sender) => {
 			let api = client.runtime_api();

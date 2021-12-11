@@ -17,8 +17,28 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
+
+pub type BundleHeader = Vec<u8>;
+
+/// Transaction bundle
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Debug)]
+pub struct Bundle {
+    ///
+    pub header: BundleHeader,
+    /// Encoded `Vec<Extrinsic>`
+    pub opaque_transactions: Vec<u8>,
+}
+
+impl Bundle {
+    /// Returns the hash of this bundle.
+    pub fn hash(&self) -> sp_core::H256 {
+        sp_runtime::traits::BlakeTwo256::hash(&self.header)
+    }
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
@@ -27,6 +47,11 @@ sp_api::decl_runtime_apis! {
         fn submit_candidate_receipt_unsigned(
             head_number: <<Block as BlockT>::Header as HeaderT>::Number,
             head_hash: <Block as BlockT>::Hash,
+        ) -> Option<()>;
+
+        /// Submits the transaction bundle via an unsigned extrinsic.
+        fn submit_transaction_bundle_unsigned(
+            bundle: Bundle
         ) -> Option<()>;
 
         /// Returns the block hash given the block number.

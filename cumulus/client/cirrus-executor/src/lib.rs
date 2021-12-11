@@ -35,8 +35,9 @@ use polkadot_node_subsystem::messages::CollationGenerationMessage;
 
 use cirrus_node_primitives::{
 	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData,
-	Bundle, BundleResult, CollationGenerationConfig
+	BundleResult, CollationGenerationConfig
 };
+use sp_executor::Bundle;
 use sc_consensus_subspace::NewSlotInfo;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -221,7 +222,7 @@ where
 	) -> Option<BundleResult> {
 		Some(BundleResult {
 			bundle: Bundle {
-				header: b"bundle header".to_vec(),
+				header: slot_info.slot.to_be_bytes().to_vec(),
 				opaque_transactions: b"opaque_transactions".to_vec()
 			}
 		})

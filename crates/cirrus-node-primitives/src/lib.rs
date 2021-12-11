@@ -18,14 +18,15 @@
 
 use futures::Future;
 use parity_scale_codec::{Decode, Encode};
+use sc_consensus_subspace::NewSlotInfo;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
 use sp_core::bytes;
+use sp_executor::Bundle;
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
 use subspace_runtime_primitives::{BlockNumber, Hash};
-use sc_consensus_subspace::NewSlotInfo;
 
 /// Parachain head data included in the chain.
 #[derive(
@@ -70,20 +71,10 @@ pub struct CollationResult {
     pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
 }
 
-pub type BundleHeader = Vec<u8>;
-
-#[derive(Debug)]
-pub struct Bundle {
-    ///
-    pub header: BundleHeader,
-    /// Encoded `Vec<Extrinsic>`
-    pub opaque_transactions: Vec<u8>,
-}
-
 ///
 pub struct BundleResult {
     ///
-    pub bundle: Bundle
+    pub bundle: Bundle,
 }
 
 impl BundleResult {
@@ -144,11 +135,7 @@ pub type CollatorFn = Box<
 ///
 /// Returns an optional [`CollationResult`].
 pub type BundlerFn = Box<
-    dyn Fn(
-            NewSlotInfo,
-        ) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
-        + Send
-        + Sync,
+    dyn Fn(NewSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>> + Send + Sync,
 >;
 
 /// The key type ID for a collator key.

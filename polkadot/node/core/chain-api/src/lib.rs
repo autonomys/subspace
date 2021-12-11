@@ -126,6 +126,10 @@ where
 					subsystem.metrics.on_request(true);
 					let _ = response_channel.send(Ok(result));
 				},
+				ChainApiMessage::BestBlockHash(response_channel) => {
+					let result = subsystem.client.info().best_hash;
+					let _ = response_channel.send(Ok(result));
+				},
 				ChainApiMessage::Ancestors { hash, k, response_channel } => {
 					let _timer = subsystem.metrics.time_ancestors();
 					tracing::span!(tracing::Level::TRACE, "ChainApiMessage::Ancestors", subsystem=LOG_TARGET, hash=%hash, k=k);

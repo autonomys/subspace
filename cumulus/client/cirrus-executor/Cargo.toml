@@ -27,4 +27,5 @@ polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 sc-consensus-subspace = { path = "../../../crates/sc-consensus-subspace" }
+sp-executor = { path = "../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

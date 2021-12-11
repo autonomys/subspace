@@ -24,4 +24,5 @@ sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrat
 sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sc-consensus-subspace = { path = "../sc-consensus-subspace" }
+sp-executor = { path = "../sp-executor" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }

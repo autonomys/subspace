@@ -27,6 +27,7 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
+use sp_executor::Bundle;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
 /// Subsystem messages where each message is always bound to a relay parent.
@@ -71,6 +72,8 @@ pub enum ChainApiMessage {
 	/// Request the last finalized block number.
 	/// This request always succeeds.
 	FinalizedBlockNumber(ChainApiResponseChannel<BlockNumber>),
+	/// Request the best block hash.
+	BestBlockHash(ChainApiResponseChannel<Hash>),
 	/// Request the `k` ancestors block hashes of a block with the given hash.
 	/// The response channel may return a `Vec` of size up to `k`
 	/// filled with ancestors hashes with the following order:
@@ -100,6 +103,8 @@ pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeA
 pub enum RuntimeApiRequest {
 	/// Submit the candidate receipt to primary chain.
 	SubmitCandidateReceipt(u32, Hash),
+	///
+	SubmitTransactionBundle(Bundle),
 	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),
 }

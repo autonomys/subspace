@@ -801,6 +801,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "subspace-runtime-primitives",
  "tracing",
@@ -842,6 +843,7 @@ dependencies = [
  "serde",
  "sp-application-crypto",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "subspace-runtime-primitives",
 ]
@@ -4316,6 +4318,8 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
+ "sp-executor",
 ]
 
 [[package]]
@@ -5046,6 +5050,7 @@ dependencies = [
  "sc-consensus-subspace",
  "sc-network",
  "smallvec",
+ "sp-executor",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -7369,7 +7374,10 @@ dependencies = [
 name = "sp-executor"
 version = "0.1.0"
 dependencies = [
+ "parity-scale-codec",
+ "scale-info",
  "sp-api",
+ "sp-core",
  "sp-runtime",
  "sp-std",
 ]

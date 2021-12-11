@@ -19,10 +19,10 @@
 #![deny(missing_docs)]
 #![allow(clippy::all)]
 
-use futures::{channel::mpsc, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
+use futures::{channel::{mpsc, oneshot}, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use parity_scale_codec::Encode;
 use polkadot_node_subsystem::{
-	messages::{AllMessages, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest},
+	messages::{AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
 	SubsystemError, SubsystemResult,
 };
@@ -268,21 +268,52 @@ async fn handle_new_slot<Context: SubsystemContext>(
 	slot_info: NewSlotInfo,
 	ctx: &mut Context,
 	sender: &mpsc::Sender<AllMessages>,
-) -> crate::error::Result<()> {
-	let bundle =
-		match (config.bundler)(slot_info).await {
-			Some(bundle_result) => bundle_result.to_bundle(),
-			None => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"executor returned no bundle on bundling",
-				);
+) -> SubsystemResult<()> {
+	let bundle = match (config.bundler)(slot_info).await {
+		Some(bundle_result) => bundle_result.to_bundle(),
+		None => {
+			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+			return Ok(());
+		}
+	};
+
+	let best_hash = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::debug!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
 				return Ok(())
 			},
-		};
+			Ok(h) => h,
+		}
+	};
 
-	println!("================= produced bundle: {:?}", bundle);
 	// TODO: Submit the transaction bundle to primary chain using an extrinsic
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation bundle builder",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitTransactionBundle(bundle),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"failed to send RuntimeApiRequest::SubmitCandidateReceipt",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitCandidateReceipt successfully",
+				);
+			}
+		}),
+	)?;
 
 	Ok(())
 }
