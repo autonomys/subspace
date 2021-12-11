@@ -25,6 +25,7 @@ use sp_core::bytes;
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
 use subspace_runtime_primitives::{BlockNumber, Hash};
+use sc_consensus_subspace::NewSlotInfo;
 
 /// Parachain head data included in the chain.
 #[derive(
@@ -67,6 +68,28 @@ pub struct CollationResult {
     /// However, if it is called, it should be called with the signed statement of a parachain validator seconding the
     /// collation.
     pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
+}
+
+pub type BundleHeader = Vec<u8>;
+
+#[derive(Debug)]
+pub struct Bundle {
+    ///
+    pub header: BundleHeader,
+    /// Encoded `Vec<Extrinsic>`
+    pub opaque_transactions: Vec<u8>,
+}
+
+///
+pub struct BundleResult {
+    ///
+    pub bundle: Bundle
+}
+
+impl BundleResult {
+    pub fn to_bundle(self) -> Bundle {
+        self.bundle
+    }
 }
 
 // TODO: proper signal?
@@ -114,6 +137,20 @@ pub type CollatorFn = Box<
         + Sync,
 >;
 
+/// Collation function.
+///
+/// Will be called with the hash of the relay chain block the parachain block should be build on and the
+/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
+///
+/// Returns an optional [`CollationResult`].
+pub type BundlerFn = Box<
+    dyn Fn(
+            NewSlotInfo,
+        ) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// The key type ID for a collator key.
 const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
 
@@ -139,6 +176,8 @@ pub struct CollationGenerationConfig {
     pub key: CollatorPair,
     /// Collation function. See [`CollatorFn`] for more details.
     pub collator: CollatorFn,
+    /// Transaction bundle function.
+    pub bundler: BundlerFn,
 }
 
 impl std::fmt::Debug for CollationGenerationConfig {

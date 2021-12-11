@@ -33,7 +33,8 @@ use polkadot_node_subsystem_util::{
 use std::sync::Arc;
 
 use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
-use subspace_runtime_primitives::{Hash};
+use sc_consensus_subspace::NewSlotInfo;
+use subspace_runtime_primitives::Hash;
 
 mod error;
 
@@ -113,7 +114,7 @@ impl CollationGenerationSubsystem {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					let metrics = self.metrics.clone();
-					if let Err(err) = handle_new_activations_subspace(
+					if let Err(err) = handle_new_activations(
 						config.clone(),
 						activated.into_iter().map(|v| v.hash),
 						ctx,
@@ -141,7 +142,18 @@ impl CollationGenerationSubsystem {
 			},
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
-				println!("=================== TODO: produce tx bundle on new slot: {:?}", slot_info);
+				if let Some(config) = &self.config {
+					if let Err(err) = handle_new_slot(
+						config.clone(),
+						slot_info,
+						ctx,
+						sender,
+					)
+					.await
+					{
+						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new slot");
+					}
+				}
 				false
 			},
 			Err(err) => {
@@ -174,7 +186,7 @@ where
 }
 
 /// Produces collations on each tip of primary chain.
-async fn handle_new_activations_subspace<Context: SubsystemContext>(
+async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
@@ -247,6 +259,30 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 			}),
 		)?;
 	}
+
+	Ok(())
+}
+
+async fn handle_new_slot<Context: SubsystemContext>(
+	config: Arc<CollationGenerationConfig>,
+	slot_info: NewSlotInfo,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> crate::error::Result<()> {
+	let bundle =
+		match (config.bundler)(slot_info).await {
+			Some(bundle_result) => bundle_result.to_bundle(),
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"executor returned no bundle on bundling",
+				);
+				return Ok(())
+			},
+		};
+
+	println!("================= produced bundle: {:?}", bundle);
+	// TODO: Submit the transaction bundle to primary chain using an extrinsic
 
 	Ok(())
 }

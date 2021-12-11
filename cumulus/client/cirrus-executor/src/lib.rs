@@ -32,11 +32,12 @@ use cumulus_client_consensus_common::ParachainConsensus;
 
 use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
-use cirrus_node_primitives::CollationGenerationConfig;
 
 use cirrus_node_primitives::{
-	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData
+	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData,
+	Bundle, BundleResult, CollationGenerationConfig
 };
+use sc_consensus_subspace::NewSlotInfo;
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
@@ -213,6 +214,18 @@ where
 
 		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
+
+	async fn produce_bundle(
+		mut self,
+		slot_info: NewSlotInfo,
+	) -> Option<BundleResult> {
+		Some(BundleResult {
+			bundle: Bundle {
+				header: b"bundle header".to_vec(),
+				opaque_transactions: b"opaque_transactions".to_vec()
+			}
+		})
+	}
 }
 
 /// Parameters for [`start_executor`].
@@ -254,13 +267,23 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	);
 
 	let span = tracing::Span::current();
+	let executor_clone = executor.clone();
+	let span_clone = span.clone();
 	let config = CollationGenerationConfig {
 		key,
 		collator: Box::new(move |relay_parent, validation_data| {
-			let collator = executor.clone();
+			let executor = executor_clone.clone();
 
-			collator
+			executor
 				.produce_candidate(relay_parent, validation_data.clone())
+				.instrument(span_clone.clone())
+				.boxed()
+		}),
+		bundler: Box::new(move |slot_info| {
+			let executor = executor.clone();
+
+			executor
+				.produce_bundle(slot_info)
 				.instrument(span.clone())
 				.boxed()
 		}),

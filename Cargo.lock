@@ -796,6 +796,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-overseer",
  "sc-client-api",
+ "sc-consensus-subspace",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -836,6 +837,7 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.18",
  "parity-scale-codec",
+ "sc-consensus-subspace",
  "scale-info",
  "serde",
  "sp-application-crypto",
@@ -4959,6 +4961,7 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
+ "sc-consensus-subspace",
  "sp-core",
  "sp-maybe-compressed-blob",
  "subspace-runtime-primitives",
