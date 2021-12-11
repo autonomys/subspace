@@ -17,6 +17,7 @@ tracing = "0.1.29"
 lru = "0.7"
 parity-util-mem = { version = ">= 0.10.1", default-features = false }
 
+sc-consensus-subspace = { path = "../../../crates/sc-consensus-subspace" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 
 [dev-dependencies]

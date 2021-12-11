@@ -87,6 +87,7 @@ where
 			FromOverseer::Signal(OverseerSignal::Conclude) => return Ok(()),
 			FromOverseer::Signal(OverseerSignal::ActiveLeaves(_)) => {},
 			FromOverseer::Signal(OverseerSignal::BlockFinalized(..)) => {},
+			FromOverseer::Signal(OverseerSignal::NewSlot(..)) => {},
 			FromOverseer::Communication { msg } => match msg {
 				ChainApiMessage::BlockNumber(hash, response_channel) => {
 					let _timer = subsystem.metrics.time_block_number();

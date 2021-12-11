@@ -359,13 +359,21 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         {
             let handle = handle.clone();
             let overseer_client = client.clone();
+            // In order to make this stream available, the embedded subspace node has to be an
+            // authority node.
+            let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
+            assert!(role.is_authority(), "Authority node is required");
             task_manager.spawn_essential_handle().spawn_blocking(
                 "overseer",
                 Some("overseer"),
                 Box::pin(async move {
                     use futures::{pin_mut, select, FutureExt};
 
-                    let forward = polkadot_overseer::forward_events(overseer_client, handle);
+                    let forward = polkadot_overseer::forward_events(
+                        overseer_client,
+                        new_slot_notification_stream_clone,
+                        handle,
+                    );
 
                     let forward = forward.fuse();
                     let overseer_fut = overseer.run().fuse();

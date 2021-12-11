@@ -218,6 +218,7 @@ where
 				FromOverseer::Signal(OverseerSignal::Conclude) => return Ok(()),
 				FromOverseer::Signal(OverseerSignal::ActiveLeaves(_)) => {},
 				FromOverseer::Signal(OverseerSignal::BlockFinalized(..)) => {},
+				FromOverseer::Signal(OverseerSignal::NewSlot(..)) => {},
 				FromOverseer::Communication { msg } => match msg {
 					RuntimeApiMessage::Request(relay_parent, request) => {
 						subsystem.spawn_request(relay_parent, request);

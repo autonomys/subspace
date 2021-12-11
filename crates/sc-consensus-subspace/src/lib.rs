@@ -111,7 +111,7 @@ use subspace_core_primitives::{Randomness, RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 /// Information about new slot that just arrived
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,

@@ -16,4 +16,5 @@ substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate
 thiserror = "1.0.30"
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+sc-consensus-subspace = { path = "../../../crates/sc-consensus-subspace" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

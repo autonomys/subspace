@@ -535,6 +535,7 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 							break;
 						}
 						Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => {}
+						Ok(FromOverseer::Signal(OverseerSignal::NewSlot(..))) => {}
 						Ok(FromOverseer::Communication { msg }) => {
 							if let Ok(to_job) = <<Context as SubsystemContext>::Message>::try_from(msg) {
 								jobs.send_msg(to_job.relay_parent(), to_job).await;

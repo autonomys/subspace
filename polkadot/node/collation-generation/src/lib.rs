@@ -140,6 +140,10 @@ impl CollationGenerationSubsystem {
 				false
 			},
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
+			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
+				println!("=================== TODO: produce tx bundle on new slot: {:?}", slot_info);
+				false
+			},
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
