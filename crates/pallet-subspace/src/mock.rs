@@ -165,7 +165,6 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;

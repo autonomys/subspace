@@ -4457,6 +4457,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-transaction-fees"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-transaction-payment"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5#b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5"
@@ -7990,6 +8000,7 @@ dependencies = [
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
+ "pallet-transaction-fees",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",

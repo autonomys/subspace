@@ -52,7 +52,7 @@ use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
 pub use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, REPLICATION_FACTOR,
+    MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -220,7 +220,6 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
     pub const RecordSize: u32 = RECORD_SIZE;
     pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-    pub const ReplicationFactor: u16 = REPLICATION_FACTOR;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -235,7 +234,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -278,6 +276,48 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+    pub const ReplicationFactor: u16 = MIN_REPLICATION_FACTOR;
+}
+
+pub struct CreditSupply;
+
+impl Get<Balance> for CreditSupply {
+    fn get() -> Balance {
+        Balances::total_issuance()
+    }
+}
+
+pub struct TotalSpacePledged;
+
+impl Get<u64> for TotalSpacePledged {
+    fn get() -> u64 {
+        let piece_size = u64::try_from(PIECE_SIZE)
+            .expect("Piece size is definitely small enough to fit into u64; qed");
+        // Operations reordered to avoid u64 overflow, but essentially are:
+        // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
+        u64::MAX / Subspace::solution_range() * piece_size * SlotProbability::get().0
+            / SlotProbability::get().1
+    }
+}
+
+pub struct BlockchainHistorySize;
+
+impl Get<u64> for BlockchainHistorySize {
+    fn get() -> u64 {
+        Subspace::archived_history_size()
+    }
+}
+
+impl pallet_transaction_fees::Config for Runtime {
+    type Event = Event;
+    type MinReplicationFactor = ReplicationFactor;
+    type CreditSupply = CreditSupply;
+    type TotalSpacePledged = TotalSpacePledged;
+    type BlockchainHistorySize = BlockchainHistorySize;
+    type Currency = Balances;
+}
+
 pub struct TransactionByteFee;
 
 impl Get<Balance> for TransactionByteFee {
@@ -285,21 +325,7 @@ impl Get<Balance> for TransactionByteFee {
         if cfg!(feature = "do-not-enforce-cost-of-storage") {
             1
         } else {
-            let credit_supply = Balances::total_issuance();
-            let total_space = Balance::from(
-                u64::MAX * SlotProbability::get().0
-                    / SlotProbability::get().1
-                    / (Subspace::solution_range()
-                        / u64::try_from(PIECE_SIZE)
-                            .expect("Piece size is definitely small enough to fit into u64; qed")),
-            );
-            let blockchain_size = Balance::from(Subspace::archived_history_size());
-
-            match total_space.checked_sub(blockchain_size * Balance::from(ReplicationFactor::get()))
-            {
-                Some(free_space) if free_space > 0 => credit_supply / free_space,
-                _ => Balance::MAX,
-            }
+            TransactionFees::transaction_byte_fee()
         }
     }
 }
@@ -394,6 +420,7 @@ construct_runtime!(
         Rewards: pallet_rewards = 9,
 
         Balances: pallet_balances = 4,
+        TransactionFees: pallet_transaction_fees = 12,
         TransactionPayment: pallet_transaction_payment = 5,
         Utility: pallet_utility = 8,
 

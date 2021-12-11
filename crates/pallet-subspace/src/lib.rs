@@ -200,11 +200,6 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
-        /// Replication factor, defines minimum desired number of replicas of the blockchain to be
-        /// stored by the network.
-        #[pallet::constant]
-        type ReplicationFactor: Get<u16>;
-
         /// Subspace requires some logic to be triggered on every block to query for whether an epoch
         /// has ended and to perform the transition to the next epoch.
         ///
