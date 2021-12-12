@@ -19,15 +19,22 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+mod default_weights;
+
 use frame_support::traits::{Currency, Get};
+use frame_support::weights::Weight;
 pub use pallet::*;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+pub trait WeightInfo {
+    fn on_initialize() -> Weight;
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::BalanceOf;
+    use super::{BalanceOf, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
@@ -56,6 +63,8 @@ mod pallet {
         type BlockchainHistorySize: Get<u64>;
 
         type Currency: Currency<Self::AccountId>;
+
+        type WeightInfo: WeightInfo;
     }
 
     /// Temporary value (cleared at block finalization) which contains cached value of
@@ -103,5 +112,13 @@ where
         TransactionByteFee::<T>::put(transaction_byte_fee);
 
         transaction_byte_fee
+    }
+
+    pub fn distribute_transaction_fees(
+        storage_fee: BalanceOf<T>,
+        compute_fee: BalanceOf<T>,
+        tip: BalanceOf<T>,
+    ) {
+        // TODO
     }
 }

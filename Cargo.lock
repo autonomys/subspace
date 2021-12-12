@@ -4464,6 +4464,7 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "sp-consensus-subspace",
 ]
 
 [[package]]
