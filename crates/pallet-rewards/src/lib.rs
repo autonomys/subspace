@@ -81,19 +81,19 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     fn do_initialize(_n: T::BlockNumber) {
-        if let Some(block_author) = frame_system::Pallet::<T>::digest()
+        let block_author = frame_system::Pallet::<T>::digest()
             .logs
             .iter()
             .find_map(|s| s.as_subspace_pre_digest())
             .map(|pre_digest| pre_digest.solution.public_key)
-        {
-            let reward = T::BlockReward::get();
-            T::Currency::deposit_creating(&block_author, reward);
+            .expect("Block author must always be present; qed");
 
-            Self::deposit_event(Event::BlockReward {
-                block_author,
-                reward,
-            });
-        }
+        let reward = T::BlockReward::get();
+        T::Currency::deposit_creating(&block_author, reward);
+
+        Self::deposit_event(Event::BlockReward {
+            block_author,
+            reward,
+        });
     }
 }
