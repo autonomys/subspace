@@ -852,7 +852,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(now: T::BlockNumber) {
-        let maybe_pre_digest: Option<PreDigest> = <frame_system::Pallet<T>>::digest()
+        let maybe_pre_digest: Option<PreDigest<T::AccountId>> = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
             .filter_map(|s| s.as_pre_runtime())

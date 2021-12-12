@@ -16,7 +16,6 @@
 
 //! Primitives for Subspace consensus.
 
-#![deny(warnings)]
 #![forbid(unsafe_code, missing_docs, unused_variables, unused_imports)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -25,7 +24,7 @@ pub mod inherents;
 pub mod offence;
 
 use crate::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, SaltDescriptor,
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
@@ -152,7 +151,7 @@ pub fn check_equivocation_proof<H>(proof: EquivocationProof<H>) -> bool
 where
     H: Header,
 {
-    let find_pre_digest = |header: &H| {
+    let find_pre_digest = |header: &H| -> Option<PreDigest<FarmerPublicKey>> {
         header
             .digest()
             .logs()
@@ -161,7 +160,8 @@ where
     };
 
     let verify_seal_signature = |mut header: H, offender: &FarmerPublicKey| {
-        let seal = header.digest_mut().pop()?.as_subspace_seal()?;
+        let seal =
+            CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&header.digest_mut().pop()?)?;
         let pre_hash = header.hash();
 
         if !offender.verify(&pre_hash.as_ref(), &seal) {

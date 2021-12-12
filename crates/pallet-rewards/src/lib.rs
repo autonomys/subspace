@@ -21,12 +21,10 @@
 
 mod default_weights;
 
-use codec::{Decode, Encode};
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
-use sp_consensus_subspace::digests::PreDigest;
-use sp_consensus_subspace::SUBSPACE_ENGINE_ID;
+use sp_consensus_subspace::digests::CompatibleDigestItem;
 
 pub trait WeightInfo {
     fn on_initialize() -> Weight;
@@ -83,17 +81,8 @@ impl<T: Config> Pallet<T> {
         if let Some(block_author) = frame_system::Pallet::<T>::digest()
             .logs
             .iter()
-            .filter_map(|s| s.as_pre_runtime())
-            .find_map(|(id, mut data)| {
-                if id == SUBSPACE_ENGINE_ID {
-                    PreDigest::decode(&mut data).ok()
-                } else {
-                    None
-                }
-            })
-            .and_then(|pre_digest| {
-                T::AccountId::decode(&mut pre_digest.solution.public_key.encode().as_ref()).ok()
-            })
+            .find_map(|s| s.as_subspace_pre_digest())
+            .map(|pre_digest| pre_digest.solution.public_key)
         {
             let reward = T::BlockReward::get();
             T::Currency::deposit_creating(&block_author, reward);
