@@ -34,7 +34,7 @@
 use std::sync::Arc;
 
 use futures::prelude::*;
-use sc_client_api::AuxStore;
+use sc_client_api::{AuxStore, BlockBackend};
 use sp_blockchain::HeaderBackend;
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
@@ -61,7 +61,7 @@ impl<Client> ChainApiSubsystem<Client> {
 
 impl<Client, Context> overseer::Subsystem<Context, SubsystemError> for ChainApiSubsystem<Client>
 where
-	Client: HeaderBackend<Block> + AuxStore + 'static,
+	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 	Context: SubsystemContext<Message = ChainApiMessage>,
 	Context: overseer::SubsystemContext<Message = ChainApiMessage>,
 {
@@ -78,7 +78,7 @@ async fn run<Client, Context>(
 	subsystem: ChainApiSubsystem<Client>,
 ) -> SubsystemResult<()>
 where
-	Client: HeaderBackend<Block> + AuxStore,
+	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore,
 	Context: SubsystemContext<Message = ChainApiMessage>,
 	Context: overseer::SubsystemContext<Message = ChainApiMessage>,
 {
@@ -125,6 +125,13 @@ where
 					// always succeeds
 					subsystem.metrics.on_request(true);
 					let _ = response_channel.send(Ok(result));
+				},
+				ChainApiMessage::BlockBody(hash, response_channel) => {
+					let result = subsystem
+						.client
+						.block_body(&BlockId::Hash(hash))
+						.map_err(|e| e.to_string().into());
+					let _ = response_channel.send(result);
 				},
 				ChainApiMessage::BestBlockHash(response_channel) => {
 					let result = subsystem.client.info().best_hash;

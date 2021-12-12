@@ -15,5 +15,7 @@ thiserror = "1.0.30"
 parity-scale-codec = { version = "2.3.1", default-features = false, features = ["bit-vec", "derive"] }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+pallet-executor = { path = "../../../crates/pallet-executor" }
 sc-consensus-subspace  = { path = "../../../crates/sc-consensus-subspace" }
+subspace-runtime = { path = "../../../crates/subspace-runtime" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

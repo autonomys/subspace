@@ -20,7 +20,7 @@
 #![allow(clippy::all)]
 
 use futures::{channel::{mpsc, oneshot}, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use polkadot_node_subsystem::{
 	messages::{AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
 use sc_consensus_subspace::NewSlotInfo;
+use subspace_runtime::{Call, UncheckedExtrinsic};
 use subspace_runtime_primitives::Hash;
 
 mod error;
@@ -258,7 +259,60 @@ async fn handle_new_activations<Context: SubsystemContext>(
 				}
 			}),
 		)?;
+
+		// TODO: invoke this on finalized block?
+		process_primary_block(config.clone(), relay_parent, ctx, sender).await?;
 	}
+
+	Ok(())
+}
+
+/// Apply the transaction bundles for given primary block as follows:
+///
+/// 1. Extract the transaction bundles from the block.
+/// 2. Pass the bundles to secondary node and let it do the computation.
+async fn process_primary_block<Context: SubsystemContext>(
+	config: Arc<CollationGenerationConfig>,
+	block_hash: Hash,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> crate::error::Result<()> {
+	let extrinsics = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BlockBody(block_hash, tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::error!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
+				return Ok(())
+			},
+			Ok(None) => {
+				tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
+				return Ok(())
+			}
+			Ok(Some(b)) => b,
+		}
+	};
+
+	let bundles = extrinsics
+		.into_iter()
+		.filter_map(|opaque_extrinsic| {
+			match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
+				Ok(uxt) => {
+					if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+						bundle,
+					}) = uxt.function
+					{
+						Some(bundle)
+					} else {
+						None
+					}
+				}
+				Err(_) => None,
+			}
+		})
+		.collect::<Vec<_>>();
+
+	println!("=========== TODO: pass the bundles({:?}) to secondary node and compute", bundles);
 
 	Ok(())
 }

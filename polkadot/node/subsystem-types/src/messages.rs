@@ -29,6 +29,7 @@ pub use sc_network::IfDisconnected;
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
 use sp_executor::Bundle;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
+use sp_runtime::OpaqueExtrinsic;
 
 /// Subsystem messages where each message is always bound to a relay parent.
 pub trait BoundToRelayParent {
@@ -72,6 +73,8 @@ pub enum ChainApiMessage {
 	/// Request the last finalized block number.
 	/// This request always succeeds.
 	FinalizedBlockNumber(ChainApiResponseChannel<BlockNumber>),
+	/// Request the block by hash.
+	BlockBody(Hash, ChainApiResponseChannel<Option<Vec<OpaqueExtrinsic>>>),
 	/// Request the best block hash.
 	BestBlockHash(ChainApiResponseChannel<Hash>),
 	/// Request the `k` ancestors block hashes of a block with the given hash.
