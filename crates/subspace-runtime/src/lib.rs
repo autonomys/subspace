@@ -55,6 +55,7 @@ use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
 pub use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -280,6 +281,8 @@ impl pallet_balances::Config for Runtime {
 
 parameter_types! {
     pub const ReplicationFactor: u16 = MIN_REPLICATION_FACTOR;
+    pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
+    pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
 }
 
 pub struct CreditSupply;
@@ -314,6 +317,8 @@ impl Get<u64> for BlockchainHistorySize {
 impl pallet_transaction_fees::Config for Runtime {
     type Event = Event;
     type MinReplicationFactor = ReplicationFactor;
+    type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
+    type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
     type BlockchainHistorySize = BlockchainHistorySize;
