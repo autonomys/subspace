@@ -23,7 +23,7 @@ use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
 use sp_core::bytes;
-use sp_executor::Bundle;
+use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
 use subspace_runtime_primitives::{BlockNumber, Hash};
@@ -83,6 +83,18 @@ impl BundleResult {
     }
 }
 
+///
+pub struct ProcessorResult {
+    ///
+    pub execution_receipt: ExecutionReceipt<Hash>,
+}
+
+impl ProcessorResult {
+    pub fn to_execution_receipt(self) -> ExecutionReceipt<Hash> {
+        self.execution_receipt
+    }
+}
+
 // TODO: proper signal?
 pub type CollationSecondedSignal = Vec<u8>;
 
@@ -138,6 +150,18 @@ pub type BundlerFn = Box<
     dyn Fn(NewSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>> + Send + Sync,
 >;
 
+/// Collation function.
+///
+/// Will be called with the hash of the relay chain block the parachain block should be build on and the
+/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
+///
+/// Returns an optional [`CollationResult`].
+pub type ProcessorFn = Box<
+    dyn Fn(Hash, Vec<Bundle>) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// The key type ID for a collator key.
 const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
 
@@ -165,6 +189,8 @@ pub struct CollationGenerationConfig {
     pub collator: CollatorFn,
     /// Transaction bundle function.
     pub bundler: BundlerFn,
+    /// State processor function.
+    pub processor: ProcessorFn,
 }
 
 impl std::fmt::Debug for CollationGenerationConfig {

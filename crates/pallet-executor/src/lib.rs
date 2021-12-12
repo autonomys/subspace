@@ -19,14 +19,14 @@
 
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
-use sp_executor::Bundle;
+use sp_executor::{Bundle, ExecutionReceipt};
 
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_executor::Bundle;
+    use sp_executor::{Bundle, ExecutionReceipt};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -50,6 +50,8 @@ mod pallet {
     pub enum Event<T: Config> {
         /// A new candidate receipt was backed.
         CandidateReceiptStored(T::BlockNumber, T::Hash),
+        /// A new candidate receipt was backed.
+        ExecutionReceiptStored(T::Hash),
         ///
         TransactionBundleStored(H256),
     }
@@ -89,6 +91,24 @@ mod pallet {
         }
 
         #[pallet::weight((10_000, Pays::No))]
+        pub fn submit_execution_receipt(
+            origin: OriginFor<T>,
+            execution_receipt: ExecutionReceipt<T::Hash>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+
+            log::debug!(
+                target: "runtime::subspace::executor",
+                "Submitting execution receipt: {:?}",
+                execution_receipt
+            );
+
+            Self::deposit_event(Event::ExecutionReceiptStored(execution_receipt.hash()));
+
+            Ok(())
+        }
+
+        #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(origin: OriginFor<T>, bundle: Bundle) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -122,6 +142,7 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::submit_candidate_receipt { .. } => Ok(()),
+                Call::submit_execution_receipt { .. } => Ok(()),
                 Call::submit_transaction_bundle { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
@@ -136,6 +157,15 @@ mod pallet {
                     ValidTransaction::with_tag_prefix("SubspaceSubmitCandidateReceipt")
                         .priority(TransactionPriority::MAX)
                         .and_provides((head_number, head_hash))
+                        .longevity(TransactionLongevity::MAX)
+                        // We need this extrinsic to be propagted to the farmer nodes.
+                        .propagate(true)
+                        .build()
+                }
+                Call::submit_execution_receipt { execution_receipt } => {
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitExecutionReceipt")
+                        .priority(TransactionPriority::MAX)
+                        .and_provides(execution_receipt.hash())
                         .longevity(TransactionLongevity::MAX)
                         // We need this extrinsic to be propagted to the farmer nodes.
                         .propagate(true)
@@ -188,6 +218,27 @@ where
             Err(e) => log::error!(
                 target: "runtime::subspace::executor",
                 "Error submitting Subspace candidate receipt: {:?}",
+                e,
+            ),
+        }
+
+        Ok(())
+    }
+
+    /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
+    pub fn submit_execution_receipt_unsigned(
+        execution_receipt: ExecutionReceipt<T::Hash>,
+    ) -> frame_support::pallet_prelude::DispatchResult {
+        let call = Call::submit_execution_receipt { execution_receipt };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => log::info!(
+                target: "runtime::subspace::executor",
+                "Submitted Subspace execution receipt.",
+            ),
+            Err(e) => log::error!(
+                target: "runtime::subspace::executor",
+                "Error submitting Subspace execution receipt: {:?}",
                 e,
             ),
         }

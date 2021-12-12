@@ -270,7 +270,7 @@ async fn handle_new_activations<Context: SubsystemContext>(
 /// Apply the transaction bundles for given primary block as follows:
 ///
 /// 1. Extract the transaction bundles from the block.
-/// 2. Pass the bundles to secondary node and let it do the computation.
+/// 2. Pass the bundles to secondary node and do the computation there.
 async fn process_primary_block<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	block_hash: Hash,
@@ -312,7 +312,50 @@ async fn process_primary_block<Context: SubsystemContext>(
 		})
 		.collect::<Vec<_>>();
 
-	println!("=========== TODO: pass the bundles({:?}) to secondary node and compute", bundles);
+	let execution_receipt = match (config.processor)(block_hash, bundles).await {
+		Some(processor_result) => processor_result.to_execution_receipt(),
+		None => {
+			tracing::debug!(target: LOG_TARGET, "executor returned no result on processing bundles",);
+			return Ok(());
+		}
+	};
+
+	let best_hash = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::debug!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
+				return Ok(())
+			},
+			Ok(h) => h,
+		}
+	};
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation submit execution receipt",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitExecutionReceipt(execution_receipt),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"failed to send RuntimeApiRequest::SubmitExecutionReceipt",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitExecutionReceipt successfully",
+				);
+			}
+		}),
+	)?;
 
 	Ok(())
 }
@@ -343,7 +386,6 @@ async fn handle_new_slot<Context: SubsystemContext>(
 		}
 	};
 
-	// TODO: Submit the transaction bundle to primary chain using an extrinsic
 	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation bundle builder",

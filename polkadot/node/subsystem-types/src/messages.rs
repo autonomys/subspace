@@ -27,7 +27,7 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_executor::Bundle;
+use sp_executor::{Bundle, ExecutionReceipt};
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 use sp_runtime::OpaqueExtrinsic;
 
@@ -105,8 +105,11 @@ pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeA
 #[derive(Debug)]
 pub enum RuntimeApiRequest {
 	/// Submit the candidate receipt to primary chain.
+	// TODO: remove later
 	SubmitCandidateReceipt(u32, Hash),
-	///
+	/// Submit the execution receipt to primary chain.
+	SubmitExecutionReceipt(ExecutionReceipt<Hash>),
+	/// Submit the transaction bundle to primary chain.
 	SubmitTransactionBundle(Bundle),
 	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),

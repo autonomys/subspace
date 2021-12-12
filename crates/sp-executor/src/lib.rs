@@ -20,12 +20,13 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::RuntimeDebug;
 use sp_std::vec::Vec;
 
 pub type BundleHeader = Vec<u8>;
 
 /// Transaction bundle
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Debug)]
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct Bundle {
     ///
     pub header: BundleHeader,
@@ -40,6 +41,22 @@ impl Bundle {
     }
 }
 
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct ExecutionReceipt<Hash> {
+    ///
+    pub primary_hash: Hash,
+    ///
+    pub secondary_hash: Hash,
+    ///
+    pub state_root: Hash,
+}
+
+impl<Hash: Copy> ExecutionReceipt<Hash> {
+    pub fn hash(&self) -> Hash {
+        self.primary_hash
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi {
@@ -47,6 +64,11 @@ sp_api::decl_runtime_apis! {
         fn submit_candidate_receipt_unsigned(
             head_number: <<Block as BlockT>::Header as HeaderT>::Number,
             head_hash: <Block as BlockT>::Hash,
+        ) -> Option<()>;
+
+        /// Submits the execution receipt via an unsigned extrinsic.
+        fn submit_execution_receipt_unsigned(
+            execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.

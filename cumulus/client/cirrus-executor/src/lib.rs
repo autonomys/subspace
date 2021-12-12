@@ -35,9 +35,9 @@ use polkadot_node_subsystem::messages::CollationGenerationMessage;
 
 use cirrus_node_primitives::{
 	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData,
-	BundleResult, CollationGenerationConfig
+	BundleResult, CollationGenerationConfig, ProcessorResult,
 };
-use sp_executor::Bundle;
+use sp_executor::{Bundle, ExecutionReceipt};
 use sc_consensus_subspace::NewSlotInfo;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -223,8 +223,23 @@ where
 		Some(BundleResult {
 			bundle: Bundle {
 				header: slot_info.slot.to_be_bytes().to_vec(),
-				opaque_transactions: b"opaque_transactions".to_vec()
-			}
+				opaque_transactions: b"opaque_transactions".to_vec(),
+			},
+		})
+	}
+
+	async fn process_bundles(
+		mut self,
+		primary_hash: PHash,
+		bundles: Vec<Bundle>,
+	) -> Option<ProcessorResult> {
+
+		Some(ProcessorResult {
+			execution_receipt: ExecutionReceipt {
+				primary_hash,
+				secondary_hash: Default::default(),
+				state_root: Default::default(),
+			},
 		})
 	}
 }
@@ -268,23 +283,33 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	);
 
 	let span = tracing::Span::current();
-	let executor_clone = executor.clone();
-	let span_clone = span.clone();
+	let collator_clone = executor.clone();
+	let bundler_clone = executor.clone();
+	let collator_span_clone = span.clone();
+	let bundler_span_clone = span.clone();
 	let config = CollationGenerationConfig {
 		key,
 		collator: Box::new(move |relay_parent, validation_data| {
-			let executor = executor_clone.clone();
+			let collator = collator_clone.clone();
 
-			executor
+			collator
 				.produce_candidate(relay_parent, validation_data.clone())
-				.instrument(span_clone.clone())
+				.instrument(collator_span_clone.clone())
 				.boxed()
 		}),
 		bundler: Box::new(move |slot_info| {
-			let executor = executor.clone();
+			let bundler = bundler_clone.clone();
 
-			executor
+			bundler
 				.produce_bundle(slot_info)
+				.instrument(bundler_span_clone.clone())
+				.boxed()
+		}),
+		processor: Box::new(move |primary_hash, bundles| {
+			let processor = executor.clone();
+
+			processor
+				.process_bundles(primary_hash, bundles)
 				.instrument(span.clone())
 				.boxed()
 		}),

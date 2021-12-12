@@ -747,6 +747,12 @@ impl_runtime_apis! {
             Executor::submit_candidate_receipt_unsigned(head_number, head_hash).ok()
         }
 
+        fn submit_execution_receipt_unsigned(
+            execution_receipt: sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>,
+        ) -> Option<()> {
+            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+        }
+
         fn submit_transaction_bundle_unsigned(
             bundle: sp_executor::Bundle
         ) -> Option<()> {
