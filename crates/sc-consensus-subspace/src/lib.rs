@@ -131,7 +131,7 @@ pub struct NewSlotNotification {
     /// New slot information
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot
-    pub solution_sender: TracingUnboundedSender<(Solution, Vec<u8>)>,
+    pub solution_sender: TracingUnboundedSender<(Solution<FarmerPublicKey>, Vec<u8>)>,
 }
 
 /// Subspace epoch information
@@ -628,7 +628,9 @@ impl<B: BlockT> futures::Future for SubspaceWorker<B> {
 
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are
 /// mandatory, the function will return `Err` if none is found.
-pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error<B>> {
+pub fn find_pre_digest<B: BlockT>(
+    header: &B::Header,
+) -> Result<PreDigest<FarmerPublicKey>, Error<B>> {
     // genesis block doesn't contain a pre digest so let's generate a
     // dummy one to not break any invariants in the rest of the code
     if header.number().is_zero() {

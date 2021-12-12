@@ -38,7 +38,9 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
-use sp_consensus_subspace::{ConsensusLog, Salts, SubspaceApi, SUBSPACE_ENGINE_ID};
+use sp_consensus_subspace::{
+    ConsensusLog, FarmerPublicKey, Salts, SubspaceApi, SUBSPACE_ENGINE_ID,
+};
 use sp_core::sr25519::Pair;
 use sp_core::Pair as _;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
@@ -78,7 +80,7 @@ where
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
-    type Claim = (PreDigest, Pair);
+    type Claim = (PreDigest<FarmerPublicKey>, Pair);
     type SyncOracle = SO;
     type JustificationSyncLink = L;
     type CreateProposer =
@@ -262,9 +264,11 @@ where
     }
 
     fn pre_digest_data(&self, _slot: Slot, claim: &Self::Claim) -> Vec<sp_runtime::DigestItem> {
-        vec![<DigestItem as CompatibleDigestItem>::subspace_pre_digest(
-            claim.0.clone(),
-        )]
+        vec![
+            <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_pre_digest(
+                claim.0.clone(),
+            ),
+        ]
     }
 
     #[allow(clippy::type_complexity)]
@@ -294,7 +298,9 @@ where
                 // add it to a digest item.
                 let signature = keypair.sign(header_hash.as_ref());
                 let digest_item =
-                    <DigestItem as CompatibleDigestItem>::subspace_seal(signature.into());
+                    <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(
+                        signature.into(),
+                    );
 
                 let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
                 import_block.post_digests.push(digest_item);
