@@ -57,6 +57,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{
     generic::DigestItem,
     traits::{One, SaturatedConversion, Saturating, Zero},
+    ConsensusEngineId,
 };
 use sp_std::prelude::*;
 use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
@@ -1103,6 +1104,23 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
             timestamp_slot,
             "Timestamp slot must match `CurrentSlot`",
         );
+    }
+}
+
+impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
+    fn find_author<'a, I>(digests: I) -> Option<T::AccountId>
+    where
+        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+    {
+        digests.into_iter().find_map(|(id, mut data)| {
+            if id == SUBSPACE_ENGINE_ID {
+                PreDigest::decode(&mut data)
+                    .map(|pre_digest| pre_digest.solution.public_key)
+                    .ok()
+            } else {
+                None
+            }
+        })
     }
 }
 

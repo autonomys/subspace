@@ -22,10 +22,9 @@
 mod default_weights;
 
 use frame_support::sp_runtime::traits::Zero;
-use frame_support::traits::{Currency, Get};
+use frame_support::traits::{Currency, FindAuthor, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
-use sp_consensus_subspace::digests::CompatibleDigestItem;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -38,7 +37,7 @@ pub trait WeightInfo {
 mod pallet {
     use super::{BalanceOf, WeightInfo};
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::Currency;
+    use frame_support::traits::{Currency, FindAuthor};
     use frame_system::pallet_prelude::*;
 
     #[pallet::config]
@@ -75,6 +74,8 @@ mod pallet {
         type BlockchainHistorySize: Get<u64>;
 
         type Currency: Currency<Self::AccountId>;
+
+        type FindAuthor: FindAuthor<Self::AccountId>;
 
         type WeightInfo: WeightInfo;
     }
@@ -170,12 +171,13 @@ where
     BalanceOf<T>: From<u64>,
 {
     fn do_initialize(_n: T::BlockNumber) {
-        let block_author: T::AccountId = frame_system::Pallet::<T>::digest()
-            .logs
-            .iter()
-            .find_map(|s| s.as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.public_key)
-            .expect("Block author must always be present; qed");
+        let block_author = T::FindAuthor::find_author(
+            frame_system::Pallet::<T>::digest()
+                .logs
+                .iter()
+                .filter_map(|d| d.as_pre_runtime()),
+        )
+        .expect("Block author must always be present; qed");
 
         BlockAuthor::<T>::put(block_author);
 
