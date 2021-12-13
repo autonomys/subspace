@@ -25,9 +25,9 @@
 
 use std::{fmt, sync::Arc};
 
-pub use subspace_runtime_primitives::{BlockNumber, Hash};
-use smallvec::SmallVec;
 use sc_consensus_subspace::NewSlotInfo;
+use smallvec::SmallVec;
+pub use subspace_runtime_primitives::{BlockNumber, Hash};
 
 pub mod errors;
 pub mod messages;

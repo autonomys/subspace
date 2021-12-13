@@ -23,14 +23,15 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::RuntimeDebug;
 use sp_std::vec::Vec;
 
+/// Dummy bundle header.
 pub type BundleHeader = Vec<u8>;
 
 /// Transaction bundle
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct Bundle {
-    ///
+    /// The bundle header.
     pub header: BundleHeader,
-    /// Encoded `Vec<Extrinsic>`
+    /// THe accompanying extrinsics.
     pub opaque_transactions: Vec<u8>,
 }
 
@@ -41,17 +42,21 @@ impl Bundle {
     }
 }
 
+/// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
-    ///
+    /// Primary block hash.
     pub primary_hash: Hash,
-    ///
+    /// Secondary block hash?
     pub secondary_hash: Hash,
-    ///
+    /// State root after finishing the execution.
     pub state_root: Hash,
+    /// Merkle root of the execution.
+    pub state_transition_root: Hash,
 }
 
 impl<Hash: Copy> ExecutionReceipt<Hash> {
+    /// TODO: hash of ER?
     pub fn hash(&self) -> Hash {
         self.primary_hash
     }
@@ -72,9 +77,7 @@ sp_api::decl_runtime_apis! {
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_transaction_bundle_unsigned(
-            bundle: Bundle
-        ) -> Option<()>;
+        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()>;
 
         /// Returns the block hash given the block number.
         fn head_hash(

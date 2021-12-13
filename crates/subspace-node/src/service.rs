@@ -362,7 +362,10 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
             // In order to make this stream available, the embedded subspace node has to be an
             // authority node.
             let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
-            assert!(role.is_authority(), "Authority node is required");
+            assert!(
+                role.is_authority(),
+                "Authority node is required by overseer"
+            );
             task_manager.spawn_essential_handle().spawn_blocking(
                 "overseer",
                 Some("overseer"),

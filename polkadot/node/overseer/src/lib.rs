@@ -81,8 +81,10 @@ pub use polkadot_node_subsystem_types::{
 	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
+use sc_consensus_subspace::{
+	notification::SubspaceNotificationStream, NewSlotInfo, NewSlotNotification,
+};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
-use sc_consensus_subspace::{notification::SubspaceNotificationStream, NewSlotInfo, NewSlotNotification};
 
 pub mod metrics;
 pub use self::metrics::Metrics as OverseerMetrics;

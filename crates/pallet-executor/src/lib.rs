@@ -49,11 +49,14 @@ mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new candidate receipt was backed.
-        CandidateReceiptStored(T::BlockNumber, T::Hash),
+        CandidateReceiptStored {
+            head_number: T::BlockNumber,
+            head_hash: T::Hash,
+        },
         /// A new candidate receipt was backed.
-        ExecutionReceiptStored(T::Hash),
-        ///
-        TransactionBundleStored(H256),
+        ExecutionReceiptStored { receipt_hash: T::Hash },
+        /// A transaction bundle was included.
+        TransactionBundleStored { bundle_hash: H256 },
     }
 
     #[pallet::call]
@@ -85,7 +88,10 @@ mod pallet {
             LastHeadNumber::<T>::put(head_number);
             Heads::<T>::insert(head_number, head_hash);
 
-            Self::deposit_event(Event::CandidateReceiptStored(head_number, head_hash));
+            Self::deposit_event(Event::CandidateReceiptStored {
+                head_number,
+                head_hash,
+            });
 
             Ok(())
         }
@@ -103,7 +109,9 @@ mod pallet {
                 execution_receipt
             );
 
-            Self::deposit_event(Event::ExecutionReceiptStored(execution_receipt.hash()));
+            Self::deposit_event(Event::ExecutionReceiptStored {
+                receipt_hash: execution_receipt.hash(),
+            });
 
             Ok(())
         }
@@ -118,7 +126,9 @@ mod pallet {
                 bundle
             );
 
-            Self::deposit_event(Event::TransactionBundleStored(bundle.hash()));
+            Self::deposit_event(Event::TransactionBundleStored {
+                bundle_hash: bundle.hash(),
+            });
 
             Ok(())
         }

@@ -221,7 +221,7 @@ where
 	//     - OnBundleReceivedBySecondaryNode
 	//         - OnBundleEquivocationProof(farmer only)
 	//         - OnInvalidBundleProof(farmer only)
-	async fn produce_bundle(mut self, slot_info: NewSlotInfo) -> Option<BundleResult> {
+	async fn produce_bundle(self, slot_info: NewSlotInfo) -> Option<BundleResult> {
 		println!("TODO: solved some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let transactions = {
@@ -244,9 +244,9 @@ where
 	}
 
 	async fn process_bundles(
-		mut self,
+		self,
 		primary_hash: PHash,
-		bundles: Vec<Bundle>,
+		_bundles: Vec<Bundle>,
 	) -> Option<ProcessorResult> {
 		// TODO:
 		// 1. convert the bundles to a full tx list
@@ -267,6 +267,7 @@ where
 				primary_hash,
 				secondary_hash: Default::default(),
 				state_root: Default::default(),
+				state_transition_root: Default::default(),
 			},
 		})
 	}

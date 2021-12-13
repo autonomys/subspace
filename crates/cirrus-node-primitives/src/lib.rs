@@ -60,7 +60,7 @@ pub struct Collation {
 
 /// Result of the [`CollatorFn`] invocation.
 pub struct CollationResult {
-    /// The collation that was build.
+    /// The collation that was built.
     pub collation: Collation,
     // TODO: can be useful in the future?
     /// An optional result sender that should be informed about a successfully seconded collation.
@@ -71,9 +71,9 @@ pub struct CollationResult {
     pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
 }
 
-///
+/// Result of the [`BundlerFn`] invocation.
 pub struct BundleResult {
-    ///
+    /// The bundle that was built.
     pub bundle: Bundle,
 }
 
@@ -83,10 +83,10 @@ impl BundleResult {
     }
 }
 
-///
-pub struct ProcessorResult {
-    ///
-    pub execution_receipt: ExecutionReceipt<Hash>,
+/// Result of the [`ProcessorFn`] invocation.
+pub struct ProcessorResult<H = Hash> {
+    /// The execution receipt that was built.
+    pub execution_receipt: ExecutionReceipt<H>,
 }
 
 impl ProcessorResult {
@@ -140,22 +140,16 @@ pub type CollatorFn = Box<
         + Sync,
 >;
 
-/// Collation function.
+/// Bundle function.
 ///
-/// Will be called with the hash of the relay chain block the parachain block should be build on and the
-/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
-///
-/// Returns an optional [`CollationResult`].
+/// Returns an optional [`BundleResult`].
 pub type BundlerFn = Box<
     dyn Fn(NewSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>> + Send + Sync,
 >;
 
-/// Collation function.
+/// Process function.
 ///
-/// Will be called with the hash of the relay chain block the parachain block should be build on and the
-/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
-///
-/// Returns an optional [`CollationResult`].
+/// Returns an optional [`ProcessorResult`].
 pub type ProcessorFn = Box<
     dyn Fn(Hash, Vec<Bundle>) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
         + Send
