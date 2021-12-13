@@ -50,8 +50,12 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// New object is added \[who, object_id, object_size\]
-        DataSubmitted(T::AccountId, Sha256Hash, u32),
+        /// New object was added.
+        DataSubmitted {
+            who: T::AccountId,
+            object_id: Sha256Hash,
+            object_size: u32,
+        },
     }
 
     #[pallet::call]
@@ -74,7 +78,11 @@ mod pallet {
                 object_size
             );
 
-            Self::deposit_event(Event::DataSubmitted(who, object_id, object_size));
+            Self::deposit_event(Event::DataSubmitted {
+                who,
+                object_id,
+                object_size,
+            });
 
             Ok(())
         }

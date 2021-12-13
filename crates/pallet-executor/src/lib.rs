@@ -46,7 +46,10 @@ mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new candidate receipt was backed.
-        CandidateReceiptStored(T::BlockNumber, T::Hash),
+        CandidateReceiptStored {
+            head_number: T::BlockNumber,
+            head_hash: T::Hash,
+        },
     }
 
     #[pallet::call]
@@ -78,7 +81,10 @@ mod pallet {
             LastHeadNumber::<T>::put(head_number);
             Heads::<T>::insert(head_number, head_hash);
 
-            Self::deposit_event(Event::CandidateReceiptStored(head_number, head_hash));
+            Self::deposit_event(Event::CandidateReceiptStored {
+                head_number,
+                head_hash,
+            });
 
             Ok(())
         }
