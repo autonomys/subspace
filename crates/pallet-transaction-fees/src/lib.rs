@@ -226,7 +226,10 @@ where
         // Issue storage fees reward.
         let storage_fees_reward = storage_fees_escrow_reward + collected_storage_fees_reward;
         if !storage_fees_reward.is_zero() {
-            let _ = T::Currency::deposit_into_existing(&block_author, storage_fees_reward);
+            T::Currency::deposit_into_existing(&block_author, storage_fees_reward).expect(
+                "Farmer account must have already received the block reward before fees are \
+                collected; qed",
+            );
             Self::deposit_event(Event::<T>::StorageFeesReward {
                 who: block_author.clone(),
                 amount: storage_fees_reward,
@@ -235,7 +238,8 @@ where
 
         // Issue compute fees reward.
         if !collected_fees.compute.is_zero() {
-            let _ = T::Currency::deposit_into_existing(&block_author, collected_fees.compute);
+            T::Currency::deposit_into_existing(&block_author, collected_fees.compute)
+                .expect("Executor account must already exist before they execute the block; qed");
             Self::deposit_event(Event::<T>::ComputeFeesReward {
                 who: block_author.clone(),
                 amount: collected_fees.compute,
@@ -244,7 +248,8 @@ where
 
         // Issue tips reward.
         if !collected_fees.tips.is_zero() {
-            let _ = T::Currency::deposit_into_existing(&block_author, collected_fees.tips);
+            T::Currency::deposit_into_existing(&block_author, collected_fees.tips)
+                .expect("Executor account must already exist before they execute the block; qed");
             Self::deposit_event(Event::<T>::TipsReward {
                 who: block_author,
                 amount: collected_fees.tips,
