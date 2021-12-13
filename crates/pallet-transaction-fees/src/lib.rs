@@ -21,10 +21,12 @@
 
 mod default_weights;
 
+use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
 use frame_support::traits::{Currency, FindAuthor, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
+use scale_info::TypeInfo;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -33,9 +35,17 @@ pub trait WeightInfo {
     fn on_initialize() -> Weight;
 }
 
+#[derive(Encode, Decode, TypeInfo)]
+struct CollectedFees<Balance: Codec> {
+    storage: Balance,
+    compute: Balance,
+    // TODO: Split tips for storage and compute proportionally?
+    tips: Balance,
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, WeightInfo};
+    use super::{BalanceOf, CollectedFees, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, FindAuthor};
     use frame_system::pallet_prelude::*;
@@ -96,20 +106,10 @@ mod pallet {
     #[pallet::storage]
     pub(super) type BlockAuthor<T: Config> = StorageValue<_, T::AccountId>;
 
-    /// Temporary value (cleared at block finalization) which contains current block storage fees,
-    /// so we can issue rewards during block finalization.
-    #[pallet::storage]
-    pub(super) type CollectedStorageFees<T: Config> = StorageValue<_, BalanceOf<T>>;
-
-    /// Temporary value (cleared at block finalization) which contains current block compute fees,
-    /// so we can issue rewards during block finalization.
-    #[pallet::storage]
-    pub(super) type CollectedComputeFees<T: Config> = StorageValue<_, BalanceOf<T>>;
-
-    /// Temporary value (cleared at block finalization) which contains current block tips, so we can
+    /// Temporary value (cleared at block finalization) which contains current block fees, so we can
     /// issue rewards during block finalization.
     #[pallet::storage]
-    pub(super) type CollectedTips<T: Config> = StorageValue<_, BalanceOf<T>>;
+    pub(super) type CollectedBlockFees<T: Config> = StorageValue<_, CollectedFees<BalanceOf<T>>>;
 
     /// Pallet rewards for issuing rewards to block producers.
     #[pallet::pallet]
@@ -181,9 +181,11 @@ where
 
         BlockAuthor::<T>::put(block_author);
 
-        CollectedStorageFees::<T>::put(BalanceOf::<T>::zero());
-        CollectedComputeFees::<T>::put(BalanceOf::<T>::zero());
-        CollectedTips::<T>::put(BalanceOf::<T>::zero());
+        CollectedBlockFees::<T>::put(CollectedFees {
+            storage: BalanceOf::<T>::zero(),
+            compute: BalanceOf::<T>::zero(),
+            tips: BalanceOf::<T>::zero(),
+        });
     }
 
     // TODO: Fees will be split between farmers and executors in the future
@@ -194,12 +196,8 @@ where
             BlockAuthor::<T>::take().expect("`BlockAuthor` was set in `on_initialize`; qed");
 
         let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
-        let collected_storage_fees = CollectedStorageFees::<T>::take()
-            .expect("`CollectedStorageFees` was set in `on_initialize`; qed");
-        let compute_fees = CollectedComputeFees::<T>::take()
-            .expect("`CollectedComputeFees` was set in `on_initialize`; qed");
-        let tips =
-            CollectedTips::<T>::take().expect("`CollectedTips` was set in `on_initialize`; qed");
+        let collected_fees = CollectedBlockFees::<T>::take()
+            .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
 
         let mut storage_fees_escrow = original_storage_fees_escrow;
 
@@ -210,11 +208,11 @@ where
         storage_fees_escrow -= storage_fees_escrow_reward;
 
         // Take a portion of storage fees collected in this block as a farmer reward.
-        let collected_storage_fees_reward = collected_storage_fees
+        let collected_storage_fees_reward = collected_fees.storage
             / T::StorageFeesEscrowBlockTax::get().1.into()
             * (T::StorageFeesEscrowBlockTax::get().1 - T::StorageFeesEscrowBlockTax::get().0)
                 .into();
-        storage_fees_escrow += collected_storage_fees - collected_storage_fees_reward;
+        storage_fees_escrow += collected_fees.storage - collected_storage_fees_reward;
 
         // Update storage fees escrow.
         if storage_fees_escrow != original_storage_fees_escrow {
@@ -236,20 +234,20 @@ where
         }
 
         // Issue compute fees reward.
-        if !compute_fees.is_zero() {
-            let _ = T::Currency::deposit_into_existing(&block_author, compute_fees);
+        if !collected_fees.compute.is_zero() {
+            let _ = T::Currency::deposit_into_existing(&block_author, collected_fees.compute);
             Self::deposit_event(Event::<T>::ComputeFeesReward {
                 who: block_author.clone(),
-                amount: compute_fees,
+                amount: collected_fees.compute,
             });
         }
 
         // Issue tips reward.
-        if !tips.is_zero() {
-            let _ = T::Currency::deposit_into_existing(&block_author, tips);
+        if !collected_fees.tips.is_zero() {
+            let _ = T::Currency::deposit_into_existing(&block_author, collected_fees.tips);
             Self::deposit_event(Event::<T>::TipsReward {
                 who: block_author,
-                amount: tips,
+                amount: collected_fees.tips,
             });
         }
     }
@@ -279,21 +277,13 @@ where
         compute_fee: BalanceOf<T>,
         tip: BalanceOf<T>,
     ) {
-        CollectedStorageFees::<T>::mutate(|storage_fees| {
-            *storage_fees
+        CollectedBlockFees::<T>::mutate(|collected_block_fees| {
+            let collected_block_fees = collected_block_fees
                 .as_mut()
-                .expect("`CollectedStorageFees` was set in `on_initialize`; qed") += storage_fee;
-        });
-        CollectedComputeFees::<T>::mutate(|compute_fees| {
-            *compute_fees
-                .as_mut()
-                .expect("`CollectedComputeFees` was set in `on_initialize`; qed") += compute_fee;
-        });
-        // TODO: Split tips for storage and compute proportionally?
-        CollectedTips::<T>::mutate(|tips| {
-            *tips
-                .as_mut()
-                .expect("`CollectedTips` was set in `on_initialize`; qed") += tip;
+                .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
+            collected_block_fees.storage += storage_fee;
+            collected_block_fees.compute += compute_fee;
+            collected_block_fees.tips += tip;
         });
     }
 }
