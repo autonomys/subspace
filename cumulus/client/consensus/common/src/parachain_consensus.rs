@@ -222,19 +222,18 @@ async fn handle_new_best_parachain_head_subspace<Block, P>(
 	P: UsageProvider<Block> + Send + Sync + BlockBackend<Block> + HeaderBackend<Block>,
 	for<'a> &'a P: BlockImport<Block>,
 {
-	let parachain_head_hash = match <<<Block as BlockT>::Header as HeaderT>::Hash>::decode(
-		&mut &encoded_head_hash[..],
-	) {
-		Ok(header) => header,
-		Err(err) => {
-			tracing::debug!(
-				target: "cirrus::consensus",
-				error = ?err,
-				"Could not decode Parachain header while following best heads.",
-			);
-			return
-		},
-	};
+	let parachain_head_hash =
+		match <<<Block as BlockT>::Header as HeaderT>::Hash>::decode(&mut &encoded_head_hash[..]) {
+			Ok(header) => header,
+			Err(err) => {
+				tracing::debug!(
+					target: "cirrus::consensus",
+					error = ?err,
+					"Could not decode Parachain header while following best heads.",
+				);
+				return
+			},
+		};
 
 	let parachain_head = match parachain.header(BlockId::Hash(parachain_head_hash)) {
 		Ok(Some(head)) => head,
@@ -244,8 +243,8 @@ async fn handle_new_best_parachain_head_subspace<Block, P>(
 				?parachain_head_hash,
 				"Parachain header does not exist",
 			);
-			return;
-		}
+			return
+		},
 		Err(e) => {
 			tracing::error!(
 				target: "cirrus::consensus",
@@ -253,8 +252,8 @@ async fn handle_new_best_parachain_head_subspace<Block, P>(
 				error = ?e,
 				"Could not fetch Parachain header",
 			);
-			return;
-		}
+			return
+		},
 	};
 
 	let hash = parachain_head.hash();

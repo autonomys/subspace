@@ -19,10 +19,19 @@
 #![deny(missing_docs)]
 #![allow(clippy::all)]
 
-use futures::{channel::{mpsc, oneshot}, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
+use futures::{
+	channel::{mpsc, oneshot},
+	future::FutureExt,
+	select,
+	sink::SinkExt,
+	stream::StreamExt,
+};
 use parity_scale_codec::{Decode, Encode};
 use polkadot_node_subsystem::{
-	messages::{AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest},
+	messages::{
+		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
+		RuntimeApiRequest,
+	},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
 	SubsystemError, SubsystemResult,
 };
@@ -144,13 +153,7 @@ impl CollationGenerationSubsystem {
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
-					if let Err(err) = handle_new_slot(
-						config.clone(),
-						slot_info,
-						ctx,
-						sender,
-					)
-					.await
+					if let Err(err) = handle_new_slot(config.clone(), slot_info, ctx, sender).await
 					{
 						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new slot");
 					}
@@ -282,13 +285,17 @@ async fn process_primary_block<Context: SubsystemContext>(
 		ctx.send_message(ChainApiMessage::BlockBody(block_hash, tx)).await;
 		match rx.await? {
 			Err(err) => {
-				tracing::error!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
+				tracing::error!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
 				return Ok(())
 			},
 			Ok(None) => {
 				tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
 				return Ok(())
-			}
+			},
 			Ok(Some(b)) => b,
 		}
 	};
@@ -306,7 +313,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 					} else {
 						None
 					}
-				}
+				},
 				Err(_) => None,
 			}
 		})
@@ -315,9 +322,12 @@ async fn process_primary_block<Context: SubsystemContext>(
 	let execution_receipt = match (config.processor)(block_hash, bundles).await {
 		Some(processor_result) => processor_result.to_execution_receipt(),
 		None => {
-			tracing::debug!(target: LOG_TARGET, "executor returned no result on processing bundles",);
-			return Ok(());
-		}
+			tracing::debug!(
+				target: LOG_TARGET,
+				"executor returned no result on processing bundles",
+			);
+			return Ok(())
+		},
 	};
 
 	let best_hash = {
@@ -325,7 +335,11 @@ async fn process_primary_block<Context: SubsystemContext>(
 		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
 		match rx.await? {
 			Err(err) => {
-				tracing::debug!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
+				tracing::debug!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
 				return Ok(())
 			},
 			Ok(h) => h,
@@ -346,7 +360,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"failed to send RuntimeApiRequest::SubmitExecutionReceipt",
+					"Failed to send RuntimeApiRequest::SubmitExecutionReceipt",
 				);
 			} else {
 				tracing::debug!(
@@ -370,8 +384,8 @@ async fn handle_new_slot<Context: SubsystemContext>(
 		Some(bundle_result) => bundle_result.to_bundle(),
 		None => {
 			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
-			return Ok(());
-		}
+			return Ok(())
+		},
 	};
 
 	let best_hash = {
@@ -379,7 +393,11 @@ async fn handle_new_slot<Context: SubsystemContext>(
 		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
 		match rx.await? {
 			Err(err) => {
-				tracing::debug!(target: LOG_TARGET, ?err, "Chain API subsystem temporarily unreachable");
+				tracing::debug!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
 				return Ok(())
 			},
 			Ok(h) => h,
@@ -400,12 +418,12 @@ async fn handle_new_slot<Context: SubsystemContext>(
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"failed to send RuntimeApiRequest::SubmitCandidateReceipt",
+					"Failed to send RuntimeApiRequest::SubmitTransactionBundle",
 				);
 			} else {
 				tracing::debug!(
 					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitCandidateReceipt successfully",
+					"Sent RuntimeApiRequest::SubmitTransactionBundle successfully",
 				);
 			}
 		}),

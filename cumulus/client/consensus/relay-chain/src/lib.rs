@@ -35,6 +35,7 @@
 
 #![allow(clippy::all)]
 
+use cirrus_node_primitives::PersistedValidationData;
 use cumulus_client_consensus_common::{
 	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
 };
@@ -48,9 +49,7 @@ use sp_consensus::{
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
-use subspace_runtime_primitives::Hash as PHash;
-use subspace_runtime_primitives::opaque::Block as PBlock;
-use cirrus_node_primitives::PersistedValidationData;
+use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 mod import_queue;
 pub use import_queue::{import_queue, Verifier};

@@ -50,7 +50,6 @@ use futures::{
 };
 use pin_project::pin_project;
 use polkadot_node_jaeger as jaeger;
-use subspace_runtime_primitives::Hash;
 use sp_core::traits::SpawnNamed;
 use std::{
 	collections::{hash_map::Entry, HashMap},
@@ -62,6 +61,7 @@ use std::{
 	task::{Context, Poll},
 	time::Duration,
 };
+use subspace_runtime_primitives::Hash;
 use thiserror::Error;
 
 pub use metered_channel as metered;

@@ -163,6 +163,8 @@ mod pallet {
                         .build()
                 }
                 Call::submit_execution_receipt { execution_receipt } => {
+                    // TODO: validate the Proof-of-Election
+
                     ValidTransaction::with_tag_prefix("SubspaceSubmitExecutionReceipt")
                         .priority(TransactionPriority::MAX)
                         .and_provides(execution_receipt.hash())
@@ -172,6 +174,8 @@ mod pallet {
                         .build()
                 }
                 Call::submit_transaction_bundle { bundle } => {
+                    // TODO: validate the Proof-of-Election
+
                     ValidTransaction::with_tag_prefix("SubspaceSubmitTransactionBundle")
                         .priority(TransactionPriority::MAX)
                         .and_provides(bundle.hash())

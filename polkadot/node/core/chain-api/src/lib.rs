@@ -38,11 +38,11 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sp_blockchain::HeaderBackend;
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
-use subspace_runtime_primitives::opaque::{Block, BlockId};
 use polkadot_subsystem::{
 	messages::ChainApiMessage, overseer, FromOverseer, OverseerSignal, SpawnedSubsystem,
 	SubsystemContext, SubsystemError, SubsystemResult,
 };
+use subspace_runtime_primitives::opaque::{Block, BlockId};
 
 const LOG_TARGET: &str = "parachain::chain-api";
 
@@ -107,7 +107,7 @@ where
 				ChainApiMessage::BlockWeight(_hash, _response_channel) => {
 					let _timer = subsystem.metrics.time_block_weight();
 					// let result = sc_consensus_babe::block_weight(&*subsystem.client, hash)
-						// .map_err(|e| e.to_string().into());
+					// .map_err(|e| e.to_string().into());
 					todo!("Impl `sc_consensus_subspace::block_weight`?");
 					// subsystem.metrics.on_request(result.is_ok());
 					// let _ = response_channel.send(result);

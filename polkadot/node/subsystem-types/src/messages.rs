@@ -28,8 +28,8 @@ pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
 use sp_executor::{Bundle, ExecutionReceipt};
-use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 use sp_runtime::OpaqueExtrinsic;
+use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
 /// Subsystem messages where each message is always bound to a relay parent.
 pub trait BoundToRelayParent {

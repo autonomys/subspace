@@ -30,15 +30,15 @@ use sp_runtime::{
 
 use cumulus_client_consensus_common::ParachainConsensus;
 
-use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
+use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_node_primitives::{
-	Collation, CollationResult, CollatorPair, HeadData, PersistedValidationData,
-	BundleResult, CollationGenerationConfig, ProcessorResult,
+	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair, HeadData,
+	PersistedValidationData, ProcessorResult,
 };
-use sp_executor::{Bundle, ExecutionReceipt};
 use sc_consensus_subspace::NewSlotInfo;
+use sp_executor::{Bundle, ExecutionReceipt};
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
@@ -171,8 +171,8 @@ where
 					error = ?e,
 					"Could not decode the pending head hash."
 				);
-				return None;
-			}
+				return None
+			},
 		};
 
 		let best_number = self.client.info().best_number;
@@ -216,14 +216,29 @@ where
 		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
 
-	async fn produce_bundle(
-		mut self,
-		slot_info: NewSlotInfo,
-	) -> Option<BundleResult> {
+	// TODO:
+	// - gossip the bundle to the executor peers
+	//     - OnBundleReceivedBySecondaryNode
+	//         - OnBundleEquivocationProof(farmer only)
+	//         - OnInvalidBundleProof(farmer only)
+	async fn produce_bundle(mut self, slot_info: NewSlotInfo) -> Option<BundleResult> {
+		println!("TODO: solved some puzzle based on `slot_info` to be allowed to produce a bundle");
+
+		let transactions = {
+			// selection policy: minimize the transaction equivocation.
+			println!("TODO: once elected, select unseen transactions from the transaction pool");
+			b"some transactions".to_vec()
+		};
+
+		let _transactions_root = b"merkle root of transactions".to_vec();
+
+		let best_hash = self.client.info().best_hash;
+		let _state_root = self.client.expect_header(BlockId::Hash(best_hash)).ok()?.state_root();
+
 		Some(BundleResult {
 			bundle: Bundle {
 				header: slot_info.slot.to_be_bytes().to_vec(),
-				opaque_transactions: b"opaque_transactions".to_vec(),
+				opaque_transactions: transactions,
 			},
 		})
 	}
@@ -233,6 +248,19 @@ where
 		primary_hash: PHash,
 		bundles: Vec<Bundle>,
 	) -> Option<ProcessorResult> {
+		// TODO:
+		// 1. convert the bundles to a full tx list
+		// 2. duplicate the full tx list
+		// 3. shuffle the full tx list by sender account
+
+		// TODO: now we have the final transaction list:
+		// - apply each tx one by one.
+		// - compute the incremental state root and add to the execution trace
+		// - produce ExecutionReceipt
+
+		// The applied txs can be full removed from the transaction pool
+
+		// TODO: election for broadcasting ER to all farmers and executors.
 
 		Some(ProcessorResult {
 			execution_receipt: ExecutionReceipt {
@@ -275,12 +303,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
 {
-	let executor = Executor::new(
-		block_status,
-		runtime_api,
-		parachain_consensus,
-		client,
-	);
+	let executor = Executor::new(block_status, runtime_api, parachain_consensus, client);
 
 	let span = tracing::Span::current();
 	let collator_clone = executor.clone();
@@ -300,10 +323,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 		bundler: Box::new(move |slot_info| {
 			let bundler = bundler_clone.clone();
 
-			bundler
-				.produce_bundle(slot_info)
-				.instrument(bundler_span_clone.clone())
-				.boxed()
+			bundler.produce_bundle(slot_info).instrument(bundler_span_clone.clone()).boxed()
 		}),
 		processor: Box::new(move |primary_hash, bundles| {
 			let processor = executor.clone();

@@ -9,8 +9,8 @@ use parachain_template_runtime::{
 };
 
 // Cumulus Imports
-use cumulus_client_consensus_common::ParachainConsensus;
 use cirrus_client_service::prepare_node_config;
+use cumulus_client_consensus_common::ParachainConsensus;
 
 // Substrate Imports
 use sc_executor::NativeElseWasmExecutor;
@@ -230,7 +230,8 @@ where
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
-	let relay_chain_full_node = cirrus_client_service::build_subspace_full_node(polkadot_config).await?;
+	let relay_chain_full_node =
+		cirrus_client_service::build_subspace_full_node(polkadot_config).await?;
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
