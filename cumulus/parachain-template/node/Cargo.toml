@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
 [[bin]]
-name = "parachain-collator"
+name = "subspace-executor"
 path = "src/main.rs"
 
 [features]
