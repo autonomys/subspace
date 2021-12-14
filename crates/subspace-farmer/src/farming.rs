@@ -174,12 +174,17 @@ fn update_commitments(
     salts: &mut Salts,
     slot_info: &SlotInfo,
 ) {
+    let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
     if salts.current != Some(slot_info.salt) {
         salts.current.replace(slot_info.salt);
 
         // If previous `salts.next` is not the same as current (expected behavior), need to re-commit
         if salts.next != Some(slot_info.salt) {
+            let (mut current_recommitment_done_sender, receiver) = async_oneshot::oneshot::<()>();
+
+            current_recommitment_done_receiver.replace(receiver);
+
             tokio::spawn({
                 let salt = slot_info.salt;
                 let plot = plot.clone();
@@ -205,6 +210,9 @@ fn update_commitments(
                             started.elapsed().as_secs_f32()
                         );
                     }
+
+                    // We don't care if anyone is listening on the other side
+                    let _ = current_recommitment_done_sender.send(());
                 }
             });
         }
@@ -219,6 +227,12 @@ fn update_commitments(
                 let commitments = commitments.clone();
 
                 async move {
+                    // Wait for current recommitment to finish if it is in progress
+                    if let Some(receiver) = current_recommitment_done_receiver {
+                        // Do not care about result here either
+                        let _ = receiver.await;
+                    }
+
                     let started = Instant::now();
                     info!(
                         "Salt will update to {} soon, recommitting in background",
