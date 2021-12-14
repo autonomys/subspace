@@ -41,8 +41,9 @@ use polkadot_node_subsystem_util::{
 };
 use std::sync::Arc;
 
-use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
-use sc_consensus_subspace::NewSlotInfo;
+use cirrus_node_primitives::{
+	CollationGenerationConfig, ExecutorSlotInfo, PersistedValidationData,
+};
 use subspace_runtime_primitives::Hash;
 
 mod error;
@@ -357,7 +358,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 
 async fn produce_bundle<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
-	slot_info: NewSlotInfo,
+	slot_info: ExecutorSlotInfo,
 	ctx: &mut Context,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()> {

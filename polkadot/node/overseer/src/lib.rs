@@ -68,7 +68,9 @@ use std::{
 	time::Duration,
 };
 
-use futures::{channel::oneshot, future::BoxFuture, select, Future, FutureExt, StreamExt};
+use futures::{
+	channel::oneshot, future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt,
+};
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
@@ -81,9 +83,7 @@ pub use polkadot_node_subsystem_types::{
 	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
-use sc_consensus_subspace::{
-	notification::SubspaceNotificationStream, NewSlotInfo, NewSlotNotification,
-};
+use cirrus_node_primitives::ExecutorSlotInfo;
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
 pub mod metrics;
@@ -141,7 +141,7 @@ impl Handle {
 	}
 
 	/// Inform the `Overseer` that a new slot was triggered.
-	pub async fn on_new_slot(&mut self, slot_info: NewSlotInfo) {
+	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
 	}
 
@@ -212,7 +212,7 @@ pub enum Event {
 	/// A block was finalized with i.e. babe or another consensus algorithm.
 	BlockFinalized(BlockInfo),
 	/// A new slot arrived.
-	NewSlot(NewSlotInfo),
+	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
 	MsgToSubsystem {
 		/// The actual message.
@@ -242,12 +242,11 @@ pub enum ExternalRequest {
 /// import and finality notifications into the [`OverseerHandle`].
 pub async fn forward_events<P: BlockchainEvents<Block>>(
 	client: Arc<P>,
-	new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: Handle,
 ) {
 	let mut finality = client.finality_notification_stream();
 	let mut imports = client.import_notification_stream();
-	let mut slots = new_slot_notification_stream.subscribe();
 
 	loop {
 		select! {
@@ -269,8 +268,8 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 			},
 			s = slots.next() => {
 				match s {
-					Some(slot_notification) => {
-						handle.on_new_slot(slot_notification.new_slot_info).await;
+					Some(executor_slot_info) => {
+						handle.slot_arrived(executor_slot_info).await;
 					}
 					None => break,
 				}
@@ -640,7 +639,7 @@ where
 		Ok(())
 	}
 
-	async fn on_new_slot(&mut self, slot_info: NewSlotInfo) -> SubsystemResult<()> {
+	async fn on_new_slot(&mut self, slot_info: ExecutorSlotInfo) -> SubsystemResult<()> {
 		self.broadcast_signal(OverseerSignal::NewSlot(slot_info)).await?;
 		Ok(())
 	}

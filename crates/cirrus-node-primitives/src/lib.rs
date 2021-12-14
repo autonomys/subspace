@@ -18,15 +18,25 @@
 
 use futures::Future;
 use parity_scale_codec::{Decode, Encode};
-use sc_consensus_subspace::NewSlotInfo;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
+use sp_consensus_slots::Slot;
 use sp_core::bytes;
 use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
+use subspace_core_primitives::Tag;
 use subspace_runtime_primitives::{BlockNumber, Hash};
+
+/// Data required to produce bundles on executor node.
+#[derive(PartialEq, Clone, Debug)]
+pub struct ExecutorSlotInfo {
+    /// Slot
+    pub slot: Slot,
+    /// Global slot challenge
+    pub global_challenge: Tag,
+}
 
 /// Parachain head data included in the chain.
 #[derive(
@@ -144,7 +154,9 @@ pub type CollatorFn = Box<
 ///
 /// Returns an optional [`BundleResult`].
 pub type BundlerFn = Box<
-    dyn Fn(NewSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>> + Send + Sync,
+    dyn Fn(ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
+        + Send
+        + Sync,
 >;
 
 /// Process function.

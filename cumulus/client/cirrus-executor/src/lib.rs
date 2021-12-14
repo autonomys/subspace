@@ -34,10 +34,9 @@ use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_node_primitives::{
-	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair, HeadData,
-	PersistedValidationData, ProcessorResult,
+	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
+	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
-use sc_consensus_subspace::NewSlotInfo;
 use sp_executor::{Bundle, ExecutionReceipt};
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -221,8 +220,8 @@ where
 	//     - OnBundleReceivedBySecondaryNode
 	//         - OnBundleEquivocationProof(farmer only)
 	//         - OnInvalidBundleProof(farmer only)
-	async fn produce_bundle(self, slot_info: NewSlotInfo) -> Option<BundleResult> {
-		println!("TODO: solved some puzzle based on `slot_info` to be allowed to produce a bundle");
+	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
+		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let transactions = {
 			// selection policy: minimize the transaction equivocation.

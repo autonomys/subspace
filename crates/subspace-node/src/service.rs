@@ -370,11 +370,20 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
                 "overseer",
                 Some("overseer"),
                 Box::pin(async move {
-                    use futures::{pin_mut, select, FutureExt};
+                    use cirrus_node_primitives::ExecutorSlotInfo;
+                    use futures::{pin_mut, select, FutureExt, StreamExt};
 
                     let forward = polkadot_overseer::forward_events(
                         overseer_client,
-                        new_slot_notification_stream_clone,
+                        Box::pin(new_slot_notification_stream_clone.subscribe().then(
+                            |slot_notification| async move {
+                                let slot_info = slot_notification.new_slot_info;
+                                ExecutorSlotInfo {
+                                    slot: slot_info.slot,
+                                    global_challenge: slot_info.global_challenge,
+                                }
+                            },
+                        )),
                         handle,
                     );
 

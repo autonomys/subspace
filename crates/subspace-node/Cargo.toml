@@ -19,6 +19,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+cirrus-node-primitives = { version = "0.1.0", path = "../cirrus-node-primitives" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 futures = "0.3.17"

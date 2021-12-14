@@ -796,7 +796,6 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-overseer",
  "sc-client-api",
- "sc-consensus-subspace",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -838,13 +837,14 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.18",
  "parity-scale-codec",
- "sc-consensus-subspace",
  "scale-info",
  "serde",
  "sp-application-crypto",
+ "sp-consensus-slots",
  "sp-core",
  "sp-executor",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]
 
@@ -4965,7 +4965,6 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "sc-consensus-subspace",
  "sp-core",
  "sp-maybe-compressed-blob",
  "subspace-runtime-primitives",
@@ -5047,7 +5046,6 @@ dependencies = [
  "futures 0.3.18",
  "polkadot-node-jaeger",
  "polkadot-overseer-gen",
- "sc-consensus-subspace",
  "sc-network",
  "smallvec",
  "sp-executor",
@@ -5082,6 +5080,7 @@ name = "polkadot-overseer"
 version = "0.9.13"
 dependencies = [
  "assert_matches",
+ "cirrus-node-primitives",
  "femme",
  "futures 0.3.18",
  "futures-timer 3.0.2",
@@ -5093,7 +5092,6 @@ dependencies = [
  "polkadot-node-subsystem-types",
  "polkadot-overseer-gen",
  "sc-client-api",
- "sc-consensus-subspace",
  "sp-api",
  "sp-core",
  "subspace-runtime-primitives",
@@ -7931,6 +7929,7 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
+ "cirrus-node-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "futures 0.3.18",
