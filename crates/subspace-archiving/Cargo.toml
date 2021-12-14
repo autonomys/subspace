@@ -16,7 +16,7 @@ merkletree = "0.21.0"
 parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
 serde = { version = "1.0.130", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = "1.0.29"
+thiserror = "1.0.30"
 typenum = "1.14.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
