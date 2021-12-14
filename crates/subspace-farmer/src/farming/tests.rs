@@ -1,8 +1,10 @@
-use crate::commitments::Commitments;
+use crate::commitments::{CommitmentStatusChange, Commitments};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::plot::Plot;
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -45,36 +47,42 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let mut counter = 0;
     let mut latest_salt = slots.first().unwrap().salt;
     for (slot, tag) in slots.into_iter().zip(tags) {
-        let client_copy = client.clone();
         counter += 1;
-        async {
-            client_copy.send_slot(slot.clone()).await;
 
-            // if salt will change, wait for background recommitment to finish first
-            if slot.next_salt.unwrap() != latest_salt {
-                latest_salt = slot.next_salt.unwrap();
-                let current_commitment_notifier = commitments.clone().on_recommitment(slot.salt).await;
-                let upcoming_commitment_notifier = commitments.clone().on_recommitment(latest_salt).await;
-                let _ = current_commitment_notifier.recv();
-                // also wait for the recommitment for the upcoming salt
-                // it locks the commitment database, and causing racy behavior
-                let _ = upcoming_commitment_notifier.recv();
+        let (commitment_created_sender, mut commitment_created_receiver) =
+            mpsc::unbounded::<Salt>();
+
+        let _handler = commitments.on_status_change(Arc::new(move |commitment_status_change| {
+            if let CommitmentStatusChange::Created { salt } = commitment_status_change {
+                let _ = futures::executor::block_on(commitment_created_sender.clone().send(*salt));
             }
+        }));
 
-            tokio::select! {
-                Some(solution) = client_copy.receive_solution() => {
-                    if let Some(solution) = solution.maybe_solution {
-                        if solution.tag != tag {
-                            panic!("Wrong Tag! The expected value was: {:?}", tag);
-                        }
-                    } else {
-                        panic!("Solution was None! For challenge #: {}", counter);
-                    }
-                },
-                _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
+        client.send_slot(slot.clone()).await;
+
+        // if salt will change, wait for background recommitment to finish first
+        if let Some(next_salt) = slot.next_salt {
+            if next_salt != latest_salt {
+                latest_salt = next_salt;
+                assert_eq!(
+                    latest_salt,
+                    commitment_created_receiver.next().await.unwrap()
+                );
             }
         }
-        .await;
+
+        tokio::select! {
+            Some(solution) = client.receive_solution() => {
+                if let Some(solution) = solution.maybe_solution {
+                    if solution.tag != tag {
+                        panic!("Wrong Tag! The expected value was: {:?}", tag);
+                    }
+                } else {
+                    panic!("Solution was None! For challenge #: {}", counter);
+                }
+            },
+            _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
+        }
     }
 
     // let the farmer know we are done by closing the channel(s)

@@ -4,16 +4,13 @@ mod tests;
 
 use crate::plot::Plot;
 use async_std::io;
-use commitment_databases::CommitmentDatabases;
-#[cfg(test)]
-use log::info;
+use commitment_databases::{CommitmentDatabases, CreateDbEntryResult};
+use event_listener_primitives::{Bag, HandlerId};
 use log::{error, trace};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::DB;
 use std::path::PathBuf;
-#[cfg(test)]
-use std::sync::mpsc;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
@@ -30,9 +27,28 @@ pub enum CommitmentError {
     Plot(io::Error),
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum CommitmentStatusChange {
+    /// Commitment creation has started
+    Creating { salt: Salt },
+    /// Commitment creation has finished
+    Created { salt: Salt },
+    /// Commitment creation was cancelled
+    Cancelled { salt: Salt },
+    /// Commitment was removed
+    Removed { salt: Salt },
+}
+
+#[derive(Default, Debug)]
+struct Handlers {
+    status_change:
+        Bag<Arc<dyn Fn(&CommitmentStatusChange) + Send + Sync + 'static>, CommitmentStatusChange>,
+}
+
 #[derive(Debug)]
 struct Inner {
     base_directory: PathBuf,
+    handlers: Handlers,
     commitment_databases: Mutex<CommitmentDatabases>,
 }
 
@@ -47,6 +63,7 @@ impl Commitments {
         let commitment_databases = CommitmentDatabases::new(base_directory.clone())?;
         let inner = Inner {
             base_directory,
+            handlers: Handlers::default(),
             commitment_databases: Mutex::new(commitment_databases),
         };
 
@@ -60,7 +77,22 @@ impl Commitments {
         let mut commitment_databases = self.inner.commitment_databases.lock();
 
         let db_entry = match commitment_databases.create_db_entry(salt)? {
-            Some(db_entry) => db_entry,
+            Some(CreateDbEntryResult {
+                db_entry,
+                removed_entry_salt,
+            }) => {
+                if let Some(salt) = removed_entry_salt {
+                    self.inner
+                        .handlers
+                        .status_change
+                        .call_simple(&CommitmentStatusChange::Removed { salt });
+                }
+                self.inner
+                    .handlers
+                    .status_change
+                    .call_simple(&CommitmentStatusChange::Creating { salt });
+                db_entry
+            }
             None => {
                 return Ok(());
             }
@@ -106,10 +138,22 @@ impl Commitments {
         let mut commitment_databases = self.inner.commitment_databases.lock();
 
         // Check if database was already been removed
-        if let Some(db_entry) = commitment_databases.get_db_entry(&salt) {
-            if db_entry.lock().is_some() {
-                commitment_databases.mark_created(salt)?;
-            }
+        if commitment_databases
+            .get_db_entry(&salt)
+            .map(|db_entry| db_entry.lock().is_some())
+            .unwrap_or_default()
+        {
+            commitment_databases.mark_created(salt)?;
+
+            self.inner
+                .handlers
+                .status_change
+                .call_simple(&CommitmentStatusChange::Created { salt });
+        } else {
+            self.inner
+                .handlers
+                .status_change
+                .call_simple(&CommitmentStatusChange::Cancelled { salt });
         }
 
         Ok(())
@@ -219,39 +263,10 @@ impl Commitments {
         solutions.into_iter().next()
     }
 
-    #[cfg(test)]
-    pub async fn on_recommitment(&self, salt: Salt) -> mpsc::Receiver<()> {
-        let (sender, receiver) = mpsc::sync_channel(1);
-
-        let inner = self.inner.clone();
-        tokio::spawn(async move {
-            loop {
-                let guard = inner.commitment_databases.lock();
-                let status = guard.metadata_cache.get(&salt);
-                if status.is_none() {
-                    info!(
-                        "Could not retrieve the DB with salt: {:?}, will try again VERY soon...",
-                        salt
-                    );
-                    drop(guard);
-                    continue;
-                }
-                info!("Successfully retrieved the DB with salt: {:?}", salt);
-                match status.unwrap() {
-                    commitment_databases::CommitmentStatus::InProgress => {
-                        // drop the guard, so commitment can make progress
-                        drop(guard);
-                    }
-                    commitment_databases::CommitmentStatus::Created => {
-                        sender
-                            .send(())
-                            .expect("Cannot send the notification to the test environment!");
-                        break;
-                    }
-                }
-            }
-        });
-
-        receiver
+    pub fn on_status_change(
+        &self,
+        callback: Arc<dyn Fn(&CommitmentStatusChange) + Send + Sync + 'static>,
+    ) -> HandlerId {
+        self.inner.handlers.status_change.add(callback)
     }
 }

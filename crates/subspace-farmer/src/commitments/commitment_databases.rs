@@ -14,16 +14,19 @@ use subspace_core_primitives::Salt;
 const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 
-// TODO: Make this private
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub(super) enum CommitmentStatus {
+enum CommitmentStatus {
     /// In-progress commitment to the part of the plot
     InProgress,
     /// Commitment to the whole plot and not some in-progress partial commitment
     Created,
 }
 
-// TODO: Make fields in this data structure private
+pub(super) struct CreateDbEntryResult {
+    pub(super) db_entry: Arc<DbEntry>,
+    pub(super) removed_entry_salt: Option<Salt>,
+}
+
 pub(super) struct DbEntry {
     salt: Salt,
     db: Mutex<Option<Arc<DB>>>,
@@ -37,12 +40,11 @@ impl Deref for DbEntry {
     }
 }
 
-// TODO: Make fields in this data structure private
 #[derive(Debug)]
 pub(super) struct CommitmentDatabases {
     base_directory: PathBuf,
     databases: LruCache<Salt, Arc<DbEntry>>,
-    pub(super) metadata_cache: HashMap<Salt, CommitmentStatus>,
+    metadata_cache: HashMap<Salt, CommitmentStatus>,
     metadata_db: Arc<DB>,
 }
 
@@ -124,7 +126,7 @@ impl CommitmentDatabases {
     pub(super) fn create_db_entry(
         &mut self,
         salt: Salt,
-    ) -> Result<Option<Arc<DbEntry>>, CommitmentError> {
+    ) -> Result<Option<CreateDbEntryResult>, CommitmentError> {
         if self.databases.contains(&salt) {
             return Ok(None);
         }
@@ -133,6 +135,7 @@ impl CommitmentDatabases {
             salt,
             db: Mutex::new(None),
         });
+        let mut removed_entry_salt = None;
 
         let old_db_entry = if self.databases.len() >= COMMITMENTS_CACHE_SIZE {
             self.databases.pop_lru().map(|(_salt, db_entry)| db_entry)
@@ -143,6 +146,7 @@ impl CommitmentDatabases {
 
         if let Some(old_db_entry) = old_db_entry {
             let old_salt = old_db_entry.salt;
+            removed_entry_salt.replace(old_salt);
             let old_db_path = self.base_directory.join(hex::encode(old_salt));
 
             // Remove old commitments for `old_salt`
@@ -165,7 +169,10 @@ impl CommitmentDatabases {
 
         self.mark_in_progress(salt)?;
 
-        Ok(Some(db_entry))
+        Ok(Some(CreateDbEntryResult {
+            db_entry,
+            removed_entry_salt,
+        }))
     }
 
     pub(super) fn mark_in_progress(&mut self, salt: Salt) -> Result<(), CommitmentError> {

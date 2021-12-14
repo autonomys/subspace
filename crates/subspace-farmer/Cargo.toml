@@ -20,6 +20,7 @@ async-trait = "0.1.51"
 clap = { version = "3.0.0-beta.5", features = ["color", "derive"] }
 dirs = "4.0.0"
 env_logger = "0.9.0"
+event-listener-primitives = "2.0.1"
 futures = "0.3.13"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
@@ -28,6 +29,7 @@ jsonrpsee = { version = "0.4.1", features = ["client", "macros", "server"] }
 log = "0.4.14"
 lru = "0.6.6"
 parity-scale-codec = "2.3.0"
+parking_lot = "0.11.2"
 rayon = "1.5.1"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.130", features = ["derive"] }
