@@ -311,7 +311,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             // We send block that should be archived over channel that doesn't have a buffer, atomic
                             // integer is used to make sure archiving process always read up to date value
                             block_to_archive.store(block, Ordering::Relaxed);
-                            new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive)).expect("Cannot send the message to plot!");
+                            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
                         }
                     },
                     None => {
