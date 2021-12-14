@@ -153,9 +153,9 @@ impl CollationGenerationSubsystem {
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
-					if let Err(err) = handle_new_slot(config.clone(), slot_info, ctx, sender).await
+					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await
 					{
-						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new slot");
+						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to produce new bundle");
 					}
 				}
 				false
@@ -374,7 +374,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 	Ok(())
 }
 
-async fn handle_new_slot<Context: SubsystemContext>(
+async fn produce_bundle<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	slot_info: NewSlotInfo,
 	ctx: &mut Context,
