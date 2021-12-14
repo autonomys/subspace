@@ -111,6 +111,8 @@ pub enum RuntimeApiRequest {
 	SubmitExecutionReceipt(ExecutionReceipt<Hash>),
 	/// Submit the transaction bundle to primary chain.
 	SubmitTransactionBundle(Bundle),
+	/// Extract the bundles from the extrinsics of a block.
+	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<Bundle>>),
 	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),
 }

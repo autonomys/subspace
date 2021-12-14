@@ -113,6 +113,7 @@ where
 			SubmitCandidateReceipt(..) => {},
 			SubmitExecutionReceipt(..) => {},
 			SubmitTransactionBundle(..) => {},
+			ExtractBundles(..) => {},
 			PendingHead(..) => {},
 		}
 	}
@@ -148,6 +149,7 @@ where
 			Request::SubmitCandidateReceipt(..) => None,
 			Request::SubmitExecutionReceipt(..) => None,
 			Request::SubmitTransactionBundle(..) => None,
+			Request::ExtractBundles(..) => None,
 			Request::PendingHead(..) => None,
 		}
 	}
@@ -249,6 +251,7 @@ where
 {
 	let _timer = metrics.time_make_runtime_api_request();
 
+	// TODO: re-enable the marco to reduce the pattern duplication.
 	match request {
 		Request::SubmitCandidateReceipt(head_number, head_hash) => {
 			let api = client.runtime_api();
@@ -285,6 +288,18 @@ where
 			res.ok()
 				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
 		},
+		Request::ExtractBundles(extrinsics, sender) => {
+			let api = client.runtime_api();
+			let res = api
+				.extract_bundles(&BlockId::Hash(relay_parent), extrinsics)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+
+			let _ = sender.send(res.clone());
+
+			res.ok().map(|_res| RequestResult::ExtractBundles(relay_parent));
+		},
+
 		Request::PendingHead(sender) => {
 			let api = client.runtime_api();
 			let res = api

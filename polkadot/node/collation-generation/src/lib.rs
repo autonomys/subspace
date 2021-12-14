@@ -26,7 +26,7 @@ use futures::{
 	sink::SinkExt,
 	stream::StreamExt,
 };
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Encode;
 use polkadot_node_subsystem::{
 	messages::{
 		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
@@ -37,13 +37,12 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_pending_head,
+	request_extract_bundles, request_pending_head,
 };
 use std::sync::Arc;
 
 use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
 use sc_consensus_subspace::NewSlotInfo;
-use subspace_runtime::{Call, UncheckedExtrinsic};
 use subspace_runtime_primitives::Hash;
 
 mod error;
@@ -153,8 +152,7 @@ impl CollationGenerationSubsystem {
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
-					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await
-					{
+					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await {
 						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to produce new bundle");
 					}
 				}
@@ -300,24 +298,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 		}
 	};
 
-	let bundles = extrinsics
-		.into_iter()
-		.filter_map(|opaque_extrinsic| {
-			match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
-				Ok(uxt) => {
-					if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
-						bundle,
-					}) = uxt.function
-					{
-						Some(bundle)
-					} else {
-						None
-					}
-				},
-				Err(_) => None,
-			}
-		})
-		.collect::<Vec<_>>();
+	let bundles = request_extract_bundles(block_hash, extrinsics, ctx.sender()).await.await??;
 
 	let execution_receipt = match (config.processor)(block_hash, bundles).await {
 		Some(processor_result) => processor_result.to_execution_receipt(),

@@ -20,7 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use sp_runtime::RuntimeDebug;
+use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 
 /// Dummy bundle header.
@@ -78,6 +78,9 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()>;
+
+        /// Extract the bundles from extrinsics in a block.
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle>;
 
         /// Returns the block hash given the block number.
         fn head_hash(
