@@ -422,7 +422,7 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
             // Split paid storage and compute fees so that they can be distributed separately.
             let (paid_storage_fee, paid_compute_fee) = fee.split(storage_fee);
 
-            TransactionFees::distribute_transaction_fees(
+            TransactionFees::note_transaction_fees(
                 paid_storage_fee.peek(),
                 paid_compute_fee.peek(),
                 tip.peek(),

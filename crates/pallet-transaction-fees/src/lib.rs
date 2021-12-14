@@ -277,7 +277,7 @@ where
         transaction_byte_fee
     }
 
-    pub fn distribute_transaction_fees(
+    pub fn note_transaction_fees(
         storage_fee: BalanceOf<T>,
         compute_fee: BalanceOf<T>,
         tip: BalanceOf<T>,
