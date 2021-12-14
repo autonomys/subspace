@@ -19,10 +19,20 @@ pub(crate) async fn farm(
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");
-    let plot = Plot::open_or_create(&base_directory).await?;
+    let plot_fut = tokio::task::spawn_blocking({
+        let base_directory = base_directory.clone();
+
+        move || Plot::open_or_create(&base_directory)
+    });
+    let plot = plot_fut.await.unwrap()?;
 
     info!("Opening commitments");
-    let commitments = Commitments::new(base_directory.join("commitments")).await?;
+    let commitments_fut = tokio::task::spawn_blocking({
+        let path = base_directory.join("commitments");
+
+        move || Commitments::new(path)
+    });
+    let commitments = commitments_fut.await.unwrap()?;
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({

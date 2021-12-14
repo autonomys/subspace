@@ -1,7 +1,7 @@
 use super::CommitmentError;
-use async_lock::Mutex;
 use log::error;
 use lru::LruCache;
+use parking_lot::Mutex;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::Salt;
 
+// Cache size is just enough for last 2 salts to be stored
 const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 
@@ -88,8 +89,7 @@ impl CommitmentDatabases {
             .next()
             .is_some()
         {
-            tokio::runtime::Handle::current()
-                .block_on(commitment_databases.persist_metadata_cache())?;
+            commitment_databases.persist_metadata_cache()?;
         }
 
         // Open databases that were fully created during previous run
@@ -121,7 +121,7 @@ impl CommitmentDatabases {
     }
 
     /// Returns `Ok(None)` if entry for this salt already exists.
-    pub(super) async fn create_db_entry(
+    pub(super) fn create_db_entry(
         &mut self,
         salt: Salt,
     ) -> Result<Option<Arc<DbEntry>>, CommitmentError> {
@@ -151,9 +151,7 @@ impl CommitmentDatabases {
             tokio::task::spawn_blocking(move || {
                 // Take a lock to make sure database was released by whatever user there was and we
                 // have an exclusive access to it, then drop it
-                tokio::runtime::Handle::current()
-                    .block_on(old_db_entry.db.lock())
-                    .take();
+                old_db_entry.db.lock().take();
 
                 if let Err(error) = std::fs::remove_dir_all(old_db_path) {
                     error!(
@@ -165,46 +163,41 @@ impl CommitmentDatabases {
             });
         }
 
-        self.mark_in_progress(salt).await?;
+        self.mark_in_progress(salt)?;
 
         Ok(Some(db_entry))
     }
 
-    pub(super) async fn mark_in_progress(&mut self, salt: Salt) -> Result<(), CommitmentError> {
-        self.update_status(salt, CommitmentStatus::InProgress).await
+    pub(super) fn mark_in_progress(&mut self, salt: Salt) -> Result<(), CommitmentError> {
+        self.update_status(salt, CommitmentStatus::InProgress)
     }
 
-    pub(super) async fn mark_created(&mut self, salt: Salt) -> Result<(), CommitmentError> {
-        self.update_status(salt, CommitmentStatus::Created).await
+    pub(super) fn mark_created(&mut self, salt: Salt) -> Result<(), CommitmentError> {
+        self.update_status(salt, CommitmentStatus::Created)
     }
 
-    async fn update_status(
+    fn update_status(
         &mut self,
         salt: Salt,
         status: CommitmentStatus,
     ) -> Result<(), CommitmentError> {
         self.metadata_cache.insert(salt, status);
 
-        self.persist_metadata_cache().await
+        self.persist_metadata_cache()
     }
 
-    async fn persist_metadata_cache(&self) -> Result<(), CommitmentError> {
-        let metadata_db = Arc::clone(&self.metadata_db);
+    fn persist_metadata_cache(&self) -> Result<(), CommitmentError> {
         let prepared_metadata_cache: HashMap<String, CommitmentStatus> = self
             .metadata_cache
             .iter()
             .map(|(salt, status)| (hex::encode(salt), *status))
             .collect();
 
-        tokio::task::spawn_blocking(move || {
-            metadata_db
-                .put(
-                    COMMITMENTS_KEY,
-                    &serde_json::to_vec(&prepared_metadata_cache).unwrap(),
-                )
-                .map_err(CommitmentError::MetadataDb)
-        })
-        .await
-        .unwrap()
+        self.metadata_db
+            .put(
+                COMMITMENTS_KEY,
+                &serde_json::to_vec(&prepared_metadata_cache).unwrap(),
+            )
+            .map_err(CommitmentError::MetadataDb)
     }
 }

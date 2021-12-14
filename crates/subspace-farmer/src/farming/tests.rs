@@ -22,14 +22,12 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
     let index = 0;
 
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
 
-    let commitments = Commitments::new(base_directory.path().join("commitments"))
-        .await
-        .unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
-    plot.write_many(Arc::new(pieces), index).await.unwrap();
-    commitments.create(salt, plot.clone()).await.unwrap();
+    plot.write_many(Arc::new(pieces), index).unwrap();
+    commitments.create(salt, plot.clone()).unwrap();
 
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
@@ -55,16 +53,12 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
             // if salt will change, wait for background recommitment to finish first
             if slot.next_salt.unwrap() != latest_salt {
                 latest_salt = slot.next_salt.unwrap();
-                let mut current_commitment_notifier = commitments.clone().on_recommitment(slot.salt).await;
-                let mut upcoming_commitment_notifier = commitments.clone().on_recommitment(latest_salt).await;
-                tokio::select! {
-                    _ = current_commitment_notifier.recv() => {
-                        // also wait for the recommitment for the upcoming salt
-                        // it locks the commitment database, and causing racy behavior
-                        upcoming_commitment_notifier.recv().await;
-                    },
-                    _ = sleep(Duration::from_secs(3)) => { panic!("Cannot finish recommitments......"); }
-                }
+                let current_commitment_notifier = commitments.clone().on_recommitment(slot.salt).await;
+                let upcoming_commitment_notifier = commitments.clone().on_recommitment(latest_salt).await;
+                let _ = current_commitment_notifier.recv();
+                // also wait for the recommitment for the upcoming salt
+                // it locks the commitment database, and causing racy behavior
+                let _ = upcoming_commitment_notifier.recv();
             }
 
             tokio::select! {
