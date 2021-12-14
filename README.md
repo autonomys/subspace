@@ -36,36 +36,50 @@ With the provided executables, you can choose to `Farm` online by joining the ne
 
 ### To Farm With The Network (Online)
 
+NOTE: replace these: `subspace-node-x86_64-*-snapshot`, `subspace-farmer-x86_64-*-snapshot`
+in the below commands with the name of the file you downloaded for your operating system. 
+
 **Mac/Linux**
 
 1. Download the executables for your operating system
 2. Open your favourite terminal, and go to the folder where you download the executables
-3. This will start the node: `sudo ./subspace-node-x86_64-*-snapshot-test \
-   --chain testnet
-   --base-path /var/subspace \
-   --name subspace-node \
-   --pruning archive \
+3. Make them executable  `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
+4. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose): `./subspace-node-x86_64-*-snapshot \
+   --chain testnet \
+   --name INSERT_YOUR_ID \
    --rpc-cors all \
    --ws-external \
    --rpc-methods unsafe \
    --wasm-execution compiled \
    --execution wasm \
    --validator \
-   --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs"
-   --telemetry-url "wss://telemetry.polkadot.io/submit/ 9" \` (replace the filename according to your downloaded file)
-4. This will start the farmer: `sudo ./subspace-farmer-x86_64-*-snapshot-test -- farm` (replace the filename according to your downloaded file)
+   --bootnodes "/dns/[DOMAIN or IP]/tcp/[PORT]/p2p/[NODE PUBLIC KEY]" \
+   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"` 
+5. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm`
 
 **Windows**
 
 1. Download the executables for your operating system
 2. Open your favourite terminal with admin privileges, and go to the folder where you download the executables
-3. This will start the node: `./subspace-node-x86_64-*-snapshot-test --chain testnet --base-path /var/subspace --name subspace-node --pruning archive --rpc-cors all --ws-external --rpc-methods unsafe --wasm-execution compiled --execution wasm --validator --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" --telemetry-url "wss://telemetry.polkadot.io/submit/ 9"` (replace the filename according to your downloaded file)
-4. This will start the farmer: `sudo ./subspace-farmer-x86_64-*-snapshot-test -- farm` (replace the filename according to your downloaded file)
+3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose): `./subspace-node-x86_64-*-snapshot ^
+   --chain testnet ^
+   --name INSERT_YOUR_ID ^
+   --rpc-cors all ^
+   --ws-external ^
+   --rpc-methods unsafe ^
+   --wasm-execution compiled ^
+   --execution wasm ^
+   --validator ^
+   --bootnodes "/dns/[DOMAIN or IP]/tcp/[PORT]/p2p/[NODE PUBLIC KEY]" ^
+   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"`
+4. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm` 
 
 ### To Farm By Yourself (Offline)
-1. Download the executables for your operating system
-2. Open your favourite terminal, and go to the folder where you download the executables (for Windows, open the terminal with admin privileges)
 
-Linux/MacOS (remove `sudo` from the beginning for Windows):
-3. `sudo ./subspace-node-x86_64-*-snapshot-test -- --dev --tmp` (replace the filename according to your downloaded file)
-4. `sudo ./subspace-farmer-x86_64-*-snapshot-test -- farm` (replace the filename according to your downloaded file)
+1. Download the executables for your operating system
+2. Open your favourite terminal, and go to the folder where you download the executables
+3. Make them executable  `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
+
+Linux/MacOS:
+3. `./subspace-node-x86_64-*-snapshot -- --dev --tmp`
+4. `./subspace-farmer-x86_64-*-snapshot -- farm`
