@@ -63,8 +63,11 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Issued reward for the block author. \[block_author, reward\]
-        BlockReward(T::AccountId, BalanceOf<T>),
+        /// Issued reward for the block author.
+        BlockReward {
+            block_author: T::AccountId,
+            reward: BalanceOf<T>,
+        },
     }
 
     #[pallet::hooks]
@@ -87,7 +90,10 @@ impl<T: Config> Pallet<T> {
             let reward = T::BlockReward::get();
             T::Currency::deposit_creating(&block_author, reward);
 
-            Self::deposit_event(Event::BlockReward(block_author, reward));
+            Self::deposit_event(Event::BlockReward {
+                block_author,
+                reward,
+            });
         }
     }
 }

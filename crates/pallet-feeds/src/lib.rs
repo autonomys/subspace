@@ -80,10 +80,14 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// New object is added \[object_metadata, account_id, object_size\]
-        DataSubmitted(ObjectMetadata, T::AccountId, u64),
-        /// New feed is created \[feed_id, account_id\]
-        FeedCreated(FeedId, T::AccountId),
+        /// New object was added.
+        DataSubmitted {
+            metadata: ObjectMetadata,
+            who: T::AccountId,
+            object_size: u64,
+        },
+        /// New feed was created.
+        FeedCreated { feed_id: FeedId, who: T::AccountId },
     }
 
     /// `pallet-feeds` errors
@@ -107,7 +111,7 @@ mod pallet {
 
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
-            Self::deposit_event(Event::FeedCreated(feed_id, who));
+            Self::deposit_event(Event::FeedCreated { feed_id, who });
 
             Ok(())
         }
@@ -140,7 +144,11 @@ mod pallet {
                 feed_totals.count += 1;
             });
 
-            Self::deposit_event(Event::DataSubmitted(metadata, who, object_size));
+            Self::deposit_event(Event::DataSubmitted {
+                metadata,
+                who,
+                object_size,
+            });
 
             Ok(())
         }

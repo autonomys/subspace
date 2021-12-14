@@ -16,9 +16,10 @@ fn can_create_feed() {
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedCreated(
-            FEED_ID, ACCOUNT_ID,
-        )));
+        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedCreated {
+            feed_id: FEED_ID,
+            who: ACCOUNT_ID,
+        }));
     });
 }
 
@@ -50,11 +51,11 @@ fn can_do_put() {
             }
         );
 
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::DataSubmitted(
-            object_metadata,
-            ACCOUNT_ID,
+        System::assert_last_event(Event::Feeds(crate::Event::<Test>::DataSubmitted {
+            metadata: object_metadata,
+            who: ACCOUNT_ID,
             object_size,
-        )));
+        }));
     });
 }
 

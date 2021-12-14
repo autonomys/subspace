@@ -237,8 +237,7 @@ mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event {
         /// Root block was stored in blockchain history.
-        /// \[root_block\].
-        RootBlockStored(RootBlock),
+        RootBlockStored { root_block: RootBlock },
     }
 
     #[pallet::error]
@@ -962,7 +961,7 @@ impl<T: Config> Pallet<T> {
     fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
         for root_block in root_blocks {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-            Self::deposit_event(Event::RootBlockStored(root_block));
+            Self::deposit_event(Event::RootBlockStored { root_block });
         }
         Ok(())
     }
