@@ -359,8 +359,8 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         {
             let handle = handle.clone();
             let overseer_client = client.clone();
-            // In order to make this stream available, the embedded subspace node has to be an
-            // authority node.
+            // TODO: In order to make this stream available, the embedded subspace node has to be an
+            // authority node for now, but we'd like to avoid this eventually.
             let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
             assert!(
                 role.is_authority(),
