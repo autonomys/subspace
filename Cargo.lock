@@ -4382,7 +4382,6 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-consensus-subspace",
 ]
 
 [[package]]
@@ -4460,6 +4459,16 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-timestamp",
+]
+
+[[package]]
+name = "pallet-transaction-fees"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
 ]
 
 [[package]]
@@ -8005,6 +8014,7 @@ dependencies = [
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
+ "pallet-transaction-fees",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",
