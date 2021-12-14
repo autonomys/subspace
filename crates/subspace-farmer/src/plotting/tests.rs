@@ -26,7 +26,7 @@ async fn plotting_happy_path() {
 
     let base_directory = TempDir::new().unwrap();
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
+    let commitments = Commitments::new(base_directory.path().join("commitments"))
         .await
         .unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
@@ -145,7 +145,7 @@ async fn plotting_continue() {
 
     let base_directory = TempDir::new().unwrap();
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
+    let commitments = Commitments::new(base_directory.path().join("commitments"))
         .await
         .unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();

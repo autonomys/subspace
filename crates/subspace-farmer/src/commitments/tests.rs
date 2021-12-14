@@ -22,7 +22,7 @@ async fn create() {
     let index = 0;
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
+    let commitments = Commitments::new(base_directory.path().join("commitments"))
         .await
         .unwrap();
     plot.write_many(Arc::new(pieces), index).await.unwrap();
@@ -44,7 +44,7 @@ async fn find_by_tag() {
     let salt: Salt = [1u8; 8];
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
+    let commitments = Commitments::new(base_directory.path().join("commitments"))
         .await
         .unwrap();
 

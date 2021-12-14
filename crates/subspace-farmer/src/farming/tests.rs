@@ -24,7 +24,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let plot = Plot::open_or_create(&base_directory).await.unwrap();
 
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
+    let commitments = Commitments::new(base_directory.path().join("commitments"))
         .await
         .unwrap();
 

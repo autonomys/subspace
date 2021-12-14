@@ -22,7 +22,7 @@ pub(crate) async fn farm(
     let plot = Plot::open_or_create(&base_directory).await?;
 
     info!("Opening commitments");
-    let commitments = Commitments::new(base_directory.join("commitments").into()).await?;
+    let commitments = Commitments::new(base_directory.join("commitments")).await?;
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({

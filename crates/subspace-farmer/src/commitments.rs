@@ -1,18 +1,17 @@
+mod commitment_databases;
 #[cfg(test)]
 mod tests;
 
 use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
-use async_std::path::PathBuf;
+use commitment_databases::{CommitmentDatabases, DbEntry, COMMITMENTS_CACHE_SIZE};
 #[cfg(test)]
 use log::info;
 use log::{error, trace};
-use lru::LruCache;
 use rayon::prelude::*;
-use rocksdb::{Options, DB};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use rocksdb::DB;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
@@ -20,8 +19,6 @@ use thiserror::Error;
 use tokio::{sync::mpsc, time::sleep, time::Duration};
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
-const COMMITMENTS_CACHE_SIZE: usize = 2;
-const COMMITMENTS_KEY: &[u8] = b"commitments";
 
 #[derive(Debug, Error)]
 pub enum CommitmentError {
@@ -31,58 +28,6 @@ pub enum CommitmentError {
     CommitmentDb(rocksdb::Error),
     #[error("Plot error: {0}")]
     Plot(io::Error),
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-enum CommitmentStatus {
-    /// In-progress commitment to the part of the plot
-    InProgress,
-    /// Commitment to the whole plot and not some in-progress partial commitment
-    Created,
-}
-
-struct DbEntry {
-    salt: Salt,
-    db: Mutex<Option<Arc<DB>>>,
-}
-
-#[derive(Debug)]
-struct CommitmentDatabases {
-    databases: LruCache<Salt, Arc<DbEntry>>,
-    metadata_cache: HashMap<Salt, CommitmentStatus>,
-    metadata_db: Arc<DB>,
-}
-
-impl CommitmentDatabases {
-    async fn update_status(
-        &mut self,
-        salt: Salt,
-        status: CommitmentStatus,
-    ) -> Result<(), CommitmentError> {
-        self.metadata_cache.insert(salt, status);
-
-        self.persist_metadata_cache().await
-    }
-
-    async fn persist_metadata_cache(&self) -> Result<(), CommitmentError> {
-        let metadata_db = Arc::clone(&self.metadata_db);
-        let prepared_metadata_cache: HashMap<String, CommitmentStatus> = self
-            .metadata_cache
-            .iter()
-            .map(|(salt, status)| (hex::encode(salt), *status))
-            .collect();
-
-        tokio::task::spawn_blocking(move || {
-            metadata_db
-                .put(
-                    COMMITMENTS_KEY,
-                    &serde_json::to_vec(&prepared_metadata_cache).unwrap(),
-                )
-                .map_err(CommitmentError::MetadataDb)
-        })
-        .await
-        .unwrap()
-    }
 }
 
 #[derive(Debug)]
@@ -103,68 +48,7 @@ impl Commitments {
         let commitment_databases_fut = tokio::task::spawn_blocking({
             let base_directory = base_directory.clone();
 
-            move || {
-                let metadata_db = DB::open_default(base_directory.join("metadata"))
-                    .map_err(CommitmentError::MetadataDb)?;
-                let metadata_cache: HashMap<Salt, CommitmentStatus> = metadata_db
-                    .get(COMMITMENTS_KEY)
-                    .map_err(CommitmentError::MetadataDb)?
-                    .map(|bytes| {
-                        serde_json::from_slice::<HashMap<String, CommitmentStatus>>(&bytes)
-                            .unwrap()
-                            .into_iter()
-                            .map(|(salt, status)| {
-                                (hex::decode(salt).unwrap().try_into().unwrap(), status)
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
-                let mut commitment_databases = CommitmentDatabases {
-                    databases: LruCache::new(COMMITMENTS_CACHE_SIZE),
-                    metadata_cache,
-                    metadata_db: Arc::new(metadata_db),
-                };
-
-                if commitment_databases
-                    .metadata_cache
-                    .drain_filter(|salt, status| match status {
-                        CommitmentStatus::InProgress => {
-                            if let Err(error) =
-                                std::fs::remove_dir_all(base_directory.join(hex::encode(salt)))
-                            {
-                                error!(
-                                    "Failed to remove old in progress commitment {}: {}",
-                                    hex::encode(salt),
-                                    error
-                                );
-                            }
-                            true
-                        }
-                        CommitmentStatus::Created => false,
-                    })
-                    .next()
-                    .is_some()
-                {
-                    tokio::runtime::Handle::current()
-                        .block_on(commitment_databases.persist_metadata_cache())?;
-                }
-
-                // Open databases that were fully created during previous run
-                for salt in commitment_databases.metadata_cache.keys() {
-                    let db = DB::open(&Options::default(), base_directory.join(hex::encode(salt)))
-                        .map_err(CommitmentError::CommitmentDb)?;
-                    commitment_databases.databases.put(
-                        *salt,
-                        Arc::new(DbEntry {
-                            salt: *salt,
-                            db: Mutex::new(Some(Arc::new(db))),
-                        }),
-                    );
-                }
-
-                Ok::<_, CommitmentError>(commitment_databases)
-            }
+            move || CommitmentDatabases::new(base_directory)
         });
 
         let inner = Inner {
@@ -225,9 +109,7 @@ impl Commitments {
             });
         }
 
-        commitment_databases
-            .update_status(salt, CommitmentStatus::InProgress)
-            .await?;
+        commitment_databases.mark_in_progress(salt).await?;
 
         let mut db_guard = db_entry.db.lock().await;
         // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
@@ -273,9 +155,7 @@ impl Commitments {
         // Check if database was already been removed
         if let Some(db_entry) = commitment_databases.databases.get(&salt) {
             if db_entry.db.lock().await.is_some() {
-                commitment_databases
-                    .update_status(salt, CommitmentStatus::Created)
-                    .await?;
+                commitment_databases.mark_created(salt).await?;
             }
         }
 
@@ -436,12 +316,12 @@ impl Commitments {
                 }
                 info!("Successfully retrieved the DB with salt: {:?}", salt);
                 match status.unwrap() {
-                    CommitmentStatus::InProgress => {
+                    commitment_databases::CommitmentStatus::InProgress => {
                         // drop the guard, so commitment can make progress
                         drop(guard);
                         sleep(Duration::from_millis(100)).await;
                     }
-                    CommitmentStatus::Created => {
+                    commitment_databases::CommitmentStatus::Created => {
                         sender
                             .send(())
                             .await
