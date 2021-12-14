@@ -57,6 +57,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{
     generic::DigestItem,
     traits::{One, SaturatedConversion, Saturating, Zero},
+    ConsensusEngineId,
 };
 use sp_std::prelude::*;
 use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
@@ -200,11 +201,6 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
-        /// Replication factor, defines minimum desired number of replicas of the blockchain to be
-        /// stored by the network.
-        #[pallet::constant]
-        type ReplicationFactor: Get<u16>;
-
         /// Subspace requires some logic to be triggered on every block to query for whether an epoch
         /// has ended and to perform the transition to the next epoch.
         ///
@@ -237,8 +233,7 @@ mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event {
         /// Root block was stored in blockchain history.
-        /// \[root_block\].
-        RootBlockStored(RootBlock),
+        RootBlockStored { root_block: RootBlock },
     }
 
     #[pallet::error]
@@ -699,14 +694,15 @@ impl<T: Config> Pallet<T> {
 
         // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
         //  in order to seed the blockchain with data quickly
-        #[cfg(all(feature = "no-early-solution-range-updates", not(test)))]
-        let solution_range = if block_number < 15_000_u32.into() {
-            previous_solution_range
+        let solution_range = if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
+            if block_number < 15_000_u32.into() {
+                previous_solution_range
+            } else {
+                (previous_solution_range as f64 * adjustment_factor).round() as u64
+            }
         } else {
             (previous_solution_range as f64 * adjustment_factor).round() as u64
         };
-        #[cfg(not(all(feature = "no-early-solution-range-updates", not(test))))]
-        let solution_range = (previous_solution_range as f64 * adjustment_factor).round() as u64;
 
         SolutionRange::<T>::put(solution_range);
         EraStartSlot::<T>::put(current_slot);
@@ -852,7 +848,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(now: T::BlockNumber) {
-        let maybe_pre_digest: Option<PreDigest> = <frame_system::Pallet<T>>::digest()
+        let maybe_pre_digest: Option<PreDigest<T::AccountId>> = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
             .filter_map(|s| s.as_pre_runtime())
@@ -962,7 +958,7 @@ impl<T: Config> Pallet<T> {
     fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
         for root_block in root_blocks {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-            Self::deposit_event(Event::RootBlockStored(root_block));
+            Self::deposit_event(Event::RootBlockStored { root_block });
         }
         Ok(())
     }
@@ -1108,6 +1104,23 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
             timestamp_slot,
             "Timestamp slot must match `CurrentSlot`",
         );
+    }
+}
+
+impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
+    fn find_author<'a, I>(digests: I) -> Option<T::AccountId>
+    where
+        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+    {
+        digests.into_iter().find_map(|(id, mut data)| {
+            if id == SUBSPACE_ENGINE_ID {
+                PreDigest::decode(&mut data)
+                    .map(|pre_digest| pre_digest.solution.public_key)
+                    .ok()
+            } else {
+                None
+            }
+        })
     }
 }
 

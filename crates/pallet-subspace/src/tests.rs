@@ -592,7 +592,7 @@ fn store_root_block_works() {
             System::events(),
             vec![EventRecord {
                 phase: Phase::Initialization,
-                event: Event::Subspace(crate::Event::RootBlockStored(root_block)),
+                event: Event::Subspace(crate::Event::RootBlockStored { root_block }),
                 topics: vec![],
             }]
         );

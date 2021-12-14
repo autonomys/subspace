@@ -669,7 +669,10 @@ fn rejects_missing_inherent_digest() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| stage == Stage::PostSeal || v.as_subspace_pre_digest().is_none())
+            .filter(|v| {
+                stage == Stage::PostSeal
+                    || CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(v).is_none()
+            })
             .collect()
     })
 }
@@ -681,7 +684,10 @@ fn rejects_missing_seals() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| stage == Stage::PreSeal || v.as_subspace_seal().is_none())
+            .filter(|v| {
+                stage == Stage::PreSeal
+                    || CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(v).is_none()
+            })
             .collect()
     })
 }
@@ -693,7 +699,11 @@ fn rejects_missing_consensus_digests() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| stage == Stage::PostSeal || v.as_next_epoch_descriptor().is_none())
+            .filter(|v| {
+                stage == Stage::PostSeal
+                    || CompatibleDigestItem::<FarmerPublicKey>::as_next_epoch_descriptor(v)
+                        .is_none()
+            })
             .collect()
     });
 }
@@ -704,15 +714,15 @@ fn wrong_consensus_engine_id_rejected() {
     let keypair = Keypair::generate();
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let bad_seal: Item = DigestItem::Seal([0; 4], keypair.sign(ctx.bytes(b"")).to_bytes().to_vec());
-    assert!(bad_seal.as_subspace_pre_digest().is_none());
-    assert!(bad_seal.as_subspace_seal().is_none())
+    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
+    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&bad_seal).is_none())
 }
 
 #[test]
 fn malformed_pre_digest_rejected() {
     sp_tracing::try_init_simple();
     let bad_seal: Item = DigestItem::Seal(SUBSPACE_ENGINE_ID, [0; 64].to_vec());
-    assert!(bad_seal.as_subspace_pre_digest().is_none());
+    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
 }
 
 #[test]
@@ -724,12 +734,15 @@ fn sig_is_not_pre_digest() {
         SUBSPACE_ENGINE_ID,
         keypair.sign(ctx.bytes(b"")).to_bytes().to_vec(),
     );
-    assert!(bad_seal.as_subspace_pre_digest().is_none());
-    assert!(bad_seal.as_subspace_seal().is_some())
+    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
+    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&bad_seal).is_some())
 }
 
 /// Claims the given slot number. always returning a dummy block.
-pub fn dummy_claim_slot(slot: Slot, _epoch: &Epoch) -> Option<(PreDigest, FarmerPublicKey)> {
+pub fn dummy_claim_slot(
+    slot: Slot,
+    _epoch: &Epoch,
+) -> Option<(PreDigest<FarmerPublicKey>, FarmerPublicKey)> {
     return Some((
         PreDigest {
             solution: Solution {
@@ -837,7 +850,9 @@ fn propose_and_import_block<Transaction: Send + 'static>(
         .unwrap()
         .unwrap();
 
-    let seal = Item::subspace_seal(signature.to_vec().try_into().unwrap());
+    let seal: Item = CompatibleDigestItem::<FarmerPublicKey>::subspace_seal(
+        signature.to_vec().try_into().unwrap(),
+    );
 
     let post_hash = {
         block.header.digest_mut().push(seal.clone());

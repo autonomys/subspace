@@ -353,8 +353,8 @@ impl Commitments {
         range: u64,
         salt: Salt,
     ) -> Option<(Tag, u64)> {
-        let mut commitment_databases = self.inner.commitment_databases.try_lock()?;
-        let db_entry = Arc::clone(commitment_databases.databases.get(&salt)?);
+        let commitment_databases = self.inner.commitment_databases.try_lock()?;
+        let db_entry = Arc::clone(commitment_databases.databases.peek(&salt)?);
 
         let db_guard = db_entry.db.try_lock()?;
         let db = db_guard.clone()?;

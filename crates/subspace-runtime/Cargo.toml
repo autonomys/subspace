@@ -31,6 +31,7 @@ pallet-rewards = { version = "0.1.0", default-features = false, path = "../palle
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["no-early-solution-range-updates"], path = "../pallet-subspace" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+pallet-transaction-fees = { version = "0.1.0", default-features = false, path = "../pallet-transaction-fees" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 pallet-utility = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
@@ -79,6 +80,7 @@ std = [
 	"pallet-subspace/std",
 	"pallet-sudo/std",
 	"pallet-timestamp/std",
+	"pallet-transaction-fees/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"pallet-utility/std",
