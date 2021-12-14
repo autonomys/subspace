@@ -9,8 +9,8 @@ use parachain_template_runtime::{
 };
 
 // Cumulus Imports
-use cumulus_client_consensus_common::ParachainConsensus;
 use cirrus_client_service::prepare_node_config;
+use cumulus_client_consensus_common::ParachainConsensus;
 
 // Substrate Imports
 use sc_executor::NativeElseWasmExecutor;
@@ -159,7 +159,7 @@ where
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[sc_tracing::logging::prefix_logs_with("Parachain")]
+#[sc_tracing::logging::prefix_logs_with("Secondarychain")]
 async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, BIC>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
@@ -230,7 +230,8 @@ where
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
-	let relay_chain_full_node = cirrus_client_service::build_subspace_full_node(polkadot_config).await?;
+	let relay_chain_full_node =
+		cirrus_client_service::build_subspace_full_node(polkadot_config).await?;
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();

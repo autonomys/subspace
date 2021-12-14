@@ -22,7 +22,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Encode};
+use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use frame_support::weights::{
     constants::{RocksDbWeight, WEIGHT_PER_SECOND},
@@ -38,6 +38,7 @@ use sp_consensus_subspace::{
     SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_executor::Bundle;
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
     PostDispatchInfoOf, Zero,
@@ -45,6 +46,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -732,6 +734,27 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     block_object_mapping
 }
 
+fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+    extrinsics
+        .into_iter()
+        .filter_map(|opaque_extrinsic| {
+            match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
+                Ok(uxt) => {
+                    if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+                        bundle,
+                    }) = uxt.function
+                    {
+                        Some(bundle)
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        })
+        .collect()
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -871,6 +894,20 @@ impl_runtime_apis! {
             head_hash: <Block as BlockT>::Hash,
         ) -> Option<()> {
             Executor::submit_candidate_receipt_unsigned(head_number, head_hash).ok()
+        }
+
+        fn submit_execution_receipt_unsigned(
+            execution_receipt: sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>,
+        ) -> Option<()> {
+            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+        }
+
+        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()> {
+            Executor::submit_transaction_bundle_unsigned(bundle).ok()
+        }
+
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+            extract_bundles(extrinsics)
         }
 
         fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {

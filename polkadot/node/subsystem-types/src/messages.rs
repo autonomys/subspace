@@ -27,6 +27,8 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
+use sp_executor::{Bundle, ExecutionReceipt};
+use sp_runtime::OpaqueExtrinsic;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
 /// Subsystem messages where each message is always bound to a relay parent.
@@ -71,6 +73,10 @@ pub enum ChainApiMessage {
 	/// Request the last finalized block number.
 	/// This request always succeeds.
 	FinalizedBlockNumber(ChainApiResponseChannel<BlockNumber>),
+	/// Request the block by hash.
+	BlockBody(Hash, ChainApiResponseChannel<Option<Vec<OpaqueExtrinsic>>>),
+	/// Request the best block hash.
+	BestBlockHash(ChainApiResponseChannel<Hash>),
 	/// Request the `k` ancestors block hashes of a block with the given hash.
 	/// The response channel may return a `Vec` of size up to `k`
 	/// filled with ancestors hashes with the following order:
@@ -99,7 +105,14 @@ pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeA
 #[derive(Debug)]
 pub enum RuntimeApiRequest {
 	/// Submit the candidate receipt to primary chain.
+	// TODO: remove later
 	SubmitCandidateReceipt(u32, Hash),
+	/// Submit the execution receipt to primary chain.
+	SubmitExecutionReceipt(ExecutionReceipt<Hash>),
+	/// Submit the transaction bundle to primary chain.
+	SubmitTransactionBundle(Bundle),
+	/// Extract the bundles from the extrinsics of a block.
+	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<Bundle>>),
 	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),
 }

@@ -17,7 +17,50 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
+use sp_std::vec::Vec;
+
+/// Dummy bundle header.
+pub type BundleHeader = Vec<u8>;
+
+/// Transaction bundle
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct Bundle {
+    /// The bundle header.
+    pub header: BundleHeader,
+    /// THe accompanying extrinsics.
+    pub opaque_transactions: Vec<u8>,
+}
+
+impl Bundle {
+    /// Returns the hash of this bundle.
+    pub fn hash(&self) -> sp_core::H256 {
+        sp_runtime::traits::BlakeTwo256::hash(&self.header)
+    }
+}
+
+/// Receipt of state execution.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct ExecutionReceipt<Hash> {
+    /// Primary block hash.
+    pub primary_hash: Hash,
+    /// Secondary block hash?
+    pub secondary_hash: Hash,
+    /// State root after finishing the execution.
+    pub state_root: Hash,
+    /// Merkle root of the execution.
+    pub state_transition_root: Hash,
+}
+
+impl<Hash: Copy> ExecutionReceipt<Hash> {
+    /// TODO: hash of ER?
+    pub fn hash(&self) -> Hash {
+        self.primary_hash
+    }
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
@@ -27,6 +70,17 @@ sp_api::decl_runtime_apis! {
             head_number: <<Block as BlockT>::Header as HeaderT>::Number,
             head_hash: <Block as BlockT>::Hash,
         ) -> Option<()>;
+
+        /// Submits the execution receipt via an unsigned extrinsic.
+        fn submit_execution_receipt_unsigned(
+            execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
+        ) -> Option<()>;
+
+        /// Submits the transaction bundle via an unsigned extrinsic.
+        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()>;
+
+        /// Extract the bundles from extrinsics in a block.
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle>;
 
         /// Returns the block hash given the block number.
         fn head_hash(

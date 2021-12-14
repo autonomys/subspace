@@ -24,12 +24,15 @@
 #![allow(clippy::all)]
 
 use polkadot_node_subsystem_util::metrics::{self, prometheus};
-use subspace_runtime_primitives::{opaque::{Block, BlockId}, Hash};
 use polkadot_subsystem::{
 	errors::RuntimeApiError,
 	messages::{RuntimeApiMessage, RuntimeApiRequest as Request},
 	overseer, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext, SubsystemError,
 	SubsystemResult,
+};
+use subspace_runtime_primitives::{
+	opaque::{Block, BlockId},
+	Hash,
 };
 
 use sp_api::ProvideRuntimeApi;
@@ -101,14 +104,17 @@ where
 impl<Client> RuntimeApiSubsystem<Client>
 where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
-	Client::Api: ExecutorApi<Block>
+	Client::Api: ExecutorApi<Block>,
 {
 	fn store_cache(&mut self, result: RequestResult) {
 		use RequestResult::*;
 
 		match result {
-			SubmitCandidateReceipt(..) => {}
-			PendingHead(..) => {}
+			SubmitCandidateReceipt(..) => {},
+			SubmitExecutionReceipt(..) => {},
+			SubmitTransactionBundle(..) => {},
+			ExtractBundles(..) => {},
+			PendingHead(..) => {},
 		}
 	}
 
@@ -141,6 +147,9 @@ where
 
 		match request {
 			Request::SubmitCandidateReceipt(..) => None,
+			Request::SubmitExecutionReceipt(..) => None,
+			Request::SubmitTransactionBundle(..) => None,
+			Request::ExtractBundles(..) => None,
 			Request::PendingHead(..) => None,
 		}
 	}
@@ -155,8 +164,8 @@ where
 
 		// FIXME: Re-enable the cache
 		// let request = match self.query_cache(relay_parent.clone(), request) {
-			// Some(request) => request,
-			// None => return,
+		// Some(request) => request,
+		// None => return,
 		// };
 
 		let request = async move {
@@ -218,6 +227,7 @@ where
 				FromOverseer::Signal(OverseerSignal::Conclude) => return Ok(()),
 				FromOverseer::Signal(OverseerSignal::ActiveLeaves(_)) => {},
 				FromOverseer::Signal(OverseerSignal::BlockFinalized(..)) => {},
+				FromOverseer::Signal(OverseerSignal::NewSlot(..)) => {},
 				FromOverseer::Communication { msg } => match msg {
 					RuntimeApiMessage::Request(relay_parent, request) => {
 						subsystem.spawn_request(relay_parent, request);
@@ -241,25 +251,66 @@ where
 {
 	let _timer = metrics.time_make_runtime_api_request();
 
+	// TODO: re-enable the marco to reduce the pattern duplication.
 	match request {
-		Request::SubmitCandidateReceipt(head_number, head_hash) =>
-		{
+		Request::SubmitCandidateReceipt(head_number, head_hash) => {
 			let api = client.runtime_api();
-			let res = api.submit_candidate_receipt_unsigned(&BlockId::Hash(relay_parent), head_number, head_hash)
+			let res = api
+				.submit_candidate_receipt_unsigned(
+					&BlockId::Hash(relay_parent),
+					head_number,
+					head_hash,
+				)
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
-			res.ok().map(|_res| RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash));
-		}
+			res.ok().map(|_res| {
+				RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash)
+			});
+		},
+		Request::SubmitExecutionReceipt(execution_receipt) => {
+			let api = client.runtime_api();
+			let execution_receipt_hash = execution_receipt.hash();
+			let res = api
+				.submit_execution_receipt_unsigned(&BlockId::Hash(relay_parent), execution_receipt)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok().map(|_res| {
+				RequestResult::SubmitExecutionReceipt(relay_parent, execution_receipt_hash)
+			});
+		},
+		Request::SubmitTransactionBundle(bundle) => {
+			let api = client.runtime_api();
+			let bundle_hash = bundle.hash();
+			let res = api
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), bundle)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok()
+				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
+		},
+		Request::ExtractBundles(extrinsics, sender) => {
+			let api = client.runtime_api();
+			let res = api
+				.extract_bundles(&BlockId::Hash(relay_parent), extrinsics)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+
+			let _ = sender.send(res.clone());
+
+			res.ok().map(|_res| RequestResult::ExtractBundles(relay_parent));
+		},
+
 		Request::PendingHead(sender) => {
 			let api = client.runtime_api();
-			let res = api.pending_head(&BlockId::Hash(relay_parent))
+			let res = api
+				.pending_head(&BlockId::Hash(relay_parent))
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
 
 			res.ok().map(|res| RequestResult::PendingHead(relay_parent, res));
-		}
+		},
 	}
 
 	None

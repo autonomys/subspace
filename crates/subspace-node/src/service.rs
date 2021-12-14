@@ -359,13 +359,33 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         {
             let handle = handle.clone();
             let overseer_client = client.clone();
+            // TODO: In order to make this stream available, the embedded subspace node has to be an
+            // authority node for now, but we'd like to avoid this eventually.
+            let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
+            assert!(
+                role.is_authority(),
+                "Authority node is required by overseer"
+            );
             task_manager.spawn_essential_handle().spawn_blocking(
                 "overseer",
                 Some("overseer"),
                 Box::pin(async move {
-                    use futures::{pin_mut, select, FutureExt};
+                    use cirrus_node_primitives::ExecutorSlotInfo;
+                    use futures::{pin_mut, select, FutureExt, StreamExt};
 
-                    let forward = polkadot_overseer::forward_events(overseer_client, handle);
+                    let forward = polkadot_overseer::forward_events(
+                        overseer_client,
+                        Box::pin(new_slot_notification_stream_clone.subscribe().then(
+                            |slot_notification| async move {
+                                let slot_info = slot_notification.new_slot_info;
+                                ExecutorSlotInfo {
+                                    slot: slot_info.slot,
+                                    global_challenge: slot_info.global_challenge,
+                                }
+                            },
+                        )),
+                        handle,
+                    );
 
                     let forward = forward.fuse();
                     let overseer_fut = overseer.run().fuse();

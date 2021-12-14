@@ -12,3 +12,5 @@ This is a fork of [cumulus](https://github.com/paritytech/cumulus/commit/5200126
 - `parachain-template`
   - `node`
   - `runtime`
+
+The binary `parachain-collator` was renamed to `subspace-executor`.

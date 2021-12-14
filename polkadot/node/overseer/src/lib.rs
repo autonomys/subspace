@@ -68,7 +68,9 @@ use std::{
 	time::Duration,
 };
 
-use futures::{channel::oneshot, future::BoxFuture, select, Future, FutureExt, StreamExt};
+use futures::{
+	channel::oneshot, future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt,
+};
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
@@ -81,6 +83,7 @@ pub use polkadot_node_subsystem_types::{
 	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
+use cirrus_node_primitives::ExecutorSlotInfo;
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
 pub mod metrics;
@@ -135,6 +138,11 @@ impl Handle {
 	/// Inform the `Overseer` that some block was finalized.
 	pub async fn block_finalized(&mut self, block: BlockInfo) {
 		self.send_and_log_error(Event::BlockFinalized(block)).await
+	}
+
+	/// Inform the `Overseer` that a new slot was triggered.
+	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
+		self.send_and_log_error(Event::NewSlot(slot_info)).await
 	}
 
 	/// Wait for a block with the given hash to be in the active-leaves set.
@@ -203,6 +211,8 @@ pub enum Event {
 	BlockImported(BlockInfo),
 	/// A block was finalized with i.e. babe or another consensus algorithm.
 	BlockFinalized(BlockInfo),
+	/// A new slot arrived.
+	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
 	MsgToSubsystem {
 		/// The actual message.
@@ -230,7 +240,11 @@ pub enum ExternalRequest {
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications into the [`OverseerHandle`].
-pub async fn forward_events<P: BlockchainEvents<Block>>(client: Arc<P>, mut handle: Handle) {
+pub async fn forward_events<P: BlockchainEvents<Block>>(
+	client: Arc<P>,
+	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
+	mut handle: Handle,
+) {
 	let mut finality = client.finality_notification_stream();
 	let mut imports = client.import_notification_stream();
 
@@ -252,6 +266,14 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(client: Arc<P>, mut hand
 					None => break,
 				}
 			},
+			s = slots.next() => {
+				match s {
+					Some(executor_slot_info) => {
+						handle.slot_arrived(executor_slot_info).await;
+					}
+					None => break,
+				}
+			}
 			complete => break,
 		}
 	}
@@ -522,6 +544,9 @@ where
 						Event::BlockFinalized(block) => {
 							self.block_finalized(block).await?;
 						}
+						Event::NewSlot(slot_info) => {
+							self.on_new_slot(slot_info).await?;
+						}
 						Event::ExternalRequest(request) => {
 							self.handle_external_request(request);
 						}
@@ -611,6 +636,11 @@ where
 			self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
 		}
 
+		Ok(())
+	}
+
+	async fn on_new_slot(&mut self, slot_info: ExecutorSlotInfo) -> SubsystemResult<()> {
+		self.broadcast_signal(OverseerSignal::NewSlot(slot_info)).await?;
 		Ok(())
 	}
 
