@@ -39,7 +39,6 @@ use sp_consensus_subspace::{
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::Bundle;
-use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
     PostDispatchInfoOf, Zero,
@@ -47,6 +46,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
