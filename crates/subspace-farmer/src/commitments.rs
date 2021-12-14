@@ -5,7 +5,7 @@ mod tests;
 use crate::plot::Plot;
 use async_lock::Mutex;
 use async_std::io;
-use commitment_databases::{CommitmentDatabases, DbEntry, COMMITMENTS_CACHE_SIZE};
+use commitment_databases::CommitmentDatabases;
 #[cfg(test)]
 use log::info;
 use log::{error, trace};
@@ -64,52 +64,13 @@ impl Commitments {
     /// Create commitments for all pieces for a given salt
     pub(crate) async fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
         let mut commitment_databases = self.inner.commitment_databases.lock().await;
-        if commitment_databases.databases.contains(&salt) {
-            return Ok(());
-        }
 
-        let db_entry = Arc::new(DbEntry {
-            salt,
-            db: Mutex::new(None),
-        });
-
-        let old_db_entry = if commitment_databases.databases.len() >= COMMITMENTS_CACHE_SIZE {
-            commitment_databases
-                .databases
-                .pop_lru()
-                .map(|(_salt, db_entry)| db_entry)
-        } else {
-            None
+        let db_entry = match commitment_databases.create_db_entry(salt).await? {
+            Some(db_entry) => db_entry,
+            None => {
+                return Ok(());
+            }
         };
-        commitment_databases
-            .databases
-            .put(salt, Arc::clone(&db_entry));
-
-        if let Some(old_db_entry) = old_db_entry {
-            let old_salt = old_db_entry.salt;
-            let old_db_path = self.inner.base_directory.join(hex::encode(old_salt));
-
-            // Remove old commitments for `old_salt`
-            commitment_databases.metadata_cache.remove(&old_salt);
-
-            tokio::task::spawn_blocking(move || {
-                // Take a lock to make sure database was released by whatever user there was and we
-                // have an exclusive access to it, then drop it
-                tokio::runtime::Handle::current()
-                    .block_on(old_db_entry.db.lock())
-                    .take();
-
-                if let Err(error) = std::fs::remove_dir_all(old_db_path) {
-                    error!(
-                        "Failed to remove old commitment for salt {}: {}",
-                        hex::encode(old_salt),
-                        error
-                    );
-                }
-            });
-        }
-
-        commitment_databases.mark_in_progress(salt).await?;
 
         let mut db_guard = db_entry.db.lock().await;
         // Release lock to allow working with other databases, but hold lock for `db_entry.db` such

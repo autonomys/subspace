@@ -9,8 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::Salt;
 
-// TODO: Make this private
-pub(super) const COMMITMENTS_CACHE_SIZE: usize = 2;
+const COMMITMENTS_CACHE_SIZE: usize = 2;
 const COMMITMENTS_KEY: &[u8] = b"commitments";
 
 // TODO: Make this private
@@ -24,16 +23,17 @@ pub(super) enum CommitmentStatus {
 
 // TODO: Make fields in this data structure private
 pub(super) struct DbEntry {
-    pub(super) salt: Salt,
+    salt: Salt,
     pub(super) db: Mutex<Option<Arc<DB>>>,
 }
 
 // TODO: Make fields in this data structure private
 #[derive(Debug)]
 pub(super) struct CommitmentDatabases {
+    base_directory: PathBuf,
     pub(super) databases: LruCache<Salt, Arc<DbEntry>>,
     pub(super) metadata_cache: HashMap<Salt, CommitmentStatus>,
-    pub(super) metadata_db: Arc<DB>,
+    metadata_db: Arc<DB>,
 }
 
 impl CommitmentDatabases {
@@ -53,6 +53,7 @@ impl CommitmentDatabases {
             .unwrap_or_default();
 
         let mut commitment_databases = CommitmentDatabases {
+            base_directory: base_directory.clone(),
             databases: LruCache::new(COMMITMENTS_CACHE_SIZE),
             metadata_cache,
             metadata_db: Arc::new(metadata_db),
@@ -96,6 +97,56 @@ impl CommitmentDatabases {
         }
 
         Ok::<_, CommitmentError>(commitment_databases)
+    }
+
+    /// Returns `Ok(None)` if entry for this salt already exists.
+    pub(super) async fn create_db_entry(
+        &mut self,
+        salt: Salt,
+    ) -> Result<Option<Arc<DbEntry>>, CommitmentError> {
+        if self.databases.contains(&salt) {
+            return Ok(None);
+        }
+
+        let db_entry = Arc::new(DbEntry {
+            salt,
+            db: Mutex::new(None),
+        });
+
+        let old_db_entry = if self.databases.len() >= COMMITMENTS_CACHE_SIZE {
+            self.databases.pop_lru().map(|(_salt, db_entry)| db_entry)
+        } else {
+            None
+        };
+        self.databases.put(salt, Arc::clone(&db_entry));
+
+        if let Some(old_db_entry) = old_db_entry {
+            let old_salt = old_db_entry.salt;
+            let old_db_path = self.base_directory.join(hex::encode(old_salt));
+
+            // Remove old commitments for `old_salt`
+            self.metadata_cache.remove(&old_salt);
+
+            tokio::task::spawn_blocking(move || {
+                // Take a lock to make sure database was released by whatever user there was and we
+                // have an exclusive access to it, then drop it
+                tokio::runtime::Handle::current()
+                    .block_on(old_db_entry.db.lock())
+                    .take();
+
+                if let Err(error) = std::fs::remove_dir_all(old_db_path) {
+                    error!(
+                        "Failed to remove old commitment for salt {}: {}",
+                        hex::encode(old_salt),
+                        error
+                    );
+                }
+            });
+        }
+
+        self.mark_in_progress(salt).await?;
+
+        Ok(Some(db_entry))
     }
 
     pub(super) async fn mark_in_progress(&mut self, salt: Salt) -> Result<(), CommitmentError> {
