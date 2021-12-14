@@ -13,7 +13,7 @@ fn can_do_put() {
 
         assert_ok!(ObjectStore::put(Origin::signed(ACCOUNT_ID), object));
 
-        System::assert_last_event(Event::ObjectStore(crate::Event::<Test>::DataSubmitted {
+        System::assert_last_event(Event::ObjectStore(crate::Event::<Test>::ObjectSubmitted {
             who: ACCOUNT_ID,
             object_id,
             object_size,

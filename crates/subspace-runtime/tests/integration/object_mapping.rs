@@ -23,7 +23,7 @@ fn object_mapping() {
                 signature: None,
                 function: Call::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
-                    data: data0.clone(),
+                    object: data0.clone(),
                     metadata: vec![1, 2, 3],
                 }),
             },
@@ -31,7 +31,7 @@ fn object_mapping() {
                 signature: None,
                 function: Call::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
-                    data: data1.clone(),
+                    object: data1.clone(),
                     metadata: vec![],
                 }),
             },
@@ -41,12 +41,12 @@ fn object_mapping() {
                     calls: vec![
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
-                            data: data2.clone(),
+                            object: data2.clone(),
                             metadata: vec![1, 2, 3],
                         }),
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
-                            data: data3.clone(),
+                            object: data3.clone(),
                             metadata: vec![],
                         }),
                     ],
@@ -58,7 +58,7 @@ fn object_mapping() {
                     index: 0,
                     call: Box::new(Call::Feeds(pallet_feeds::Call::put {
                         feed_id: 0,
-                        data: data0.clone(),
+                        object: data0.clone(),
                         metadata: vec![1, 2, 3],
                     })),
                 }),
@@ -69,12 +69,12 @@ fn object_mapping() {
                     calls: vec![
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
-                            data: data2.clone(),
+                            object: data2.clone(),
                             metadata: vec![1, 2, 3],
                         }),
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
-                            data: data3.clone(),
+                            object: data3.clone(),
                             metadata: vec![],
                         }),
                     ],
