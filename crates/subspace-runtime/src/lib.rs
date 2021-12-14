@@ -141,7 +141,7 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEp
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
 const INITIAL_SOLUTION_RANGE: u64 =
-    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / PIECE_SIZE as u32) as u64 * SLOT_PROBABILITY.0
+    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as u64 * SLOT_PROBABILITY.0
         / SLOT_PROBABILITY.1;
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
