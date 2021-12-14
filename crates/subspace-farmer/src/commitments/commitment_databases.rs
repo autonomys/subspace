@@ -5,6 +5,7 @@ use lru::LruCache;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::Salt;
@@ -24,14 +25,22 @@ pub(super) enum CommitmentStatus {
 // TODO: Make fields in this data structure private
 pub(super) struct DbEntry {
     salt: Salt,
-    pub(super) db: Mutex<Option<Arc<DB>>>,
+    db: Mutex<Option<Arc<DB>>>,
+}
+
+impl Deref for DbEntry {
+    type Target = Mutex<Option<Arc<DB>>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
 }
 
 // TODO: Make fields in this data structure private
 #[derive(Debug)]
 pub(super) struct CommitmentDatabases {
     base_directory: PathBuf,
-    pub(super) databases: LruCache<Salt, Arc<DbEntry>>,
+    databases: LruCache<Salt, Arc<DbEntry>>,
     pub(super) metadata_cache: HashMap<Salt, CommitmentStatus>,
     metadata_db: Arc<DB>,
 }
@@ -97,6 +106,18 @@ impl CommitmentDatabases {
         }
 
         Ok::<_, CommitmentError>(commitment_databases)
+    }
+
+    /// Get salts for all current database entries
+    pub(super) fn get_salts(&self) -> Vec<Salt> {
+        self.databases
+            .iter()
+            .map(|(salt, _db_entry)| *salt)
+            .collect()
+    }
+
+    pub(super) fn get_db_entry(&self, salt: &Salt) -> Option<&Arc<DbEntry>> {
+        self.databases.peek(salt)
     }
 
     /// Returns `Ok(None)` if entry for this salt already exists.

@@ -72,7 +72,7 @@ impl Commitments {
             }
         };
 
-        let mut db_guard = db_entry.db.lock().await;
+        let mut db_guard = db_entry.lock().await;
         // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
         // that nothing else can modify it.
         drop(commitment_databases);
@@ -114,8 +114,8 @@ impl Commitments {
         let mut commitment_databases = self.inner.commitment_databases.lock().await;
 
         // Check if database was already been removed
-        if let Some(db_entry) = commitment_databases.databases.get(&salt) {
-            if db_entry.db.lock().await.is_some() {
+        if let Some(db_entry) = commitment_databases.get_db_entry(&salt) {
+            if db_entry.lock().await.is_some() {
                 commitment_databases.mark_created(salt).await?;
             }
         }
@@ -129,15 +129,7 @@ impl Commitments {
         pieces: &Arc<FlatPieces>,
         start_offset: u64,
     ) -> Result<(), CommitmentError> {
-        let salts = self
-            .inner
-            .commitment_databases
-            .lock()
-            .await
-            .databases
-            .iter()
-            .map(|(salt, _db_entry)| *salt)
-            .collect::<Vec<Salt>>();
+        let salts = self.inner.commitment_databases.lock().await.get_salts();
 
         for salt in salts {
             let db_entry = match self
@@ -145,8 +137,7 @@ impl Commitments {
                 .commitment_databases
                 .lock()
                 .await
-                .databases
-                .peek(&salt)
+                .get_db_entry(&salt)
                 .cloned()
             {
                 Some(db_entry) => db_entry,
@@ -155,7 +146,7 @@ impl Commitments {
                 }
             };
 
-            let db_guard = db_entry.db.lock().await;
+            let db_guard = db_entry.lock().await;
 
             let db = match db_guard.clone() {
                 Some(db) => db,
@@ -195,9 +186,9 @@ impl Commitments {
         salt: Salt,
     ) -> Option<(Tag, u64)> {
         let commitment_databases = self.inner.commitment_databases.try_lock()?;
-        let db_entry = Arc::clone(commitment_databases.databases.peek(&salt)?);
+        let db_entry = Arc::clone(commitment_databases.get_db_entry(&salt)?);
 
-        let db_guard = db_entry.db.try_lock()?;
+        let db_guard = db_entry.try_lock()?;
         let db = db_guard.clone()?;
 
         let solutions_fut = tokio::task::spawn_blocking(move || {
