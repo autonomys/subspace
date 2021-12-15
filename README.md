@@ -53,7 +53,7 @@ in the below commands with the name of the file you downloaded for your operatin
    --wasm-execution compiled \
    --execution wasm \
    --validator \
-   --bootnodes "/dns/[DOMAIN or IP]/tcp/[PORT]/p2p/[NODE PUBLIC KEY]" \
+   --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" \
    --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"` 
 5. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm`
 
@@ -61,7 +61,7 @@ in the below commands with the name of the file you downloaded for your operatin
 
 1. Download the executables for your operating system
 2. Open your favourite terminal with admin privileges, and go to the folder where you download the executables
-3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose): `./subspace-node-x86_64-*-snapshot ^
+3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose): `subspace-node-x86_64-*-snapshot ^
    --chain testnet ^
    --name INSERT_YOUR_ID ^
    --rpc-cors all ^
@@ -70,16 +70,23 @@ in the below commands with the name of the file you downloaded for your operatin
    --wasm-execution compiled ^
    --execution wasm ^
    --validator ^
-   --bootnodes "/dns/[DOMAIN or IP]/tcp/[PORT]/p2p/[NODE PUBLIC KEY]" ^
+   --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" ^
    --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"`
-4. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm` 
+4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
+5. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm` 
 
 ### To Farm By Yourself (Offline)
 
 1. Download the executables for your operating system
 2. Open your favourite terminal, and go to the folder where you download the executables
-3. Make them executable  `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
+
 
 Linux/MacOS:
-3. `./subspace-node-x86_64-*-snapshot -- --dev --tmp`
-4. `./subspace-farmer-x86_64-*-snapshot -- farm`
+1. Make them executable: `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
+2. Run the node: `./subspace-node-x86_64-*-snapshot -- --dev --tmp`
+3. Run the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm`
+
+Windows
+1. Run the node: `subspace-node-x86_64-*-snapshot -- --dev --tmp`
+2. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
+3. Run the farmer: `subspace-farmer-x86_64-*-snapshot -- farm`
