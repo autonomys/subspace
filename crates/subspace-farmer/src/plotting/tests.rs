@@ -25,10 +25,8 @@ async fn plotting_happy_path() {
     init();
 
     let base_directory = TempDir::new().unwrap();
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     let client = MockRpc::new();
@@ -92,11 +90,7 @@ async fn plotting_happy_path() {
     }
 
     assert_eq!(
-        plot.get_last_root_block()
-            .await
-            .unwrap()
-            .unwrap()
-            .records_root(),
+        plot.get_last_root_block().unwrap().unwrap().records_root(),
         [
             128, 88, 79, 62, 14, 50, 76, 101, 5, 140, 34, 124, 28, 140, 2, 80, 84, 108, 192, 253,
             210, 159, 59, 132, 116, 250, 177, 226, 192, 188, 79, 230
@@ -104,7 +98,7 @@ async fn plotting_happy_path() {
     );
 
     assert_eq!(
-        plot.get_last_root_block().await.unwrap().unwrap().hash(),
+        plot.get_last_root_block().unwrap().unwrap().hash(),
         [
             229, 128, 200, 204, 79, 205, 9, 80, 237, 216, 133, 217, 228, 30, 8, 241, 142, 197, 74,
             127, 148, 245, 255, 254, 179, 108, 138, 16, 180, 92, 31, 140
@@ -112,16 +106,11 @@ async fn plotting_happy_path() {
     );
 
     assert_eq!(
-        plot.get_last_root_block()
-            .await
-            .unwrap()
-            .unwrap()
-            .segment_index(),
+        plot.get_last_root_block().unwrap().unwrap().segment_index(),
         0
     );
     assert_eq!(
         plot.get_last_root_block()
-            .await
             .unwrap()
             .unwrap()
             .last_archived_block()
@@ -144,10 +133,8 @@ async fn plotting_continue() {
     init();
 
     let base_directory = TempDir::new().unwrap();
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     let client = MockRpc::new();
@@ -211,11 +198,7 @@ async fn plotting_continue() {
     }
 
     assert_eq!(
-        plot.get_last_root_block()
-            .await
-            .unwrap()
-            .unwrap()
-            .records_root(),
+        plot.get_last_root_block().unwrap().unwrap().records_root(),
         [
             128, 88, 79, 62, 14, 50, 76, 101, 5, 140, 34, 124, 28, 140, 2, 80, 84, 108, 192, 253,
             210, 159, 59, 132, 116, 250, 177, 226, 192, 188, 79, 230
@@ -285,11 +268,7 @@ async fn plotting_continue() {
     }
 
     assert_eq!(
-        plot.get_last_root_block()
-            .await
-            .unwrap()
-            .unwrap()
-            .records_root(),
+        plot.get_last_root_block().unwrap().unwrap().records_root(),
         [
             203, 164, 66, 4, 2, 175, 85, 212, 86, 89, 88, 119, 67, 85, 197, 241, 56, 17, 47, 39,
             206, 10, 167, 83, 189, 125, 152, 1, 166, 145, 248, 238
@@ -298,7 +277,6 @@ async fn plotting_continue() {
 
     assert_eq!(
         plot.get_last_root_block()
-            .await
             .unwrap()
             .unwrap()
             .prev_root_block_hash(),
@@ -308,15 +286,11 @@ async fn plotting_continue() {
         ]
     );
     assert_eq!(
-        plot.get_last_root_block()
-            .await
-            .unwrap()
-            .unwrap()
-            .segment_index(),
+        plot.get_last_root_block().unwrap().unwrap().segment_index(),
         1
     );
     assert_eq!(
-        plot.get_last_root_block().await.unwrap().unwrap().hash(),
+        plot.get_last_root_block().unwrap().unwrap().hash(),
         [
             239, 193, 131, 124, 194, 113, 154, 202, 239, 184, 106, 99, 247, 139, 25, 184, 152, 228,
             118, 194, 6, 0, 81, 139, 172, 178, 95, 121, 175, 99, 103, 115

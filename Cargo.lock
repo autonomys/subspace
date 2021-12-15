@@ -1542,6 +1542,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7531096570974c3a9dcf9e4b8e1cede1ec26cf5046219fb3b9d897503b9be59"
 
 [[package]]
+name = "event-listener-primitives"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5384093b4255393cc8c42f0fc3dd4f19977ad3b1025f968257854895a993028c"
+dependencies = [
+ "nohash-hasher",
+ "parking_lot 0.11.2",
+ "smallvec",
+]
+
+[[package]]
 name = "exit-future"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7911,6 +7922,7 @@ dependencies = [
  "clap 3.0.0-beta.5",
  "dirs",
  "env_logger 0.9.0",
+ "event-listener-primitives",
  "futures 0.3.18",
  "hex",
  "hex-buffer-serde",
@@ -7919,6 +7931,7 @@ dependencies = [
  "log",
  "lru 0.6.6",
  "parity-scale-codec",
+ "parking_lot 0.11.2",
  "rand 0.8.4",
  "rayon",
  "rocksdb",

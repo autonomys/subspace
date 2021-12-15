@@ -22,18 +22,18 @@ async fn read_write() {
     let pieces = Arc::new(generate_random_piece().to_vec().try_into().unwrap());
     let index = 0;
 
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
     assert_eq!(true, plot.is_empty());
-    plot.write_many(Arc::clone(&pieces), index).await.unwrap();
+    plot.write_many(Arc::clone(&pieces), index).unwrap();
     assert_eq!(false, plot.is_empty());
-    let extracted_piece = plot.read(index).await.unwrap();
+    let extracted_piece = plot.read(index).unwrap();
 
     assert_eq!(pieces[..], extracted_piece[..]);
 
     drop(plot);
 
     // Make sure it is still not empty on reopen
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
     assert_eq!(false, plot.is_empty());
 }
 
@@ -42,9 +42,9 @@ async fn last_root_block() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
 
-    assert!(plot.get_last_root_block().await.unwrap().is_none());
+    assert!(plot.get_last_root_block().unwrap().is_none());
 
     let root_block = RootBlock::V0 {
         segment_index: rand::random(),
@@ -56,7 +56,7 @@ async fn last_root_block() {
         },
     };
 
-    plot.set_last_root_block(&root_block).await.unwrap();
+    plot.set_last_root_block(&root_block).unwrap();
 
-    assert_eq!(plot.get_last_root_block().await.unwrap(), Some(root_block));
+    assert_eq!(plot.get_last_root_block().unwrap(), Some(root_block));
 }

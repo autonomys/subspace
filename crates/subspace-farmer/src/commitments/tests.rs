@@ -21,16 +21,13 @@ async fn create() {
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
     let index = 0;
 
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
-        .await
-        .unwrap();
-    plot.write_many(Arc::new(pieces), index).await.unwrap();
-    commitments.create(salt, plot).await.unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
+    plot.write_many(Arc::new(pieces), index).unwrap();
+    commitments.create(salt, plot).unwrap();
 
     let (tag, _) = commitments
         .find_by_range(correct_tag, solution_range, salt)
-        .await
         .unwrap();
     assert_eq!(correct_tag, tag);
 }
@@ -43,18 +40,16 @@ async fn find_by_tag() {
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
 
-    let plot = Plot::open_or_create(&base_directory).await.unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments").into())
-        .await
-        .unwrap();
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     // Generate deterministic pieces, such that we don't have random errors in CI
     let mut rng = StdRng::seed_from_u64(0);
     let mut pieces: FlatPieces = vec![0u8; 1024 * PIECE_SIZE].try_into().unwrap();
     rng.fill(pieces.as_mut());
-    plot.write_many(Arc::new(pieces), 0).await.unwrap();
+    plot.write_many(Arc::new(pieces), 0).unwrap();
 
-    commitments.create(salt, plot).await.unwrap();
+    commitments.create(salt, plot).unwrap();
 
     {
         let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
@@ -62,7 +57,6 @@ async fn find_by_tag() {
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
             .find_by_range(target, solution_range, salt)
-            .await
             .unwrap();
         // Wraps around
         let lower = u64::from_be_bytes(target).wrapping_sub(solution_range / 2);
@@ -83,7 +77,6 @@ async fn find_by_tag() {
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
             .find_by_range(target, solution_range, salt)
-            .await
             .unwrap();
         // Wraps around
         let lower = u64::from_be_bytes(target) - solution_range / 2;
@@ -104,7 +97,6 @@ async fn find_by_tag() {
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
             .find_by_range(target, solution_range, salt)
-            .await
             .unwrap();
         let lower = u64::from_be_bytes(target) - solution_range / 2;
         let upper = u64::from_be_bytes(target) + solution_range / 2;
