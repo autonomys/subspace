@@ -55,7 +55,13 @@ in the below commands with the name of the file you downloaded for your operatin
    --validator \
    --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" \
    --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"` 
-5. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm`
+5. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash. 
+   To allow execution, go to `System Preferences -> Security&Privacy -> General`, and click on `allow`.
+   After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
+6. This will start the farmer (do this in another terminal): `./subspace-farmer-x86_64-*-snapshot farm`
+7. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash.
+   To allow execution, go to `System Preferences -> Security&Privacy -> General`, and click on `allow`.
+   After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
 
 **Windows**
 
@@ -73,7 +79,7 @@ in the below commands with the name of the file you downloaded for your operatin
    --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" ^
    --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"`
 4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
-5. This will start the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm` 
+5. This will start the farmer (do this in another terminal): `./subspace-farmer-x86_64-*-snapshot farm` 
 
 ### To Farm By Yourself (Offline)
 
@@ -84,9 +90,15 @@ in the below commands with the name of the file you downloaded for your operatin
 Linux/MacOS:
 1. Make them executable: `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
 2. Run the node: `./subspace-node-x86_64-*-snapshot -- --dev --tmp`
-3. Run the farmer: `./subspace-farmer-x86_64-*-snapshot -- farm`
+3. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash.
+   To allow execution, go to `System Preferences -> Security&Privacy -> General`, and click on `allow`.
+   After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
+4. Run the farmer (do this in another terminal): `./subspace-farmer-x86_64-*-snapshot farm`
+5. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash.
+   To allow execution, go to `System Preferences -> Security&Privacy -> General`, and click on `allow`.
+   After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
 
 Windows
 1. Run the node: `subspace-node-x86_64-*-snapshot -- --dev --tmp`
 2. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
-3. Run the farmer: `subspace-farmer-x86_64-*-snapshot -- farm`
+3. Run the farmer (do this in another terminal): `subspace-farmer-x86_64-*-snapshot farm`
