@@ -802,6 +802,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-runtime",
+ "sp-trie",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -4975,6 +4976,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "sp-core",
+ "sp-executor",
  "sp-maybe-compressed-blob",
  "subspace-runtime-primitives",
  "thiserror",
@@ -7390,6 +7392,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "sp-trie",
 ]
 
 [[package]]

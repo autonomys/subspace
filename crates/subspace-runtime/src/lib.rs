@@ -38,7 +38,7 @@ use sp_consensus_subspace::{
     SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_executor::Bundle;
+use sp_executor::{Bundle, FraudProof};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
     PostDispatchInfoOf, Zero,
@@ -904,6 +904,10 @@ impl_runtime_apis! {
 
         fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()> {
             Executor::submit_transaction_bundle_unsigned(bundle).ok()
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()> {
+            Executor::submit_fraud_proof_unsigned(fraud_proof).ok()
         }
 
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {

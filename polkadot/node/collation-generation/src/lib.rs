@@ -44,6 +44,7 @@ use std::sync::Arc;
 use cirrus_node_primitives::{
 	CollationGenerationConfig, ExecutorSlotInfo, PersistedValidationData,
 };
+use sp_executor::FraudProof;
 use subspace_runtime_primitives::Hash;
 
 mod error;
@@ -147,6 +148,14 @@ impl CollationGenerationSubsystem {
 					tracing::error!(target: LOG_TARGET, "double initialization");
 				} else {
 					self.config = Some(Arc::new(config));
+				}
+				false
+			},
+			Ok(FromOverseer::Communication {
+				msg: CollationGenerationMessage::SubmitFraudProof(fraud_proof),
+			}) => {
+				if let Err(err) = submit_fraud_proof(fraud_proof, ctx, sender).await {
+					tracing::warn!(target: LOG_TARGET, ?err, "failed to submit fraud proof");
 				}
 				false
 			},
@@ -312,21 +321,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 		},
 	};
 
-	let best_hash = {
-		let (tx, rx) = oneshot::channel();
-		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
-		match rx.await? {
-			Err(err) => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					?err,
-					"Chain API subsystem temporarily unreachable"
-				);
-				return Ok(())
-			},
-			Ok(h) => h,
-		}
-	};
+	let best_hash = request_best_primary_hash(ctx).await?;
 
 	let mut task_sender = sender.clone();
 	ctx.spawn(
@@ -356,6 +351,14 @@ async fn process_primary_block<Context: SubsystemContext>(
 	Ok(())
 }
 
+async fn request_best_primary_hash<Context: SubsystemContext>(
+	ctx: &mut Context,
+) -> SubsystemResult<Hash> {
+	let (tx, rx) = oneshot::channel();
+	ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
+	rx.await?.map_err(|e| SubsystemError::with_origin("chain-api", e))
+}
+
 async fn produce_bundle<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	slot_info: ExecutorSlotInfo,
@@ -370,21 +373,7 @@ async fn produce_bundle<Context: SubsystemContext>(
 		},
 	};
 
-	let best_hash = {
-		let (tx, rx) = oneshot::channel();
-		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
-		match rx.await? {
-			Err(err) => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					?err,
-					"Chain API subsystem temporarily unreachable"
-				);
-				return Ok(())
-			},
-			Ok(h) => h,
-		}
-	};
+	let best_hash = request_best_primary_hash(ctx).await?;
 
 	let mut task_sender = sender.clone();
 	ctx.spawn(
@@ -406,6 +395,41 @@ async fn produce_bundle<Context: SubsystemContext>(
 				tracing::debug!(
 					target: LOG_TARGET,
 					"Sent RuntimeApiRequest::SubmitTransactionBundle successfully",
+				);
+			}
+		}),
+	)?;
+
+	Ok(())
+}
+
+async fn submit_fraud_proof<Context: SubsystemContext>(
+	fraud_proof: FraudProof,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> SubsystemResult<()> {
+	let best_hash = request_best_primary_hash(ctx).await?;
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation fraud proof builder",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitFraudProof(fraud_proof),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"Failed to send RuntimeApiRequest::SubmitFraudProof",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitFraudProof successfully",
 				);
 			}
 		}),

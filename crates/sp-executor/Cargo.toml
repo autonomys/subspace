@@ -18,6 +18,7 @@ sp-api = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-core = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-trie = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
 
 [features]
 default = ["std"]
@@ -28,4 +29,5 @@ std = [
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"sp-trie/std",
 ]

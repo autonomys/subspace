@@ -15,4 +15,5 @@ thiserror = "1.0.30"
 parity-scale-codec = { version = "2.3.1", default-features = false, features = ["bit-vec", "derive"] }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+sp-executor  = { path = "../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
