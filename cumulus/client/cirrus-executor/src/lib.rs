@@ -146,6 +146,26 @@ where
 		}
 	}
 
+	/// Checks the execution receipt from the executor peers.
+	///
+	/// TODO: invoke this once the external ER is received.
+	fn on_execution_receipt_received(
+		&self,
+		_execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
+	) {
+		// TODO: validate the Proof-of-Election
+
+		// TODO: check if the received ER is same with the one produced locally.
+		let same_with_produced_locally = true;
+
+		if same_with_produced_locally {
+		} else {
+			// TODO: generate a fraud proof
+
+			// TODO: gossip the fraud proof to farmers
+		}
+	}
+
 	async fn produce_candidate(
 		mut self,
 		relay_parent: PHash,
@@ -259,16 +279,24 @@ where
 
 		// The applied txs can be full removed from the transaction pool
 
-		// TODO: election for broadcasting ER to all farmers and executors.
+		// TODO: win the executor election to broadcast ER.
+		let is_elected = true;
 
-		Some(ProcessorResult {
-			execution_receipt: ExecutionReceipt {
-				primary_hash,
-				secondary_hash: Default::default(),
-				state_root: Default::default(),
-				state_transition_root: Default::default(),
-			},
-		})
+		if is_elected {
+			// TODO: broadcast ER to all executors.
+
+			// Return `Some(_)` means to broadcast ER to all farmers via unsigned extrinsic.
+			Some(ProcessorResult {
+				execution_receipt: ExecutionReceipt {
+					primary_hash,
+					secondary_hash: Default::default(),
+					state_root: Default::default(),
+					state_transition_root: Default::default(),
+				},
+			})
+		} else {
+			None
+		}
 	}
 }
 

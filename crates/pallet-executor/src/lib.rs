@@ -109,6 +109,8 @@ mod pallet {
                 execution_receipt
             );
 
+            // TODO: track the execution receipt
+
             Self::deposit_event(Event::ExecutionReceiptStored {
                 receipt_hash: execution_receipt.hash(),
             });

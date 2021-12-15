@@ -306,7 +306,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 		None => {
 			tracing::debug!(
 				target: LOG_TARGET,
-				"executor returned no result on processing bundles",
+				"Skip sending the execution receipt because executor is not elected",
 			);
 			return Ok(())
 		},
