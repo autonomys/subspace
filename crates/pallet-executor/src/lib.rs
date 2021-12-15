@@ -217,7 +217,17 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: check if the proof is valid.
+                    // TODO: proper error value
+                    const INVALID_DRAUD_PROOF: u8 = 100;
+
+                    if let Err(e) = Self::check_fraud_proof(&fraud_proof) {
+                        log::debug!(
+                            target: "runtime::subspace::executor",
+                            "Invalid fraud proof: {:?}",
+                            e
+                        );
+                        return InvalidTransaction::Custom(INVALID_DRAUD_PROOF).into();
+                    }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
                         .priority(TransactionPriority::MAX)
@@ -233,10 +243,7 @@ mod pallet {
     }
 }
 
-impl<T> Pallet<T>
-where
-    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
-{
+impl<T: Config> Pallet<T> {
     /// Returns the block hash given the block number.
     pub fn head_hash(number: T::BlockNumber) -> Option<T::Hash> {
         <Heads<T>>::get(number)
@@ -247,6 +254,16 @@ where
         <Heads<T>>::get(Self::last_head_number())
     }
 
+    // TODO: Checks the fraud proof is valid.
+    fn check_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+        Ok(())
+    }
+}
+
+impl<T> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
     /// Submits an unsigned extrinsic [`Call::submit_candidate_receipt`].
     pub fn submit_candidate_receipt_unsigned(
         head_number: T::BlockNumber,

@@ -297,7 +297,7 @@ where
 		if is_elected {
 			// TODO: broadcast ER to all executors.
 
-			// Return `Some(_)` means to broadcast ER to all farmers via unsigned extrinsic.
+			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
 			Some(ProcessorResult {
 				execution_receipt: ExecutionReceipt {
 					primary_hash,
