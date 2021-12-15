@@ -171,10 +171,7 @@ where
 
 			// TODO: gossip the fraud proof to farmers
 			self.overseer_handle
-				.send_msg(
-					CollationGenerationMessage::SubmitFraudProof(fraud_proof),
-					"SubmitFraudProof",
-				)
+				.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
 				.await;
 		}
 	}

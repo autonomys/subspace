@@ -152,7 +152,7 @@ impl CollationGenerationSubsystem {
 				false
 			},
 			Ok(FromOverseer::Communication {
-				msg: CollationGenerationMessage::SubmitFraudProof(fraud_proof),
+				msg: CollationGenerationMessage::FraudProof(fraud_proof),
 			}) => {
 				if let Err(err) = submit_fraud_proof(fraud_proof, ctx, sender).await {
 					tracing::warn!(target: LOG_TARGET, ?err, "failed to submit fraud proof");

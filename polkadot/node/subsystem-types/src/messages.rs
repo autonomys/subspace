@@ -141,7 +141,7 @@ pub enum CollationGenerationMessage {
 	/// Initialize the collation generation subsystem
 	Initialize(CollationGenerationConfig),
 	/// Fraud proof needs to be submitted to primary chain.
-	SubmitFraudProof(FraudProof),
+	FraudProof(FraudProof),
 }
 
 impl CollationGenerationMessage {
