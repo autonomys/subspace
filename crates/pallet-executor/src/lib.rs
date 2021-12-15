@@ -220,8 +220,8 @@ mod pallet {
                     // TODO: proper error value
                     const INVALID_DRAUD_PROOF: u8 = 100;
 
-                    if let Err(e) = Self::check_fraud_proof(&fraud_proof) {
-                        log::debug!(
+                    if let Err(e) = Self::check_fraud_proof(fraud_proof) {
+                        log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid fraud proof: {:?}",
                             e

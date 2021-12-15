@@ -164,6 +164,7 @@ where
 		let same_with_produced_locally = true;
 
 		if same_with_produced_locally {
+			// TODO: rebroadcast ER
 		} else {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
