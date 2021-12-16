@@ -12,17 +12,19 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+extern crate alloc;
 
 use crate::merkle_tree::{MerkleTree, Witness};
 use crate::utils;
 use crate::utils::{Gf16Element, GF_16_ELEMENT_BYTES};
+use alloc::borrow::Cow;
+use alloc::collections::VecDeque;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::cmp::Ordering;
+use core::iter;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::VecDeque;
-use std::iter;
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
@@ -30,7 +32,6 @@ use subspace_core_primitives::{
     crypto, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, RootBlock, Sha256Hash,
     PIECE_SIZE, SHA256_HASH_SIZE,
 };
-use thiserror::Error;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
@@ -105,7 +106,8 @@ pub enum SegmentItem {
 }
 
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArchivedSegment {
     /// Root block of the segment
     pub root_block: RootBlock,
@@ -118,25 +120,44 @@ pub struct ArchivedSegment {
 }
 
 /// Archiver instantiation error
-#[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ArchiverInstantiationError {
     /// Record size it smaller that needed to hold any information
-    #[error("Record size it smaller that needed to hold any information")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Record size it smaller that needed to hold any information")
+    )]
     RecordSizeTooSmall,
     /// Segment size is not bigger than record size
-    #[error("Segment size is not bigger than record size")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Segment size is not bigger than record size")
+    )]
     SegmentSizeTooSmall,
     /// Segment size is not a multiple of record size
-    #[error("Segment size is not a multiple of record size")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Segment size is not a multiple of record size")
+    )]
     SegmentSizesNotMultipleOfRecordSize,
     /// Wrong record and segment size, it will not be possible to produce pieces
-    #[error("Wrong record and segment size, it will not be possible to produce pieces")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Wrong record and segment size, it will not be possible to produce pieces")
+    )]
     WrongRecordAndSegmentCombination,
     /// Invalid last archived block, its size is the same as encoded block
-    #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Invalid last archived block, its size {0} bytes is the same as encoded block")
+    )]
     InvalidLastArchivedBlock(u32),
     /// Invalid block, its size is smaller than already archived number of bytes
-    #[error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")
+    )]
     InvalidBlockSmallSize {
         /// Full block size
         block_bytes: u32,

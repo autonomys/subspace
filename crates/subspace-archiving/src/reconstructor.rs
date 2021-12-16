@@ -1,38 +1,57 @@
+extern crate alloc;
+
 use crate::archiver::{Segment, SegmentItem};
 use crate::utils;
+use alloc::vec::Vec;
+use core::mem;
 use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use std::mem;
 use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE,
 };
-use thiserror::Error;
 
 /// Reconstructor-related instantiation error.
-#[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ReconstructorInstantiationError {
     /// Segment size is not bigger than record size
-    #[error("Segment size is not bigger than record size")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Segment size is not bigger than record size")
+    )]
     SegmentSizeTooSmall,
     /// Segment size is not a multiple of record size
-    #[error("Segment size is not a multiple of record size")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Segment size is not a multiple of record size")
+    )]
     SegmentSizesNotMultipleOfRecordSize,
     /// Wrong record and segment size, it will not be possible to produce pieces
-    #[error("Wrong record and segment size, it will not be possible to produce pieces")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Wrong record and segment size, it will not be possible to produce pieces")
+    )]
     WrongRecordAndSegmentCombination,
 }
 
 /// Reconstructor-related instantiation error
-#[derive(Debug, Error, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ReconstructorError {
     /// Segment size is not bigger than record size
-    #[error("Error during data shards reconstruction: {0}")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Error during data shards reconstruction: {0}")
+    )]
     DataShardsReconstruction(reed_solomon_erasure::Error),
     /// Segment size is not bigger than record size
-    #[error("Error during segment decoding: {0}")]
+    #[cfg_attr(feature = "thiserror", error("Error during segment decoding: {0}"))]
     SegmentDecoding(parity_scale_codec::Error),
     /// Incorrect segment order, each next segment must have monotonically increasing segment index
-    #[error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")
+    )]
     IncorrectSegmentOrder {
         expected_segment_index: u64,
         actual_segment_index: u64,

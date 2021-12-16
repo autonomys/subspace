@@ -18,11 +18,7 @@
 #![feature(drain_filter)]
 #![feature(int_log)]
 
-#[cfg(feature = "std")]
 pub mod archiver;
-#[cfg(feature = "std")]
 pub mod merkle_tree;
-#[cfg(feature = "std")]
 pub mod reconstructor;
-#[cfg(feature = "std")]
 mod utils;

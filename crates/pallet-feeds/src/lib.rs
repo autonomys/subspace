@@ -53,8 +53,7 @@ mod pallet {
     pub(super) type ObjectMetadata = Vec<u8>;
 
     /// Total amount of data and number of objects stored in a feed
-    #[derive(Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
-    #[cfg_attr(feature = "std", derive(Debug))]
+    #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
     pub struct TotalObjectsAndSize {
         /// Total size of objects in bytes
         pub size: u64,
