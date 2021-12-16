@@ -144,7 +144,7 @@ pub struct UpdatedSaltDescriptor {
 /// A digest item which is usable with Subspace consensus.
 pub trait CompatibleDigestItem<AccountId>: Sized {
     /// Construct a digest item which contains a Subspace pre-digest.
-    fn subspace_pre_digest(seal: PreDigest<AccountId>) -> Self;
+    fn subspace_pre_digest(pre_digest: &PreDigest<AccountId>) -> Self;
 
     /// If this item is an Subspace pre-digest, return it.
     fn as_subspace_pre_digest(&self) -> Option<PreDigest<AccountId>>;
@@ -166,8 +166,8 @@ impl<AccountId> CompatibleDigestItem<AccountId> for DigestItem
 where
     AccountId: Encode + Decode,
 {
-    fn subspace_pre_digest(digest: PreDigest<AccountId>) -> Self {
-        DigestItem::PreRuntime(SUBSPACE_ENGINE_ID, digest.encode())
+    fn subspace_pre_digest(pre_digest: &PreDigest<AccountId>) -> Self {
+        DigestItem::PreRuntime(SUBSPACE_ENGINE_ID, pre_digest.encode())
     }
 
     fn as_subspace_pre_digest(&self) -> Option<PreDigest<AccountId>> {

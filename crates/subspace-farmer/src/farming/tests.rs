@@ -58,7 +58,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
             }
         }));
 
-        client.send_slot(slot.clone()).await;
+        client.send_slot_info(slot.clone()).await;
 
         // if salt will change, wait for background recommitment to finish first
         if let Some(next_salt) = slot.next_salt {

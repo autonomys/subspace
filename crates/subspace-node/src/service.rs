@@ -312,6 +312,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
     let prometheus_registry = config.prometheus_registry().cloned();
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
+    let sign_block_notification_stream = subspace_link.sign_block_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     let overseer_handle = if let Some(_keystore) = keystore_container.local_keystore() {
@@ -469,6 +470,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
                 deny_unsafe,
                 subscription_executor,
                 new_slot_notification_stream: new_slot_notification_stream.clone(),
+                sign_block_notification_stream: sign_block_notification_stream.clone(),
                 archived_segment_notification_stream: archived_segment_notification_stream.clone(),
             };
 

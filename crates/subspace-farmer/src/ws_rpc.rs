@@ -6,7 +6,8 @@ use jsonrpsee::types::Error as JsonError;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
+    BlockSignature, EncodedBlockWithObjectMapping, FarmerMetadata, SignBlockInfo, SlotInfo,
+    SolutionResponse,
 };
 use tokio::sync::mpsc;
 
@@ -94,6 +95,41 @@ impl RpcClient for WsRpc {
             .request(
                 "subspace_submitSolutionResponse",
                 rpc_params![&solution_response],
+            )
+            .await?)
+    }
+
+    async fn subscribe_sign_block(&self) -> Result<mpsc::Receiver<SignBlockInfo>, RpcError> {
+        let mut subscription = self
+            .client
+            .subscribe(
+                "subspace_subscribeSignBlock",
+                rpc_params![],
+                "subspace_unsubscribeSignBlock",
+            )
+            .await?;
+
+        let (sender, receiver) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            while let Ok(Some(notification)) = subscription.next().await {
+                let _ = sender.send(notification).await;
+            }
+        });
+
+        Ok(receiver)
+    }
+
+    /// Submit a block signature
+    async fn submit_block_signature(
+        &self,
+        block_signature: BlockSignature,
+    ) -> Result<(), RpcError> {
+        Ok(self
+            .client
+            .request(
+                "subspace_submitBlockSignature",
+                rpc_params![&block_signature],
             )
             .await?)
     }

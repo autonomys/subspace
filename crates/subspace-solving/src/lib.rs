@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256};
 use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};
 
 /// Signing context used for creating solution signatures by farmer
-pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"FARMER";
+pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication

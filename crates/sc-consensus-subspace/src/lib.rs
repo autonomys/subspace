@@ -97,10 +97,10 @@ use sp_consensus_subspace::digests::{
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
-    ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration,
+    ConsensusLog, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
 };
-use sp_core::ExecutionContext;
+use sp_core::{ExecutionContext, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
@@ -125,13 +125,22 @@ pub struct NewSlotInfo {
     pub solution_range: u64,
 }
 
-/// New slot notification with slot information and sender for solution for the slot
+/// New slot notification with slot information and sender for solution for the slot.
 #[derive(Debug, Clone)]
 pub struct NewSlotNotification {
-    /// New slot information
+    /// New slot information.
     pub new_slot_info: NewSlotInfo,
-    /// Sender that can be used to send solutions for the slot
-    pub solution_sender: TracingUnboundedSender<(Solution<FarmerPublicKey>, Vec<u8>)>,
+    /// Sender that can be used to send solutions for the slot.
+    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey>>,
+}
+
+/// Notification with block header hash that needs to be signed and sender for signature.
+#[derive(Debug, Clone)]
+pub struct SignBlockNotification {
+    /// Header hash of the block to be signed.
+    pub header_hash: H256,
+    /// Sender that can be used to send signature for the header.
+    pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }
 
 /// Subspace epoch information
@@ -739,6 +748,8 @@ pub struct SubspaceLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    sign_block_notification_sender: SubspaceNotificationSender<SignBlockNotification>,
+    sign_block_notification_stream: SubspaceNotificationStream<SignBlockNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegment>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     imported_block_notification_stream:
@@ -759,9 +770,17 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self.config
     }
 
-    /// Get stream with notifications about new slot arrival with ability to send solution back
+    /// Get stream with notifications about new slot arrival with ability to send solution back.
     pub fn new_slot_notification_stream(&self) -> SubspaceNotificationStream<NewSlotNotification> {
         self.new_slot_notification_stream.clone()
+    }
+
+    /// A stream with notifications about headers that need to be signed with ability to send
+    /// signature back.
+    pub fn sign_block_notification_stream(
+        &self,
+    ) -> SubspaceNotificationStream<SignBlockNotification> {
+        self.sign_block_notification_stream.clone()
     }
 
     /// Get stream with notifications about archived segment creation
@@ -1655,6 +1674,8 @@ where
 
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
+    let (sign_block_notification_sender, sign_block_notification_stream) =
+        notification::channel("subspace_sign_block_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
         notification::channel("subspace_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
@@ -1672,6 +1693,8 @@ where
         config: config.clone(),
         new_slot_notification_sender,
         new_slot_notification_stream,
+        sign_block_notification_sender,
+        sign_block_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,

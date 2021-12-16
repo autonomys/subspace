@@ -23,6 +23,9 @@ use subspace_core_primitives::{LocalChallenge, Piece, PublicKey, Salt, Signature
 /// Type of a slot number.
 pub type SlotNumber = u64;
 
+/// An index to a block.
+pub type BlockNumber = u32;
+
 /// Encoded block with mapping of objects that it contains
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,10 +77,26 @@ pub struct SolutionResponse {
     ///
     /// Derived from the farmer's plot corresponding to `slot_number` above.
     pub maybe_solution: Option<Solution>,
-    /// Secret key.
-    ///
-    /// Used by the farmer to sign blocks on the client node.
-    pub secret_key: Vec<u8>,
+}
+
+/// Block header hash that needs to be signed.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignBlockInfo {
+    /// Header hash of the block to be signed.
+    #[serde(with = "HexForm")]
+    pub header_hash: [u8; 32],
+}
+
+/// Signature in response to block header hash signing request.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockSignature {
+    /// Header hash of the block to be signed.
+    #[serde(with = "HexForm")]
+    pub header_hash: [u8; 32],
+    /// Block header hash signature.
+    pub signature: Option<Signature>,
 }
 
 // TODO: Deduplicate this type
