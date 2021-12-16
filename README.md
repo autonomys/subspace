@@ -53,8 +53,8 @@ in the below commands with the name of the file you downloaded for your operatin
    --wasm-execution compiled \
    --execution wasm \
    --validator \
-   --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" \
-   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"` 
+   --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
+   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"`
 5. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash. 
    To allow execution, go to `System Preferences -> Security&Privacy -> General`, and click on `allow`.
    After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
@@ -76,7 +76,7 @@ in the below commands with the name of the file you downloaded for your operatin
    --wasm-execution compiled ^
    --execution wasm ^
    --validator ^
-   --bootnodes "/dns/test-rpc.subspace.network/tcp/30333/p2p/12D3KooWAbeaefPbU9brfEUKZPeqptT5uxcsEQxQacPFhE1Z5nbs" ^
+   --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" ^
    --telemetry-url "wss://telemetry.polkadot.io/submit/ 1"`
 4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 5. This will start the farmer (do this in another terminal): `./subspace-farmer-x86_64-*-snapshot farm` 
