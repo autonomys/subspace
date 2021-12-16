@@ -45,11 +45,13 @@ in the below commands with the name of the file you downloaded for your operatin
 2. Open your favourite terminal, and go to the folder where you download the executables.
 3. Make them executable  `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
 4. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose): 
-```./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+```
+./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
 ```
 5. It may prompt in here if you are using MacOS. Refer to the note below.
 6. This will start the farmer (do this in another terminal): 
-```./subspace-farmer-x86_64-*-snapshot farm
+```
+./subspace-farmer-x86_64-*-snapshot farm
 ```
 7. It may prompt again in here if you are using MacOS. Refer to the note below.
 
@@ -62,11 +64,13 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 1. Download the executables for your operating system
 2. Open your favourite terminal with admin privileges, and go to the folder where you download the executables
 3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose):
- ```./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+ ```
+ ./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
  ```
 4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 5. This will start the farmer (do this in another terminal): 
-```./subspace-farmer-x86_64-*-snapshot farm
+```
+./subspace-farmer-x86_64-*-snapshot farm
 ```
 
 ---
