@@ -21,8 +21,12 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
 
+// TODO: proper error value
+const INVALID_FRAUD_PROOF: u8 = 100;
+
 #[frame_support::pallet]
 mod pallet {
+    use crate::INVALID_FRAUD_PROOF;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
@@ -217,16 +221,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: proper error value
-                    const INVALID_DRAUD_PROOF: u8 = 100;
-
                     if let Err(e) = Self::check_fraud_proof(fraud_proof) {
                         log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid fraud proof: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_DRAUD_PROOF).into();
+                        return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
                     }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
