@@ -19,21 +19,32 @@
 #![deny(missing_docs)]
 #![allow(clippy::all)]
 
-use futures::{channel::mpsc, future::FutureExt, select, sink::SinkExt, stream::StreamExt};
+use futures::{
+	channel::{mpsc, oneshot},
+	future::FutureExt,
+	select,
+	sink::SinkExt,
+	stream::StreamExt,
+};
 use parity_scale_codec::Encode;
 use polkadot_node_subsystem::{
-	messages::{AllMessages, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest},
+	messages::{
+		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
+		RuntimeApiRequest,
+	},
 	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
 	SubsystemError, SubsystemResult,
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_pending_head,
+	request_extract_bundles, request_pending_head,
 };
 use std::sync::Arc;
 
-use cirrus_node_primitives::{CollationGenerationConfig, PersistedValidationData};
-use subspace_runtime_primitives::{Hash};
+use cirrus_node_primitives::{
+	CollationGenerationConfig, ExecutorSlotInfo, PersistedValidationData,
+};
+use subspace_runtime_primitives::Hash;
 
 mod error;
 
@@ -113,7 +124,7 @@ impl CollationGenerationSubsystem {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					let metrics = self.metrics.clone();
-					if let Err(err) = handle_new_activations_subspace(
+					if let Err(err) = handle_new_activations(
 						config.clone(),
 						activated.into_iter().map(|v| v.hash),
 						ctx,
@@ -140,6 +151,14 @@ impl CollationGenerationSubsystem {
 				false
 			},
 			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
+			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
+				if let Some(config) = &self.config {
+					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await {
+						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to produce new bundle");
+					}
+				}
+				false
+			},
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
@@ -170,7 +189,7 @@ where
 }
 
 /// Produces collations on each tip of primary chain.
-async fn handle_new_activations_subspace<Context: SubsystemContext>(
+async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
@@ -242,7 +261,155 @@ async fn handle_new_activations_subspace<Context: SubsystemContext>(
 				}
 			}),
 		)?;
+
+		// TODO: invoke this on finalized block?
+		process_primary_block(config.clone(), relay_parent, ctx, sender).await?;
 	}
+
+	Ok(())
+}
+
+/// Apply the transaction bundles for given primary block as follows:
+///
+/// 1. Extract the transaction bundles from the block.
+/// 2. Pass the bundles to secondary node and do the computation there.
+async fn process_primary_block<Context: SubsystemContext>(
+	config: Arc<CollationGenerationConfig>,
+	block_hash: Hash,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> crate::error::Result<()> {
+	let extrinsics = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BlockBody(block_hash, tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
+				return Ok(())
+			},
+			Ok(None) => {
+				tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
+				return Ok(())
+			},
+			Ok(Some(b)) => b,
+		}
+	};
+
+	let bundles = request_extract_bundles(block_hash, extrinsics, ctx.sender()).await.await??;
+
+	let execution_receipt = match (config.processor)(block_hash, bundles).await {
+		Some(processor_result) => processor_result.to_execution_receipt(),
+		None => {
+			tracing::debug!(
+				target: LOG_TARGET,
+				"executor returned no result on processing bundles",
+			);
+			return Ok(())
+		},
+	};
+
+	let best_hash = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
+				return Ok(())
+			},
+			Ok(h) => h,
+		}
+	};
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation submit execution receipt",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitExecutionReceipt(execution_receipt),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"Failed to send RuntimeApiRequest::SubmitExecutionReceipt",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitExecutionReceipt successfully",
+				);
+			}
+		}),
+	)?;
+
+	Ok(())
+}
+
+async fn produce_bundle<Context: SubsystemContext>(
+	config: Arc<CollationGenerationConfig>,
+	slot_info: ExecutorSlotInfo,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> SubsystemResult<()> {
+	let bundle = match (config.bundler)(slot_info).await {
+		Some(bundle_result) => bundle_result.to_bundle(),
+		None => {
+			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+			return Ok(())
+		},
+	};
+
+	let best_hash = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BestBlockHash(tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
+				return Ok(())
+			},
+			Ok(h) => h,
+		}
+	};
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation bundle builder",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitTransactionBundle(bundle),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"Failed to send RuntimeApiRequest::SubmitTransactionBundle",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitTransactionBundle successfully",
+				);
+			}
+		}),
+	)?;
 
 	Ok(())
 }

@@ -22,6 +22,7 @@ use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::Public;
 use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
@@ -36,7 +37,7 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     /// The pre-digest of the header being verified. this is optional - if prior
     /// verification code had to read it, it can be included here to avoid duplicate
     /// work.
-    pub(super) pre_digest: Option<PreDigest>,
+    pub(super) pre_digest: Option<PreDigest<FarmerPublicKey>>,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
     /// Epoch descriptor of the epoch this block _should_ be under, if it's valid.
@@ -89,8 +90,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         .pop()
         .ok_or_else(|| subspace_err(Error::HeaderUnsealed(header.hash())))?;
 
-    let sig = seal
-        .as_subspace_seal()
+    let sig = CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&seal)
         .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
 
     // the pre-hash of the header doesn't include the seal
@@ -143,7 +143,7 @@ pub(super) struct VerifiedHeaderInfo {
 /// Check the solution signature validity.
 fn check_signature(
     signing_context: &SigningContext,
-    solution: &Solution,
+    solution: &Solution<FarmerPublicKey>,
 ) -> Result<(), schnorrkel::SignatureError> {
     let public_key = schnorrkel::PublicKey::from_bytes(solution.public_key.as_slice())?;
     let signature = schnorrkel::Signature::from_bytes(&solution.signature)?;
@@ -151,7 +151,11 @@ fn check_signature(
 }
 
 /// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<B: BlockT>(slot: Slot, salt: Salt, solution: &Solution) -> Result<(), Error<B>> {
+fn check_piece_tag<B: BlockT>(
+    slot: Slot,
+    salt: Salt,
+    solution: &Solution<FarmerPublicKey>,
+) -> Result<(), Error<B>> {
     if !subspace_solving::is_tag_valid(&solution.encoding, salt, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
@@ -166,7 +170,7 @@ fn check_piece<B: BlockT>(
     records_root: &Sha256Hash,
     position: u64,
     record_size: u32,
-    solution: &Solution,
+    solution: &Solution<FarmerPublicKey>,
 ) -> Result<(), Error<B>> {
     check_piece_tag(slot, salt, solution)?;
 
@@ -191,7 +195,7 @@ fn check_piece<B: BlockT>(
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-fn is_within_solution_range(solution: &Solution, solution_range: u64) -> bool {
+fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range: u64) -> bool {
     let target = u64::from_be_bytes(solution.local_challenge.derive_target());
     let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
     let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
@@ -217,7 +221,7 @@ pub(crate) struct VerifySolutionParams<'a> {
 }
 
 pub(crate) fn verify_solution<B: BlockT>(
-    solution: &Solution,
+    solution: &Solution<FarmerPublicKey>,
     params: VerifySolutionParams,
 ) -> Result<(), Error<B>> {
     let VerifySolutionParams {

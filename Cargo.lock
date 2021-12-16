@@ -800,6 +800,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "subspace-runtime-primitives",
  "tracing",
@@ -839,8 +840,11 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-application-crypto",
+ "sp-consensus-slots",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]
 
@@ -4314,6 +4318,8 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
+ "sp-executor",
 ]
 
 [[package]]
@@ -4376,7 +4382,6 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-consensus-subspace",
 ]
 
 [[package]]
@@ -4454,6 +4459,16 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-timestamp",
+]
+
+[[package]]
+name = "pallet-transaction-fees"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
 ]
 
 [[package]]
@@ -5042,6 +5057,8 @@ dependencies = [
  "polkadot-overseer-gen",
  "sc-network",
  "smallvec",
+ "sp-executor",
+ "sp-runtime",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -5060,6 +5077,8 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-overseer",
  "sp-core",
+ "sp-executor",
+ "sp-runtime",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -5070,6 +5089,7 @@ name = "polkadot-overseer"
 version = "0.9.13"
 dependencies = [
  "assert_matches",
+ "cirrus-node-primitives",
  "femme",
  "futures 0.3.18",
  "futures-timer 3.0.2",
@@ -7364,7 +7384,10 @@ dependencies = [
 name = "sp-executor"
 version = "0.1.0"
 dependencies = [
+ "parity-scale-codec",
+ "scale-info",
  "sp-api",
+ "sp-core",
  "sp-runtime",
  "sp-std",
 ]
@@ -7915,6 +7938,7 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
+ "cirrus-node-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "futures 0.3.18",
@@ -7990,6 +8014,7 @@ dependencies = [
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
+ "pallet-transaction-fees",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",

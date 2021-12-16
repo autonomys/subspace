@@ -16,22 +16,18 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{
-    FarmerPublicKey, FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration,
-    SUBSPACE_ENGINE_ID,
-};
+use crate::{FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
 
-// TODO: better documentation here
-/// Solution
+/// Farmer solution for slot challenge.
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
-pub struct Solution {
+pub struct Solution<AccountId> {
     /// Public key of the farmer that created the solution
-    pub public_key: FarmerPublicKey,
+    pub public_key: AccountId,
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
@@ -44,11 +40,14 @@ pub struct Solution {
     pub tag: Tag,
 }
 
-impl Solution {
+impl<AccountId> Solution<AccountId>
+where
+    AccountId: Default,
+{
     /// Dummy solution for the genesis block
     pub fn genesis_solution() -> Self {
         Self {
-            public_key: FarmerPublicKey::default(),
+            public_key: AccountId::default(),
             piece_index: 0u64,
             encoding: Piece::default(),
             signature: Signature::default(),
@@ -61,14 +60,14 @@ impl Solution {
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
-pub struct PreDigest {
+pub struct PreDigest<AccountId> {
     /// Slot
     pub slot: Slot,
     /// Solution (includes PoR)
-    pub solution: Solution,
+    pub solution: Solution<AccountId>,
 }
 
-impl PreDigest {
+impl<AccountId> PreDigest<AccountId> {
     /// Returns the weight _added_ by this digest, not the cumulative weight
     /// of the chain.
     pub fn added_weight(&self) -> SubspaceBlockWeight {
@@ -77,7 +76,7 @@ impl PreDigest {
         let diff = target.wrapping_sub(tag);
         let diff2 = tag.wrapping_sub(target);
         // Find smaller diff between 2 directions.
-        let bidirectional_diff = (diff).min(diff2);
+        let bidirectional_diff = diff.min(diff2);
         u128::from(u64::MAX - bidirectional_diff)
     }
 }
@@ -124,8 +123,8 @@ pub struct SaltDescriptor {
     pub salt: Salt,
 }
 
-/// S solution range update. This is broadcast in the first block of the era, but only applies to
-/// the block after that.
+/// Solution range update. This is broadcast in the first block of the era, but only applies to the
+/// block after that.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct UpdatedSolutionRangeDescriptor {
     /// Solution range used for challenges.
@@ -143,12 +142,12 @@ pub struct UpdatedSaltDescriptor {
 }
 
 /// A digest item which is usable with Subspace consensus.
-pub trait CompatibleDigestItem: Sized {
+pub trait CompatibleDigestItem<AccountId>: Sized {
     /// Construct a digest item which contains a Subspace pre-digest.
-    fn subspace_pre_digest(seal: PreDigest) -> Self;
+    fn subspace_pre_digest(seal: PreDigest<AccountId>) -> Self;
 
     /// If this item is an Subspace pre-digest, return it.
-    fn as_subspace_pre_digest(&self) -> Option<PreDigest>;
+    fn as_subspace_pre_digest(&self) -> Option<PreDigest<AccountId>>;
 
     /// Construct a digest item which contains a Subspace seal.
     fn subspace_seal(signature: FarmerSignature) -> Self;
@@ -163,12 +162,15 @@ pub trait CompatibleDigestItem: Sized {
     fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor>;
 }
 
-impl CompatibleDigestItem for DigestItem {
-    fn subspace_pre_digest(digest: PreDigest) -> Self {
+impl<AccountId> CompatibleDigestItem<AccountId> for DigestItem
+where
+    AccountId: Encode + Decode,
+{
+    fn subspace_pre_digest(digest: PreDigest<AccountId>) -> Self {
         DigestItem::PreRuntime(SUBSPACE_ENGINE_ID, digest.encode())
     }
 
-    fn as_subspace_pre_digest(&self) -> Option<PreDigest> {
+    fn as_subspace_pre_digest(&self) -> Option<PreDigest<AccountId>> {
         self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
     }
 

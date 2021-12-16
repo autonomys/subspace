@@ -2,7 +2,7 @@
 name = "polkadot-overseer"
 version = "0.9.13"
 authors = ["Parity Technologies <admin@parity.io>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 client = { package = "sc-client-api", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
@@ -17,6 +17,7 @@ tracing = "0.1.29"
 lru = "0.7"
 parity-util-mem = { version = ">= 0.10.1", default-features = false }
 
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 
 [dev-dependencies]

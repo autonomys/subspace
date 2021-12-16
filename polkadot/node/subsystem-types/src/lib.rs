@@ -25,8 +25,9 @@
 
 use std::{fmt, sync::Arc};
 
-pub use subspace_runtime_primitives::{BlockNumber, Hash};
+use cirrus_node_primitives::ExecutorSlotInfo;
 use smallvec::SmallVec;
+pub use subspace_runtime_primitives::{BlockNumber, Hash};
 
 pub mod errors;
 pub mod messages;
@@ -140,6 +141,8 @@ pub enum OverseerSignal {
 	ActiveLeaves(ActiveLeavesUpdate),
 	/// `Subsystem` is informed of a finalized block by its block hash and number.
 	BlockFinalized(Hash, BlockNumber),
+	/// `Subsystem` is informed of a new slot.
+	NewSlot(ExecutorSlotInfo),
 	/// Conclude the work of the `Overseer` and all `Subsystem`s.
 	Conclude,
 }

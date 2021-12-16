@@ -22,8 +22,8 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Encode};
-use frame_support::traits::Get;
+use codec::{Compact, CompactLen, Decode, Encode};
+use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use frame_support::weights::{
     constants::{RocksDbWeight, WEIGHT_PER_SECOND},
     IdentityFee,
@@ -31,19 +31,23 @@ use frame_support::weights::{
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use pallet_transaction_payment::CurrencyAdapter;
+use pallet_balances::NegativeImbalance;
 use sp_api::impl_runtime_apis;
 use sp_consensus_subspace::{
     Epoch, EquivocationProof, FarmerPublicKey, Salts, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, Header as HeaderT};
-use sp_runtime::{
-    create_runtime_str, generic,
-    transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, Perbill,
+use sp_executor::Bundle;
+use sp_runtime::traits::{
+    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
+    PostDispatchInfoOf, Zero,
 };
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+};
+use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -52,7 +56,8 @@ use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
 pub use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, REPLICATION_FACTOR,
+    MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -128,7 +133,7 @@ const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
 const EPOCH_DURATION_IN_SLOTS: u64 =
     EPOCH_DURATION_IN_BLOCKS as u64 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0;
 
-const EON_DURATION_IN_SLOTS: u64 = 2u64.pow(14);
+const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
 
 /// The Subspace epoch configuration at genesis.
 pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEpochConfiguration {
@@ -138,7 +143,7 @@ pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEp
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
 const INITIAL_SOLUTION_RANGE: u64 =
-    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / PIECE_SIZE as u32) as u64 * SLOT_PROBABILITY.0
+    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as u64 * SLOT_PROBABILITY.0
         / SLOT_PROBABILITY.1;
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
@@ -220,7 +225,6 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
     pub const RecordSize: u32 = RECORD_SIZE;
     pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-    pub const ReplicationFactor: u16 = REPLICATION_FACTOR;
     pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
@@ -235,7 +239,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -278,6 +281,54 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+    pub const ReplicationFactor: u16 = MIN_REPLICATION_FACTOR;
+    pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
+    pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
+}
+
+pub struct CreditSupply;
+
+impl Get<Balance> for CreditSupply {
+    fn get() -> Balance {
+        Balances::total_issuance()
+    }
+}
+
+pub struct TotalSpacePledged;
+
+impl Get<u64> for TotalSpacePledged {
+    fn get() -> u64 {
+        let piece_size = u64::try_from(PIECE_SIZE)
+            .expect("Piece size is definitely small enough to fit into u64; qed");
+        // Operations reordered to avoid u64 overflow, but essentially are:
+        // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
+        u64::MAX / Subspace::solution_range() * piece_size * SlotProbability::get().0
+            / SlotProbability::get().1
+    }
+}
+
+pub struct BlockchainHistorySize;
+
+impl Get<u64> for BlockchainHistorySize {
+    fn get() -> u64 {
+        Subspace::archived_history_size()
+    }
+}
+
+impl pallet_transaction_fees::Config for Runtime {
+    type Event = Event;
+    type MinReplicationFactor = ReplicationFactor;
+    type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
+    type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
+    type CreditSupply = CreditSupply;
+    type TotalSpacePledged = TotalSpacePledged;
+    type BlockchainHistorySize = BlockchainHistorySize;
+    type Currency = Balances;
+    type FindAuthor = Subspace;
+    type WeightInfo = ();
+}
+
 pub struct TransactionByteFee;
 
 impl Get<Balance> for TransactionByteFee {
@@ -285,21 +336,7 @@ impl Get<Balance> for TransactionByteFee {
         if cfg!(feature = "do-not-enforce-cost-of-storage") {
             1
         } else {
-            let credit_supply = Balances::total_issuance();
-            let total_space = Balance::from(
-                u64::MAX * SlotProbability::get().0
-                    / SlotProbability::get().1
-                    / (Subspace::solution_range()
-                        / u64::try_from(PIECE_SIZE)
-                            .expect("Piece size is definitely small enough to fit into u64; qed")),
-            );
-            let blockchain_size = Balance::from(Subspace::archived_history_size());
-
-            match total_space.checked_sub(blockchain_size * Balance::from(ReplicationFactor::get()))
-            {
-                Some(free_space) if free_space > 0 => credit_supply / free_space,
-                _ => Balance::MAX,
-            }
+            TransactionFees::transaction_byte_fee()
         }
     }
 }
@@ -308,8 +345,97 @@ parameter_types! {
     pub const OperationalFeeMultiplier: u8 = 5;
 }
 
+pub struct LiquidityInfo {
+    storage_fee: Balance,
+    imbalance: NegativeImbalance<Runtime>,
+}
+
+/// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges transaction
+/// fees and distributes storage/compute fees and tip separately.
+pub struct OnChargeTransaction;
+
+impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
+    type LiquidityInfo = Option<LiquidityInfo>;
+    type Balance = Balance;
+
+    fn withdraw_fee(
+        who: &AccountId,
+        call: &Call,
+        _info: &DispatchInfoOf<Call>,
+        fee: Self::Balance,
+        tip: Self::Balance,
+    ) -> Result<Self::LiquidityInfo, TransactionValidityError> {
+        if fee.is_zero() {
+            return Ok(None);
+        }
+
+        let withdraw_reason = if tip.is_zero() {
+            WithdrawReasons::TRANSACTION_PAYMENT
+        } else {
+            WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
+        };
+
+        let withdraw_result = <Balances as Currency<AccountId>>::withdraw(
+            who,
+            fee,
+            withdraw_reason,
+            ExistenceRequirement::KeepAlive,
+        );
+        let imbalance = withdraw_result.map_err(|_error| InvalidTransaction::Payment)?;
+
+        // Separate storage fee while we have access to the call data structure to calculate it.
+        let storage_fee = TransactionByteFee::get()
+            * Balance::try_from(call.encoded_size())
+                .expect("Size of the call never exceeds balance units; qed");
+
+        Ok(Some(LiquidityInfo {
+            storage_fee,
+            imbalance,
+        }))
+    }
+
+    fn correct_and_deposit_fee(
+        who: &AccountId,
+        _dispatch_info: &DispatchInfoOf<Call>,
+        _post_info: &PostDispatchInfoOf<Call>,
+        corrected_fee: Self::Balance,
+        tip: Self::Balance,
+        liquidity_info: Self::LiquidityInfo,
+    ) -> Result<(), TransactionValidityError> {
+        if let Some(LiquidityInfo {
+            storage_fee,
+            imbalance,
+        }) = liquidity_info
+        {
+            // Calculate how much refund we should return
+            let refund_amount = imbalance.peek().saturating_sub(corrected_fee);
+            // Refund to the the account that paid the fees. If this fails, the account might have
+            // dropped below the existential balance. In that case we don't refund anything.
+            let refund_imbalance = Balances::deposit_into_existing(who, refund_amount)
+                .unwrap_or_else(|_| <Balances as Currency<AccountId>>::PositiveImbalance::zero());
+            // Merge the imbalance caused by paying the fees and refunding parts of it again.
+            let adjusted_paid = imbalance
+                .offset(refund_imbalance)
+                .same()
+                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
+
+            // Split the tip from the total fee that ended up being paid.
+            let (tip, fee) = adjusted_paid.split(tip);
+            // Split paid storage and compute fees so that they can be distributed separately.
+            let (paid_storage_fee, paid_compute_fee) = fee.split(storage_fee);
+
+            TransactionFees::note_transaction_fees(
+                paid_storage_fee.peek(),
+                paid_compute_fee.peek(),
+                tip.peek(),
+            );
+        }
+        Ok(())
+    }
+}
+
 impl pallet_transaction_payment::Config for Runtime {
-    type OnChargeTransaction = CurrencyAdapter<Balances, ()>;
+    type OnChargeTransaction = OnChargeTransaction;
     type TransactionByteFee = TransactionByteFee;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightToFee = IdentityFee<Balance>;
@@ -353,6 +479,7 @@ impl pallet_rewards::Config for Runtime {
     type Event = Event;
     type Currency = Balances;
     type BlockReward = BlockReward;
+    type FindAuthor = Subspace;
     type WeightInfo = ();
 }
 
@@ -394,6 +521,7 @@ construct_runtime!(
         Rewards: pallet_rewards = 9,
 
         Balances: pallet_balances = 4,
+        TransactionFees: pallet_transaction_fees = 12,
         TransactionPayment: pallet_transaction_payment = 5,
         Utility: pallet_utility = 8,
 
@@ -606,6 +734,27 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     block_object_mapping
 }
 
+fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+    extrinsics
+        .into_iter()
+        .filter_map(|opaque_extrinsic| {
+            match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
+                Ok(uxt) => {
+                    if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+                        bundle,
+                    }) = uxt.function
+                    {
+                        Some(bundle)
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        })
+        .collect()
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -745,6 +894,20 @@ impl_runtime_apis! {
             head_hash: <Block as BlockT>::Hash,
         ) -> Option<()> {
             Executor::submit_candidate_receipt_unsigned(head_number, head_hash).ok()
+        }
+
+        fn submit_execution_receipt_unsigned(
+            execution_receipt: sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>,
+        ) -> Option<()> {
+            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+        }
+
+        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()> {
+            Executor::submit_transaction_bundle_unsigned(bundle).ok()
+        }
+
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+            extract_bundles(extrinsics)
         }
 
         fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Subspace pallet for issuing rewards to block producers.
+//! Pallet for issuing rewards to block producers.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
@@ -21,12 +21,9 @@
 
 mod default_weights;
 
-use codec::{Decode, Encode};
-use frame_support::traits::{Currency, Get};
+use frame_support::traits::{Currency, FindAuthor, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
-use sp_consensus_subspace::digests::PreDigest;
-use sp_consensus_subspace::SUBSPACE_ENGINE_ID;
 
 pub trait WeightInfo {
     fn on_initialize() -> Weight;
@@ -36,7 +33,7 @@ pub trait WeightInfo {
 mod pallet {
     use super::WeightInfo;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::Currency;
+    use frame_support::traits::{Currency, FindAuthor};
     use frame_system::pallet_prelude::*;
 
     type BalanceOf<T> =
@@ -53,6 +50,8 @@ mod pallet {
         #[pallet::constant]
         type BlockReward: Get<BalanceOf<Self>>;
 
+        type FindAuthor: FindAuthor<Self::AccountId>;
+
         type WeightInfo: WeightInfo;
     }
 
@@ -65,8 +64,11 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Issued reward for the block author. \[block_author, reward\]
-        BlockReward(T::AccountId, BalanceOf<T>),
+        /// Issued reward for the block author.
+        BlockReward {
+            block_author: T::AccountId,
+            reward: BalanceOf<T>,
+        },
     }
 
     #[pallet::hooks]
@@ -80,25 +82,20 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     fn do_initialize(_n: T::BlockNumber) {
-        if let Some(block_author) = frame_system::Pallet::<T>::digest()
-            .logs
-            .iter()
-            .filter_map(|s| s.as_pre_runtime())
-            .find_map(|(id, mut data)| {
-                if id == SUBSPACE_ENGINE_ID {
-                    PreDigest::decode(&mut data).ok()
-                } else {
-                    None
-                }
-            })
-            .and_then(|pre_digest| {
-                T::AccountId::decode(&mut pre_digest.solution.public_key.encode().as_ref()).ok()
-            })
-        {
-            let reward = T::BlockReward::get();
-            T::Currency::deposit_creating(&block_author, reward);
+        let block_author = T::FindAuthor::find_author(
+            frame_system::Pallet::<T>::digest()
+                .logs
+                .iter()
+                .filter_map(|d| d.as_pre_runtime()),
+        )
+        .expect("Block author must always be present; qed");
 
-            Self::deposit_event(Event::BlockReward(block_author, reward));
-        }
+        let reward = T::BlockReward::get();
+        T::Currency::deposit_creating(&block_author, reward);
+
+        Self::deposit_event(Event::BlockReward {
+            block_author,
+            reward,
+        });
     }
 }

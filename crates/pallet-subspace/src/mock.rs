@@ -165,7 +165,6 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type ReplicationFactor = ReplicationFactor;
     type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
@@ -221,7 +220,7 @@ pub fn progress_to_block(keypair: &Keypair, n: u64) {
     }
 }
 
-pub fn make_pre_digest(slot: Slot, solution: Solution) -> Digest {
+pub fn make_pre_digest(slot: Slot, solution: Solution<FarmerPublicKey>) -> Digest {
     let digest_data = PreDigest { slot, solution };
     let log = DigestItem::PreRuntime(
         sp_consensus_subspace::SUBSPACE_ENGINE_ID,
@@ -278,7 +277,8 @@ pub fn generate_equivocation_proof(
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
         let signature = Pair::from(keypair.secret.clone()).sign(prehash.as_ref());
-        let seal = <DigestItem as CompatibleDigestItem>::subspace_seal(signature.into());
+        let seal =
+            <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(signature.into());
         header.digest_mut().push(seal);
     };
 

@@ -50,8 +50,9 @@ use futures::{
 };
 use pin_project::pin_project;
 use polkadot_node_jaeger as jaeger;
-use subspace_runtime_primitives::Hash;
 use sp_core::traits::SpawnNamed;
+use sp_executor::Bundle;
+use sp_runtime::OpaqueExtrinsic;
 use std::{
 	collections::{hash_map::Entry, HashMap},
 	convert::TryFrom,
@@ -62,6 +63,7 @@ use std::{
 	task::{Context, Poll},
 	time::Duration,
 };
+use subspace_runtime_primitives::Hash;
 use thiserror::Error;
 
 pub use metered_channel as metered;
@@ -182,6 +184,7 @@ macro_rules! specialize_requests {
 
 specialize_requests! {
 	fn request_pending_head() -> Option<Hash>; PendingHead;
+	fn request_extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle>; ExtractBundles;
 }
 
 struct AbortOnDrop(future::AbortHandle);
@@ -535,6 +538,7 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 							break;
 						}
 						Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => {}
+						Ok(FromOverseer::Signal(OverseerSignal::NewSlot(..))) => {}
 						Ok(FromOverseer::Communication { msg }) => {
 							if let Ok(to_job) = <<Context as SubsystemContext>::Message>::try_from(msg) {
 								jobs.send_msg(to_job.relay_parent(), to_job).await;

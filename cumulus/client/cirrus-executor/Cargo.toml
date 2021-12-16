@@ -2,7 +2,7 @@
 name = "cirrus-client-executor"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 # Substrate dependencies
@@ -26,4 +26,5 @@ polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+sp-executor = { path = "../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

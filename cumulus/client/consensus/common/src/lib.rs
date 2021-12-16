@@ -17,12 +17,12 @@
 #![allow(clippy::all)]
 
 use cirrus_node_primitives::PersistedValidationData;
-use subspace_runtime_primitives::Hash as PHash;
 use sc_consensus::BlockImport;
 use sp_runtime::traits::Block as BlockT;
+use subspace_runtime_primitives::Hash as PHash;
 
 mod parachain_consensus;
-pub use parachain_consensus::{RelaychainClient, run_parachain_consensus};
+pub use parachain_consensus::{run_parachain_consensus, RelaychainClient};
 
 /// The result of [`ParachainConsensus::produce_candidate`].
 pub struct ParachainCandidate<B> {

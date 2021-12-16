@@ -50,8 +50,12 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// New object is added \[who, object_id, object_size\]
-        DataSubmitted(T::AccountId, Sha256Hash, u32),
+        /// New object was added.
+        ObjectSubmitted {
+            who: T::AccountId,
+            object_id: Sha256Hash,
+            object_size: u32,
+        },
     }
 
     #[pallet::call]
@@ -60,12 +64,12 @@ mod pallet {
         // TODO: For now we don't have fees, but we will have them in the future
         /// Put a new object into a feed
         #[pallet::weight((10_000, Pays::No))]
-        pub fn put(origin: OriginFor<T>, data: Vec<u8>) -> DispatchResult {
+        pub fn put(origin: OriginFor<T>, object: Vec<u8>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let object_size = data.len() as u32;
+            let object_size = object.len() as u32;
 
-            let object_id = crypto::sha256_hash(&data);
+            let object_id = crypto::sha256_hash(&object);
 
             debug!(
                 target: "runtime:object-store",
@@ -74,7 +78,11 @@ mod pallet {
                 object_size
             );
 
-            Self::deposit_event(Event::DataSubmitted(who, object_id, object_size));
+            Self::deposit_event(Event::ObjectSubmitted {
+                who,
+                object_id,
+                object_size,
+            });
 
             Ok(())
         }
@@ -94,10 +102,10 @@ impl<T: Config> Call<T> {
     /// Extract object location if an extrinsic corresponds to `put` call
     pub fn extract_call_object(&self) -> Option<CallObject> {
         match self {
-            Self::put { data } => {
+            Self::put { object } => {
                 // `1` corresponds to `Call::put {}` enum variant encoding.
                 Some(CallObject {
-                    hash: crypto::sha256_hash(data),
+                    hash: crypto::sha256_hash(object),
                     offset: 1,
                 })
             }

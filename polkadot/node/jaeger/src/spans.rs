@@ -85,8 +85,8 @@
 
 use parity_scale_codec::Encode;
 use sc_network::PeerId;
-use subspace_runtime_primitives::Hash;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+use subspace_runtime_primitives::Hash;
 
 use std::{fmt, sync::Arc};
 
@@ -196,13 +196,13 @@ impl<'a> LazyIdent for &'a [u8] {
 }
 
 // impl LazyIdent for &PoV {
-	// fn eval(&self) -> TraceIdentifier {
-		// hash_to_identifier(self.hash())
-	// }
+// fn eval(&self) -> TraceIdentifier {
+// hash_to_identifier(self.hash())
+// }
 
-	// fn extra_tags(&self, span: &mut Span) {
-		// span.add_pov(self)
-	// }
+// fn extra_tags(&self, span: &mut Span) {
+// span.add_pov(self)
+// }
 // }
 
 impl LazyIdent for Hash {
@@ -290,8 +290,8 @@ impl Span {
 
 	// #[inline(always)]
 	// pub fn with_pov(mut self, pov: &PoV) -> Self {
-		// self.add_pov(pov);
-		// self
+	// self.add_pov(pov);
+	// self
 	// }
 
 	/// Add an additional int tag to the span without consuming.
@@ -325,7 +325,7 @@ impl Span {
 		}
 	}
 
-    /*
+	/*
 	/// Add a PoV hash meta tag with lazy hash evaluation, without consuming the span.
 	#[inline(always)]
 	pub fn add_pov(&mut self, pov: &PoV) {
@@ -334,7 +334,7 @@ impl Span {
 			self.add_string_fmt_debug_tag("pov", pov.hash());
 		}
 	}
-    */
+	*/
 
 	/// Add a string tag, without consuming the span.
 	pub fn add_string_tag<V: ToString>(&mut self, tag: &'static str, val: V) {

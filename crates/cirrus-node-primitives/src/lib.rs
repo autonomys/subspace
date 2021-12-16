@@ -21,10 +21,22 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
+use sp_consensus_slots::Slot;
 use sp_core::bytes;
+use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
+use subspace_core_primitives::Tag;
 use subspace_runtime_primitives::{BlockNumber, Hash};
+
+/// Data required to produce bundles on executor node.
+#[derive(PartialEq, Clone, Debug)]
+pub struct ExecutorSlotInfo {
+    /// Slot
+    pub slot: Slot,
+    /// Global slot challenge
+    pub global_challenge: Tag,
+}
 
 /// Parachain head data included in the chain.
 #[derive(
@@ -58,7 +70,7 @@ pub struct Collation {
 
 /// Result of the [`CollatorFn`] invocation.
 pub struct CollationResult {
-    /// The collation that was build.
+    /// The collation that was built.
     pub collation: Collation,
     // TODO: can be useful in the future?
     /// An optional result sender that should be informed about a successfully seconded collation.
@@ -67,6 +79,30 @@ pub struct CollationResult {
     /// However, if it is called, it should be called with the signed statement of a parachain validator seconding the
     /// collation.
     pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
+}
+
+/// Result of the [`BundlerFn`] invocation.
+pub struct BundleResult {
+    /// The bundle that was built.
+    pub bundle: Bundle,
+}
+
+impl BundleResult {
+    pub fn to_bundle(self) -> Bundle {
+        self.bundle
+    }
+}
+
+/// Result of the [`ProcessorFn`] invocation.
+pub struct ProcessorResult<H = Hash> {
+    /// The execution receipt that was built.
+    pub execution_receipt: ExecutionReceipt<H>,
+}
+
+impl ProcessorResult {
+    pub fn to_execution_receipt(self) -> ExecutionReceipt<Hash> {
+        self.execution_receipt
+    }
 }
 
 // TODO: proper signal?
@@ -114,6 +150,24 @@ pub type CollatorFn = Box<
         + Sync,
 >;
 
+/// Bundle function.
+///
+/// Returns an optional [`BundleResult`].
+pub type BundlerFn = Box<
+    dyn Fn(ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Process function.
+///
+/// Returns an optional [`ProcessorResult`].
+pub type ProcessorFn = Box<
+    dyn Fn(Hash, Vec<Bundle>) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// The key type ID for a collator key.
 const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
 
@@ -139,6 +193,10 @@ pub struct CollationGenerationConfig {
     pub key: CollatorPair,
     /// Collation function. See [`CollatorFn`] for more details.
     pub collator: CollatorFn,
+    /// Transaction bundle function.
+    pub bundler: BundlerFn,
+    /// State processor function.
+    pub processor: ProcessorFn,
 }
 
 impl std::fmt::Debug for CollationGenerationConfig {
