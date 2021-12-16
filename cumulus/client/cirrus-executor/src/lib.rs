@@ -27,6 +27,7 @@ use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT, Zero},
 	SaturatedConversion,
 };
+use sp_trie::StorageProof;
 
 use cumulus_client_consensus_common::ParachainConsensus;
 
@@ -37,7 +38,7 @@ use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
@@ -54,6 +55,7 @@ pub struct Executor<Block: BlockT, BS, RA, Client> {
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
+	overseer_handle: OverseerHandle,
 }
 
 impl<Block: BlockT, BS, RA, Client> Clone for Executor<Block, BS, RA, Client> {
@@ -63,6 +65,7 @@ impl<Block: BlockT, BS, RA, Client> Clone for Executor<Block, BS, RA, Client> {
 			parachain_consensus: self.parachain_consensus.clone(),
 			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
+			overseer_handle: self.overseer_handle.clone(),
 		}
 	}
 }
@@ -80,8 +83,9 @@ where
 		runtime_api: Arc<RA>,
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
+		overseer_handle: OverseerHandle,
 	) -> Self {
-		Self { block_status, runtime_api, parachain_consensus, client }
+		Self { block_status, runtime_api, parachain_consensus, client, overseer_handle }
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -143,6 +147,32 @@ where
 				);
 				false
 			},
+		}
+	}
+
+	/// Checks the execution receipt from the executor peers.
+	///
+	/// TODO: invoke this once the external ER is received.
+	#[allow(unused)]
+	async fn on_execution_receipt_received(
+		&mut self,
+		_execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
+	) {
+		// TODO: validate the Proof-of-Election
+
+		// TODO: check if the received ER is same with the one produced locally.
+		let same_with_produced_locally = true;
+
+		if same_with_produced_locally {
+			// TODO: rebroadcast ER
+		} else {
+			// TODO: generate a fraud proof
+			let fraud_proof = FraudProof { proof: StorageProof::empty() };
+
+			// TODO: gossip the fraud proof to farmers
+			self.overseer_handle
+				.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
+				.await;
 		}
 	}
 
@@ -259,16 +289,24 @@ where
 
 		// The applied txs can be full removed from the transaction pool
 
-		// TODO: election for broadcasting ER to all farmers and executors.
+		// TODO: win the executor election to broadcast ER.
+		let is_elected = true;
 
-		Some(ProcessorResult {
-			execution_receipt: ExecutionReceipt {
-				primary_hash,
-				secondary_hash: Default::default(),
-				state_root: Default::default(),
-				state_transition_root: Default::default(),
-			},
-		})
+		if is_elected {
+			// TODO: broadcast ER to all executors.
+
+			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
+			Some(ProcessorResult {
+				execution_receipt: ExecutionReceipt {
+					primary_hash,
+					secondary_hash: Default::default(),
+					state_root: Default::default(),
+					state_transition_root: Default::default(),
+				},
+			})
+		} else {
+			None
+		}
 	}
 }
 
@@ -303,7 +341,13 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
 {
-	let executor = Executor::new(block_status, runtime_api, parachain_consensus, client);
+	let executor = Executor::new(
+		block_status,
+		runtime_api,
+		parachain_consensus,
+		client,
+		overseer_handle.clone(),
+	);
 
 	let span = tracing::Span::current();
 	let collator_clone = executor.clone();

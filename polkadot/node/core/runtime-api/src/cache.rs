@@ -57,6 +57,7 @@ pub(crate) enum RequestResult {
 	SubmitCandidateReceipt(Hash, u32, Hash),
 	SubmitExecutionReceipt(Hash, Hash),
 	SubmitTransactionBundle(Hash, Hash),
+	SubmitFraudProof(Hash),
 	ExtractBundles(Hash),
 	PendingHead(Hash, Option<Hash>),
 }

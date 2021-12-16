@@ -19,14 +19,18 @@
 
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
+
+// TODO: proper error value
+const INVALID_FRAUD_PROOF: u8 = 100;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::INVALID_FRAUD_PROOF;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_executor::{Bundle, ExecutionReceipt};
+    use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -57,6 +61,8 @@ mod pallet {
         ExecutionReceiptStored { receipt_hash: T::Hash },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
+        /// A fraud proof was processed.
+        FraudProofProcessed,
     }
 
     #[pallet::call]
@@ -109,6 +115,8 @@ mod pallet {
                 execution_receipt
             );
 
+            // TODO: track the execution receipt
+
             Self::deposit_event(Event::ExecutionReceiptStored {
                 receipt_hash: execution_receipt.hash(),
             });
@@ -129,6 +137,23 @@ mod pallet {
             Self::deposit_event(Event::TransactionBundleStored {
                 bundle_hash: bundle.hash(),
             });
+
+            Ok(())
+        }
+
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
+            ensure_none(origin)?;
+
+            log::debug!(
+                target: "runtime::subspace::executor",
+                "Submitting fraud proof: {:?}",
+                fraud_proof
+            );
+
+            // TODO: slash the executor accordingly.
+
+            Self::deposit_event(Event::FraudProofProcessed);
 
             Ok(())
         }
@@ -154,6 +179,7 @@ mod pallet {
                 Call::submit_candidate_receipt { .. } => Ok(()),
                 Call::submit_execution_receipt { .. } => Ok(()),
                 Call::submit_transaction_bundle { .. } => Ok(()),
+                Call::submit_fraud_proof { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -194,16 +220,31 @@ mod pallet {
                         .propagate(true)
                         .build()
                 }
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if let Err(e) = Self::check_fraud_proof(fraud_proof) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid fraud proof: {:?}",
+                            e
+                        );
+                        return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
+                    }
+
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
+                        .priority(TransactionPriority::MAX)
+                        .and_provides(fraud_proof.proof.clone()) // TODO: proper value later.
+                        .longevity(TransactionLongevity::MAX)
+                        // We need this extrinsic to be propagted to the farmer nodes.
+                        .propagate(true)
+                        .build()
+                }
                 _ => InvalidTransaction::Call.into(),
             }
         }
     }
 }
 
-impl<T> Pallet<T>
-where
-    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
-{
+impl<T: Config> Pallet<T> {
     /// Returns the block hash given the block number.
     pub fn head_hash(number: T::BlockNumber) -> Option<T::Hash> {
         <Heads<T>>::get(number)
@@ -214,6 +255,16 @@ where
         <Heads<T>>::get(Self::last_head_number())
     }
 
+    // TODO: Checks the fraud proof is valid.
+    fn check_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+        Ok(())
+    }
+}
+
+impl<T> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
     /// Submits an unsigned extrinsic [`Call::submit_candidate_receipt`].
     pub fn submit_candidate_receipt_unsigned(
         head_number: T::BlockNumber,
@@ -274,6 +325,27 @@ where
             Err(e) => log::error!(
                 target: "runtime::subspace::executor",
                 "Error submitting Subspace transaction bundle: {:?}",
+                e,
+            ),
+        }
+
+        Ok(())
+    }
+
+    /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
+    pub fn submit_fraud_proof_unsigned(
+        fraud_proof: FraudProof,
+    ) -> frame_support::pallet_prelude::DispatchResult {
+        let call = Call::submit_fraud_proof { fraud_proof };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => log::info!(
+                target: "runtime::subspace::executor",
+                "Submitted Subspace fraud proof.",
+            ),
+            Err(e) => log::error!(
+                target: "runtime::subspace::executor",
+                "Error submitting Subspace fraud proof: {:?}",
                 e,
             ),
         }

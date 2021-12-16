@@ -27,7 +27,7 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
@@ -111,6 +111,8 @@ pub enum RuntimeApiRequest {
 	SubmitExecutionReceipt(ExecutionReceipt<Hash>),
 	/// Submit the transaction bundle to primary chain.
 	SubmitTransactionBundle(Bundle),
+	/// Submit the fraud proof to primary chain.
+	SubmitFraudProof(FraudProof),
 	/// Extract the bundles from the extrinsics of a block.
 	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<Bundle>>),
 	/// Get the pending head of executor chain.
@@ -138,6 +140,8 @@ impl RuntimeApiMessage {
 pub enum CollationGenerationMessage {
 	/// Initialize the collation generation subsystem
 	Initialize(CollationGenerationConfig),
+	/// Fraud proof needs to be submitted to primary chain.
+	FraudProof(FraudProof),
 }
 
 impl CollationGenerationMessage {

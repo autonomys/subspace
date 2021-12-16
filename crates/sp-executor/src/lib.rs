@@ -22,6 +22,7 @@ use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
+use sp_trie::StorageProof;
 
 /// Dummy bundle header.
 pub type BundleHeader = Vec<u8>;
@@ -62,6 +63,13 @@ impl<Hash: Copy> ExecutionReceipt<Hash> {
     }
 }
 
+/// Fraud proof for the state computation.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct FraudProof {
+    /// Proof recorded during the computation.
+    pub proof: StorageProof,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi {
@@ -78,6 +86,9 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()>;
+
+        /// Submits the fraud proof via an unsigned extrinsic.
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;
 
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle>;

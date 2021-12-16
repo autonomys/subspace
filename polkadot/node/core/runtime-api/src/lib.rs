@@ -113,6 +113,7 @@ where
 			SubmitCandidateReceipt(..) => {},
 			SubmitExecutionReceipt(..) => {},
 			SubmitTransactionBundle(..) => {},
+			SubmitFraudProof(..) => {},
 			ExtractBundles(..) => {},
 			PendingHead(..) => {},
 		}
@@ -149,6 +150,7 @@ where
 			Request::SubmitCandidateReceipt(..) => None,
 			Request::SubmitExecutionReceipt(..) => None,
 			Request::SubmitTransactionBundle(..) => None,
+			Request::SubmitFraudProof(..) => None,
 			Request::ExtractBundles(..) => None,
 			Request::PendingHead(..) => None,
 		}
@@ -287,6 +289,14 @@ where
 			metrics.on_request(res.is_ok());
 			res.ok()
 				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
+		},
+		Request::SubmitFraudProof(fraud_proof) => {
+			let api = client.runtime_api();
+			let res = api
+				.submit_fraud_proof_unsigned(&BlockId::Hash(relay_parent), fraud_proof)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok().map(|_res| RequestResult::SubmitFraudProof(relay_parent));
 		},
 		Request::ExtractBundles(extrinsics, sender) => {
 			let api = client.runtime_api();
