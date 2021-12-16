@@ -65,8 +65,9 @@ pub type Salt = [u8; SALT_SIZE];
 const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
-#[derive(Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
+)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PublicKey([u8; PUBLIC_KEY_LENGTH]);
 
@@ -99,8 +100,7 @@ impl AsRef<[u8]> for PublicKey {
 const SIGNATURE_LENGTH: usize = 64;
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Signature(
     #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
@@ -139,8 +139,7 @@ impl AsRef<[u8]> for Signature {
 }
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct LocalChallenge(
     #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
@@ -192,8 +191,7 @@ impl LocalChallenge {
 /// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct Piece(#[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; PIECE_SIZE]);
@@ -252,8 +250,7 @@ impl AsMut<[u8]> for Piece {
 }
 
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct FlatPieces(Vec<u8>);
@@ -314,8 +311,7 @@ impl AsMut<[u8]> for FlatPieces {
 }
 
 /// Progress of an archived block.
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum ArchivedBlockProgress {
@@ -350,8 +346,7 @@ impl ArchivedBlockProgress {
 }
 
 /// Last archived block
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
@@ -384,8 +379,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum RootBlock {
