@@ -14,14 +14,15 @@
 // limitations under the License.
 
 //! This module includes Merkle Tree implementation used in Subspace
+extern crate alloc;
 
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::hash::Hasher;
+use core::iter;
+use core::ops::Deref;
 use sha2::{Digest, Sha256};
-use std::borrow::Cow;
-use std::hash::Hasher;
-use std::iter;
-use std::ops::Deref;
 use subspace_core_primitives::{crypto, Sha256Hash, SHA256_HASH_SIZE};
-use thiserror::Error;
 use typenum::{U0, U2};
 
 #[derive(Default, Clone)]
@@ -154,10 +155,14 @@ impl<'a> From<Witness<'a>> for Cow<'a, [u8]> {
 }
 
 /// Errors that can happen when creating a witness
-#[derive(Debug, Error, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum MerkleTreeWitnessError {
     /// Wrong position
-    #[error("Wrong position, there is just {0} leaves available")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Wrong position, there is just {0} leaves available")
+    )]
     WrongPosition(usize),
 }
 

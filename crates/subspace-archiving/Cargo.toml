@@ -17,7 +17,7 @@ parity-scale-codec = { version = "2.3.0", features = ["derive"], default-feature
 reed-solomon-erasure = { version = "5.0.0", default-features = true }
 serde = { version = "1.0.130", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = "1.0.29"
+thiserror = { version = "1.0.29", optional = true }
 typenum = "1.14.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
@@ -34,7 +34,6 @@ version = "0.9.8"
 [dev-dependencies]
 rand = { version = "0.8.4", features = ["min_const_gen"] }
 
-# TODO: Nothing is exposed in no-std environment at the moment :(
 [features]
 default = ["std"]
 std = [
@@ -43,4 +42,5 @@ std = [
     "serde",
     "sha2/std",
     "subspace-core-primitives/std",
+    "thiserror",
 ]

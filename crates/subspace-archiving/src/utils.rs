@@ -1,6 +1,9 @@
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::mem;
 use reed_solomon_erasure::galois_16::Field as Galois16Field;
 use reed_solomon_erasure::Field;
-use std::mem;
 
 pub(crate) type Gf16Element = <Galois16Field as Field>::Elem;
 pub(crate) const GF_16_ELEMENT_BYTES: usize = mem::size_of::<Gf16Element>();
