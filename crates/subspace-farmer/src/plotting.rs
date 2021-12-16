@@ -113,10 +113,13 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
-    let maybe_last_root_block = plot
-        .get_last_root_block()
-        .await
-        .map_err(PlottingError::LastBlock)?;
+    let maybe_last_root_block = tokio::task::spawn_blocking({
+        let plot = plot.clone();
+
+        move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
+    })
+    .await
+    .unwrap()?;
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
@@ -240,14 +243,14 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             let pieces = Arc::new(pieces);
                             // TODO: There is no internal mapping between pieces and their indexes yet
                             // TODO: Then we might want to send indexes as a separate vector
-                            if let Err(error) = runtime_handle
-                                .block_on(plot.write_many(Arc::clone(&pieces), piece_index_offset))
+                            if let Err(error) =
+                                plot.write_many(Arc::clone(&pieces), piece_index_offset)
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
-                            if let Err(error) = runtime_handle.block_on(
-                                commitments.create_for_pieces(&pieces, piece_index_offset),
-                            ) {
+                            if let Err(error) =
+                                commitments.create_for_pieces(&pieces, piece_index_offset)
+                            {
                                 error!("Failed to create commitments for pieces: {}", error);
                             }
                             if let Err(error) = object_mappings.store(&object_mapping) {
@@ -265,9 +268,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                     if let Some(last_root_block) = last_root_block {
                         if let Some(plot) = weak_plot.upgrade() {
-                            if let Err(error) =
-                                runtime_handle.block_on(plot.set_last_root_block(&last_root_block))
-                            {
+                            if let Err(error) = plot.set_last_root_block(&last_root_block) {
                                 error!("Failed to store last root block: {}", error);
                             }
                         }

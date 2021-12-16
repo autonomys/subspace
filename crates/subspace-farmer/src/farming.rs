@@ -9,6 +9,7 @@ use crate::plot::Plot;
 use crate::rpc::RpcClient;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace};
+use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
@@ -118,45 +119,45 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
-        let local_challenge = derive_local_challenge(slot_info.global_challenge, identity);
+        let maybe_solution_handle = tokio::task::spawn_blocking({
+            let identity = identity.clone();
+            let commitments = commitments.clone();
+            let plot = plot.clone();
 
-        // for the current challenge, we will either find `Some(solution)` or we can't find one (`None`)
-        let maybe_solution = match commitments
-            .find_by_range(
-                local_challenge.derive_target(),
-                slot_info.solution_range,
-                slot_info.salt,
-            )
-            .await
-        {
-            Some((tag, piece_index)) => {
-                let encoding = plot
-                    .read(piece_index)
-                    .await
-                    .map_err(FarmingError::PlotRead)?;
-                let solution = Solution {
-                    public_key: identity.public_key().to_bytes().into(),
-                    piece_index,
-                    encoding,
-                    signature: identity.sign(&tag).to_bytes().into(),
-                    local_challenge,
-                    tag,
-                };
-                debug!("Solution found");
-                trace!("Solution found: {:?}", solution);
+            move || {
+                let local_challenge = derive_local_challenge(slot_info.global_challenge, &identity);
+                match commitments.find_by_range(
+                    local_challenge.derive_target(),
+                    slot_info.solution_range,
+                    slot_info.salt,
+                ) {
+                    Some((tag, piece_index)) => {
+                        let encoding = plot.read(piece_index).map_err(FarmingError::PlotRead)?;
+                        let solution = Solution {
+                            public_key: identity.public_key().to_bytes().into(),
+                            piece_index,
+                            encoding,
+                            signature: identity.sign(&tag).to_bytes().into(),
+                            local_challenge,
+                            tag,
+                        };
+                        debug!("Solution found");
+                        trace!("Solution found: {:?}", solution);
 
-                Some(solution)
+                        Ok(Some(solution))
+                    }
+                    None => {
+                        debug!("Solution not found");
+                        Ok(None)
+                    }
+                }
             }
-            None => {
-                debug!("Solution not found");
-                None
-            }
-        };
+        });
 
         client
             .submit_solution_response(SolutionResponse {
                 slot_number: slot_info.slot_number,
-                maybe_solution,
+                maybe_solution: maybe_solution_handle.await.unwrap()?,
                 secret_key: identity.secret_key().to_bytes().into(),
             })
             .await
@@ -174,25 +175,30 @@ fn update_commitments(
     salts: &mut Salts,
     slot_info: &SlotInfo,
 ) {
+    let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
     if salts.current != Some(slot_info.salt) {
         salts.current.replace(slot_info.salt);
 
         // If previous `salts.next` is not the same as current (expected behavior), need to re-commit
         if salts.next != Some(slot_info.salt) {
-            tokio::spawn({
+            let (current_recommitment_done_sender, receiver) = mpsc::channel::<()>();
+
+            current_recommitment_done_receiver.replace(receiver);
+
+            tokio::task::spawn_blocking({
                 let salt = slot_info.salt;
                 let plot = plot.clone();
                 let commitments = commitments.clone();
 
-                async move {
+                move || {
                     let started = Instant::now();
                     info!(
                         "Salt updated to {}, recommitting in background",
                         hex::encode(salt)
                     );
 
-                    if let Err(error) = commitments.create(salt, plot).await {
+                    if let Err(error) = commitments.create(salt, plot) {
                         error!(
                             "Failed to create commitment for {}: {}",
                             hex::encode(salt),
@@ -205,6 +211,9 @@ fn update_commitments(
                             started.elapsed().as_secs_f32()
                         );
                     }
+
+                    // We don't care if anyone is listening on the other side
+                    let _ = current_recommitment_done_sender.send(());
                 }
             });
         }
@@ -214,17 +223,23 @@ fn update_commitments(
         if salts.next != Some(new_next_salt) {
             salts.next.replace(new_next_salt);
 
-            tokio::spawn({
+            tokio::task::spawn_blocking({
                 let plot = plot.clone();
                 let commitments = commitments.clone();
 
-                async move {
+                move || {
+                    // Wait for current recommitment to finish if it is in progress
+                    if let Some(receiver) = current_recommitment_done_receiver {
+                        // Do not care about result here either
+                        let _ = receiver.recv();
+                    }
+
                     let started = Instant::now();
                     info!(
                         "Salt will update to {} soon, recommitting in background",
                         hex::encode(new_next_salt)
                     );
-                    if let Err(error) = commitments.create(new_next_salt, plot).await {
+                    if let Err(error) = commitments.create(new_next_salt, plot) {
                         error!(
                             "Recommitting salt in background failed for {}: {}",
                             hex::encode(new_next_salt),

@@ -135,7 +135,7 @@ pub trait Rpc {
 /// let ws_server_listen_addr = "127.0.0.1:0";
 ///
 /// let identity = Identity::open_or_create(base_directory)?;
-/// let plot = Plot::open_or_create(base_directory).await?;
+/// let plot = Plot::open_or_create(base_directory)?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
@@ -428,7 +428,12 @@ impl RpcServerImpl {
 
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: u64) -> Result<Piece, Error> {
-        let mut piece = self.plot.read(piece_index).await.map_err(|error| {
+        let piece_fut = tokio::task::spawn_blocking({
+            let plot = self.plot.clone();
+
+            move || plot.read(piece_index)
+        });
+        let mut piece = piece_fut.await.unwrap().map_err(|error| {
             debug!("Failed to read piece with index {}: {}", piece_index, error);
 
             Error::Custom("Object mapping found, but reading piece failed".to_string())
@@ -452,7 +457,12 @@ impl RpcServerImpl {
 #[async_trait]
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: u64) -> Result<Option<HexPiece>, Error> {
-        let mut piece = match self.plot.read(piece_index).await {
+        let piece_fut = tokio::task::spawn_blocking({
+            let plot = self.plot.clone();
+
+            move || plot.read(piece_index)
+        });
+        let mut piece = match piece_fut.await.unwrap() {
             Ok(encoding) => encoding,
             Err(error) => {
                 debug!("Failed to find piece with index {}: {}", piece_index, error);
