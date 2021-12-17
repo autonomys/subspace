@@ -20,7 +20,7 @@ cumulus-client-consensus-common = { path = "../consensus/common" }
 
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
-futures = { version = "0.3.1", features = ["compat"] }
+futures = { version = "0.3.17", features = ["compat"] }
 futures-timer = "3.0.1"
 parking_lot = "0.10.2"
 tracing = "0.1.25"

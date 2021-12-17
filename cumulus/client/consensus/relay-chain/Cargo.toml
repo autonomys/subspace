@@ -22,9 +22,9 @@ substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate
 cumulus-client-consensus-common = { path = "../common" }
 
 # Other deps
-futures = { version = "0.3.8", features = ["compat"] }
+futures = { version = "0.3.17", features = ["compat"] }
 tracing = "0.1.22"
-async-trait = "0.1.42"
+async-trait = "0.1.52"
 parking_lot = "0.10.2"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }

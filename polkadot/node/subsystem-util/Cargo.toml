@@ -6,7 +6,7 @@ edition = "2021"
 description = "Subsystem traits and message definitions"
 
 [dependencies]
-async-trait = "0.1.51"
+async-trait = "0.1.52"
 futures = "0.3.17"
 pin-project = "1.0.8"
 thiserror = "1.0.30"
