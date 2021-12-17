@@ -57,6 +57,8 @@ impl<Extrinsic> Bundle<Extrinsic> {
     }
 }
 
+// TODO: Replace with `sp_runtime::OpaqueExtrinsic` once Substrate is upgraded with
+//  https://github.com/paritytech/substrate/pull/10504 included
 /// Encoded extrinsic.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct EncodedExtrinsic(Vec<u8>);
