@@ -19,27 +19,81 @@
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_core::H256;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
-/// Dummy bundle header.
-pub type BundleHeader = Vec<u8>;
+/// Header of transaction bundle.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct BundleHeader {
+    /// The slot number.
+    pub slot_number: u64,
+    /// The merkle root of the extrinsics.
+    pub extrinsics_root: H256,
+}
+
+impl BundleHeader {
+    /// Returns the hash of this header.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+}
 
 /// Transaction bundle
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct Bundle {
+pub struct Bundle<Extrinsic> {
     /// The bundle header.
     pub header: BundleHeader,
     /// THe accompanying extrinsics.
-    pub opaque_transactions: Vec<u8>,
+    pub extrinsics: Vec<Extrinsic>,
 }
 
-impl Bundle {
+impl<Extrinsic> Bundle<Extrinsic> {
     /// Returns the hash of this bundle.
-    pub fn hash(&self) -> sp_core::H256 {
-        sp_runtime::traits::BlakeTwo256::hash(&self.header)
+    pub fn hash(&self) -> H256 {
+        self.header.hash()
+    }
+}
+
+/// Encoded extrinsic.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct EncodedExtrinsic(Vec<u8>);
+
+impl From<Vec<u8>> for EncodedExtrinsic {
+    fn from(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+/// Bundle with opaque extrinsics.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct OpaqueBundle {
+    /// The bundle header.
+    pub header: BundleHeader,
+    /// THe accompanying opaque extrinsics.
+    pub opaque_extrinsics: Vec<EncodedExtrinsic>,
+}
+
+impl OpaqueBundle {
+    /// Returns the hash of this bundle.
+    pub fn hash(&self) -> H256 {
+        self.header.hash()
+    }
+}
+
+impl<Extrinsic: Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
+    fn from(bundle: Bundle<Extrinsic>) -> Self {
+        let Bundle { header, extrinsics } = bundle;
+        let opaque_extrinsics = extrinsics
+            .into_iter()
+            .map(|xt| xt.encode().into())
+            .collect();
+        Self {
+            header,
+            opaque_extrinsics,
+        }
     }
 }
 
@@ -85,13 +139,13 @@ sp_api::decl_runtime_apis! {
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()>;
+        fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()>;
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;
 
         /// Extract the bundles from extrinsics in a block.
-        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle>;
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;
 
         /// Returns the block hash given the block number.
         fn head_hash(

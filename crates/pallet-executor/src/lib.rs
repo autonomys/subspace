@@ -19,7 +19,7 @@
 
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
-use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
+use sp_executor::{ExecutionReceipt, FraudProof, OpaqueBundle};
 
 // TODO: proper error value
 const INVALID_FRAUD_PROOF: u8 = 100;
@@ -30,7 +30,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
+    use sp_executor::{ExecutionReceipt, FraudProof, OpaqueBundle};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -125,17 +125,20 @@ mod pallet {
         }
 
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_transaction_bundle(origin: OriginFor<T>, bundle: Bundle) -> DispatchResult {
+        pub fn submit_transaction_bundle(
+            origin: OriginFor<T>,
+            opaque_bundle: OpaqueBundle,
+        ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::debug!(
                 target: "runtime::subspace::executor",
                 "Submitting transaction bundle: {:?}",
-                bundle
+                opaque_bundle
             );
 
             Self::deposit_event(Event::TransactionBundleStored {
-                bundle_hash: bundle.hash(),
+                bundle_hash: opaque_bundle.hash(),
             });
 
             Ok(())
@@ -209,12 +212,12 @@ mod pallet {
                         .propagate(true)
                         .build()
                 }
-                Call::submit_transaction_bundle { bundle } => {
+                Call::submit_transaction_bundle { opaque_bundle } => {
                     // TODO: validate the Proof-of-Election
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitTransactionBundle")
                         .priority(TransactionPriority::MAX)
-                        .and_provides(bundle.hash())
+                        .and_provides(opaque_bundle.hash())
                         .longevity(TransactionLongevity::MAX)
                         // We need this extrinsic to be propagted to the farmer nodes.
                         .propagate(true)
@@ -313,9 +316,9 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
     pub fn submit_transaction_bundle_unsigned(
-        bundle: Bundle,
+        opaque_bundle: OpaqueBundle,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_transaction_bundle { bundle };
+        let call = Call::submit_transaction_bundle { opaque_bundle };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => log::info!(
