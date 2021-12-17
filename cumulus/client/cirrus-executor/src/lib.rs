@@ -268,8 +268,9 @@ where
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		// TODO: ready at the best number of primary block?
-		let parent_number = self.client.info().best_number;
-		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
+		let block_number = self.client.info().best_number;
+
+		let mut t1 = self.transaction_pool.ready_at(block_number).fuse();
 		// TODO: proper timeout
 		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
@@ -277,8 +278,9 @@ where
 			res = t1 => res,
 			_ = t2 => {
 				tracing::warn!(
-					"Timeout fired waiting for transaction pool at {}, proceeding with production.",
-					parent_number,
+					target: LOG_TARGET,
+					"Timeout fired waiting for transaction pool at #{}, proceeding with production.",
+					block_number,
 				);
 				self.transaction_pool.ready()
 			}
@@ -306,8 +308,8 @@ where
 		let extrinsics_root =
 			BlakeTwo256::ordered_trie_root(extrinsics.iter().map(|xt| xt.encode()).collect());
 
-		let best_hash = self.client.info().best_hash;
-		let _state_root = self.client.expect_header(BlockId::Hash(best_hash)).ok()?.state_root();
+		let _state_root =
+			self.client.expect_header(BlockId::Number(block_number)).ok()?.state_root();
 
 		let bundle = Bundle {
 			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
@@ -320,12 +322,31 @@ where
 	async fn process_bundles(
 		self,
 		primary_hash: PHash,
-		_bundles: Vec<OpaqueBundle>,
+		bundles: Vec<OpaqueBundle>,
 	) -> Option<ProcessorResult> {
 		// TODO:
-		// 1. convert the bundles to a full tx list
+		// 1. [x] convert the bundles to a full tx list
 		// 2. duplicate the full tx list
 		// 3. shuffle the full tx list by sender account
+		let extrinsics = bundles
+			.into_iter()
+			.map(|bundle| {
+				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+					match <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.as_ref()) {
+						Ok(uxt) => Some(uxt),
+						Err(e) => {
+							tracing::error!(
+							target: LOG_TARGET,
+							error = ?e,
+							"Failed to decode the opaque extrisic in bundle, this should not happen"
+							);
+							None
+						},
+					}
+				})
+			})
+			.flatten()
+			.collect::<Vec<_>>();
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.
