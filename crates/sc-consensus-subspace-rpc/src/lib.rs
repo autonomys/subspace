@@ -25,24 +25,26 @@ use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
 use jsonrpc_derive::rpc;
 use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
 use log::{error, warn};
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
+use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Solution;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::Public;
+use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
+    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
+    SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -89,6 +91,33 @@ pub trait SubspaceRpcApi {
         id: SubscriptionId,
     ) -> RpcResult<bool>;
 
+    /// Sign block subscription
+    #[pubsub(
+        subscription = "subspace_block_signing",
+        subscribe,
+        name = "subspace_subscribeBlockSigning"
+    )]
+    fn subscribe_block_signing(
+        &self,
+        metadata: Self::Metadata,
+        subscriber: Subscriber<BlockSigningInfo>,
+    );
+
+    /// Unsubscribe from sign block subscription.
+    #[pubsub(
+        subscription = "subspace_block_signing",
+        unsubscribe,
+        name = "subspace_unsubscribeBlockSigning"
+    )]
+    fn unsubscribe_block_signing(
+        &self,
+        metadata: Option<Self::Metadata>,
+        id: SubscriptionId,
+    ) -> RpcResult<bool>;
+
+    #[rpc(name = "subspace_submitBlockSignature")]
+    fn submit_block_signature(&self, block_signature: BlockSignature) -> FutureResult<()>;
+
     /// Archived segment subscription
     #[pubsub(
         subscription = "subspace_archived_segment",
@@ -120,13 +149,21 @@ struct SolutionResponseSenders {
     senders: Vec<async_oneshot::Sender<SolutionResponse>>,
 }
 
+#[derive(Default)]
+struct BlockSignatureSenders {
+    current_header_hash: H256,
+    senders: Vec<async_oneshot::Sender<BlockSignature>>,
+}
+
 /// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
 pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
+    block_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     _phantom: PhantomData<Block>,
 }
 
@@ -153,6 +190,7 @@ where
         client: Arc<Client>,
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+        block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
         archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     ) -> Self
     where
@@ -162,8 +200,10 @@ where
             client,
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
+            block_signing_notification_stream,
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
+            block_signature_senders: Arc::default(),
             _phantom: PhantomData::default(),
         }
     }
@@ -302,9 +342,7 @@ where
                                     tag: solution.tag,
                                 };
 
-                                let _ = solution_sender
-                                    .send((solution, solution_response.secret_key))
-                                    .await;
+                                let _ = solution_sender.send(solution).await;
                             }
                         }
                     };
@@ -338,6 +376,104 @@ where
         id: SubscriptionId,
     ) -> RpcResult<bool> {
         Ok(self.subscription_manager.cancel(id))
+    }
+
+    fn subscribe_block_signing(
+        &self,
+        _metadata: Self::Metadata,
+        subscriber: Subscriber<BlockSigningInfo>,
+    ) {
+        self.subscription_manager.add(subscriber, |sink| {
+            let executor = self.subscription_manager.executor().clone();
+            let block_signature_senders = self.block_signature_senders.clone();
+
+            self.block_signing_notification_stream
+                .subscribe()
+                .map(move |block_signing_notification| {
+                    let BlockSigningNotification {
+                        header_hash,
+                        mut signature_sender,
+                    } = block_signing_notification;
+
+                    let (response_sender, response_receiver) = async_oneshot::oneshot();
+
+                    // Store signature sender so that we can retrieve it when solution comes from
+                    // the farmer
+                    {
+                        let mut block_signature_senders = block_signature_senders.lock();
+
+                        if block_signature_senders.current_header_hash != header_hash {
+                            block_signature_senders.current_header_hash = header_hash;
+                            block_signature_senders.senders.clear();
+                        }
+
+                        block_signature_senders.senders.push(response_sender);
+                    }
+
+                    // Wait for solutions and transform proposed proof of space solutions into
+                    // data structure `sc-consensus-subspace` expects
+                    let forward_signature_fut = async move {
+                        if let Ok(block_signature) = response_receiver.await {
+                            if let Some(signature) = block_signature.signature {
+                                match FarmerSignature::decode(&mut signature.encode().as_ref()) {
+                                    Ok(signature) => {
+                                        let _ = signature_sender.send(signature).await;
+                                    }
+                                    Err(error) => {
+                                        warn!(
+                                            "Failed to convert signature of length {}: {}",
+                                            signature.len(),
+                                            error
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    };
+
+                    // Run above future with timeout
+                    let _ = executor.spawn(
+                        future::select(
+                            futures_timer::Delay::new(SOLUTION_TIMEOUT),
+                            Box::pin(forward_signature_fut),
+                        )
+                        .map(|_| ()),
+                    );
+
+                    // This will be sent to the farmer
+                    Ok(Ok(BlockSigningInfo {
+                        header_hash: header_hash.into(),
+                    }))
+                })
+                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
+                .map(|_| ())
+        });
+    }
+
+    fn unsubscribe_block_signing(
+        &self,
+        _metadata: Option<Self::Metadata>,
+        id: SubscriptionId,
+    ) -> RpcResult<bool> {
+        Ok(self.subscription_manager.cancel(id))
+    }
+
+    fn submit_block_signature(&self, block_signature: BlockSignature) -> FutureResult<()> {
+        let block_signature_senders = self.block_signature_senders.clone();
+
+        // TODO: This doesn't track what client sent a solution, allowing some clients to send
+        //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
+        Box::pin(async move {
+            let mut block_signature_senders = block_signature_senders.lock();
+
+            if block_signature_senders.current_header_hash == block_signature.header_hash.into() {
+                if let Some(mut sender) = block_signature_senders.senders.pop() {
+                    let _ = sender.send(block_signature);
+                }
+            }
+
+            Ok(())
+        })
     }
 
     fn subscribe_archived_segment(

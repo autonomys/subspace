@@ -129,7 +129,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
     )?;
 
     let info = VerifiedHeaderInfo {
-        pre_digest: CompatibleDigestItem::subspace_pre_digest(pre_digest),
+        pre_digest: CompatibleDigestItem::subspace_pre_digest(&pre_digest),
         seal,
     };
     Ok(CheckedHeader::Checked(header, info))

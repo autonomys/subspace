@@ -613,20 +613,17 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                     let tag: Tag = subspace_solving::create_tag(&encoding, new_slot_info.salt);
 
                     let _ = solution_sender
-                        .send((
-                            Solution {
-                                public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
-                                piece_index,
-                                encoding,
-                                signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
-                                local_challenge: keypair
-                                    .sign(ctx.bytes(&new_slot_info.global_challenge))
-                                    .to_bytes()
-                                    .into(),
-                                tag,
-                            },
-                            keypair.secret.to_bytes().into(),
-                        ))
+                        .send(Solution {
+                            public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
+                            piece_index,
+                            encoding,
+                            signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
+                            local_challenge: keypair
+                                .sign(ctx.bytes(&new_slot_info.global_challenge))
+                                .to_bytes()
+                                .into(),
+                            tag,
+                        })
                         .await;
                 }
             }
@@ -816,7 +813,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 
         (
             sp_runtime::generic::Digest {
-                logs: vec![Item::subspace_pre_digest(PreDigest {
+                logs: vec![Item::subspace_pre_digest(&PreDigest {
                     slot,
                     solution: Solution {
                         public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),

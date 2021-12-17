@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use subspace_rpc_primitives::{
-    EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo, SolutionResponse,
+    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
+    SolutionResponse,
 };
 use tokio::sync::mpsc::Receiver;
 
@@ -16,7 +17,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Abstraction of the Remote Procedure Call Client
 #[async_trait]
-pub trait RpcClient {
+pub trait RpcClient: Clone + Send + Sync + 'static {
     /// Get farmer metadata
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error>;
 
@@ -37,4 +38,10 @@ pub trait RpcClient {
         &self,
         solution_response: SolutionResponse,
     ) -> Result<(), Error>;
+
+    /// Subscribe to block signing request
+    async fn subscribe_block_signing(&self) -> Result<Receiver<BlockSigningInfo>, Error>;
+
+    /// Submit a block signature
+    async fn submit_block_signature(&self, block_signature: BlockSignature) -> Result<(), Error>;
 }

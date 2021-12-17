@@ -8,11 +8,13 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
 use futures::{future, future::Either};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
-use subspace_rpc_primitives::{SlotInfo, Solution, SolutionResponse};
+use subspace_rpc_primitives::{
+    BlockSignature, BlockSigningInfo, SlotInfo, Solution, SolutionResponse,
+};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
@@ -106,15 +108,15 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     commitments: &Commitments,
     identity: &Identity,
 ) -> Result<(), FarmingError> {
-    info!("Subscribing to slot info");
-    let mut new_slots = client
+    info!("Subscribing to slot info notifications");
+    let mut slot_info_notifications = client
         .subscribe_slot_info()
         .await
         .map_err(FarmingError::RpcError)?;
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = new_slots.recv().await {
+    while let Some(slot_info) = slot_info_notifications.recv().await {
         debug!("New slot: {:?}", slot_info);
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
@@ -137,7 +139,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             public_key: identity.public_key().to_bytes().into(),
                             piece_index,
                             encoding,
-                            signature: identity.sign(&tag).to_bytes().into(),
+                            signature: identity.sign_farmer_solution(&tag).to_bytes().into(),
                             local_challenge,
                             tag,
                         };
@@ -154,11 +156,56 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             }
         });
 
+        let maybe_solution = maybe_solution_handle.await.unwrap()?;
+
+        // When solution is found, wait for block signing request.
+        if maybe_solution.is_some() {
+            debug!("Subscribing to sign block notifications");
+            let mut block_signing_info_notifications = client
+                .subscribe_block_signing()
+                .await
+                .map_err(FarmingError::RpcError)?;
+
+            tokio::spawn({
+                let identity = identity.clone();
+                let client = client.clone();
+
+                async move {
+                    if let Some(BlockSigningInfo { header_hash }) =
+                        block_signing_info_notifications.recv().await
+                    {
+                        let signature = identity.block_signing(&header_hash);
+
+                        match client
+                            .submit_block_signature(BlockSignature {
+                                header_hash,
+                                signature: Some(signature.to_bytes().into()),
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                info!(
+                                    "Successfully signed block 0x{} and sent signature to node",
+                                    hex::encode(header_hash)
+                                );
+                            }
+                            Err(error) => {
+                                warn!(
+                                    "Failed to send signature for block 0x{}: {}",
+                                    hex::encode(header_hash),
+                                    error
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         client
             .submit_solution_response(SolutionResponse {
                 slot_number: slot_info.slot_number,
-                maybe_solution: maybe_solution_handle.await.unwrap()?,
-                secret_key: identity.secret_key().to_bytes().into(),
+                maybe_solution,
             })
             .await
             .map_err(FarmingError::RpcError)?;
@@ -263,5 +310,8 @@ fn derive_local_challenge<C: AsRef<[u8]>>(
     global_challenge: C,
     identity: &Identity,
 ) -> LocalChallenge {
-    identity.sign(global_challenge.as_ref()).to_bytes().into()
+    identity
+        .sign_farmer_solution(global_challenge.as_ref())
+        .to_bytes()
+        .into()
 }

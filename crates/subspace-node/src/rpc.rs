@@ -23,7 +23,7 @@
 
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification};
+use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -39,13 +39,16 @@ pub struct FullDeps<C, P> {
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
-    /// Whether to deny unsafe calls
+    /// Whether to deny unsafe calls.
     pub deny_unsafe: DenyUnsafe,
     /// Executor to drive the subscription manager in the Grandpa RPC handler.
     pub subscription_executor: SubscriptionTaskExecutor,
-    /// A stream with notifications about new slot arrival with ability to send solution back
+    /// A stream with notifications about new slot arrival with ability to send solution back.
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    /// A stream with notifications about archived segment creation
+    /// A stream with notifications about headers that need to be signed with ability to send
+    /// signature back.
+    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
 }
 
@@ -75,6 +78,7 @@ where
         deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
+        block_signing_notification_stream,
         archived_segment_notification_stream,
     } = deps;
 
@@ -93,6 +97,7 @@ where
             client,
             subscription_executor,
             new_slot_notification_stream,
+            block_signing_notification_stream,
             archived_segment_notification_stream,
         ),
     ));
