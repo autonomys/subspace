@@ -277,8 +277,8 @@ where
 			res = t1 => res,
 			_ = t2 => {
 				tracing::warn!(
-					block_number,
-					"Timeout fired waiting for transaction pool, proceeding with production.",
+					"Timeout fired waiting for transaction pool at {}, proceeding with production.",
+					parent_number,
 				);
 				self.transaction_pool.ready()
 			}
