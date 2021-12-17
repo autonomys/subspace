@@ -29,7 +29,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification, SignBlockNotification};
+use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -43,7 +43,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_rpc_primitives::{
-    BlockSignature, EncodedBlockWithObjectMapping, FarmerMetadata, SignBlockInfo, SlotInfo,
+    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
 };
 
@@ -93,19 +93,23 @@ pub trait SubspaceRpcApi {
 
     /// Sign block subscription
     #[pubsub(
-        subscription = "subspace_sign_block",
+        subscription = "subspace_block_signing",
         subscribe,
-        name = "subspace_subscribeSignBlock"
+        name = "subspace_subscribeBlockSigning"
     )]
-    fn subscribe_sign_block(&self, metadata: Self::Metadata, subscriber: Subscriber<SignBlockInfo>);
+    fn subscribe_block_signing(
+        &self,
+        metadata: Self::Metadata,
+        subscriber: Subscriber<BlockSigningInfo>,
+    );
 
     /// Unsubscribe from sign block subscription.
     #[pubsub(
-        subscription = "subspace_sign_block",
+        subscription = "subspace_block_signing",
         unsubscribe,
-        name = "subspace_unsubscribeSignBlock"
+        name = "subspace_unsubscribeBlockSigning"
     )]
-    fn unsubscribe_sign_block(
+    fn unsubscribe_block_signing(
         &self,
         metadata: Option<Self::Metadata>,
         id: SubscriptionId,
@@ -156,7 +160,7 @@ pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    sign_block_notification_stream: SubspaceNotificationStream<SignBlockNotification>,
+    block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     block_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
@@ -186,7 +190,7 @@ where
         client: Arc<Client>,
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-        sign_block_notification_stream: SubspaceNotificationStream<SignBlockNotification>,
+        block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
         archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     ) -> Self
     where
@@ -196,7 +200,7 @@ where
             client,
             subscription_manager: SubscriptionManager::new(Arc::new(executor)),
             new_slot_notification_stream,
-            sign_block_notification_stream,
+            block_signing_notification_stream,
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             block_signature_senders: Arc::default(),
@@ -374,22 +378,22 @@ where
         Ok(self.subscription_manager.cancel(id))
     }
 
-    fn subscribe_sign_block(
+    fn subscribe_block_signing(
         &self,
         _metadata: Self::Metadata,
-        subscriber: Subscriber<SignBlockInfo>,
+        subscriber: Subscriber<BlockSigningInfo>,
     ) {
         self.subscription_manager.add(subscriber, |sink| {
             let executor = self.subscription_manager.executor().clone();
             let block_signature_senders = self.block_signature_senders.clone();
 
-            self.sign_block_notification_stream
+            self.block_signing_notification_stream
                 .subscribe()
-                .map(move |sign_block_notification| {
-                    let SignBlockNotification {
+                .map(move |block_signing_notification| {
+                    let BlockSigningNotification {
                         header_hash,
                         mut signature_sender,
-                    } = sign_block_notification;
+                    } = block_signing_notification;
 
                     let (response_sender, response_receiver) = async_oneshot::oneshot();
 
@@ -437,7 +441,7 @@ where
                     );
 
                     // This will be sent to the farmer
-                    Ok(Ok(SignBlockInfo {
+                    Ok(Ok(BlockSigningInfo {
                         header_hash: header_hash.into(),
                     }))
                 })
@@ -446,7 +450,7 @@ where
         });
     }
 
-    fn unsubscribe_sign_block(
+    fn unsubscribe_block_signing(
         &self,
         _metadata: Option<Self::Metadata>,
         id: SubscriptionId,

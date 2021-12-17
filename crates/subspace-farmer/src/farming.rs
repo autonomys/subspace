@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, Salt};
 use subspace_rpc_primitives::{
-    BlockSignature, SignBlockInfo, SlotInfo, Solution, SolutionResponse,
+    BlockSignature, BlockSigningInfo, SlotInfo, Solution, SolutionResponse,
 };
 use thiserror::Error;
 use tokio::task::JoinHandle;
@@ -161,8 +161,8 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         // When solution is found, wait for block signing request.
         if maybe_solution.is_some() {
             debug!("Subscribing to sign block notifications");
-            let mut sign_block_info_notifications = client
-                .subscribe_sign_block()
+            let mut block_signing_info_notifications = client
+                .subscribe_block_signing()
                 .await
                 .map_err(FarmingError::RpcError)?;
 
@@ -171,10 +171,10 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 let client = client.clone();
 
                 async move {
-                    if let Some(SignBlockInfo { header_hash }) =
-                        sign_block_info_notifications.recv().await
+                    if let Some(BlockSigningInfo { header_hash }) =
+                        block_signing_info_notifications.recv().await
                     {
-                        let signature = identity.sign_block(&header_hash);
+                        let signature = identity.block_signing(&header_hash);
 
                         match client
                             .submit_block_signature(BlockSignature {

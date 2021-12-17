@@ -23,7 +23,7 @@
 
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, NewSlotNotification, SignBlockNotification};
+use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -47,7 +47,7 @@ pub struct FullDeps<C, P> {
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub sign_block_notification_stream: SubspaceNotificationStream<SignBlockNotification>,
+    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
 }
@@ -78,7 +78,7 @@ where
         deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
-        sign_block_notification_stream,
+        block_signing_notification_stream,
         archived_segment_notification_stream,
     } = deps;
 
@@ -97,7 +97,7 @@ where
             client,
             subscription_executor,
             new_slot_notification_stream,
-            sign_block_notification_stream,
+            block_signing_notification_stream,
             archived_segment_notification_stream,
         ),
     ));

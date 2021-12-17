@@ -55,7 +55,7 @@ impl Identity {
     }
 
     /// Sign substrate block.
-    pub fn sign_block(&self, header_hash: &[u8]) -> Signature {
+    pub fn block_signing(&self, header_hash: &[u8]) -> Signature {
         self.keypair.sign(self.substrate_ctx.bytes(header_hash))
     }
 }

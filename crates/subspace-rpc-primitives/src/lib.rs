@@ -82,7 +82,7 @@ pub struct SolutionResponse {
 /// Block header hash that needs to be signed.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SignBlockInfo {
+pub struct BlockSigningInfo {
     /// Header hash of the block to be signed.
     #[serde(with = "HexForm")]
     pub header_hash: [u8; 32],

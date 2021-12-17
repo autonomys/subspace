@@ -136,7 +136,7 @@ pub struct NewSlotNotification {
 
 /// Notification with block header hash that needs to be signed and sender for signature.
 #[derive(Debug, Clone)]
-pub struct SignBlockNotification {
+pub struct BlockSigningNotification {
     /// Header hash of the block to be signed.
     pub header_hash: H256,
     /// Sender that can be used to send signature for the header.
@@ -748,8 +748,8 @@ pub struct SubspaceLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    sign_block_notification_sender: SubspaceNotificationSender<SignBlockNotification>,
-    sign_block_notification_stream: SubspaceNotificationStream<SignBlockNotification>,
+    block_signing_notification_sender: SubspaceNotificationSender<BlockSigningNotification>,
+    block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegment>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
     imported_block_notification_stream:
@@ -777,10 +777,10 @@ impl<Block: BlockT> SubspaceLink<Block> {
 
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub fn sign_block_notification_stream(
+    pub fn block_signing_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<SignBlockNotification> {
-        self.sign_block_notification_stream.clone()
+    ) -> SubspaceNotificationStream<BlockSigningNotification> {
+        self.block_signing_notification_stream.clone()
     }
 
     /// Get stream with notifications about archived segment creation
@@ -1674,8 +1674,8 @@ where
 
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
-    let (sign_block_notification_sender, sign_block_notification_stream) =
-        notification::channel("subspace_sign_block_notification_stream");
+    let (block_signing_notification_sender, block_signing_notification_stream) =
+        notification::channel("subspace_block_signing_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
         notification::channel("subspace_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
@@ -1693,8 +1693,8 @@ where
         config: config.clone(),
         new_slot_notification_sender,
         new_slot_notification_stream,
-        sign_block_notification_sender,
-        sign_block_notification_stream,
+        block_signing_notification_sender,
+        block_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,

@@ -2,7 +2,7 @@ use crate::rpc::{Error as MockError, NewHead, RpcClient};
 use async_trait::async_trait;
 use std::sync::Arc;
 use subspace_rpc_primitives::{
-    BlockSignature, EncodedBlockWithObjectMapping, FarmerMetadata, SignBlockInfo, SlotInfo,
+    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
 };
 use tokio::sync::mpsc::Receiver;
@@ -28,8 +28,8 @@ pub struct Inner {
     solution_receiver: Arc<Mutex<mpsc::Receiver<SolutionResponse>>>,
     // TODO: Use this
     #[allow(dead_code)]
-    sign_block_info_sender: Mutex<Option<mpsc::Sender<SignBlockInfo>>>,
-    sign_block_info_receiver: Arc<Mutex<mpsc::Receiver<SignBlockInfo>>>,
+    block_signing_info_sender: Mutex<Option<mpsc::Sender<BlockSigningInfo>>>,
+    block_signing_info_receiver: Arc<Mutex<mpsc::Receiver<BlockSigningInfo>>>,
     block_signature_sender: mpsc::Sender<BlockSignature>,
     // TODO: Use this
     #[allow(dead_code)]
@@ -45,7 +45,7 @@ impl MockRpc {
         let (new_head_sender, new_head_receiver) = mpsc::channel(10);
         let (slot_info_sender, slot_info_receiver) = mpsc::channel(10);
         let (solution_sender, solution_receiver) = mpsc::channel(1);
-        let (sign_block_info_sender, sign_block_info_receiver) = mpsc::channel(10);
+        let (block_signing_info_sender, block_signing_info_receiver) = mpsc::channel(10);
         let (block_signature_sender, block_signature_receiver) = mpsc::channel(1);
 
         MockRpc {
@@ -60,8 +60,8 @@ impl MockRpc {
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 solution_sender,
                 solution_receiver: Arc::new(Mutex::new(solution_receiver)),
-                sign_block_info_sender: Mutex::new(Some(sign_block_info_sender)),
-                sign_block_info_receiver: Arc::new(Mutex::new(sign_block_info_receiver)),
+                block_signing_info_sender: Mutex::new(Some(block_signing_info_sender)),
+                block_signing_info_receiver: Arc::new(Mutex::new(block_signing_info_receiver)),
                 block_signature_sender,
                 block_signature_receiver: Arc::new(Mutex::new(block_signature_receiver)),
             }),
@@ -166,12 +166,12 @@ impl RpcClient for MockRpc {
         Ok(())
     }
 
-    async fn subscribe_sign_block(&self) -> Result<Receiver<SignBlockInfo>, MockError> {
+    async fn subscribe_block_signing(&self) -> Result<Receiver<BlockSigningInfo>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
-        let sign_block_receiver = self.inner.sign_block_info_receiver.clone();
+        let block_signing_receiver = self.inner.block_signing_info_receiver.clone();
         tokio::spawn(async move {
-            while let Some(sign_block_info) = sign_block_receiver.lock().await.recv().await {
-                sender.send(sign_block_info).await.unwrap();
+            while let Some(block_signing_info) = block_signing_receiver.lock().await.recv().await {
+                sender.send(block_signing_info).await.unwrap();
             }
         });
 

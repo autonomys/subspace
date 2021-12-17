@@ -16,8 +16,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    find_pre_digest, subspace_err, verification, Epoch, Error, NewSlotInfo, NewSlotNotification,
-    SignBlockNotification, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
+    find_pre_digest, subspace_err, verification, BlockSigningNotification, Epoch, Error,
+    NewSlotInfo, NewSlotNotification, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -278,15 +278,15 @@ where
             + Send
             + 'static,
     > {
-        let sign_block_notification_sender =
-            self.subspace_link.sign_block_notification_sender.clone();
+        let block_signing_notification_sender =
+            self.subspace_link.block_signing_notification_sender.clone();
         Box::new(
             move |header, header_hash, body, storage_changes, pre_digest, epoch_descriptor| {
                 let (signature_sender, mut signature_receiver) =
                     tracing_unbounded("subspace_signature_signing_stream");
 
                 // Sign the pre-sealed header of the block and then add it to a digest item.
-                sign_block_notification_sender.notify(|| SignBlockNotification {
+                block_signing_notification_sender.notify(|| BlockSigningNotification {
                     header_hash: H256::from_slice(header_hash.as_ref()),
                     signature_sender,
                 });

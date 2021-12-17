@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use subspace_rpc_primitives::{
-    BlockSignature, EncodedBlockWithObjectMapping, FarmerMetadata, SignBlockInfo, SlotInfo,
+    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
 };
 use tokio::sync::mpsc::Receiver;
@@ -40,7 +40,7 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Subscribe to block signing request
-    async fn subscribe_sign_block(&self) -> Result<Receiver<SignBlockInfo>, Error>;
+    async fn subscribe_block_signing(&self) -> Result<Receiver<BlockSigningInfo>, Error>;
 
     /// Submit a block signature
     async fn submit_block_signature(&self, block_signature: BlockSignature) -> Result<(), Error>;
