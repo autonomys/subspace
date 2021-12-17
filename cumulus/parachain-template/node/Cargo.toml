@@ -83,6 +83,7 @@ cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-ch
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
 cirrus-client-service = { path = "../../client/cirrus-service" }
 cirrus-primitives = { path = "../../primitives" }
+cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
 
 # Subspace dependencies
 subspace-node = { path = "../../../crates/subspace-node" }

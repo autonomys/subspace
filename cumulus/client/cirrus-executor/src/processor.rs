@@ -115,8 +115,8 @@ where
 	// 1. determine the randomness generator
 	// 2. Fisher-Yates
 	fn shuffle_extrinsics(
-		_extrinsics: Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>,
+		extrinsics: Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>,
 	) -> Vec<<Block as BlockT>::Extrinsic> {
-		todo!()
+		extrinsics.into_iter().map(|(_, uxt)| uxt).collect()
 	}
 }

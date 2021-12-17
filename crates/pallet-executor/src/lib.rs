@@ -224,6 +224,7 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
+                    // TODO: prevent the spamming of fraud proof transaction.
                     if let Err(e) = Self::check_fraud_proof(fraud_proof) {
                         log::error!(
                             target: "runtime::subspace::executor",
