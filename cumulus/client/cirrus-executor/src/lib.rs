@@ -326,9 +326,9 @@ where
 	) -> Option<ProcessorResult> {
 		// TODO:
 		// 1. [x] convert the bundles to a full tx list
-		// 2. duplicate the full tx list
+		// 2. [x] duplicate the full tx list
 		// 3. shuffle the full tx list by sender account
-		let extrinsics = bundles
+		let mut extrinsics = bundles
 			.into_iter()
 			.map(|bundle| {
 				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
@@ -347,6 +347,21 @@ where
 			})
 			.flatten()
 			.collect::<Vec<_>>();
+
+		// TODO: or just Vec::new()?
+		// Ideally there should be only a few duplicated transactions.
+		let mut seen = Vec::with_capacity(extrinsics.len());
+		extrinsics.retain(|uxt| match seen.contains(uxt) {
+			true => {
+				tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
+				false
+			},
+			false => {
+				seen.push(uxt.clone());
+				true
+			},
+		});
+		drop(seen);
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.
