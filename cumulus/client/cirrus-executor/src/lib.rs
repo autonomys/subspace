@@ -267,10 +267,6 @@ where
 	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
-		let now = time::Instant::now();
-		// TODO: proper deadline
-		let deadline = now + time::Duration::from_micros(500);
-
 		// TODO: ready at the best number of primary block?
 		let parent_number = self.client.info().best_number;
 		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -288,6 +284,11 @@ where
 			}
 		};
 
+		// TODO: proper deadline
+		let pushing_duration = time::Duration::from_micros(500);
+
+		let start = time::Instant::now();
+
 		// TODO: Select transactions properly from the transaction pool
 		//
 		// Selection policy:
@@ -295,8 +296,7 @@ where
 		// - maximize the executor computation power.
 		let mut extrinsics = Vec::new();
 		while let Some(pending_tx) = pending_iterator.next() {
-			let now = std::time::Instant::now();
-			if now > deadline {
+			if start.elapsed() >= pushing_duration {
 				break
 			}
 			let pending_tx_data = pending_tx.data().clone();
