@@ -15,7 +15,7 @@ include = [
 merkletree = "0.21.0"
 parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
 reed-solomon-erasure = { version = "5.0.0", default-features = true }
-serde = { version = "1.0.130", optional = true, features = ["derive"] }
+serde = { version = "1.0.131", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 thiserror = { version = "1.0.29", optional = true }
 typenum = "1.14.0"

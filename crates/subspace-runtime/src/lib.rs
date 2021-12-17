@@ -23,7 +23,10 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
-use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
+use frame_support::traits::{
+    ConstU128, ConstU16, ConstU32, ConstU8, Currency, ExistenceRequirement, Get, Imbalance,
+    WithdrawReasons,
+};
 use frame_support::weights::{
     constants::{RocksDbWeight, WEIGHT_PER_SECOND},
     IdentityFee,
@@ -159,8 +162,9 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
-    pub const SS58Prefix: u16 = 2254;
 }
+
+pub type SS58Prefix = ConstU16<2254>;
 
 // Configure FRAME pallets to include in runtime.
 
@@ -192,7 +196,7 @@ impl frame_system::Config for Runtime {
     /// The ubiquitous origin type.
     type Origin = Origin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
-    type BlockHashCount = BlockHashCount;
+    type BlockHashCount = ConstU32<250>;
     /// The weight of database operations that the runtime can invoke.
     type DbWeight = RocksDbWeight;
     /// Version of the runtime.
@@ -213,6 +217,7 @@ impl frame_system::Config for Runtime {
     type SS58Prefix = SS58Prefix;
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
+    type MaxConsumers = ConstU32<16>;
 }
 
 parameter_types! {
@@ -261,14 +266,8 @@ impl pallet_timestamp::Config for Runtime {
     type WeightInfo = ();
 }
 
-parameter_types! {
-    // TODO: this depends on the value of our native token?
-    pub const ExistentialDeposit: Balance = 500 * SHANNON;
-    pub const MaxLocks: u32 = 50;
-}
-
 impl pallet_balances::Config for Runtime {
-    type MaxLocks = MaxLocks;
+    type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
     /// The type for recording an account's balance.
@@ -276,7 +275,8 @@ impl pallet_balances::Config for Runtime {
     /// The ubiquitous event type.
     type Event = Event;
     type DustRemoval = ();
-    type ExistentialDeposit = ExistentialDeposit;
+    // TODO: Correct value
+    type ExistentialDeposit = ConstU128<{ 500 * SHANNON }>;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
@@ -339,10 +339,6 @@ impl Get<Balance> for TransactionByteFee {
             TransactionFees::transaction_byte_fee()
         }
     }
-}
-
-parameter_types! {
-    pub const OperationalFeeMultiplier: u8 = 5;
 }
 
 pub struct LiquidityInfo {
@@ -437,7 +433,7 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeTransaction;
     type TransactionByteFee = TransactionByteFee;
-    type OperationalFeeMultiplier = OperationalFeeMultiplier;
+    type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
     type FeeMultiplierUpdate = ();
 }

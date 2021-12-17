@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use frame_support::traits::Get;
 use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
@@ -79,7 +80,7 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
 #[cfg(not(feature = "json-chain-spec"))]
 pub fn testnet_config() -> Result<ChainSpec, String> {
     let mut properties = Properties::new();
-    properties.insert("ss58Format".into(), SS58Prefix::get().into());
+    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
@@ -263,7 +264,7 @@ fn create_genesis_config(
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.
-            key: sudo_account,
+            key: Some(sudo_account),
         },
         vesting: VestingConfig { vesting },
     }

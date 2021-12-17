@@ -37,7 +37,7 @@ use sp_consensus_subspace::digests::NextConfigDescriptor;
 use sp_consensus_subspace::{
     digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
 };
-use sp_core::Public;
+use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
@@ -347,7 +347,7 @@ fn report_equivocation_current_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
         // generate an equivocation proof. it creates two headers at the given
         // slot with different block hashes and signed by the given key
@@ -372,7 +372,7 @@ fn report_equivocation_old_session_works() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
         // generate an equivocation proof at the current slot
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
@@ -465,7 +465,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         progress_to_block(&keypair, 1);
 
-        let farmer_public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
+        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 

@@ -35,7 +35,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Solution;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
-use sp_core::crypto::Public;
+use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -333,8 +333,19 @@ where
                     let forward_solution_fut = async move {
                         if let Ok(solution_response) = response_receiver.await {
                             if let Some(solution) = solution_response.maybe_solution {
+                                let public_key =
+                                    match FarmerPublicKey::from_slice(&solution.public_key) {
+                                        Ok(public_key) => public_key,
+                                        Err(_) => {
+                                            warn!(
+                                                "Failed to convert public key: {:?}",
+                                                solution.public_key
+                                            );
+                                            return;
+                                        }
+                                    };
                                 let solution = Solution {
-                                    public_key: FarmerPublicKey::from_slice(&solution.public_key),
+                                    public_key,
                                     piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,

@@ -9,10 +9,10 @@ description = "Polkadot Jaeger primitives"
 async-std = "1.8.0"
 mick-jaeger = "0.1.6"
 lazy_static = "1.4"
-parking_lot = "0.11.1"
-sc-network = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+parking_lot = "0.11.2"
+sc-network = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 thiserror = "1.0.30"
 log = "0.4.13"
 parity-scale-codec = { version = "2.3.1", default-features = false }
