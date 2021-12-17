@@ -57,7 +57,7 @@ jobs:
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
           # TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
-          toolchain: nightly-2021-12-16
+          toolchain: nightly-2021-12-14
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -112,7 +112,7 @@ jobs:
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
           # TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
-          toolchain: nightly-2021-12-16
+          toolchain: nightly-2021-12-14
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
