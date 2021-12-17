@@ -21,6 +21,9 @@ The structure of this repository is the following:
 
 We are regularly releasing stable snapshots. Our CI builds container images and executables for 3 major platforms (Windows, MacOS, Linux). 
 With the provided executables, you can choose to `Farm` online by joining the network, or offline (by yourself, for test or development purposes).
+Our snapshots are categorized as the following:
+- Stable (you can always grab the latest one, these are the ones that are tested by our team)
+- Pre-releases (for testing things early, there may be bugs)
 
 You need 2 executables, select whichever applies to your operating system
 * Node Executable - `subspace-node-...`
@@ -61,13 +64,34 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2. Open your favourite terminal, and go to the folder where you download the executables
 3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose):
 ```
-./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
 ```
 4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 5. This will start the farmer (do this in another terminal): 
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+subspace-farmer-x86_64-*-snapshot farm
 ```
+
+**Important Notes!**
+
+***Invalid Solution***: If you are getting `invalid solution` errors (visible on the terminal that Node runs), please perform this step and then follow the guideline again:
+```
+./subspace-farmer-x86_64-*-snapshot erase-plot
+```
+This will basically erase your plot and commitments, so that the farmer can make a fresh start.
+
+***Switching to a new snapshot***
+If you were running a node previously, and want to switch to a new snapshot, please perform these steps and then follow the guideline again:
+```
+./subspace-node-x86_64-*-snapshot purge-chain --chain testnet
+./subspace-farmer-x86_64-*-snapshot erase-plot
+```
+Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
+The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
+In plain English, these commands are like a `reset` button for snapshot changes.
+
+
+
 
 ### B. To Farm By Yourself (Offline)
 
