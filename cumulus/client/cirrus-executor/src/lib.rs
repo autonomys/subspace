@@ -17,6 +17,8 @@
 //! Cirrus Executor implementation for Subspace.
 #![allow(clippy::all)]
 
+mod processor;
+
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::ProvideRuntimeApi;
@@ -326,87 +328,7 @@ where
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 	) -> Option<ProcessorResult> {
-		// TODO:
-		// 1. [x] convert the bundles to a full tx list
-		// 2. [x] duplicate the full tx list
-		// 3. shuffle the full tx list by sender account
-		let mut extrinsics = bundles
-			.into_iter()
-			.map(|bundle| {
-				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-					match <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
-						Ok(uxt) => Some(uxt),
-						Err(e) => {
-							tracing::error!(
-							target: LOG_TARGET,
-							error = ?e,
-							"Failed to decode the opaque extrisic in bundle, this should not happen"
-							);
-							None
-						},
-					}
-				})
-			})
-			.flatten()
-			.collect::<Vec<_>>();
-
-		// TODO: or just Vec::new()?
-		// Ideally there should be only a few duplicated transactions.
-		let mut seen = Vec::with_capacity(extrinsics.len());
-		extrinsics.retain(|uxt| match seen.contains(uxt) {
-			true => {
-				tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
-				false
-			},
-			false => {
-				seen.push(uxt.clone());
-				true
-			},
-		});
-		drop(seen);
-
-		let block_number = self.client.info().best_number;
-		let extrinsics: Vec<_> = match self
-			.runtime_api
-			.runtime_api()
-			.extract_signer(&BlockId::Number(block_number), extrinsics)
-		{
-			Ok(res) => res,
-			Err(e) => {
-				tracing::error!(
-				target: LOG_TARGET,
-				error = ?e,
-				"Failed to call into the runtime"
-				);
-				return None
-			},
-		};
-
-		// TODO: now we have the final transaction list:
-		// - apply each tx one by one.
-		// - compute the incremental state root and add to the execution trace
-		// - produce ExecutionReceipt
-
-		// The applied txs can be full removed from the transaction pool
-
-		// TODO: win the executor election to broadcast ER.
-		let is_elected = true;
-
-		if is_elected {
-			// TODO: broadcast ER to all executors.
-
-			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Some(ProcessorResult {
-				execution_receipt: ExecutionReceipt {
-					primary_hash,
-					secondary_hash: Default::default(),
-					state_root: Default::default(),
-					state_transition_root: Default::default(),
-				},
-			})
-		} else {
-			None
-		}
+		self.process_bundles_impl(primary_hash, bundles).await
 	}
 }
 
