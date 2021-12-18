@@ -25,9 +25,9 @@ futures = "0.3.17"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
 indicatif = "0.16.2"
-jsonrpsee = { version = "0.4.1", features = ["client", "macros", "server"] }
+jsonrpsee = { version = "0.6.1", features = ["client", "macros", "server"] }
 log = "0.4.14"
-lru = "0.6.6"
+lru = "0.7.0"
 parity-scale-codec = "2.3.0"
 parking_lot = "0.11.2"
 rayon = "1.5.1"

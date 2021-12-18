@@ -16,7 +16,7 @@
 //! Various cryptographic utilities used across Subspace Network.
 
 use crate::Sha256Hash;
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.

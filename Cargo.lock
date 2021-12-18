@@ -550,6 +550,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-buffer"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d36a02058e76b040de25a4464ba1c80935655595b661505c8b39b664828b95"
+dependencies = [
+ "generic-array 0.14.4",
+]
+
+[[package]]
 name = "block-padding"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,7 +791,7 @@ dependencies = [
  "futures 0.3.17",
  "futures-timer 3.0.2",
  "parity-scale-codec",
- "parking_lot 0.10.2",
+ "parking_lot",
  "polkadot-node-subsystem",
  "polkadot-overseer",
  "sc-client-api",
@@ -806,7 +815,7 @@ dependencies = [
  "cirrus-node-primitives",
  "cumulus-client-consensus-common",
  "parity-scale-codec",
- "parking_lot 0.10.2",
+ "parking_lot",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
@@ -895,15 +904,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "cloudabi"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
-dependencies = [
- "bitflags",
 ]
 
 [[package]]
@@ -1133,6 +1133,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "crypto-common"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683d6b536309245c849479fba3da410962a43ed8e51c26b729208ec0ac2798d0"
+dependencies = [
+ "generic-array 0.14.4",
+]
+
+[[package]]
 name = "crypto-mac"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1158,7 +1167,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1a816186fa68d9e426e3cb4ae4dff1fcd8e4a2c34b781bf7a822574a0d0aac8"
 dependencies = [
- "sct",
+ "sct 0.6.1",
 ]
 
 [[package]]
@@ -1229,7 +1238,7 @@ dependencies = [
  "cirrus-node-primitives",
  "cumulus-client-consensus-common",
  "futures 0.3.17",
- "parking_lot 0.10.2",
+ "parking_lot",
  "sc-client-api",
  "sc-consensus",
  "sp-api",
@@ -1326,6 +1335,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3dd60d1080a57a05ab032377049e0591415d2b31afd7028356dbf3cc6dcb066"
 dependencies = [
  "generic-array 0.14.4",
+]
+
+[[package]]
+name = "digest"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b697d66081d42af4fba142d56918a3cb21dc8eb63372c6b85d14f44fb9c5979b"
+dependencies = [
+ "block-buffer 0.10.0",
+ "crypto-common",
+ "generic-array 0.14.4",
+ "subtle",
 ]
 
 [[package]]
@@ -1540,7 +1561,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5384093b4255393cc8c42f0fc3dd4f19977ad3b1025f968257854895a993028c"
 dependencies = [
  "nohash-hasher",
- "parking_lot 0.11.2",
+ "parking_lot",
  "smallvec",
 ]
 
@@ -1621,7 +1642,7 @@ dependencies = [
  "log",
  "num-traits",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "scale-info",
 ]
 
@@ -2008,8 +2029,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a1387e07917c711fb4ee4f48ea0adb04a3c9739e53ef85bf43ae1edc2937a8b"
 dependencies = [
  "futures-io",
- "rustls",
- "webpki",
+ "rustls 0.19.1",
+ "webpki 0.21.4",
 ]
 
 [[package]]
@@ -2284,6 +2305,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hmac"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddca131f3e7f2ce2df364b57949a9d47915cfbd35e46cfee355ccebbf794d6a2"
+dependencies = [
+ "digest 0.10.1",
+]
+
+[[package]]
 name = "hmac-drbg"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2388,11 +2418,27 @@ dependencies = [
  "futures-util",
  "hyper",
  "log",
- "rustls",
- "rustls-native-certs",
+ "rustls 0.19.1",
+ "rustls-native-certs 0.5.0",
  "tokio",
- "tokio-rustls",
- "webpki",
+ "tokio-rustls 0.22.0",
+ "webpki 0.21.4",
+]
+
+[[package]]
+name = "hyper-rustls"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d87c48c02e0dc5e3b849a2041db3029fd066650f8f717c07bf8ed78ccb895cac"
+dependencies = [
+ "http",
+ "hyper",
+ "log",
+ "rustls 0.20.2",
+ "rustls-native-certs 0.6.1",
+ "tokio",
+ "tokio-rustls 0.23.2",
+ "webpki-roots 0.22.1",
 ]
 
 [[package]]
@@ -2687,7 +2733,7 @@ dependencies = [
  "jsonrpc-server-utils",
  "log",
  "net2",
- "parking_lot 0.11.2",
+ "parking_lot",
  "unicase",
 ]
 
@@ -2702,7 +2748,7 @@ dependencies = [
  "jsonrpc-server-utils",
  "log",
  "parity-tokio-ipc",
- "parking_lot 0.11.2",
+ "parking_lot",
  "tower-service",
 ]
 
@@ -2716,7 +2762,7 @@ dependencies = [
  "jsonrpc-core",
  "lazy_static",
  "log",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "serde",
 ]
@@ -2750,15 +2796,15 @@ dependencies = [
  "jsonrpc-server-utils",
  "log",
  "parity-ws",
- "parking_lot 0.11.2",
+ "parking_lot",
  "slab",
 ]
 
 [[package]]
 name = "jsonrpsee"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6373a33d987866ccfe1af4bc11b089dce941764313f9fd8b7cf13fcb51b72dc5"
+checksum = "ceafa2f3d8cb796bf63364691fb875b079814064306cfd4cb067f95f800a673f"
 dependencies = [
  "jsonrpsee-http-client",
  "jsonrpsee-http-server",
@@ -2771,29 +2817,29 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-http-client"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20d31e34e000acb80fae4e36dacb63e458b10ad44c37cd9a46e782994c32c806"
+checksum = "b5531d414c35725627559c9a228a63fa466067153686848e1db7cb9d3366e4b7"
 dependencies = [
  "async-trait",
  "fnv",
  "hyper",
- "hyper-rustls",
+ "hyper-rustls 0.23.0",
  "jsonrpsee-types",
  "jsonrpsee-utils",
- "log",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "tracing",
  "url 2.2.2",
 ]
 
 [[package]]
 name = "jsonrpsee-http-server"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f54d354f93197e6b0f396ea396d918061e1ea521f4e21cf36f953355c72c73b6"
+checksum = "d15bad1f650df478b44455823582bde7e0f63e8f9ebb93f2de4f1b5f35361bc2"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -2802,20 +2848,19 @@ dependencies = [
  "jsonrpsee-types",
  "jsonrpsee-utils",
  "lazy_static",
- "log",
  "serde_json",
  "socket2 0.4.2",
  "tokio",
+ "tracing",
  "unicase",
 ]
 
 [[package]]
 name = "jsonrpsee-proc-macros"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d802063f7a3c867456955f9d2f15eb3ee0edb5ec9ec2b5526324756759221c0f"
+checksum = "ce36eeb733770e9a0ef186f3847d9a48b6eaeff4dd7eb6b945e145e489dd44e7"
 dependencies = [
- "log",
  "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
@@ -2824,9 +2869,9 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-types"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f778cf245158fbd8f5d50823a2e9e4c708a40be164766bd35e9fb1d86715b2"
+checksum = "b7589284e20eb3f40544c672370512e239d9704d6bfa2d3e7a7a7cd505a56e69"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2834,18 +2879,18 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "hyper",
- "log",
  "serde",
  "serde_json",
  "soketto",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
 name = "jsonrpsee-utils"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0109c4f972058f3b1925b73a17210aff7b63b65967264d0045d15ee88fe84f0c"
+checksum = "bbc508d9e6169a81d2913035e8c97f2c49f699134cd3d93efa13c4457aa76252"
 dependencies = [
  "arrayvec 0.7.2",
  "beef",
@@ -2853,54 +2898,55 @@ dependencies = [
  "futures-util",
  "hyper",
  "jsonrpsee-types",
- "log",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "rustc-hash",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "jsonrpsee-ws-client"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "559aa56fc402af206c00fc913dc2be1d9d788dcde045d14df141a535245d35ef"
+checksum = "e9267225fdfda02df5c5a9793c90cfe9f2ae5f91d42d4da78bd64f0116a28e9a"
 dependencies = [
- "arrayvec 0.7.2",
  "async-trait",
  "fnv",
  "futures 0.3.17",
  "http",
  "jsonrpsee-types",
- "log",
  "pin-project 1.0.8",
- "rustls-native-certs",
+ "rustls-native-certs 0.6.1",
  "serde",
  "serde_json",
  "soketto",
  "thiserror",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.23.2",
  "tokio-util",
+ "tracing",
+ "webpki-roots 0.22.1",
 ]
 
 [[package]]
 name = "jsonrpsee-ws-server"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "541e8ec2b2a7a7fcf5bb9191f8a9105aa47f7658db058a304331e94b234cd5df"
+checksum = "1ecd70df0c6c90eec7b17c8858023e92126dccbf7c3c8027d75de24cff24974a"
 dependencies = [
  "futures-channel",
  "futures-util",
  "jsonrpsee-types",
  "jsonrpsee-utils",
- "log",
  "serde_json",
  "soketto",
  "tokio",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -2946,7 +2992,7 @@ checksum = "c3b6b85fc643f5acd0bffb2cc8a6d150209379267af0d41db72170021841f9f5"
 dependencies = [
  "kvdb",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
 ]
 
 [[package]]
@@ -2961,7 +3007,7 @@ dependencies = [
  "num_cpus",
  "owning_ref",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
  "regex",
  "rocksdb",
  "smallvec",
@@ -3046,7 +3092,7 @@ dependencies = [
  "libp2p-websocket",
  "libp2p-yamux",
  "multiaddr",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-project 1.0.8",
  "smallvec",
  "wasm-timer",
@@ -3071,7 +3117,7 @@ dependencies = [
  "multiaddr",
  "multihash 0.14.0",
  "multistream-select",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-project 1.0.8",
  "prost",
  "prost-build",
@@ -3245,7 +3291,7 @@ dependencies = [
  "libp2p-core",
  "log",
  "nohash-hasher",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "smallvec",
  "unsigned-varint 0.7.1",
@@ -3467,7 +3513,7 @@ dependencies = [
  "rw-stream-sink",
  "soketto",
  "url 2.2.2",
- "webpki-roots",
+ "webpki-roots 0.21.1",
 ]
 
 [[package]]
@@ -3478,7 +3524,7 @@ checksum = "4e7362abb8867d7187e7e93df17f460d554c997fc5c8ac57dc1259057f6889af"
 dependencies = [
  "futures 0.3.17",
  "libp2p-core",
- "parking_lot 0.11.2",
+ "parking_lot",
  "thiserror",
  "yamux",
 ]
@@ -3584,15 +3630,6 @@ name = "linux-raw-sys"
 version = "0.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "687387ff42ec7ea4f2149035a5675fedb675d26f98db90a1846ac63d3addb5f5"
-
-[[package]]
-name = "lock_api"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4da24a77a3d8a6d4862d95f72e6fdb9c09a643ecdb402d754004a557f2bec75"
-dependencies = [
- "scopeguard",
-]
 
 [[package]]
 name = "lock_api"
@@ -4649,7 +4686,7 @@ dependencies = [
  "log",
  "lz4",
  "memmap2 0.2.3",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "snap",
 ]
@@ -4710,7 +4747,7 @@ dependencies = [
  "hashbrown",
  "impl-trait-for-tuples",
  "parity-util-mem-derive",
- "parking_lot 0.11.2",
+ "parking_lot",
  "primitive-types",
  "smallvec",
  "winapi 0.3.9",
@@ -4768,37 +4805,13 @@ checksum = "427c3892f9e783d91cc128285287e70a59e206ca452770ece88a76f7a3eddd72"
 
 [[package]]
 name = "parking_lot"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3a704eb390aafdc107b0e392f56a82b668e3a71366993b5340f5833fd62505e"
-dependencies = [
- "lock_api 0.3.4",
- "parking_lot_core 0.7.2",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
- "lock_api 0.4.5",
- "parking_lot_core 0.8.5",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d58c7c768d4ba344e3e8d72518ac13e259d7c7ade24167003b8488e10b6740a3"
-dependencies = [
- "cfg-if 0.1.10",
- "cloudabi",
- "libc",
- "redox_syscall 0.1.57",
- "smallvec",
- "winapi 0.3.9",
+ "lock_api",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -4810,7 +4823,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "instant",
  "libc",
- "redox_syscall 0.2.10",
+ "redox_syscall",
  "smallvec",
  "winapi 0.3.9",
 ]
@@ -5035,7 +5048,7 @@ dependencies = [
  "log",
  "mick-jaeger",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-network",
  "sp-core",
  "sp-runtime",
@@ -5112,7 +5125,7 @@ dependencies = [
  "lru 0.7.0",
  "metered-channel",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
  "polkadot-node-metrics",
  "polkadot-node-subsystem-types",
  "polkadot-overseer-gen",
@@ -5291,7 +5304,7 @@ dependencies = [
  "fnv",
  "lazy_static",
  "memchr",
- "parking_lot 0.11.2",
+ "parking_lot",
  "thiserror",
 ]
 
@@ -5577,12 +5590,6 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.1.57"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
-
-[[package]]
-name = "redox_syscall"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8383f39639269cde97d255a32bdb68c047337295414940c68bdd30c2e13203ff"
@@ -5597,7 +5604,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "528532f3d801c87aec9def2add9ca802fe569e44a544afe633765267840abe64"
 dependencies = [
  "getrandom 0.2.3",
- "redox_syscall 0.2.10",
+ "redox_syscall",
 ]
 
 [[package]]
@@ -5609,7 +5616,7 @@ dependencies = [
  "cc",
  "libc",
  "libm",
- "parking_lot 0.11.2",
+ "parking_lot",
  "smallvec",
  "spin 0.9.2",
 ]
@@ -5805,8 +5812,20 @@ dependencies = [
  "base64",
  "log",
  "ring",
- "sct",
- "webpki",
+ "sct 0.6.1",
+ "webpki 0.21.4",
+]
+
+[[package]]
+name = "rustls"
+version = "0.20.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d37e5e2290f3e040b594b1a9e04377c2c671f1a1cfd9bfdef82106ac1c113f84"
+dependencies = [
+ "log",
+ "ring",
+ "sct 0.7.0",
+ "webpki 0.22.0",
 ]
 
 [[package]]
@@ -5816,9 +5835,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a07b7c1885bd8ed3831c289b7870b13ef46fe0e856d288c30d9cc17d75a2092"
 dependencies = [
  "openssl-probe",
- "rustls",
+ "rustls 0.19.1",
  "schannel",
  "security-framework",
+]
+
+[[package]]
+name = "rustls-native-certs"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca9ebdfa27d3fc180e42879037b5338ab1c040c06affd00d8338598e7800943"
+dependencies = [
+ "openssl-probe",
+ "rustls-pemfile",
+ "schannel",
+ "security-framework",
+]
+
+[[package]]
+name = "rustls-pemfile"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
+dependencies = [
+ "base64",
 ]
 
 [[package]]
@@ -5982,7 +6022,7 @@ dependencies = [
  "hash-db",
  "log",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-executor",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -6013,7 +6053,7 @@ dependencies = [
  "log",
  "parity-db",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-client-api",
  "sc-state-db",
  "sp-arithmetic",
@@ -6035,7 +6075,7 @@ dependencies = [
  "futures-timer 3.0.2",
  "libp2p",
  "log",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-client-api",
  "sc-utils",
  "serde",
@@ -6064,7 +6104,7 @@ dependencies = [
  "num-rational 0.2.4",
  "num-traits",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "retain_mut",
  "sc-client-api",
@@ -6140,9 +6180,9 @@ dependencies = [
  "fork-tree",
  "futures 0.3.17",
  "log",
- "lru 0.6.6",
+ "lru 0.7.0",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "sc-block-builder",
  "sc-cli",
@@ -6191,7 +6231,7 @@ dependencies = [
  "jsonrpc-pubsub",
  "log",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-client-api",
  "sc-consensus-subspace",
  "sc-rpc-api",
@@ -6226,7 +6266,7 @@ dependencies = [
  "log",
  "lru 0.6.6",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-executor-common",
  "sc-executor-wasmi",
  "sc-executor-wasmtime",
@@ -6321,7 +6361,7 @@ dependencies = [
  "async-trait",
  "derive_more",
  "hex",
- "parking_lot 0.11.2",
+ "parking_lot",
  "serde_json",
  "sp-application-crypto",
  "sp-core",
@@ -6353,7 +6393,7 @@ dependencies = [
  "log",
  "lru 0.7.0",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-project 1.0.8",
  "prost",
  "prost-build",
@@ -6389,7 +6429,7 @@ dependencies = [
  "futures-timer 3.0.2",
  "libp2p",
  "log",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "sc-block-builder",
  "sc-client-api",
@@ -6417,11 +6457,11 @@ dependencies = [
  "futures-timer 3.0.2",
  "hex",
  "hyper",
- "hyper-rustls",
+ "hyper-rustls 0.22.1",
  "num_cpus",
  "once_cell",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "sc-client-api",
  "sc-network",
@@ -6467,7 +6507,7 @@ dependencies = [
  "jsonrpc-pubsub",
  "log",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-block-builder",
  "sc-chain-spec",
  "sc-client-api",
@@ -6499,7 +6539,7 @@ dependencies = [
  "jsonrpc-pubsub",
  "log",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-chain-spec",
  "sc-transaction-pool-api",
  "serde",
@@ -6545,7 +6585,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-project 1.0.8",
  "rand 0.7.3",
  "sc-block-builder",
@@ -6602,7 +6642,7 @@ dependencies = [
  "parity-scale-codec",
  "parity-util-mem",
  "parity-util-mem-derive",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-client-api",
  "sp-core",
 ]
@@ -6616,7 +6656,7 @@ dependencies = [
  "futures 0.3.17",
  "libp2p",
  "log",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-project 1.0.8",
  "rand 0.7.3",
  "serde",
@@ -6637,7 +6677,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot",
  "regex",
  "rustc-hash",
  "sc-client-api",
@@ -6678,7 +6718,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
  "retain_mut",
  "sc-client-api",
  "sc-transaction-pool-api",
@@ -6790,6 +6830,16 @@ name = "sct"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b362b83898e0e69f38515b82ee15aa80636befe47c3b6d3d89a911e78fc228ce"
+dependencies = [
+ "ring",
+ "untrusted",
+]
+
+[[package]]
+name = "sct"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d53dcdb7c9f8158937a7981b48accfd39a43af418591a5d008c7b22b5e1b7ca4"
 dependencies = [
  "ring",
  "untrusted",
@@ -6957,6 +7007,17 @@ dependencies = [
  "cpufeatures 0.2.1",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "900d964dd36bb15bcf2f2b35694c072feab74969a54f2bbeec7a2d725d2bdcb6"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cpufeatures 0.2.1",
+ "digest 0.10.1",
  "sha2-asm",
 ]
 
@@ -7208,7 +7269,7 @@ dependencies = [
  "log",
  "lru 0.7.0",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sp-api",
  "sp-consensus",
  "sp-database",
@@ -7344,7 +7405,7 @@ dependencies = [
  "num-traits",
  "parity-scale-codec",
  "parity-util-mem",
- "parking_lot 0.11.2",
+ "parking_lot",
  "primitive-types",
  "rand 0.7.3",
  "regex",
@@ -7399,7 +7460,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=5bd5b842d4ea520d281b1398e1f54907c9862fcd#5bd5b842d4ea520d281b1398e1f54907c9862fcd"
 dependencies = [
  "kvdb",
- "parking_lot 0.11.2",
+ "parking_lot",
 ]
 
 [[package]]
@@ -7478,7 +7539,7 @@ dependencies = [
  "libsecp256k1",
  "log",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sp-core",
  "sp-externalities",
  "sp-keystore",
@@ -7513,7 +7574,7 @@ dependencies = [
  "futures 0.3.17",
  "merlin",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "schnorrkel",
  "serde",
  "sp-core",
@@ -7652,7 +7713,7 @@ dependencies = [
  "log",
  "num-traits",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "smallvec",
  "sp-core",
@@ -7922,7 +7983,7 @@ dependencies = [
  "rand 0.8.4",
  "reed-solomon-erasure",
  "serde",
- "sha2 0.9.8",
+ "sha2 0.10.0",
  "subspace-core-primitives",
  "thiserror",
  "typenum",
@@ -7932,12 +7993,12 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
- "hmac 0.11.0",
+ "hmac 0.12.0",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "serde_arrays",
- "sha2 0.9.8",
+ "sha2 0.10.0",
 ]
 
 [[package]]
@@ -7959,9 +8020,9 @@ dependencies = [
  "indicatif",
  "jsonrpsee",
  "log",
- "lru 0.6.6",
+ "lru 0.7.0",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "rayon",
  "rocksdb",
@@ -8103,7 +8164,7 @@ dependencies = [
  "rand 0.8.4",
  "rayon",
  "schnorrkel",
- "sha2 0.9.8",
+ "sha2 0.10.0",
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
@@ -8266,7 +8327,7 @@ dependencies = [
  "derive_more",
  "futures 0.3.17",
  "parity-scale-codec",
- "parking_lot 0.11.2",
+ "parking_lot",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sp-blockchain",
@@ -8349,7 +8410,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "rand 0.8.4",
- "redox_syscall 0.2.10",
+ "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
 ]
@@ -8528,9 +8589,20 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc6844de72e57df1980054b38be3a9f4702aba4858be64dd700181a8a6d0e1b6"
 dependencies = [
- "rustls",
+ "rustls 0.19.1",
  "tokio",
- "webpki",
+ "webpki 0.21.4",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a27d5f2b839802bd8267fa19b0530f5a08b9c08cd417976be2a65d130fe1c11b"
+dependencies = [
+ "rustls 0.20.2",
+ "tokio",
+ "webpki 0.22.0",
 ]
 
 [[package]]
@@ -8648,7 +8720,7 @@ dependencies = [
  "chrono",
  "lazy_static",
  "matchers",
- "parking_lot 0.11.2",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",
@@ -8719,7 +8791,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru-cache",
- "parking_lot 0.11.2",
+ "parking_lot",
  "resolv-conf",
  "smallvec",
  "thiserror",
@@ -9058,7 +9130,7 @@ checksum = "be0ecb0db480561e9a7642b5d3e4187c128914e58aa84330b9493e3eb68c5e7f"
 dependencies = [
  "futures 0.3.17",
  "js-sys",
- "parking_lot 0.11.2",
+ "parking_lot",
  "pin-utils",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -9273,12 +9345,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "webpki"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f095d78192e208183081cc07bc5515ef55216397af48b873e5edcd72637fa1bd"
+dependencies = [
+ "ring",
+ "untrusted",
+]
+
+[[package]]
 name = "webpki-roots"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aabe153544e473b775453675851ecc86863d2a81d786d741f6b76778f2a48940"
 dependencies = [
- "webpki",
+ "webpki 0.21.4",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c475786c6f47219345717a043a37ec04cb4bc185e28853adcc4fa0a947eba630"
+dependencies = [
+ "webpki 0.22.0",
 ]
 
 [[package]]
@@ -9395,7 +9486,7 @@ dependencies = [
  "futures 0.3.17",
  "log",
  "nohash-hasher",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.8.4",
  "static_assertions",
 ]

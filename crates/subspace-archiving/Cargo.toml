@@ -23,13 +23,13 @@ typenum = "1.14.0"
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
 features = ["asm"]
-version = "0.9.8"
+version = "0.10.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 # `asm` feature is not supported on Windows except with GNU toolchain
 [target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
 default-features = false
-version = "0.9.8"
+version = "0.10.0"
 
 [dev-dependencies]
 rand = { version = "0.8.4", features = ["min_const_gen"] }
