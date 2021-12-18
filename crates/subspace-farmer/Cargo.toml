@@ -13,9 +13,7 @@ include = [
 
 [dependencies]
 anyhow = "1.0.44"
-async-lock = "2.4.0"
 async-oneshot = "0.5.0"
-async-std = "1.9.0"
 async-trait = "0.1.52"
 clap = { version = "3.0.0-rc.7", features = ["color", "derive"] }
 dirs = "4.0.0"
@@ -24,7 +22,6 @@ event-listener-primitives = "2.0.1"
 futures = "0.3.17"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
-indicatif = "0.16.2"
 jsonrpsee = { version = "0.6.1", features = ["client", "macros", "server"] }
 log = "0.4.14"
 lru = "0.7.0"
