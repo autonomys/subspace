@@ -7926,12 +7926,15 @@ dependencies = [
  "schnorrkel",
  "serde",
  "serde_json",
+ "sp-core",
+ "ss58-registry",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-rpc-primitives",
  "subspace-solving",
  "tempfile",
  "thiserror",
+ "tiny-bip39",
  "tokio",
 ]
 
