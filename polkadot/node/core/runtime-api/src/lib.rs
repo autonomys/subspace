@@ -280,11 +280,11 @@ where
 				RequestResult::SubmitExecutionReceipt(relay_parent, execution_receipt_hash)
 			});
 		},
-		Request::SubmitTransactionBundle(bundle) => {
+		Request::SubmitTransactionBundle(opaque_bundle) => {
 			let api = client.runtime_api();
-			let bundle_hash = bundle.hash();
+			let bundle_hash = opaque_bundle.hash();
 			let res = api
-				.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), bundle)
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), opaque_bundle)
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
 			res.ok()

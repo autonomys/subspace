@@ -1,5 +1,8 @@
 FROM ubuntu:20.04
 
+# TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
+ARG RUSTC_VERSION=nightly-2021-12-14
+
 WORKDIR /code
 
 RUN \
@@ -10,7 +13,7 @@ RUN \
         git \
         llvm \
         clang && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
 
 RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 

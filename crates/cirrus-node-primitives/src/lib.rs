@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
 use sp_consensus_slots::Slot;
 use sp_core::bytes;
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
 use subspace_core_primitives::Tag;
@@ -83,13 +83,13 @@ pub struct CollationResult {
 
 /// Result of the [`BundlerFn`] invocation.
 pub struct BundleResult {
-    /// The bundle that was built.
-    pub bundle: Bundle,
+    /// The opaque bundle that was built.
+    pub opaque_bundle: OpaqueBundle,
 }
 
 impl BundleResult {
-    pub fn to_bundle(self) -> Bundle {
-        self.bundle
+    pub fn to_opaque_bundle(self) -> OpaqueBundle {
+        self.opaque_bundle
     }
 }
 
@@ -163,7 +163,7 @@ pub type BundlerFn = Box<
 ///
 /// Returns an optional [`ProcessorResult`].
 pub type ProcessorFn = Box<
-    dyn Fn(Hash, Vec<Bundle>) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
+    dyn Fn(Hash, Vec<OpaqueBundle>) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
         + Send
         + Sync,
 >;

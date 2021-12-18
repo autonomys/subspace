@@ -38,7 +38,7 @@ use sp_consensus_subspace::{
     SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_executor::{Bundle, FraudProof};
+use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
     PostDispatchInfoOf, Zero,
@@ -734,17 +734,17 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     block_object_mapping
 }
 
-fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
     extrinsics
         .into_iter()
         .filter_map(|opaque_extrinsic| {
             match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
                 Ok(uxt) => {
                     if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
-                        bundle,
+                        opaque_bundle,
                     }) = uxt.function
                     {
-                        Some(bundle)
+                        Some(opaque_bundle)
                     } else {
                         None
                     }
@@ -902,15 +902,15 @@ impl_runtime_apis! {
             Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
         }
 
-        fn submit_transaction_bundle_unsigned(bundle: Bundle) -> Option<()> {
-            Executor::submit_transaction_bundle_unsigned(bundle).ok()
+        fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()> {
+            Executor::submit_transaction_bundle_unsigned(opaque_bundle).ok()
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()> {
             Executor::submit_fraud_proof_unsigned(fraud_proof).ok()
         }
 
-        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<Bundle> {
+        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
             extract_bundles(extrinsics)
         }
 

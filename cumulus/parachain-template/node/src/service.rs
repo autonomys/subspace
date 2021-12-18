@@ -294,7 +294,7 @@ where
 			telemetry.as_ref().map(|t| t.handle()),
 			&task_manager,
 			&relay_chain_full_node,
-			transaction_pool,
+			transaction_pool.clone(),
 			network,
 			params.keystore_container.sync_keystore(),
 			force_authoring,
@@ -311,6 +311,7 @@ where
 			spawner,
 			parachain_consensus,
 			import_queue,
+			transaction_pool,
 		};
 
 		cirrus_client_service::start_executor(params).await?;

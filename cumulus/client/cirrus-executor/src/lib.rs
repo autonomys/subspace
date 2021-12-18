@@ -18,13 +18,14 @@
 #![allow(clippy::all)]
 
 use sc_client_api::BlockBackend;
+use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, Zero},
+	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero},
 	SaturatedConversion,
 };
 use sp_trie::StorageProof;
@@ -38,27 +39,30 @@ use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
-use sp_executor::{Bundle, ExecutionReceipt, FraudProof};
+use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
-use futures::FutureExt;
-use std::sync::Arc;
+use futures::{select, FutureExt};
+use std::{sync::Arc, time};
 use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block: BlockT, BS, RA, Client> {
+pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
 	block_status: Arc<BS>,
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
 	overseer_handle: OverseerHandle,
+	transaction_pool: Arc<TransactionPool>,
 }
 
-impl<Block: BlockT, BS, RA, Client> Clone for Executor<Block, BS, RA, Client> {
+impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
+	for Executor<Block, BS, RA, Client, TransactionPool>
+{
 	fn clone(&self) -> Self {
 		Self {
 			block_status: self.block_status.clone(),
@@ -66,16 +70,18 @@ impl<Block: BlockT, BS, RA, Client> Clone for Executor<Block, BS, RA, Client> {
 			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
 			overseer_handle: self.overseer_handle.clone(),
+			transaction_pool: self.transaction_pool.clone(),
 		}
 	}
 }
 
-impl<Block, BS, RA, Client> Executor<Block, BS, RA, Client>
+impl<Block, BS, RA, Client, TransactionPool> Executor<Block, BS, RA, Client, TransactionPool>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block>,
 	RA: ProvideRuntimeApi<Block>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
 	/// Create a new instance.
 	fn new(
@@ -84,8 +90,16 @@ where
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
 		overseer_handle: OverseerHandle,
+		transaction_pool: Arc<TransactionPool>,
 	) -> Self {
-		Self { block_status, runtime_api, parachain_consensus, client, overseer_handle }
+		Self {
+			block_status,
+			runtime_api,
+			parachain_consensus,
+			client,
+			overseer_handle,
+			transaction_pool,
+		}
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -253,29 +267,60 @@ where
 	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
-		let transactions = {
-			// selection policy: minimize the transaction equivocation.
-			println!("TODO: once elected, select unseen transactions from the transaction pool");
-			b"some transactions".to_vec()
+		// TODO: ready at the best number of primary block?
+		let parent_number = self.client.info().best_number;
+		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
+		// TODO: proper timeout
+		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
+
+		let mut pending_iterator = select! {
+			res = t1 => res,
+			_ = t2 => {
+				tracing::warn!(
+					"Timeout fired waiting for transaction pool at {}, proceeding with production.",
+					parent_number,
+				);
+				self.transaction_pool.ready()
+			}
 		};
 
-		let _transactions_root = b"merkle root of transactions".to_vec();
+		// TODO: proper deadline
+		let pushing_duration = time::Duration::from_micros(500);
+
+		let start = time::Instant::now();
+
+		// TODO: Select transactions properly from the transaction pool
+		//
+		// Selection policy:
+		// - minimize the transaction equivocation.
+		// - maximize the executor computation power.
+		let mut extrinsics = Vec::new();
+		while let Some(pending_tx) = pending_iterator.next() {
+			if start.elapsed() >= pushing_duration {
+				break
+			}
+			let pending_tx_data = pending_tx.data().clone();
+			extrinsics.push(pending_tx_data);
+		}
+
+		let extrinsics_root =
+			BlakeTwo256::ordered_trie_root(extrinsics.iter().map(|xt| xt.encode()).collect());
 
 		let best_hash = self.client.info().best_hash;
 		let _state_root = self.client.expect_header(BlockId::Hash(best_hash)).ok()?.state_root();
 
-		Some(BundleResult {
-			bundle: Bundle {
-				header: slot_info.slot.to_be_bytes().to_vec(),
-				opaque_transactions: transactions,
-			},
-		})
+		let bundle = Bundle {
+			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
+			extrinsics,
+		};
+
+		Some(BundleResult { opaque_bundle: bundle.into() })
 	}
 
 	async fn process_bundles(
 		self,
 		primary_hash: PHash,
-		_bundles: Vec<Bundle>,
+		_bundles: Vec<OpaqueBundle>,
 	) -> Option<ProcessorResult> {
 		// TODO:
 		// 1. convert the bundles to a full tx list
@@ -311,7 +356,7 @@ where
 }
 
 /// Parameters for [`start_executor`].
-pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client> {
+pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client, TransactionPool> {
 	pub client: Arc<Client>,
 	pub runtime_api: Arc<RA>,
 	pub block_status: Arc<BS>,
@@ -320,10 +365,11 @@ pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client> {
 	pub spawner: Spawner,
 	pub key: CollatorPair,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
+	pub transaction_pool: Arc<TransactionPool>,
 }
 
 /// Start the executor.
-pub async fn start_executor<Block, RA, BS, Spawner, Client>(
+pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 	StartExecutorParams {
 		client,
 		block_status,
@@ -333,13 +379,16 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 		key,
 		parachain_consensus,
 		runtime_api,
-	}: StartExecutorParams<Block, RA, BS, Spawner, Client>,
+		transaction_pool,
+	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool>,
 ) where
 	Block: BlockT,
 	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+	TransactionPool:
+		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 {
 	let executor = Executor::new(
 		block_status,
@@ -347,6 +396,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client>(
 		parachain_consensus,
 		client,
 		overseer_handle.clone(),
+		transaction_pool,
 	);
 
 	let span = tracing::Span::current();

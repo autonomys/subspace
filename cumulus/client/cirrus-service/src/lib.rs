@@ -30,6 +30,7 @@ use sc_consensus::{
 	BlockImport,
 };
 use sc_service::{Configuration, Role, TaskManager};
+use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -64,7 +65,7 @@ impl<C> Deref for PrimaryFullNode<C> {
 }
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, IQ> {
+pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, IQ, TP> {
 	pub block_status: Arc<BS>,
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
@@ -73,10 +74,11 @@ pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, 
 	pub task_manager: &'a mut TaskManager,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub import_queue: IQ,
+	pub transaction_pool: Arc<TP>,
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ>(
+pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ, TP>(
 	StartExecutorParams {
 		block_status,
 		client,
@@ -86,7 +88,8 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		primary_chain_full_node,
 		parachain_consensus,
 		import_queue: _,
-	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ>,
+		transaction_pool,
+	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP>,
 ) -> sc_service::error::Result<()>
 where
 	Block: BlockT,
@@ -105,6 +108,7 @@ where
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 	IQ: ImportQueue<Block> + 'static,
+	TP: TransactionPool<Block = Block> + 'static,
 {
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
 		client.clone(),
@@ -127,6 +131,7 @@ where
 		spawner,
 		key: primary_chain_full_node.collator_key.clone(),
 		parachain_consensus,
+		transaction_pool,
 	})
 	.await;
 

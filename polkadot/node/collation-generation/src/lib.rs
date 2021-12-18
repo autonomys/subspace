@@ -365,8 +365,8 @@ async fn produce_bundle<Context: SubsystemContext>(
 	ctx: &mut Context,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()> {
-	let bundle = match (config.bundler)(slot_info).await {
-		Some(bundle_result) => bundle_result.to_bundle(),
+	let opaque_bundle = match (config.bundler)(slot_info).await {
+		Some(bundle_result) => bundle_result.to_opaque_bundle(),
 		None => {
 			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
 			return Ok(())
@@ -382,7 +382,7 @@ async fn produce_bundle<Context: SubsystemContext>(
 			if let Err(err) = task_sender
 				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
 					best_hash,
-					RuntimeApiRequest::SubmitTransactionBundle(bundle),
+					RuntimeApiRequest::SubmitTransactionBundle(opaque_bundle),
 				)))
 				.await
 			{
