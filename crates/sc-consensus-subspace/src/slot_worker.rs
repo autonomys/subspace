@@ -292,7 +292,7 @@ where
                 );
                 continue;
             }
-            // TODO: Verify signature
+
             let digest_item =
                 <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(signature);
 
