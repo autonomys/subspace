@@ -52,7 +52,7 @@ pub(crate) async fn farm(
 
     let identity = Identity::open_or_create(&base_directory)?;
 
-    let subspace_codec = SubspaceCodec::new(&identity.public_key());
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
 
     // Start RPC server
     let ws_server = WsServerBuilder::default()

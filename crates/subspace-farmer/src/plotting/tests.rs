@@ -47,7 +47,7 @@ async fn plotting_happy_path() {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let subspace_codec = SubspaceCodec::new(&identity.public_key());
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -155,7 +155,7 @@ async fn plotting_continue() {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let subspace_codec = SubspaceCodec::new(&identity.public_key());
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],

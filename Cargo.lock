@@ -7936,6 +7936,7 @@ dependencies = [
  "thiserror",
  "tiny-bip39",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

@@ -3,9 +3,8 @@ mod farm;
 use bip39::{Language, Mnemonic};
 pub(crate) use farm::farm;
 use log::info;
-use sp_core::crypto::{Ss58AddressFormatRegistry, Ss58Codec};
-use sp_core::sr25519::Pair;
-use sp_core::Pair as _;
+use sp_core::crypto::{Ss58AddressFormatRegistry, Ss58Codec, UncheckedFrom};
+use sp_core::sr25519::Public;
 use std::path::Path;
 use std::{fs, io};
 use subspace_farmer::Identity;
@@ -23,14 +22,14 @@ pub(crate) fn identity<P: AsRef<Path>>(
         }
     };
 
-    let keypair = Pair::from(identity.secret_key());
+    let public = Public::unchecked_from(identity.public_key().to_bytes());
 
     if (false, false, false) == (address, public_key, mnemonic) || address {
         eprint!("Address:\n  ");
 
         println!(
             "{}",
-            keypair.public().to_ss58check_with_version(
+            public.to_ss58check_with_version(
                 Ss58AddressFormatRegistry::SubspaceTestnetAccount.into()
             )
         );
@@ -39,7 +38,7 @@ pub(crate) fn identity<P: AsRef<Path>>(
     if public_key {
         eprint!("PublicKey:\n  ");
 
-        println!("0x{}", hex::encode(keypair.public()));
+        println!("0x{}", hex::encode(public));
     }
 
     if mnemonic {
