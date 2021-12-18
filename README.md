@@ -90,9 +90,6 @@ Does not matter if the node/farmer executable is the previous one or from the ne
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
 
-
-
-
 ### B. To Farm By Yourself (Offline)
 
 1. Download the executables for your operating system
