@@ -25,6 +25,14 @@ enum IdentityCommand {
         #[clap(long, short, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
     },
+    /// Import identity from BIP39 mnemonic phrase
+    ImportFromMnemonic {
+        /// BIP39 mnemonic phrase to import identity from
+        phrase: String,
+        /// Use custom path for data storage instead of platform-specific default
+        #[clap(long, short, value_hint = ValueHint::FilePath)]
+        custom_path: Option<PathBuf>,
+    },
 }
 
 // TODO: Separate commands for erasing the plot and wiping everything
@@ -37,25 +45,25 @@ enum Command {
     /// Erase existing plot (doesn't touch identity)
     ErasePlot {
         /// Use custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
+        #[clap(long, short, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
     },
     /// Wipes plot and identity
     Wipe {
         /// Use custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
+        #[clap(long, short, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
     },
     /// Start a farmer using previously created plot
     Farm {
         /// Custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
+        #[clap(long, short, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
         /// WebSocket RPC URL of the Subspace node to connect to
-        #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
+        #[clap(long, short, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
         node_rpc_url: String,
         /// Host and port where built-in WebSocket RPC server should listen for incoming connections
-        #[clap(long, default_value = "127.0.0.1:9955")]
+        #[clap(long, short, default_value = "127.0.0.1:9955")]
         ws_server_listen_addr: SocketAddr,
     },
 }

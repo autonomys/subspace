@@ -63,11 +63,37 @@ impl Identity {
         }
     }
 
-    /// Creates new identity identity, returns `Ok(None)` if it already exists.
+    /// Creates new identity, overrides identity that might already exist.
     pub fn create<B: AsRef<Path>>(base_directory: B) -> Result<Self, Error> {
         let identity_file = base_directory.as_ref().join("identity.bin");
         debug!("Generating new keypair");
         let entropy = Mnemonic::new(MnemonicType::Words24, Language::English)
+            .entropy()
+            .to_vec();
+
+        let identity_file_contents = IdentityFileContents { entropy };
+        fs::write(identity_file, identity_file_contents.encode())?;
+
+        let IdentityFileContents { entropy } = identity_file_contents;
+        let (pair, mut seed) = Pair::from_entropy(&entropy, None);
+        seed.zeroize();
+
+        Ok(Self {
+            keypair: Zeroizing::new(pair.into()),
+            entropy: Zeroizing::new(entropy),
+            farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+            substrate_ctx: schnorrkel::context::signing_context(SUBSTRATE_SIGNING_CONTEXT),
+        })
+    }
+
+    /// Imports identity from given mnemonic, overrides identity that might already exist.
+    pub fn import_from_mnemonic<B: AsRef<Path>>(
+        base_directory: B,
+        phrase: &str,
+    ) -> Result<Self, Error> {
+        let identity_file = base_directory.as_ref().join("identity.bin");
+        debug!("Importing keypair from mnemonic");
+        let entropy = Mnemonic::from_phrase(phrase, Language::English)?
             .entropy()
             .to_vec();
 
