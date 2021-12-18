@@ -283,9 +283,7 @@ where
                 signature_sender,
             });
 
-        // TODO: Remove `block_on` below once
-        //  https://github.com/paritytech/substrate/pull/10488 is merged
-        while let Some(signature) = futures::executor::block_on(signature_receiver.next()) {
+        while let Some(signature) = signature_receiver.next().await {
             if !signature.verify(header_hash.as_ref(), &pre_digest.solution.public_key) {
                 warn!(
                     target: "subspace",
