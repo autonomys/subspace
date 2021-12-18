@@ -787,6 +787,7 @@ name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
  "cirrus-node-primitives",
+ "cirrus-primitives",
  "cumulus-client-consensus-common",
  "futures 0.3.17",
  "futures-timer 3.0.2",
@@ -813,6 +814,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-node-primitives",
+ "cirrus-primitives",
  "cumulus-client-consensus-common",
  "parity-scale-codec",
  "parking_lot",
@@ -847,6 +849,17 @@ dependencies = [
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+]
+
+[[package]]
+name = "cirrus-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -4536,6 +4549,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-service",
+ "cirrus-primitives",
  "cumulus-client-cli",
  "cumulus-client-consensus-common",
  "cumulus-client-consensus-relay-chain",
@@ -4587,6 +4601,7 @@ dependencies = [
 name = "parachain-template-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-primitives",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",

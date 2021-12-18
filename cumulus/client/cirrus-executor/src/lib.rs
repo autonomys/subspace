@@ -39,6 +39,7 @@ use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
+use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -81,6 +82,7 @@ where
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block>,
 	RA: ProvideRuntimeApi<Block>,
+	RA::Api: SecondaryApi<Block, AccountId>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
 	/// Create a new instance.
@@ -332,7 +334,7 @@ where
 			.into_iter()
 			.map(|bundle| {
 				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-					match <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.as_ref()) {
+					match <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
 						Ok(uxt) => Some(uxt),
 						Err(e) => {
 							tracing::error!(
@@ -362,6 +364,23 @@ where
 			},
 		});
 		drop(seen);
+
+		let block_number = self.client.info().best_number;
+		let extrinsics: Vec<_> = match self
+			.runtime_api
+			.runtime_api()
+			.extract_signer(&BlockId::Number(block_number), extrinsics)
+		{
+			Ok(res) => res,
+			Err(e) => {
+				tracing::error!(
+				target: LOG_TARGET,
+				error = ?e,
+				"Failed to call into the runtime"
+				);
+				return None
+			},
+		};
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.
@@ -423,6 +442,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+	RA::Api: SecondaryApi<Block, AccountId>,
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 {
