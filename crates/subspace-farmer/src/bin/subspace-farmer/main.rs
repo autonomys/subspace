@@ -35,7 +35,6 @@ enum IdentityCommand {
     },
 }
 
-// TODO: Separate commands for erasing the plot and wiping everything
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {
