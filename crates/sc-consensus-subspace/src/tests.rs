@@ -60,7 +60,7 @@ use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{
     ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
 };
-use sp_core::Public;
+use sp_core::crypto::UncheckedFrom;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -614,7 +614,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
                     let _ = solution_sender
                         .send(Solution {
-                            public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
+                            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                             piece_index,
                             encoding,
                             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -743,7 +743,7 @@ pub fn dummy_claim_slot(
     return Some((
         PreDigest {
             solution: Solution {
-                public_key: FarmerPublicKey::default(),
+                public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
                 piece_index: 0,
                 encoding: Piece::default(),
                 signature: Signature::default(),
@@ -752,7 +752,7 @@ pub fn dummy_claim_slot(
             },
             slot,
         },
-        FarmerPublicKey::default(),
+        FarmerPublicKey::unchecked_from([0u8; 32]),
     ));
 }
 
@@ -816,7 +816,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                 logs: vec![Item::subspace_pre_digest(&PreDigest {
                     slot,
                     solution: Solution {
-                        public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
+                        public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                         piece_index: 0,
                         encoding,
                         signature: signature.into(),

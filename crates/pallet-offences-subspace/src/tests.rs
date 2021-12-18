@@ -27,12 +27,12 @@ use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, ReportOffence};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::Public;
+use sp_core::crypto::UncheckedFrom;
 use sp_runtime::Perbill;
 
 fn generate_farmer_public_key() -> FarmerPublicKey {
     let keypair = Keypair::generate();
-    FarmerPublicKey::from_slice(&keypair.public.to_bytes())
+    FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
 }
 
 #[test]

@@ -3,13 +3,13 @@ mod commitment_databases;
 mod tests;
 
 use crate::plot::Plot;
-use async_std::io;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult};
 use event_listener_primitives::{Bag, HandlerId};
 use log::{error, trace};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::DB;
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};

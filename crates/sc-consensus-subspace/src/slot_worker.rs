@@ -40,7 +40,8 @@ use sp_consensus_subspace::digests::{
 use sp_consensus_subspace::{
     ConsensusLog, FarmerPublicKey, Salts, SubspaceApi, SUBSPACE_ENGINE_ID,
 };
-use sp_core::{Public, H256};
+use sp_core::crypto::ByteArray;
+use sp_core::H256;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{AppVerify, Block as BlockT, Header, Zero};
 use sp_runtime::DigestItem;
@@ -262,72 +263,56 @@ where
         vec![<DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_pre_digest(claim)]
     }
 
-    #[allow(clippy::type_complexity)]
-    fn block_import_params(
+    async fn block_import_params(
         &self,
-    ) -> Box<
-        dyn Fn(
-                B::Header,
-                &B::Hash,
-                Vec<B::Extrinsic>,
-                StorageChanges<I::Transaction, B>,
-                Self::Claim,
-                Self::EpochData,
-            )
-                -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, sp_consensus::Error>
-            + Send
-            + 'static,
-    > {
-        let block_signing_notification_sender =
-            self.subspace_link.block_signing_notification_sender.clone();
-        Box::new(
-            move |header, header_hash, body, storage_changes, pre_digest, epoch_descriptor| {
-                let (signature_sender, mut signature_receiver) =
-                    tracing_unbounded("subspace_signature_signing_stream");
+        header: B::Header,
+        header_hash: &B::Hash,
+        body: Vec<B::Extrinsic>,
+        storage_changes: StorageChanges<I::Transaction, B>,
+        pre_digest: Self::Claim,
+        epoch_descriptor: Self::EpochData,
+    ) -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, sp_consensus::Error> {
+        let (signature_sender, mut signature_receiver) =
+            tracing_unbounded("subspace_signature_signing_stream");
 
-                // Sign the pre-sealed header of the block and then add it to a digest item.
-                block_signing_notification_sender.notify(|| BlockSigningNotification {
-                    header_hash: H256::from_slice(header_hash.as_ref()),
-                    signature_sender,
-                });
+        // Sign the pre-sealed header of the block and then add it to a digest item.
+        self.subspace_link
+            .block_signing_notification_sender
+            .notify(|| BlockSigningNotification {
+                header_hash: H256::from_slice(header_hash.as_ref()),
+                signature_sender,
+            });
 
-                // TODO: Remove `block_on` below once
-                //  https://github.com/paritytech/substrate/pull/10488 is merged
-                while let Some(signature) = futures::executor::block_on(signature_receiver.next()) {
-                    if !signature.verify(header_hash.as_ref(), &pre_digest.solution.public_key) {
-                        warn!(
-                            target: "subspace",
-                            "Received invalid signature for block header {:?}",
-                            header_hash
-                        );
-                        continue;
-                    }
-                    // TODO: Verify signature
-                    let digest_item =
-                        <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(
-                            signature,
-                        );
+        while let Some(signature) = signature_receiver.next().await {
+            if !signature.verify(header_hash.as_ref(), &pre_digest.solution.public_key) {
+                warn!(
+                    target: "subspace",
+                    "Received invalid signature for block header {:?}",
+                    header_hash
+                );
+                continue;
+            }
+            // TODO: Verify signature
+            let digest_item =
+                <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(signature);
 
-                    let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
-                    import_block.post_digests.push(digest_item);
-                    import_block.body = Some(body);
-                    import_block.state_action = StateAction::ApplyChanges(
-                        sc_consensus::StorageChanges::Changes(storage_changes),
-                    );
-                    import_block.intermediates.insert(
-                        Cow::from(INTERMEDIATE_KEY),
-                        Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
-                    );
+            let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+            import_block.post_digests.push(digest_item);
+            import_block.body = Some(body);
+            import_block.state_action =
+                StateAction::ApplyChanges(sc_consensus::StorageChanges::Changes(storage_changes));
+            import_block.intermediates.insert(
+                Cow::from(INTERMEDIATE_KEY),
+                Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
+            );
 
-                    return Ok(import_block);
-                }
+            return Ok(import_block);
+        }
 
-                Err(sp_consensus::Error::CannotSign(
-                    pre_digest.solution.public_key.to_raw_vec(),
-                    "Farmer didn't sign header".to_string(),
-                ))
-            },
-        )
+        Err(sp_consensus::Error::CannotSign(
+            pre_digest.solution.public_key.to_raw_vec(),
+            "Farmer didn't sign header".to_string(),
+        ))
     }
 
     fn force_authoring(&self) -> bool {

@@ -46,7 +46,7 @@ impl BundleHeader {
 pub struct Bundle<Extrinsic> {
     /// The bundle header.
     pub header: BundleHeader,
-    /// THe accompanying extrinsics.
+    /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
 
@@ -57,25 +57,13 @@ impl<Extrinsic> Bundle<Extrinsic> {
     }
 }
 
-// TODO: Replace with `sp_runtime::OpaqueExtrinsic` once Substrate is upgraded with
-//  https://github.com/paritytech/substrate/pull/10504 included
-/// Encoded extrinsic.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct EncodedExtrinsic(Vec<u8>);
-
-impl From<Vec<u8>> for EncodedExtrinsic {
-    fn from(inner: Vec<u8>) -> Self {
-        Self(inner)
-    }
-}
-
 /// Bundle with opaque extrinsics.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct OpaqueBundle {
     /// The bundle header.
     pub header: BundleHeader,
     /// THe accompanying opaque extrinsics.
-    pub opaque_extrinsics: Vec<EncodedExtrinsic>,
+    pub opaque_extrinsics: Vec<OpaqueExtrinsic>,
 }
 
 impl OpaqueBundle {
@@ -85,12 +73,15 @@ impl OpaqueBundle {
     }
 }
 
-impl<Extrinsic: Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
+impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
     fn from(bundle: Bundle<Extrinsic>) -> Self {
         let Bundle { header, extrinsics } = bundle;
         let opaque_extrinsics = extrinsics
             .into_iter()
-            .map(|xt| xt.encode().into())
+            .map(|xt| {
+                OpaqueExtrinsic::from_bytes(&xt.encode())
+                    .expect("We have just encoded a valid extrinsic; qed")
+            })
             .collect();
         Self {
             header,

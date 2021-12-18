@@ -41,6 +41,7 @@ use frame_support::{
     traits::{CrateVersion, KeyOwnerProofSystem},
     weights::RuntimeDbWeight,
 };
+use frame_support::traits::{ConstU32, ConstU64};
 use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 pub use sp_core::hash::H256;
@@ -588,7 +589,7 @@ impl frame_system::Config for Runtime {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
-    type BlockHashCount = BlockHashCount;
+    type BlockHashCount = ConstU64<250>;
     type DbWeight = ();
     type Version = ();
     type PalletInfo = Self;
@@ -598,6 +599,7 @@ impl frame_system::Config for Runtime {
     type SystemWeightInfo = ();
     type SS58Prefix = ();
     type OnSetCode = ();
+	type MaxConsumers = ConstU32<16>;
 }
 
 impl pallet_timestamp::Config for Runtime {

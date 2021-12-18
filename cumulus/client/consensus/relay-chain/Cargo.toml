@@ -7,25 +7,25 @@ edition = "2021"
 
 [dependencies]
 # Substrate deps
-sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 
 # Cumulus dependencies
 cumulus-client-consensus-common = { path = "../common" }
 
 # Other deps
-futures = { version = "0.3.8", features = ["compat"] }
+futures = { version = "0.3.17", features = ["compat"] }
 tracing = "0.1.22"
-async-trait = "0.1.42"
-parking_lot = "0.10.2"
+async-trait = "0.1.52"
+parking_lot = "0.11.2"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
 subspace-node = { path = "../../../../crates/subspace-node" }

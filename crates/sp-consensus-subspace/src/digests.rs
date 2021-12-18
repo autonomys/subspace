@@ -20,6 +20,7 @@ use crate::{FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration, SU
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
+use sp_core::crypto::UncheckedFrom;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
 
@@ -42,12 +43,12 @@ pub struct Solution<AccountId> {
 
 impl<AccountId> Solution<AccountId>
 where
-    AccountId: Default,
+    AccountId: UncheckedFrom<[u8; 32]>,
 {
     /// Dummy solution for the genesis block
     pub fn genesis_solution() -> Self {
         Self {
-            public_key: AccountId::default(),
+            public_key: AccountId::unchecked_from([0u8; 32]),
             piece_index: 0u64,
             encoding: Piece::default(),
             signature: Signature::default(),

@@ -23,7 +23,7 @@ use schnorrkel::context::SigningContext;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::Public;
+use sp_core::crypto::ByteArray;
 use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;

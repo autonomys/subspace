@@ -8,12 +8,12 @@ description = "Generate an overseer including builder pattern and message wrappe
 [dependencies]
 tracing = "0.1"
 futures = "0.3"
-async-trait = "0.1"
+async-trait = "0.1.52"
 thiserror = "1"
 metered = { package = "metered-channel", path = "../../metered-channel" }
 polkadot-overseer-gen-proc-macro = { path = "./proc-macro" }
 # trait SpawnNamed
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 futures-timer = "3.0.2"
 pin-project = "1.0"
 

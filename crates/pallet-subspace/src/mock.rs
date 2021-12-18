@@ -22,13 +22,14 @@ use crate::{
 };
 use codec::Encode;
 use frame_support::parameter_types;
-use frame_support::traits::OnInitialize;
+use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
 use frame_system::InitKind;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{PreDigest, Solution};
+use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
-use sp_core::{Pair as PairTrait, Public, H256};
+use sp_core::{Pair as PairTrait, H256};
 use sp_io;
 use sp_runtime::{
     testing::{Digest, DigestItem, Header, TestXt},
@@ -58,7 +59,6 @@ frame_support::construct_runtime!(
 );
 
 parameter_types! {
-    pub const BlockHashCount: u64 = 250;
     pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(16);
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(1024);
@@ -80,7 +80,7 @@ impl frame_system::Config for Test {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
-    type BlockHashCount = BlockHashCount;
+    type BlockHashCount = ConstU64<250>;
     type PalletInfo = PalletInfo;
     type AccountData = pallet_balances::AccountData<u128>;
     type OnNewAccount = ();
@@ -88,6 +88,7 @@ impl frame_system::Config for Test {
     type SystemWeightInfo = ();
     type SS58Prefix = ();
     type OnSetCode = ();
+    type MaxConsumers = ConstU32<16>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Test
@@ -97,23 +98,12 @@ where
     type OverarchingCall = Call;
     type Extrinsic = TestXt<Call, ()>;
 }
-parameter_types! {
-    pub const UncleGenerations: u64 = 0;
-}
-
-parameter_types! {
-    pub const MinimumPeriod: u64 = 1;
-}
 
 impl pallet_timestamp::Config for Test {
     type Moment = u64;
     type OnTimestampSet = Subspace;
-    type MinimumPeriod = MinimumPeriod;
+    type MinimumPeriod = ConstU64<1>;
     type WeightInfo = ();
-}
-
-parameter_types! {
-    pub const ExistentialDeposit: u128 = 1;
 }
 
 impl pallet_balances::Config for Test {
@@ -123,7 +113,7 @@ impl pallet_balances::Config for Test {
     type Balance = u128;
     type DustRemoval = ();
     type Event = Event;
-    type ExistentialDeposit = ExistentialDeposit;
+    type ExistentialDeposit = ConstU128<1>;
     type AccountStore = System;
     type WeightInfo = ();
 }
@@ -146,7 +136,6 @@ parameter_types! {
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
-    pub const ExpectedBlockTime: u64 = 1;
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
@@ -161,7 +150,7 @@ impl Config for Test {
     type EonDuration = EonDuration;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
-    type ExpectedBlockTime = ExpectedBlockTime;
+    type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
@@ -197,7 +186,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
-            public_key: FarmerPublicKey::from_slice(&keypair.public.to_bytes()),
+            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -250,7 +239,7 @@ pub fn generate_equivocation_proof(
     let encoding = Piece::default();
     let tag: Tag = [(current_block % 8) as u8; 8];
 
-    let public_key = FarmerPublicKey::from_slice(&keypair.public.to_bytes());
+    let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
     let make_header = |piece_index| {

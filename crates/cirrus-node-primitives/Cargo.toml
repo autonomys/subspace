@@ -19,11 +19,11 @@ targets = ["x86_64-unknown-linux-gnu"]
 futures = "0.3.17"
 parity-scale-codec = { version = "2.3.0", default-features = false, features = ["derive"] }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
-serde = { version = "1.0.130", features = ["derive"] }
-sp-core = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
-sp-runtime = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "b6c1c1bcfa5d831bfd1f278064d7af757f9b38f5" }
+serde = { version = "1.0.131", features = ["derive"] }
+sp-core = { version = "4.1.0-dev", git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-application-crypto = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-runtime = { version = "4.0.0", git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 sp-executor = { path = "../sp-executor" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
