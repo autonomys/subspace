@@ -31,7 +31,7 @@ where
 		// 3. shuffle the full tx list by sender account
 		let mut extrinsics = bundles
 			.into_iter()
-			.map(|bundle| {
+			.flat_map(|bundle| {
 				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
 					match <<Block as BlockT>::Extrinsic>::decode(
 						&mut opaque_extrinsic.encode().as_slice(),
@@ -48,7 +48,6 @@ where
 					}
 				})
 			})
-			.flatten()
 			.collect::<Vec<_>>();
 
 		// TODO: or just Vec::new()?
