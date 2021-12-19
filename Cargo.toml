@@ -9,6 +9,7 @@ members = [
     "cumulus/client/consensus/relay-chain",
     "cumulus/parachain-template/node",
     "cumulus/parachain-template/runtime",
+    "cumulus/primitives",
     "polkadot/node/collation-generation",
     "polkadot/node/core/chain-api",
     "polkadot/node/core/runtime-api",

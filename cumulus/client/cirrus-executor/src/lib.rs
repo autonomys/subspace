@@ -17,6 +17,8 @@
 //! Cirrus Executor implementation for Subspace.
 #![allow(clippy::all)]
 
+mod processor;
+
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::ProvideRuntimeApi;
@@ -39,6 +41,7 @@ use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
+use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -81,6 +84,7 @@ where
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block>,
 	RA: ProvideRuntimeApi<Block>,
+	RA::Api: SecondaryApi<Block, AccountId>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
 	/// Create a new instance.
@@ -268,8 +272,9 @@ where
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		// TODO: ready at the best number of primary block?
-		let parent_number = self.client.info().best_number;
-		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
+		let block_number = self.client.info().best_number;
+
+		let mut t1 = self.transaction_pool.ready_at(block_number).fuse();
 		// TODO: proper timeout
 		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
@@ -277,8 +282,9 @@ where
 			res = t1 => res,
 			_ = t2 => {
 				tracing::warn!(
-					"Timeout fired waiting for transaction pool at {}, proceeding with production.",
-					parent_number,
+					target: LOG_TARGET,
+					"Timeout fired waiting for transaction pool at #{}, proceeding with production.",
+					block_number,
 				);
 				self.transaction_pool.ready()
 			}
@@ -306,8 +312,8 @@ where
 		let extrinsics_root =
 			BlakeTwo256::ordered_trie_root(extrinsics.iter().map(|xt| xt.encode()).collect());
 
-		let best_hash = self.client.info().best_hash;
-		let _state_root = self.client.expect_header(BlockId::Hash(best_hash)).ok()?.state_root();
+		let _state_root =
+			self.client.expect_header(BlockId::Number(block_number)).ok()?.state_root();
 
 		let bundle = Bundle {
 			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
@@ -320,38 +326,9 @@ where
 	async fn process_bundles(
 		self,
 		primary_hash: PHash,
-		_bundles: Vec<OpaqueBundle>,
+		bundles: Vec<OpaqueBundle>,
 	) -> Option<ProcessorResult> {
-		// TODO:
-		// 1. convert the bundles to a full tx list
-		// 2. duplicate the full tx list
-		// 3. shuffle the full tx list by sender account
-
-		// TODO: now we have the final transaction list:
-		// - apply each tx one by one.
-		// - compute the incremental state root and add to the execution trace
-		// - produce ExecutionReceipt
-
-		// The applied txs can be full removed from the transaction pool
-
-		// TODO: win the executor election to broadcast ER.
-		let is_elected = true;
-
-		if is_elected {
-			// TODO: broadcast ER to all executors.
-
-			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Some(ProcessorResult {
-				execution_receipt: ExecutionReceipt {
-					primary_hash,
-					secondary_hash: Default::default(),
-					state_root: Default::default(),
-					state_transition_root: Default::default(),
-				},
-			})
-		} else {
-			None
-		}
+		self.process_bundles_impl(primary_hash, bundles).await
 	}
 }
 
@@ -387,6 +364,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+	RA::Api: SecondaryApi<Block, AccountId>,
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 {

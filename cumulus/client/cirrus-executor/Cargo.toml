@@ -29,5 +29,6 @@ polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+cirrus-primitives = { path = "../../primitives" }
 sp-executor = { path = "../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
