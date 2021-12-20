@@ -75,11 +75,12 @@ subspace-farmer-x86_64-*-snapshot farm
 ### Important Notes!
 
 ***Identity Management***: If you would like to import your polkadot.js wallet so you can interact with the network, you may do so via 
->You may need to wipe the farm with the `wipe` command if you ran the farmer prior to importing a mnemonic. 
 ```
 subspace-farmer-x86_64-*-snapshot identity import-from-mnemonic "spell out your seed phrase here"
 ```
 then start your farmer as normal.
+
+> You may need to wipe the farm with the `wipe` command if you ran the farmer prior to importing a mnemonic. 
 
 You may visit the [Polkadot.js](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ffarm-rpc.subspace.network#/explorer), from here you may interact with the Subspace Farmnet as any substrate based blockchain. 
 
