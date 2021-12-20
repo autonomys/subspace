@@ -47,16 +47,18 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 ```
 ./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
 ```
+> *Note for MacOS (when prompted):* Click on `cancel` instead of moving it to trash.
+To allow execution, go to `System Preferences -> Security & Privacy -> General`, and click on `allow`.
+After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
+
 5. It may prompt in here if you are using MacOS. Refer to the note below.
 6. This will start the farmer (do this in another terminal): 
 ```
 ./subspace-farmer-x86_64-*-snapshot farm
 ```
-7. It may prompt again in here if you are using MacOS. Refer to the note below.
+7. It may prompt again in here if you are using MacOS. Refer to the note on step 4.
 
-*Note for MacOS (when prompted):* Click on `cancel` instead of moving it to trash.
-To allow execution, go to `System Preferences -> Security & Privacy -> General`, and click on `allow`.
-After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
+
 
 **Windows**
 
@@ -72,14 +74,26 @@ subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --exec
 subspace-farmer-x86_64-*-snapshot farm
 ```
 
-**Important Notes!**
+### Important Notes!
 
+***Identity Management***: If you would like to import your polkadot.js wallet so you can interact with the network, you may do so via 
+```
+subspace-farmer-x86_64-*-snapshot identity import-from-mnemonic "spell out your seed phrase here"
+```
+then start your farmer as normal.
+
+> You may need to wipe the farm with the `wipe` command if you ran the farmer prior to importing a mnemonic. 
+
+You may visit the [Polkadot.js](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ffarm-rpc.subspace.network#/explorer), from here you may interact with the Subspace Farmnet as any substrate based blockchain. 
+
+---
 ***Invalid Solution***: If you are getting `invalid solution` errors (visible on the terminal that Node runs), please perform this step and then follow the guideline again:
 ```
 ./subspace-farmer-x86_64-*-snapshot erase-plot
 ```
 This will basically erase your plot and commitments, so that the farmer can make a fresh start.
 
+---
 ***Switching to a new snapshot***
 If you were running a node previously, and want to switch to a new snapshot, please perform these steps and then follow the guideline again:
 ```
