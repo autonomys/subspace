@@ -145,5 +145,5 @@ You can find readme files in corresponding crates for requirements, multi-node s
 - `wipe` : erases the plot and identity (including plot, commitment, object mappings and identity files)
 - `identity import-from-mnemonic "spell out your seed phrase here"` : imports your existing identity from your seed phrase
 - `identity view` : displays SS58 address (this is the same as `identity view --address`)
-- `identity view --public_key` : displays the hex encoded public key
+- `identity view --public-key` : displays the hex encoded public key
 - `identity view --mnemonic` : displays your mnemonic (sensitive information, keep this private)
