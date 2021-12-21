@@ -150,7 +150,10 @@ where
         // block after it uses "next" salt deposited in the first block.
         let Salts { salt, next_salt } = find_updated_salt_digest::<B>(parent_header)
             .ok()?
-            .map(|UpdatedSaltDescriptor { salt, next_salt }| Salts { salt, next_salt })
+            .map(|UpdatedSaltDescriptor { salt }| Salts {
+                salt,
+                next_salt: None,
+            })
             .or_else(|| {
                 // We use runtime API as it will fallback to default value for genesis when
                 // there is no salt stored yet
@@ -161,8 +164,7 @@ where
             slot,
             global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
             salt,
-            // TODO: This probably needs to change from `Option<Salt>` to just `Salt`
-            next_salt: Some(next_salt),
+            next_salt,
             solution_range,
         };
         let (solution_sender, mut solution_receiver) =

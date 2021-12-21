@@ -133,6 +133,7 @@ parameter_types! {
     pub const EpochDuration: u64 = 3;
     pub const EraDuration: u32 = 4;
     pub const EonDuration: u32 = 5;
+    pub const EonNextSaltReveal: u64 = 4;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
@@ -148,6 +149,7 @@ impl Config for Test {
     type EpochDuration = EpochDuration;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
+    type EonNextSaltReveal = EonNextSaltReveal;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;

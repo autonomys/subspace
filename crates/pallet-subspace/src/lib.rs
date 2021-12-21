@@ -62,6 +62,9 @@ use sp_runtime::{
 use sp_std::prelude::*;
 use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
 
+const SALT_HASHING_PREFIX: &[u8] = b"salt";
+const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
+
 pub trait WeightInfo {
     fn plan_config_change() -> Weight;
     fn report_equivocation() -> Weight;
@@ -167,6 +170,14 @@ mod pallet {
         /// the chain has started. Attempting to do so will brick block production.
         #[pallet::constant]
         type EonDuration: Get<u64>;
+
+        /// The amount of time within eon, in slots, after which next eon salt should be revealed.
+        ///
+        /// The purpose of this is to allow to start tag recommitment a bit upfront, but not too
+        /// soon. For instance, if eon duration is 7 days, this parameter may be set to 6 days worth
+        /// of timeslots.
+        #[pallet::constant]
+        type EonNextSaltReveal: Get<u64>;
 
         /// Initial solution range used for challenges during the very first era.
         #[pallet::constant]
@@ -298,7 +309,7 @@ mod pallet {
     /// Salt for *next* eon.
     #[pallet::storage]
     #[pallet::getter(fn next_salt)]
-    pub type NextSalt<T> = StorageValue<_, subspace_core_primitives::Salt, ValueQuery>;
+    pub type NextSalt<T> = StorageValue<_, subspace_core_primitives::Salt>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
@@ -397,7 +408,6 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             SegmentIndex::<T>::put(0);
-            NextSalt::<T>::put(1u64.to_le_bytes());
             EpochConfig::<T>::put(
                 self.epoch_config
                     .clone()
@@ -560,7 +570,7 @@ impl<T: Config> Pallet<T> {
         // the same randomness and validator set as signalled in the genesis,
         // so we don't rotate the epoch.
         now != One::one() && {
-            let diff = CurrentSlot::<T>::get().saturating_sub(Self::current_epoch_start());
+            let diff = Self::current_slot().saturating_sub(Self::current_epoch_start());
             *diff >= T::EpochDuration::get()
         }
     }
@@ -581,7 +591,7 @@ impl<T: Config> Pallet<T> {
         // between this block and the last, but we have to "end" the eon now,
         // since there is no earlier possible block we could have done it.
         now != One::one() && {
-            let diff = CurrentSlot::<T>::get().saturating_sub(Self::current_eon_start());
+            let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
             *diff >= T::EonDuration::get()
         }
     }
@@ -605,7 +615,7 @@ impl<T: Config> Pallet<T> {
     pub fn next_expected_epoch_change(now: T::BlockNumber) -> Option<T::BlockNumber> {
         let next_slot = Self::current_epoch_start().saturating_add(T::EpochDuration::get());
         next_slot
-            .checked_sub(*CurrentSlot::<T>::get())
+            .checked_sub(*Self::current_slot())
             .map(|slots_remaining| {
                 // This is a best effort guess. Drifts in the slot/block ratio will cause errors here.
                 let blocks_remaining: T::BlockNumber = slots_remaining.saturated_into();
@@ -679,7 +689,7 @@ impl<T: Config> Pallet<T> {
 
         let previous_solution_range = SolutionRange::<T>::get();
 
-        let current_slot = CurrentSlot::<T>::get();
+        let current_slot = Self::current_slot();
         // If Era start slot is not found it means we have just finished the first era
         let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
         let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
@@ -719,29 +729,22 @@ impl<T: Config> Pallet<T> {
         // by the session module to be called before this.
         debug_assert!(Self::initialized().is_some());
 
-        let eon_index = (*CurrentSlot::<T>::get())
+        let salt = NextSalt::<T>::take().expect(
+            "NextSalt is always set in block initialization before eon change is checked; qed",
+        );
+
+        let current_slot = *Self::current_slot();
+        let eon_index = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
             .expect("Current slot is never lower than genesis slot; qed")
             .checked_div(T::EonDuration::get())
             .expect("Eon duration is never zero; qed");
 
         EonIndex::<T>::put(eon_index);
-
-        let salt = NextSalt::<T>::get();
         Salt::<T>::put(salt);
-        let next_salt = crypto::sha256_hash({
-            let mut input = [0u8; RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-            input[..RANDOMNESS_LENGTH].copy_from_slice(&Randomness::<T>::get());
-            input[RANDOMNESS_LENGTH..].copy_from_slice(&eon_index.to_le_bytes());
-            input
-        })[..SALT_SIZE]
-            .try_into()
-            .expect("Sice as exactly the size needed; qed");
-        NextSalt::<T>::put(next_salt);
 
         Self::deposit_consensus(ConsensusLog::UpdatedSaltData(UpdatedSaltDescriptor {
             salt,
-            next_salt,
         }));
     }
 
@@ -882,7 +885,7 @@ impl<T: Config> Pallet<T> {
             let current_slot = digest.slot;
 
             // how many slots were skipped between current and last block
-            let lateness = current_slot.saturating_sub(CurrentSlot::<T>::get() + 1);
+            let lateness = current_slot.saturating_sub(Self::current_slot() + 1);
             let lateness = T::BlockNumber::from(*lateness as u32);
 
             Lateness::<T>::put(lateness);
@@ -907,6 +910,22 @@ impl<T: Config> Pallet<T> {
         Self::deposit_consensus(ConsensusLog::SaltData(SaltDescriptor {
             salt: Salt::<T>::get(),
         }));
+
+        let next_salt_reveal = Self::current_eon_start() + T::EonNextSaltReveal::get();
+        let current_slot = Self::current_slot();
+        if now != One::one() && current_slot >= next_salt_reveal && !NextSalt::<T>::exists() {
+            let eon_index = Self::eon_index();
+            log::info!(
+                target: "runtime::subspace",
+                "🔃 Updating next salt on eon {} slot {}",
+                eon_index,
+                *current_slot
+            );
+            NextSalt::<T>::put(Self::derive_next_salt_from_randomness(
+                eon_index,
+                &Self::randomness(),
+            ));
+        }
 
         // enact epoch change, if necessary.
         T::EpochChangeTrigger::trigger::<T>(now);
@@ -961,6 +980,24 @@ impl<T: Config> Pallet<T> {
             Self::deposit_event(Event::RootBlockStored { root_block });
         }
         Ok(())
+    }
+
+    fn derive_next_salt_from_randomness(
+        eon_index: u64,
+        randomness: &subspace_core_primitives::Randomness,
+    ) -> subspace_core_primitives::Salt {
+        crypto::sha256_hash({
+            let mut input =
+                [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
+            input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
+            input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
+                .copy_from_slice(randomness);
+            input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
+                .copy_from_slice(&eon_index.to_le_bytes());
+            input
+        })[..SALT_SIZE]
+            .try_into()
+            .expect("Slice has exactly the size needed; qed")
     }
 
     /// Submits an extrinsic to report an equivocation. This method will create an unsigned
@@ -1100,7 +1137,7 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
         let timestamp_slot = Slot::from(timestamp_slot.saturated_into::<u64>());
 
         assert_eq!(
-            CurrentSlot::<T>::get(),
+            Self::current_slot(),
             timestamp_slot,
             "Timestamp slot must match `CurrentSlot`",
         );
