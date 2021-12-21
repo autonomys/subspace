@@ -23,7 +23,7 @@ use crate::mock::{
 };
 use crate::{
     compute_randomness, Call, Config, CurrentSlot, EpochConfig, EpochStart, Error, NextEpochConfig,
-    NextRandomness, NextSalt, SegmentIndex, UnderConstruction, WeightInfo,
+    NextRandomness, SegmentIndex, UnderConstruction, WeightInfo,
 };
 use codec::Encode;
 use frame_support::traits::OnFinalize;
@@ -193,29 +193,48 @@ fn can_update_salt_on_eon_change() {
         let keypair = Keypair::generate();
 
         let genesis_salt = 0u64.to_le_bytes();
-        let first_eon_salt = 1u64.to_le_bytes();
-        NextSalt::<Test>::put(first_eon_salt);
         assert_eq!(<Test as Config>::EonDuration::get(), 5);
+        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 4);
         // Initial salt equals to eon
         assert_eq!(Subspace::salt(), genesis_salt);
+        // Next salt is not present
+        assert_eq!(Subspace::next_salt(), None);
 
         // We produce blocks on every slot
+        progress_to_block(&keypair, 4);
+        // Still no salt update
+        assert_eq!(Subspace::salt(), genesis_salt);
+        // Next salt is not revealed yet
+        assert_eq!(Subspace::next_salt(), None);
+
         progress_to_block(&keypair, 5);
         // Still no salt update
         assert_eq!(Subspace::salt(), genesis_salt);
-        progress_to_block(&keypair, 6);
+        // Next salt is revealed now
+        let next_salt = Subspace::next_salt().unwrap();
+        assert_ne!(next_salt, genesis_salt);
 
+        progress_to_block(&keypair, 6);
         // Second eon should have salt updated
-        assert_eq!(Subspace::salt(), first_eon_salt);
+        assert_eq!(Subspace::salt(), next_salt);
+        // And next salt must be removed
+        assert_eq!(Subspace::next_salt(), None);
 
         // We produce blocks on every slot
         progress_to_block(&keypair, 10);
         // Just before eon update, still the same salt as before
-        assert_eq!(Subspace::salt(), first_eon_salt);
-        progress_to_block(&keypair, 11);
+        assert_eq!(Subspace::salt(), next_salt);
+        // But next salt is revealed again
+        let old_next_salt = next_salt;
+        let next_salt = Subspace::next_salt().unwrap();
+        assert_ne!(next_salt, genesis_salt);
+        assert_ne!(next_salt, old_next_salt);
 
+        progress_to_block(&keypair, 11);
         // Third eon should have salt updated again
-        assert_ne!(Subspace::salt(), first_eon_salt);
+        assert_eq!(Subspace::salt(), next_salt);
+        // And next salt must be removed
+        assert_eq!(Subspace::next_salt(), None);
     })
 }
 

@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(const_option)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -138,6 +139,10 @@ const EPOCH_DURATION_IN_SLOTS: u64 =
 
 /// Eon duration is 7 days
 const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
+/// Reveal next eon salt 1 day before eon end
+const EON_NEXT_SALT_REVEAL: u64 = EON_DURATION_IN_SLOTS
+    .checked_sub(3600 * 24)
+    .expect("Offset is smaller than eon duration; qed");
 
 /// The Subspace epoch configuration at genesis.
 pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEpochConfiguration {
@@ -231,6 +236,7 @@ impl pallet_subspace::Config for Runtime {
     type EpochDuration = ConstU64<EPOCH_DURATION_IN_SLOTS>;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type EonDuration = ConstU64<EON_DURATION_IN_SLOTS>;
+    type EonNextSaltReveal = ConstU64<EON_NEXT_SALT_REVEAL>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;

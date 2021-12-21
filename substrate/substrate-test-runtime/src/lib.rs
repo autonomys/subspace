@@ -652,6 +652,7 @@ impl pallet_subspace::Config for Runtime {
     type EpochDuration = EpochDuration;
     type EraDuration = ConstU32<5>;
     type EonDuration = ConstU64<11>;
+    type EonNextSaltReveal = ConstU64<2>;
     type InitialSolutionRange = ConstU64<{ u64::MAX }>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
