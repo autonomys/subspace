@@ -24,8 +24,8 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU8, Currency, ExistenceRequirement, Get, Imbalance,
-    WithdrawReasons,
+    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
+    Imbalance, WithdrawReasons,
 };
 use frame_support::weights::{
     constants::{RocksDbWeight, WEIGHT_PER_SECOND},
@@ -136,6 +136,7 @@ const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
 const EPOCH_DURATION_IN_SLOTS: u64 =
     EPOCH_DURATION_IN_BLOCKS as u64 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0;
 
+/// Eon duration is 7 days
 const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
 
 /// The Subspace epoch configuration at genesis.
@@ -221,48 +222,38 @@ impl frame_system::Config for Runtime {
 }
 
 parameter_types! {
-    pub const EpochDuration: u64 = EPOCH_DURATION_IN_SLOTS;
-    pub const EraDuration: u32 = ERA_DURATION_IN_BLOCKS;
-    pub const EonDuration: u64 = EON_DURATION_IN_SLOTS;
-    pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
-    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
-    pub const RecordSize: u32 = RECORD_SIZE;
-    pub const RecordedHistorySegmentSize: u32 = RECORDED_HISTORY_SEGMENT_SIZE;
-    pub const ReportLongevity: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 }
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
-    type EpochDuration = EpochDuration;
-    type EraDuration = EraDuration;
-    type EonDuration = EonDuration;
-    type InitialSolutionRange = InitialSolutionRange;
+    type EpochDuration = ConstU64<EPOCH_DURATION_IN_SLOTS>;
+    type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
+    type EonDuration = ConstU64<EON_DURATION_IN_SLOTS>;
+    type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
-    type ConfirmationDepthK = ConfirmationDepthK;
-    type RecordSize = RecordSize;
-    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
+    type RecordSize = ConstU32<RECORD_SIZE>;
+    type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
-    type HandleEquivocation =
-        pallet_subspace::equivocation::EquivocationHandler<OffencesSubspace, ReportLongevity>;
+    type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
+        OffencesSubspace,
+        ConstU64<{ EPOCH_DURATION_IN_BLOCKS as u64 }>,
+    >;
 
     type WeightInfo = ();
-}
-
-parameter_types! {
-    pub const MinimumPeriod: u64 = SLOT_DURATION / 2;
 }
 
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
     type OnTimestampSet = Subspace;
-    type MinimumPeriod = MinimumPeriod;
+    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
 }
 
@@ -282,7 +273,6 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ReplicationFactor: u16 = MIN_REPLICATION_FACTOR;
     pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
     pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
 }
@@ -318,7 +308,7 @@ impl Get<u64> for BlockchainHistorySize {
 
 impl pallet_transaction_fees::Config for Runtime {
     type Event = Event;
-    type MinReplicationFactor = ReplicationFactor;
+    type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
     type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
     type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
     type CreditSupply = CreditSupply;
@@ -490,7 +480,6 @@ impl pallet_object_store::Config for Runtime {
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
     pub const MinVestedTransfer: Balance = 0;
-    pub const MaxVestingSchedules: u32 = 2;
 }
 
 impl orml_vesting::Config for Runtime {
@@ -499,7 +488,7 @@ impl orml_vesting::Config for Runtime {
     type MinVestedTransfer = MinVestedTransfer;
     type VestedTransferOrigin = EnsureNever<AccountId>;
     type WeightInfo = ();
-    type MaxVestingSchedules = MaxVestingSchedules;
+    type MaxVestingSchedules = ConstU32<2>;
     type BlockNumberProvider = System;
 }
 
@@ -811,15 +800,15 @@ impl_runtime_apis! {
 
     impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
         fn confirmation_depth_k() -> u32 {
-            ConfirmationDepthK::get()
+            <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
 
         fn record_size() -> u32 {
-            RecordSize::get()
+            <Runtime as pallet_subspace::Config>::RecordSize::get()
         }
 
         fn recorded_history_segment_size() -> u32 {
-            RecordedHistorySegmentSize::get()
+            <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
         }
 
         fn configuration() -> SubspaceGenesisConfiguration {
@@ -830,7 +819,7 @@ impl_runtime_apis! {
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
             SubspaceGenesisConfiguration {
                 slot_duration: Subspace::slot_duration(),
-                epoch_length: EpochDuration::get(),
+                epoch_length: <Runtime as pallet_subspace::Config>::EpochDuration::get(),
                 c: SlotProbability::get(),
                 randomness: Subspace::randomness(),
             }

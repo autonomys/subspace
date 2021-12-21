@@ -26,10 +26,9 @@ use crate::{
     NextRandomness, NextSalt, SegmentIndex, UnderConstruction, WeightInfo,
 };
 use codec::Encode;
-use frame_support::weights::Pays;
-use frame_support::{
-    assert_err, assert_noop, assert_ok, traits::OnFinalize, weights::GetDispatchInfo,
-};
+use frame_support::traits::OnFinalize;
+use frame_support::weights::{GetDispatchInfo, Pays};
+use frame_support::{assert_err, assert_noop, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;

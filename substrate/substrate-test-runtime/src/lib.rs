@@ -34,6 +34,7 @@ use sp_trie::{
     PrefixedMemoryDB, StorageProof,
 };
 use trie_db::{Trie, TrieMut};
+use frame_support::traits::Get;
 
 use cfg_if::cfg_if;
 use frame_support::{
@@ -643,27 +644,20 @@ impl pallet_babe::Config for Runtime {
 }
 
 parameter_types! {
-    pub const EraDuration: u32 = 5;
-    pub const EonDuration: u64 = 11;
-    pub const InitialSolutionRange: u64 = u64::MAX;
     pub const SlotProbability: (u64, u64) = (3, 10);
-    pub const ConfirmationDepthK: u32 = 10;
-    pub const RecordSize: u32 = 3840;
-    pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
-    pub const ReplicationFactor: u16 = 1;
 }
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
     type EpochDuration = EpochDuration;
-    type EraDuration = EraDuration;
-    type EonDuration = EonDuration;
-    type InitialSolutionRange = InitialSolutionRange;
+    type EraDuration = ConstU32<5>;
+    type EonDuration = ConstU64<11>;
+    type InitialSolutionRange = ConstU64<{ u64::MAX }>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
-    type ConfirmationDepthK = ConfirmationDepthK;
-    type RecordSize = RecordSize;
-    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ConfirmationDepthK = ConstU32<10>;
+    type RecordSize = ConstU32<3840>;
+    type RecordedHistorySegmentSize = ConstU32<{3840 * 256 / 2}>;
     type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
@@ -927,21 +921,21 @@ cfg_if! {
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
                 fn confirmation_depth_k() -> u32 {
-                    ConfirmationDepthK::get()
+                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    RecordSize::get()
+                    <Runtime as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    RecordedHistorySegmentSize::get()
+                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
-                        epoch_length: EpochDuration::get(),
+                        epoch_length: <Runtime as pallet_subspace::Config>::EpochDuration::get(),
                         c: (3, 10),
                         randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
@@ -1255,15 +1249,15 @@ cfg_if! {
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
                 fn confirmation_depth_k() -> u32 {
-                    ConfirmationDepthK::get()
+                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    RecordSize::get()
+                    <Runtime as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    RecordedHistorySegmentSize::get()
+                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
