@@ -138,8 +138,6 @@ NOTE 3: To farm in online setting, you can modify the command accordingly.
 
 You can find readme files in corresponding crates for requirements, multi-node setup and other details.
 
-
-
 ### Glossary For Farm Commands
 
 - `farm` : starts background plotting and farming together
