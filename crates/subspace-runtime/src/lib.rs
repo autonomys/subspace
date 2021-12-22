@@ -37,6 +37,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
 use sp_api::impl_runtime_apis;
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestError};
 use sp_consensus_subspace::{
     Epoch, EquivocationProof, FarmerPublicKey, Salts, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration,
@@ -746,6 +747,27 @@ fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
         .collect()
 }
 
+fn extract_pre_digest<Block: BlockT>(
+    header: Block::Header,
+) -> Result<PreDigest<FarmerPublicKey>, PreDigestError> {
+    // genesis block doesn't contain a pre digest so let's generate a
+    // dummy one to not break any invariants in the rest of the code
+    if header.number().is_zero() {
+        return Ok(PreDigest::genesis_pre_digest());
+    }
+
+    let mut pre_digest: Option<_> = None;
+    for log in header.digest().logs() {
+        match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
+            (Some(_), true) => return Err(PreDigestError::MultipleDigests),
+            (None, _) => {}
+            (s, false) => pre_digest = s,
+        }
+    }
+
+    pre_digest.ok_or_else(|| PreDigestError::NoDigest)
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -903,6 +925,10 @@ impl_runtime_apis! {
 
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
             extract_bundles(extrinsics)
+        }
+
+        fn extract_pre_digest(header: <Block as BlockT>::Header) -> Result<PreDigest<FarmerPublicKey>, PreDigestError> {
+            extract_pre_digest::<Block>(header)
         }
 
         fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {

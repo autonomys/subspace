@@ -24,6 +24,8 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as 
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use sp_consensus_subspace::digests::{PreDigest, PreDigestError};
+use sp_consensus_subspace::FarmerPublicKey;
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -139,6 +141,9 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;
+
+        /// Extract the subspace pre-runtime digest from a header.
+        fn extract_pre_digest(header: Block::Header) -> Result<PreDigest<FarmerPublicKey>, PreDigestError>;
 
         /// Returns the block hash given the block number.
         fn head_hash(

@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 parity-scale-codec = { version = "2.3.0", default-features = false, features = ["derive"] }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
+sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-core = { version = "4.1.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 sp-runtime = { version = "4.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }
@@ -26,6 +27,7 @@ std = [
 	"parity-scale-codec/std",
 	"scale-info/std",
 	"sp-api/std",
+	"sp-consensus-subspace/std",
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",
