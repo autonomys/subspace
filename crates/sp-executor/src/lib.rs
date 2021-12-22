@@ -19,13 +19,13 @@
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_consensus_subspace::digests::{PreDigest, PreDigestError};
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use sp_consensus_subspace::digests::{PreDigest, PreDigestError};
-use sp_consensus_subspace::FarmerPublicKey;
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]

@@ -22,6 +22,8 @@ cumulus-client-consensus-common = { path = "../consensus/common" }
 codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
 futures = { version = "0.3.17", features = ["compat"] }
 futures-timer = "3.0.1"
+rand = "0.8.4"
+rand_chacha = "0.3.1"
 parking_lot = "0.11.2"
 tracing = "0.1.25"
 
@@ -31,4 +33,8 @@ polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
 sp-executor = { path = "../../../crates/sp-executor" }
+subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
+
+[dev-dependencies]
+sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "5bd5b842d4ea520d281b1398e1f54907c9862fcd" }

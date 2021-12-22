@@ -1,14 +1,69 @@
+use rand::{seq::SliceRandom, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
-use sp_runtime::{generic::BlockId, traits::Block as BlockT};
+use sp_runtime::{
+	generic::BlockId,
+	traits::{BlakeTwo256, Block as BlockT, Hash as HashT},
+};
+use std::{
+	collections::{BTreeMap, VecDeque},
+	fmt::Debug,
+};
 
 use cirrus_node_primitives::ProcessorResult;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{ExecutionReceipt, OpaqueBundle};
+use subspace_core_primitives::Signature;
 use subspace_runtime_primitives::Hash as PHash;
 
 use super::{Executor, LOG_TARGET};
 use codec::{Decode, Encode};
+
+/// Shuffles the extrinsics in a deterministic way, using given `signature` as the randomness
+/// source.
+///
+/// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
+/// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
+/// while the order of items inside the same group is still maintained.
+fn shuffle_extrinsics<Extrinsic: Debug>(
+	extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
+	signature: Signature,
+) -> Vec<Extrinsic> {
+	let seed = BlakeTwo256::hash_of(&signature);
+	let mut rng = ChaCha8Rng::from_seed(seed.into());
+
+	let mut positions = extrinsics
+		.iter()
+		.map(|(maybe_signer, _)| maybe_signer)
+		.cloned()
+		.collect::<Vec<_>>();
+
+	// Shuffles the positions using Fisher–Yates algorithm.
+	positions.shuffle(&mut rng);
+
+	let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> =
+		extrinsics.into_iter().fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
+			groups.entry(maybe_signer).or_insert_with(VecDeque::new).push_back(tx);
+			groups
+		});
+
+	// The relative ordering for the items in the same group does not change.
+	let shuffled_extrinsics = positions
+		.into_iter()
+		.map(|maybe_signer| {
+			grouped_extrinsics
+				.get_mut(&maybe_signer)
+				.expect("Extrinsics are grouped correctly; qed")
+				.pop_front()
+				.expect("Extrinsic definitely exists as it's correctly grouped above; qed")
+		})
+		.collect::<Vec<_>>();
+
+	tracing::trace!(target: LOG_TARGET, ?shuffled_extrinsics, "Shuffled extrinsics");
+
+	shuffled_extrinsics
+}
 
 impl<Block, BS, RA, Client, TransactionPool> Executor<Block, BS, RA, Client, TransactionPool>
 where
@@ -24,11 +79,8 @@ where
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
+		solution_signature: Signature,
 	) -> Option<ProcessorResult> {
-		// TODO:
-		// 1. [x] convert the bundles to a full tx list
-		// 2. [x] duplicate the full tx list
-		// 3. shuffle the full tx list by sender account
 		let mut extrinsics = bundles
 			.into_iter()
 			.flat_map(|bundle| {
@@ -65,6 +117,8 @@ where
 		});
 		drop(seen);
 
+		tracing::trace!(target: LOG_TARGET, ?extrinsics, "Origin deduplicated extrinsics");
+
 		let block_number = self.client.info().best_number;
 		let extrinsics: Vec<_> = match self
 			.runtime_api
@@ -82,7 +136,8 @@ where
 			},
 		};
 
-		let _final_extrinsics = Self::shuffle_extrinsics(extrinsics);
+		let _final_extrinsics =
+			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, solution_signature);
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.
@@ -110,13 +165,35 @@ where
 			None
 		}
 	}
+}
 
-	// TODO:
-	// 1. determine the randomness generator
-	// 2. Fisher-Yates
-	fn shuffle_extrinsics(
-		_extrinsics: Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>,
-	) -> Vec<<Block as BlockT>::Extrinsic> {
-		todo!()
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use sp_keyring::sr25519::Keyring;
+
+	#[test]
+	fn shuffle_extrinsics_should_work() {
+		let alice = Keyring::Alice.to_account_id();
+		let bob = Keyring::Bob.to_account_id();
+		let charlie = Keyring::Charlie.to_account_id();
+
+		let extrinsics = vec![
+			(Some(alice.clone()), 10),
+			(None, 100),
+			(Some(bob.clone()), 1),
+			(Some(bob), 2),
+			(Some(charlie.clone()), 30),
+			(Some(alice.clone()), 11),
+			(Some(charlie), 31),
+			(None, 101),
+			(None, 102),
+			(Some(alice), 13),
+		];
+
+		let dummy_signature = [1u8; 64];
+		let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_signature.into());
+
+		assert_eq!(shuffled_extrinsics, vec![100, 30, 10, 1, 11, 101, 31, 13, 102, 2]);
 	}
 }

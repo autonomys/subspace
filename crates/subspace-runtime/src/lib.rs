@@ -765,7 +765,7 @@ fn extract_pre_digest<Block: BlockT>(
         }
     }
 
-    pre_digest.ok_or_else(|| PreDigestError::NoDigest)
+    pre_digest.ok_or(PreDigestError::NoDigest)
 }
 
 impl_runtime_apis! {

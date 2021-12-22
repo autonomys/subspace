@@ -328,9 +328,9 @@ where
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
-		_solution_signature: Signature,
+		solution_signature: Signature,
 	) -> Option<ProcessorResult> {
-		self.process_bundles_impl(primary_hash, bundles).await
+		self.process_bundles_impl(primary_hash, bundles, solution_signature).await
 	}
 }
 
