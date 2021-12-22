@@ -32,10 +32,10 @@ use frame_support::{assert_err, assert_noop, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::NextConfigDescriptor;
-use sp_consensus_subspace::{
-    digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor,
 };
+use sp_consensus_subspace::{digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
@@ -87,12 +87,9 @@ fn first_block_epoch_zero_start() {
         assert_eq!(pre_digest.logs.len(), 1);
         assert_eq!(header.digest.logs[0], pre_digest.logs[0]);
 
-        let consensus_log = sp_consensus_subspace::ConsensusLog::NextEpochData(
-            sp_consensus_subspace::digests::NextEpochDescriptor {
-                randomness: Subspace::randomness(),
-            },
-        );
-        let consensus_digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, consensus_log.encode());
+        let consensus_digest = DigestItem::next_epoch_descriptor(NextEpochDescriptor {
+            randomness: Subspace::randomness(),
+        });
 
         // first epoch descriptor has same info as last.
         assert_eq!(header.digest.logs[1], consensus_digest.clone())
@@ -280,11 +277,9 @@ fn can_enact_next_config() {
             Some(next_next_config.clone())
         );
 
-        let consensus_log =
-            sp_consensus_subspace::ConsensusLog::NextConfigData(NextConfigDescriptor::V1 {
-                c: next_next_config.c,
-            });
-        let consensus_digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, consensus_log.encode());
+        let consensus_digest = DigestItem::next_config_descriptor(NextConfigDescriptor::V1 {
+            c: next_next_config.c,
+        });
 
         assert_eq!(header.digest.logs[4], consensus_digest.clone())
     });
