@@ -73,7 +73,6 @@ fn first_block_epoch_zero_start() {
         assert_eq!(Subspace::genesis_slot(), genesis_slot);
         assert_eq!(Subspace::current_slot(), genesis_slot);
         assert_eq!(Subspace::epoch_index(), 0);
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
 
         Subspace::on_finalize(1);
         let header = System::finalize();
@@ -93,27 +92,6 @@ fn first_block_epoch_zero_start() {
 
         // first epoch descriptor has same info as last.
         assert_eq!(header.digest.logs[1], consensus_digest.clone())
-    })
-}
-
-#[test]
-fn author_por_output() {
-    let mut ext = new_test_ext();
-
-    ext.execute_with(|| {
-        let genesis_slot = Slot::from(10);
-        let solution = Solution::genesis_solution();
-        let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
-        let pre_digest = make_pre_digest(genesis_slot, solution);
-
-        System::initialize(&1, &Default::default(), &pre_digest, Default::default());
-
-        Subspace::do_initialize(1);
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
-
-        Subspace::on_finalize(1);
-        System::finalize();
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
     })
 }
 

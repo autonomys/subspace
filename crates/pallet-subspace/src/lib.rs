@@ -351,13 +351,6 @@ mod pallet {
     #[pallet::getter(fn initialized)]
     pub(super) type Initialized<T> = StorageValue<_, MaybeRandomness>;
 
-    /// This field should always be populated during block processing.
-    ///
-    /// It is set in `on_initialize`, before it will contain the value from the last block.
-    #[pallet::storage]
-    #[pallet::getter(fn author_por_randomness)]
-    pub(super) type AuthorPorRandomness<T> = StorageValue<_, MaybeRandomness, ValueQuery>;
-
     /// The block numbers when the last and current epoch have started, respectively `N-1` and
     /// `N`.
     /// NOTE: We track this is in order to annotate the block number when a given pool of
@@ -884,9 +877,6 @@ impl<T: Config> Pallet<T> {
         // item and it'll be put onto the under-construction randomness later,
         // once we've decided which epoch this block is in.
         Initialized::<T>::put(maybe_randomness);
-
-        // Place PoR output into the `AuthorPorRandomness` storage item.
-        AuthorPorRandomness::<T>::put(maybe_randomness);
 
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
