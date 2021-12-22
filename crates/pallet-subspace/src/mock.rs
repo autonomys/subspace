@@ -20,13 +20,12 @@ use crate::{
     self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
     NormalEpochChange, NormalEraChange,
 };
-use codec::Encode;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
 use frame_system::InitKind;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{PreDigest, Solution};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
@@ -212,11 +211,7 @@ pub fn progress_to_block(keypair: &Keypair, n: u64) {
 }
 
 pub fn make_pre_digest(slot: Slot, solution: Solution<FarmerPublicKey>) -> Digest {
-    let digest_data = PreDigest { slot, solution };
-    let log = DigestItem::PreRuntime(
-        sp_consensus_subspace::SUBSPACE_ENGINE_ID,
-        digest_data.encode(),
-    );
+    let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution });
     Digest { logs: vec![log] }
 }
 
@@ -232,8 +227,6 @@ pub fn generate_equivocation_proof(
     keypair: &Keypair,
     slot: Slot,
 ) -> sp_consensus_subspace::EquivocationProof<Header> {
-    use sp_consensus_subspace::digests::CompatibleDigestItem;
-
     let current_block = System::block_number();
     let current_slot = CurrentSlot::<Test>::get();
 
@@ -268,8 +261,7 @@ pub fn generate_equivocation_proof(
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
         let signature = Pair::from(keypair.secret.clone()).sign(prehash.as_ref());
-        let seal =
-            <DigestItem as CompatibleDigestItem<FarmerPublicKey>>::subspace_seal(signature.into());
+        let seal = DigestItem::subspace_seal(signature.into());
         header.digest_mut().push(seal);
     };
 

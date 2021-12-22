@@ -97,12 +97,12 @@ use sp_consensus_subspace::digests::{
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
-    ConsensusLog, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceEpochConfiguration,
-    SubspaceGenesisConfiguration, SUBSPACE_ENGINE_ID,
+    FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceEpochConfiguration,
+    SubspaceGenesisConfiguration,
 };
 use sp_core::{ExecutionContext, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
-use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
+use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use std::cmp::Ordering;
 use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration};
@@ -635,8 +635,8 @@ impl<B: BlockT> futures::Future for SubspaceWorker<B> {
     }
 }
 
-/// Extract the Subspace pre digest from the given header. Pre-runtime digests are
-/// mandatory, the function will return `Err` if none is found.
+/// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
+/// function will return `Err` if none is found.
 pub fn find_pre_digest<B: BlockT>(
     header: &B::Header,
 ) -> Result<PreDigest<FarmerPublicKey>, Error<B>> {
@@ -649,7 +649,7 @@ pub fn find_pre_digest<B: BlockT>(
         });
     }
 
-    let mut pre_digest: Option<_> = None;
+    let mut pre_digest = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
@@ -661,84 +661,79 @@ pub fn find_pre_digest<B: BlockT>(
     pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
 }
 
-/// Extract the Subspace epoch change digest from the given header, if it exists.
-fn find_next_epoch_digest<B: BlockT>(
+/// Extract the Subspace epoch change descriptor from the given header, if it exists.
+fn find_next_epoch_descriptor<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextEpochDescriptor>, Error<B>> {
-    let mut epoch_digest: Option<_> = None;
+    let mut next_epoch_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, epoch_digest.is_some()) {
-            (Some(ConsensusLog::NextEpochData(_)), true) => {
-                return Err(subspace_err(Error::MultipleEpochChangeDigests))
-            }
-            (Some(ConsensusLog::NextEpochData(epoch)), false) => epoch_digest = Some(epoch),
+        match (
+            log.as_next_epoch_descriptor(),
+            next_epoch_descriptor.is_some(),
+        ) {
+            (Some(_), true) => return Err(subspace_err(Error::MultipleEpochChangeDigests)),
+            (Some(epoch), false) => next_epoch_descriptor = Some(epoch),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
-    Ok(epoch_digest)
+    Ok(next_epoch_descriptor)
 }
 
-/// Extract the Subspace config change digest from the given header, if it exists.
-fn find_next_config_digest<B: BlockT>(
+/// Extract the Subspace config change descriptor from the given header, if it exists.
+fn find_next_config_descriptor<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<NextConfigDescriptor>, Error<B>> {
-    let mut config_digest: Option<_> = None;
+    let mut next_config_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, config_digest.is_some()) {
-            (Some(ConsensusLog::NextConfigData(_)), true) => {
-                return Err(subspace_err(Error::MultipleConfigChangeDigests))
-            }
-            (Some(ConsensusLog::NextConfigData(config)), false) => config_digest = Some(config),
+        match (
+            log.as_next_config_descriptor(),
+            next_config_descriptor.is_some(),
+        ) {
+            (Some(_), true) => return Err(subspace_err(Error::MultipleConfigChangeDigests)),
+            (Some(config), false) => next_config_descriptor = Some(config),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
-    Ok(config_digest)
+    Ok(next_config_descriptor)
 }
 
-/// Extract the Subspace solution range digest from the given header.
-fn find_solution_range_digest<B: BlockT>(
+/// Extract the Subspace solution range descriptor from the given header.
+fn find_solution_range_descriptor<B: BlockT>(
     header: &B::Header,
 ) -> Result<Option<SolutionRangeDescriptor>, Error<B>> {
-    let mut solution_range_digest: Option<_> = None;
+    let mut solution_range_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, solution_range_digest.is_some()) {
-            (Some(ConsensusLog::SolutionRangeData(_)), true) => {
-                return Err(subspace_err(Error::MultipleSolutionRangeDigests))
-            }
-            (Some(ConsensusLog::SolutionRangeData(solution_range)), false) => {
-                solution_range_digest = Some(solution_range)
-            }
+        match (
+            log.as_solution_range_descriptor(),
+            solution_range_descriptor.is_some(),
+        ) {
+            (Some(_), true) => return Err(subspace_err(Error::MultipleSolutionRangeDigests)),
+            (Some(solution_range), false) => solution_range_descriptor = Some(solution_range),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
-    Ok(solution_range_digest)
+    Ok(solution_range_descriptor)
 }
 
-/// Extract the Subspace salt digest from the given header.
-fn find_salt_digest<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>> {
-    let mut salt_digest: Option<_> = None;
+/// Extract the Subspace salt descriptor from the given header.
+fn find_salt_descriptor<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>> {
+    let mut salt_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&SUBSPACE_ENGINE_ID));
-        match (log, salt_digest.is_some()) {
-            (Some(ConsensusLog::SaltData(_)), true) => {
-                return Err(subspace_err(Error::MultipleSaltDigests))
-            }
-            (Some(ConsensusLog::SaltData(salt)), false) => salt_digest = Some(salt),
+        match (log.as_salt_descriptor(), salt_descriptor.is_some()) {
+            (Some(_), true) => return Err(subspace_err(Error::MultipleSaltDigests)),
+            (Some(salt), false) => salt_descriptor = Some(salt),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
-    Ok(salt_digest)
+    Ok(salt_descriptor)
 }
 
 /// State that must be shared between the import queue and the authoring logic.
@@ -987,10 +982,10 @@ where
                 .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))
                 .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
             // TODO: Is it actually secure to validate it using solution range digest?
-            let solution_range = find_solution_range_digest::<Block>(&block.header)?
+            let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
-            let salt = find_salt_digest::<Block>(&block.header)?
+            let salt = find_salt_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
 
@@ -1343,9 +1338,9 @@ where
             let total_weight = parent_weight + pre_digest.added_weight();
 
             // search for this all the time so we can reject unexpected announcements.
-            let next_epoch_digest = find_next_epoch_digest::<Block>(&block.header)
+            let next_epoch_digest = find_next_epoch_descriptor::<Block>(&block.header)
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-            let next_config_digest = find_next_config_digest::<Block>(&block.header)
+            let next_config_digest = find_next_config_descriptor::<Block>(&block.header)
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
             match (

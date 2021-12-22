@@ -58,7 +58,7 @@ use sp_consensus_subspace::digests::{
 };
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{
-    ConsensusLog, FarmerPublicKey, SubspaceApi, SubspaceEpochConfiguration, SUBSPACE_ENGINE_ID,
+    FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceEpochConfiguration,
 };
 use sp_core::crypto::UncheckedFrom;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
@@ -76,10 +76,6 @@ use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag, PIECE_SIZE};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
-
-type Item = DigestItem;
-
-type Error = sp_blockchain::Error;
 
 type TestClient = substrate_test_runtime_client::client::Client<
     substrate_test_runtime_client::Backend,
@@ -115,9 +111,9 @@ struct DummyProposer {
 }
 
 impl Environment<TestBlock> for DummyFactory {
-    type CreateProposer = future::Ready<Result<DummyProposer, Error>>;
+    type CreateProposer = future::Ready<Result<DummyProposer, Self::Error>>;
     type Proposer = DummyProposer;
-    type Error = Error;
+    type Error = sp_blockchain::Error;
 
     fn init(&mut self, parent_header: &<TestBlock as BlockT>::Header) -> Self::CreateProposer {
         let parent_slot = crate::find_pre_digest::<TestBlock>(parent_header)
@@ -144,7 +140,7 @@ impl DummyProposer {
                 sc_client_api::TransactionFor<substrate_test_runtime_client::Backend, TestBlock>,
                 (),
             >,
-            Error,
+            sp_blockchain::Error,
         >,
     > {
         let block_builder = self
@@ -182,28 +178,22 @@ impl DummyProposer {
             // we just reuse the same randomness as the prior
             // epoch. this will break when we add light client support, since
             // that will re-check the randomness logic off-chain.
-            let digest_data = ConsensusLog::NextEpochData(NextEpochDescriptor {
+            let digest = DigestItem::next_epoch_descriptor(NextEpochDescriptor {
                 randomness: epoch.randomness.clone(),
-            })
-            .encode();
-            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
-            block.header.digest_mut().push(digest)
+            });
+            block.header.digest_mut().push(digest);
         }
         {
-            let digest_data = ConsensusLog::SolutionRangeData(SolutionRangeDescriptor {
+            let digest = DigestItem::solution_range_descriptor(SolutionRangeDescriptor {
                 solution_range: u64::MAX,
-            })
-            .encode();
-            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
-            block.header.digest_mut().push(digest)
+            });
+            block.header.digest_mut().push(digest);
         }
         {
-            let digest_data = ConsensusLog::SaltData(SaltDescriptor {
+            let digest = DigestItem::salt_descriptor(SaltDescriptor {
                 salt: 0u64.to_le_bytes(),
-            })
-            .encode();
-            let digest = DigestItem::Consensus(SUBSPACE_ENGINE_ID, digest_data);
-            block.header.digest_mut().push(digest)
+            });
+            block.header.digest_mut().push(digest);
         }
 
         // mutate the block header according to the mutator.
@@ -218,10 +208,10 @@ impl DummyProposer {
 }
 
 impl Proposer<TestBlock> for DummyProposer {
-    type Error = Error;
+    type Error = sp_blockchain::Error;
     type Transaction =
         sc_client_api::TransactionFor<substrate_test_runtime_client::Backend, TestBlock>;
-    type Proposal = future::Ready<Result<Proposal<TestBlock, Self::Transaction, ()>, Error>>;
+    type Proposal = future::Ready<Result<Proposal<TestBlock, Self::Transaction, ()>, Self::Error>>;
     type ProofRecording = DisableProofRecording;
     type Proof = ();
 
@@ -668,7 +658,7 @@ fn rejects_missing_inherent_digest() {
             .into_iter()
             .filter(|v| {
                 stage == Stage::PostSeal
-                    || CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(v).is_none()
+                    || DigestItem::as_subspace_pre_digest::<FarmerPublicKey>(v).is_none()
             })
             .collect()
     })
@@ -681,10 +671,7 @@ fn rejects_missing_seals() {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
             .into_iter()
-            .filter(|v| {
-                stage == Stage::PreSeal
-                    || CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(v).is_none()
-            })
+            .filter(|v| stage == Stage::PreSeal || DigestItem::as_subspace_seal(v).is_none())
             .collect()
     })
 }
@@ -697,9 +684,7 @@ fn rejects_missing_consensus_digests() {
         header.digest_mut().logs = v
             .into_iter()
             .filter(|v| {
-                stage == Stage::PostSeal
-                    || CompatibleDigestItem::<FarmerPublicKey>::as_next_epoch_descriptor(v)
-                        .is_none()
+                stage == Stage::PostSeal || DigestItem::as_next_epoch_descriptor(v).is_none()
             })
             .collect()
     });
@@ -710,16 +695,16 @@ fn wrong_consensus_engine_id_rejected() {
     sp_tracing::try_init_simple();
     let keypair = Keypair::generate();
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
-    let bad_seal: Item = DigestItem::Seal([0; 4], keypair.sign(ctx.bytes(b"")).to_bytes().to_vec());
-    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
-    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&bad_seal).is_none())
+    let bad_seal = DigestItem::Seal([0; 4], keypair.sign(ctx.bytes(b"")).to_bytes().to_vec());
+    assert!(CompatibleDigestItem::as_subspace_pre_digest::<FarmerPublicKey>(&bad_seal).is_none());
+    assert!(CompatibleDigestItem::as_subspace_seal(&bad_seal).is_none())
 }
 
 #[test]
 fn malformed_pre_digest_rejected() {
     sp_tracing::try_init_simple();
-    let bad_seal: Item = DigestItem::Seal(SUBSPACE_ENGINE_ID, [0; 64].to_vec());
-    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
+    let bad_seal = DigestItem::subspace_seal(FarmerSignature::unchecked_from([0u8; 64]));
+    assert!(CompatibleDigestItem::as_subspace_pre_digest::<FarmerPublicKey>(&bad_seal).is_none());
 }
 
 #[test]
@@ -727,12 +712,11 @@ fn sig_is_not_pre_digest() {
     sp_tracing::try_init_simple();
     let keypair = Keypair::generate();
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
-    let bad_seal: Item = DigestItem::Seal(
-        SUBSPACE_ENGINE_ID,
-        keypair.sign(ctx.bytes(b"")).to_bytes().to_vec(),
-    );
-    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_pre_digest(&bad_seal).is_none());
-    assert!(CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&bad_seal).is_some())
+    let bad_seal = DigestItem::subspace_seal(FarmerSignature::unchecked_from(
+        keypair.sign(ctx.bytes(b"")).to_bytes(),
+    ));
+    assert!(CompatibleDigestItem::as_subspace_pre_digest::<FarmerPublicKey>(&bad_seal).is_none());
+    assert!(CompatibleDigestItem::as_subspace_seal(&bad_seal).is_some())
 }
 
 /// Claims the given slot number. always returning a dummy block.
@@ -813,7 +797,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 
         (
             sp_runtime::generic::Digest {
-                logs: vec![Item::subspace_pre_digest(&PreDigest {
+                logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
                     slot,
                     solution: Solution {
                         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -847,9 +831,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
         .unwrap()
         .unwrap();
 
-    let seal: Item = CompatibleDigestItem::<FarmerPublicKey>::subspace_seal(
-        signature.to_vec().try_into().unwrap(),
-    );
+    let seal = DigestItem::subspace_seal(signature.to_vec().try_into().unwrap());
 
     let post_hash = {
         block.header.digest_mut().push(seal.clone());
