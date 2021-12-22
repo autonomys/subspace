@@ -138,8 +138,6 @@ pub struct UpdatedSolutionRangeDescriptor {
 pub struct UpdatedSaltDescriptor {
     /// Salt used for challenges.
     pub salt: Salt,
-    /// Salt used for challenges after `salt`.
-    pub next_salt: Salt,
 }
 
 /// A digest item which is usable with Subspace consensus.

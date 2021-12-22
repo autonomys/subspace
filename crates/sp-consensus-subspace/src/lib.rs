@@ -248,7 +248,7 @@ pub struct Salts {
     /// Salt used for challenges.
     pub salt: Salt,
     /// Salt used for challenges after `salt`.
-    pub next_salt: Salt,
+    pub next_salt: Option<Salt>,
 }
 
 sp_api::decl_runtime_apis! {
