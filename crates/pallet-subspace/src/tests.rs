@@ -17,107 +17,33 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_root_block, generate_equivocation_proof, go_to_block, make_pre_digest, new_test_ext,
-    progress_to_block, Event, Origin, ReportLongevity, Subspace, System, Test,
-    INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    create_root_block, generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
+    Event, Origin, ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
+    SLOT_PROBABILITY,
 };
-use crate::{
-    compute_randomness, Call, Config, CurrentSlot, EpochConfig, EpochStart, Error, NextEpochConfig,
-    NextRandomness, SegmentIndex, UnderConstruction, WeightInfo,
-};
+use crate::{Call, Config, CurrentSlot, Error, WeightInfo};
 use codec::Encode;
-use frame_support::traits::OnFinalize;
 use frame_support::weights::{GetDispatchInfo, Pays};
-use frame_support::{assert_err, assert_noop, assert_ok};
+use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor,
-};
-use sp_consensus_subspace::{digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration};
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     ValidTransaction,
 };
-use sp_runtime::{DigestItem, DispatchError};
-use subspace_core_primitives::RANDOMNESS_LENGTH;
-
-const EMPTY_RANDOMNESS: [u8; 32] = [
-    74, 25, 49, 128, 53, 97, 244, 49, 222, 202, 176, 2, 231, 66, 95, 10, 133, 49, 213, 228, 86,
-    161, 164, 127, 217, 153, 138, 37, 48, 192, 248, 0,
-];
 
 #[test]
-fn empty_randomness_is_correct() {
-    let s = compute_randomness([0; RANDOMNESS_LENGTH], 0, std::iter::empty(), None);
-    assert_eq!(s, EMPTY_RANDOMNESS);
-}
-
-#[test]
-fn first_block_epoch_zero_start() {
-    let mut ext = new_test_ext();
-
-    ext.execute_with(|| {
-        let genesis_slot = Slot::from(100);
-        let solution = Solution::genesis_solution();
-        let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
-        let pre_digest = make_pre_digest(genesis_slot, solution);
-
-        assert_eq!(Subspace::genesis_slot(), Slot::from(0));
-        System::initialize(&1, &Default::default(), &pre_digest, Default::default());
-
-        Subspace::do_initialize(1);
-        assert_eq!(Subspace::genesis_slot(), genesis_slot);
-        assert_eq!(Subspace::current_slot(), genesis_slot);
-        assert_eq!(Subspace::epoch_index(), 0);
-
-        Subspace::on_finalize(1);
-        let header = System::finalize();
-
-        assert_eq!(SegmentIndex::<Test>::get(), 0);
-        assert_eq!(UnderConstruction::<Test>::get(0), vec![por_randomness]);
-        assert_eq!(Subspace::randomness(), [0; 32]);
-        assert_eq!(NextRandomness::<Test>::get(), [0; 32]);
-
-        assert_eq!(header.digest.logs.len(), 4);
-        assert_eq!(pre_digest.logs.len(), 1);
-        assert_eq!(header.digest.logs[0], pre_digest.logs[0]);
-
-        let consensus_digest = DigestItem::next_epoch_descriptor(NextEpochDescriptor {
-            randomness: Subspace::randomness(),
-        });
-
-        // first epoch descriptor has same info as last.
-        assert_eq!(header.digest.logs[1], consensus_digest.clone())
-    })
-}
-
-#[test]
-fn can_predict_next_epoch_change() {
+fn genesis_slot_is_correct() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
-        assert_eq!(<Test as Config>::EpochDuration::get(), 3);
         // this sets the genesis slot to 6;
         go_to_block(&keypair, 1, 6);
         assert_eq!(*Subspace::genesis_slot(), 6);
-        assert_eq!(*Subspace::current_slot(), 6);
-        assert_eq!(Subspace::epoch_index(), 0);
-
-        progress_to_block(&keypair, 5);
-
-        assert_eq!(Subspace::epoch_index(), 5 / 3);
-        assert_eq!(*Subspace::current_slot(), 10);
-
-        // next epoch change will be at
-        assert_eq!(*Subspace::current_epoch_start(), 9); // next change will be 12, 2 slots from now
-        assert_eq!(
-            Subspace::next_expected_epoch_change(System::block_number()),
-            Some(5 + 2)
-        );
     })
 }
 
@@ -211,124 +137,6 @@ fn can_update_salt_on_eon_change() {
         // And next salt must be removed
         assert_eq!(Subspace::next_salt(), None);
     })
-}
-
-#[test]
-fn can_enact_next_config() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        assert_eq!(<Test as Config>::EpochDuration::get(), 3);
-        // this sets the genesis slot to 6;
-        go_to_block(&keypair, 1, 6);
-        assert_eq!(*Subspace::genesis_slot(), 6);
-        assert_eq!(*Subspace::current_slot(), 6);
-        assert_eq!(Subspace::epoch_index(), 0);
-        go_to_block(&keypair, 2, 7);
-
-        let current_config = SubspaceEpochConfiguration { c: (0, 4) };
-
-        let next_config = SubspaceEpochConfiguration { c: (1, 4) };
-
-        let next_next_config = SubspaceEpochConfiguration { c: (2, 4) };
-
-        EpochConfig::<Test>::put(current_config);
-        NextEpochConfig::<Test>::put(next_config.clone());
-
-        assert_eq!(NextEpochConfig::<Test>::get(), Some(next_config.clone()));
-
-        Subspace::plan_config_change(
-            Origin::root(),
-            NextConfigDescriptor::V1 {
-                c: next_next_config.c,
-            },
-        )
-        .unwrap();
-
-        progress_to_block(&keypair, 4);
-        Subspace::on_finalize(9);
-        let header = System::finalize();
-
-        assert_eq!(EpochConfig::<Test>::get(), Some(next_config));
-        assert_eq!(
-            NextEpochConfig::<Test>::get(),
-            Some(next_next_config.clone())
-        );
-
-        let consensus_digest = DigestItem::next_config_descriptor(NextConfigDescriptor::V1 {
-            c: next_next_config.c,
-        });
-
-        assert_eq!(header.digest.logs[4], consensus_digest.clone())
-    });
-}
-
-#[test]
-fn only_root_can_enact_config_change() {
-    new_test_ext().execute_with(|| {
-        let next_config = NextConfigDescriptor::V1 { c: (1, 4) };
-
-        let res = Subspace::plan_config_change(Origin::none(), next_config.clone());
-
-        assert_noop!(res, DispatchError::BadOrigin);
-
-        let res = Subspace::plan_config_change(Origin::signed(1), next_config.clone());
-
-        assert_noop!(res, DispatchError::BadOrigin);
-
-        let res = Subspace::plan_config_change(Origin::root(), next_config);
-
-        assert!(res.is_ok());
-    });
-}
-
-#[test]
-fn can_fetch_current_and_next_epoch_data() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        EpochConfig::<Test>::put(SubspaceEpochConfiguration { c: (1, 4) });
-
-        progress_to_block(&keypair, System::block_number() + 4);
-
-        let current_epoch = Subspace::current_epoch();
-        assert_eq!(current_epoch.epoch_index, 1);
-        assert_eq!(*current_epoch.start_slot, 4);
-
-        let next_epoch = Subspace::next_epoch();
-        assert_eq!(next_epoch.epoch_index, 2);
-        assert_eq!(*next_epoch.start_slot, 7);
-
-        // the on-chain randomness should always change across epochs
-        assert_ne!(current_epoch.randomness, next_epoch.randomness);
-    });
-}
-
-#[test]
-fn tracks_block_numbers_when_current_and_previous_epoch_started() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        // an epoch is 3 slots therefore at block 8 we should be in epoch #3
-        // with the previous epochs having the following blocks:
-        // epoch 1 - [1, 2, 3]
-        // epoch 2 - [4, 5, 6]
-        // epoch 3 - [7, 8, 9]
-        progress_to_block(&keypair, 8);
-
-        let (last_epoch, current_epoch) = EpochStart::<Test>::get();
-
-        assert_eq!(last_epoch, 4);
-        assert_eq!(current_epoch, 7);
-
-        // once we reach block 10 we switch to epoch #4
-        progress_to_block(&keypair, 10);
-
-        let (last_epoch, current_epoch) = EpochStart::<Test>::get();
-
-        assert_eq!(last_epoch, 7);
-        assert_eq!(current_epoch, 10);
-    });
 }
 
 #[test]

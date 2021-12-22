@@ -16,17 +16,13 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{
-    ConsensusLog, FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration,
-    SUBSPACE_ENGINE_ID,
-};
-use codec::{Decode, Encode, MaxEncodedLen};
-use scale_info::TypeInfo;
+use crate::{ConsensusLog, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID};
+use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::generic::DigestItemRef;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, Salt, Signature, Tag};
 
 /// Farmer solution for slot challenge.
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
@@ -86,34 +82,6 @@ impl<AccountId> PreDigest<AccountId> {
     }
 }
 
-/// Information about the next epoch. This is broadcast in the first block
-/// of the epoch.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct NextEpochDescriptor {
-    /// The value of randomness to use for the slot-assignment.
-    pub randomness: Randomness,
-}
-
-/// Information about the next epoch config, if changed. This is broadcast in the first
-/// block of the epoch, and applies using the same rules as `NextEpochDescriptor`.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-pub enum NextConfigDescriptor {
-    /// Version 1.
-    #[codec(index = 1)]
-    V1 {
-        /// Value of `c` in `SubspaceEpochConfiguration`.
-        c: (u64, u64),
-    },
-}
-
-impl From<NextConfigDescriptor> for SubspaceEpochConfiguration {
-    fn from(desc: NextConfigDescriptor) -> Self {
-        match desc {
-            NextConfigDescriptor::V1 { c } => Self { c },
-        }
-    }
-}
-
 /// Information about the solution range for the block.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct SolutionRangeDescriptor {
@@ -158,18 +126,6 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
-    /// Construct a digest item which contains a next epoch descriptor.
-    fn next_epoch_descriptor(next_epoch: NextEpochDescriptor) -> Self;
-
-    /// If this item is a Subspace epoch descriptor, return it.
-    fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor>;
-
-    /// Construct a digest item which contains a next config descriptor.
-    fn next_config_descriptor(next_config: NextConfigDescriptor) -> Self;
-
-    /// If this item is a Subspace config descriptor, return it.
-    fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor>;
-
     /// Construct a digest item which contains a solution range descriptor.
     fn solution_range_descriptor(solution_range: SolutionRangeDescriptor) -> Self;
 
@@ -212,40 +168,6 @@ impl CompatibleDigestItem for DigestItem {
 
     fn as_subspace_seal(&self) -> Option<FarmerSignature> {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
-    }
-
-    fn next_epoch_descriptor(next_epoch: NextEpochDescriptor) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::NextEpoch(next_epoch).encode(),
-        )
-    }
-
-    fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::NextEpoch(next_epoch) = c {
-                Some(next_epoch)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn next_config_descriptor(next_config: NextConfigDescriptor) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::NextConfig(next_config).encode(),
-        )
-    }
-
-    fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::NextConfig(next_config) = c {
-                Some(next_config)
-            } else {
-                None
-            }
-        })
     }
 
     fn solution_range_descriptor(solution_range: SolutionRangeDescriptor) -> Self {

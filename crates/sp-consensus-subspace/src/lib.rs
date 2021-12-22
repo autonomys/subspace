@@ -24,14 +24,10 @@ pub mod inherents;
 pub mod offence;
 
 use crate::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
+    UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
-use codec::{Decode, Encode, MaxEncodedLen};
-use scale_info::TypeInfo;
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
-use sp_consensus_slots::Slot;
+use codec::{Decode, Encode};
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
@@ -70,15 +66,6 @@ pub type SubspaceBlockWeight = u128;
 /// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
 enum ConsensusLog {
-    /// The epoch has changed. This provides information about the _next_
-    /// epoch - information about the _current_ epoch (i.e. the one we've just
-    /// entered) should already be available earlier in the chain.
-    #[codec(index = 1)]
-    NextEpoch(NextEpochDescriptor),
-    /// The epoch has changed, and the epoch after the current one will
-    /// enact different epoch configurations.
-    #[codec(index = 2)]
-    NextConfig(NextConfigDescriptor),
     /// Solution range for this block.
     #[codec(index = 3)]
     SolutionRange(SolutionRangeDescriptor),
@@ -93,6 +80,7 @@ enum ConsensusLog {
     UpdatedSalt(UpdatedSaltDescriptor),
 }
 
+// TODO: Can we kill this too?
 /// Configuration data used by the Subspace consensus engine.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
 pub struct SubspaceGenesisConfiguration {
@@ -101,9 +89,6 @@ pub struct SubspaceGenesisConfiguration {
     ///
     /// Dynamic slot duration may be supported in the future.
     pub slot_duration: u64,
-
-    /// The duration of epochs in slots.
-    pub epoch_length: u64,
 
     /// A constant value that is used in the threshold calculation formula.
     /// Expressed as a rational where the first member of the tuple is the
@@ -124,19 +109,6 @@ impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
     }
 
     const SLOT_KEY: &'static [u8] = b"subspace_configuration";
-}
-
-/// Configuration data used by the Subspace consensus engine.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct SubspaceEpochConfiguration {
-    /// A constant value that is used in the threshold calculation formula.
-    /// Expressed as a rational where the first member of the tuple is the
-    /// numerator and the second is the denominator. The rational should
-    /// represent a value between 0 and 1.
-    /// In the threshold formula calculation, `1 - c` represents the probability
-    /// of a slot being empty.
-    pub c: (u64, u64),
 }
 
 /// Verifies the equivocation proof by making sure that: both headers have
@@ -199,43 +171,6 @@ where
     verify_proof().is_some()
 }
 
-/// An opaque type used to represent the key ownership proof at the runtime API
-/// boundary. The inner value is an encoded representation of the actual key
-/// ownership proof which will be parameterized when defining the runtime. At
-/// the runtime API boundary this type is unknown and as such we keep this
-/// opaque representation, implementors of the runtime API will have to make
-/// sure that all usages of `OpaqueKeyOwnershipProof` refer to the same type.
-#[derive(Decode, Encode, PartialEq)]
-pub struct OpaqueKeyOwnershipProof(Vec<u8>);
-impl OpaqueKeyOwnershipProof {
-    /// Create a new `OpaqueKeyOwnershipProof` using the given encoded
-    /// representation.
-    pub fn new(inner: Vec<u8>) -> OpaqueKeyOwnershipProof {
-        OpaqueKeyOwnershipProof(inner)
-    }
-
-    /// Try to decode this `OpaqueKeyOwnershipProof` into the given concrete key
-    /// ownership proof type.
-    pub fn decode<T: Decode>(self) -> Option<T> {
-        Decode::decode(&mut &self.0[..]).ok()
-    }
-}
-
-/// Subspace epoch information
-#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
-pub struct Epoch {
-    /// The epoch index.
-    pub epoch_index: u64,
-    /// The starting slot of the epoch.
-    pub start_slot: Slot,
-    /// The duration of this epoch.
-    pub duration: u64,
-    /// Randomness for this epoch.
-    pub randomness: Randomness,
-    /// Configuration of the epoch.
-    pub config: SubspaceEpochConfiguration,
-}
-
 /// Subspace salts used for challenges.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
 pub struct Salts {
@@ -266,16 +201,6 @@ sp_api::decl_runtime_apis! {
 
         /// Subspace salts used for challenges.
         fn salts() -> Salts;
-
-        /// Returns the slot that started the current epoch.
-        fn current_epoch_start() -> Slot;
-
-        /// Returns information regarding the current epoch.
-        fn current_epoch() -> Epoch;
-
-        /// Returns information regarding the next epoch (which was already
-        /// previously announced).
-        fn next_epoch() -> Epoch;
 
         /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
         /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local

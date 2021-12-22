@@ -17,8 +17,7 @@
 //! Test utilities
 
 use crate::{
-    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
-    NormalEpochChange, NormalEraChange,
+    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange, NormalEraChange,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
@@ -51,7 +50,7 @@ frame_support::construct_runtime!(
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
+        Subspace: pallet_subspace::{Pallet, Call, Storage, Event, ValidateUnsigned},
         OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
         Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
     }
@@ -145,7 +144,6 @@ parameter_types! {
 
 impl Config for Test {
     type Event = Event;
-    type EpochDuration = EpochDuration;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
     type EonNextSaltReveal = EonNextSaltReveal;
@@ -155,7 +153,6 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type EpochChangeTrigger = NormalEpochChange;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
 

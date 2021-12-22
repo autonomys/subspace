@@ -16,14 +16,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    find_pre_digest, subspace_err, verification, BlockSigningNotification, Epoch, Error,
-    NewSlotInfo, NewSlotNotification, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
+    find_pre_digest, subspace_err, verification, BlockSigningNotification, Error, NewSlotInfo,
+    NewSlotNotification, SubspaceLink,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
 use log::{debug, trace, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
-use sc_consensus_epochs::{descendent_query, ViableEpochDescriptor};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
 };
@@ -44,7 +43,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{AppVerify, Block as BlockT, Header, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
-use std::{borrow::Cow, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
@@ -76,12 +75,12 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
-    type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
+    type EpochData = ();
     type Claim = PreDigest<FarmerPublicKey>;
     type SyncOracle = SO;
     type JustificationSyncLink = L;
     type CreateProposer =
-        Pin<Box<dyn Future<Output = Result<E::Proposer, sp_consensus::Error>> + Send + 'static>>;
+        Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
     type BlockImport = I;
 
@@ -95,42 +94,25 @@ where
 
     fn epoch_data(
         &self,
-        parent: &B::Header,
-        slot: Slot,
+        _parent: &B::Header,
+        _slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
-        self.subspace_link
-            .epoch_changes
-            .shared_data()
-            .epoch_descriptor_for_child_of(
-                descendent_query(&*self.client),
-                &parent.hash(),
-                *parent.number(),
-                slot,
-            )
-            .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
-            .ok_or(sp_consensus::Error::InvalidAuthoritiesSet)
+        Ok(())
     }
 
     async fn claim_slot(
         &self,
         parent_header: &B::Header,
         slot: Slot,
-        epoch_descriptor: &Self::EpochData,
+        _epoch_data: &Self::EpochData,
     ) -> Option<Self::Claim> {
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let runtime_api = self.client.runtime_api();
 
-        let epoch_randomness = self
-            .subspace_link
-            .epoch_changes
-            .shared_data()
-            .viable_epoch(epoch_descriptor, |slot| {
-                Epoch::genesis(&self.subspace_link.config, slot)
-            })?
-            .as_ref()
-            .randomness;
+        // TODO: Take proper randomness from runtime storage
+        let randomness = Default::default();
 
         // Here we always use parent block as the source of information, thus on the edge of the
         // era the very first block of the era still uses solution range from the previous one,
@@ -160,7 +142,7 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+            global_challenge: subspace_solving::derive_global_challenge(&randomness, slot),
             salt,
             next_salt,
             solution_range,
@@ -235,7 +217,7 @@ where
             match verification::verify_solution::<B>(
                 &solution,
                 verification::VerifySolutionParams {
-                    epoch_randomness: &epoch_randomness,
+                    randomness: &randomness,
                     solution_range,
                     slot,
                     salt,
@@ -270,8 +252,8 @@ where
         body: Vec<B::Extrinsic>,
         storage_changes: StorageChanges<I::Transaction, B>,
         pre_digest: Self::Claim,
-        epoch_descriptor: Self::EpochData,
-    ) -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, sp_consensus::Error> {
+        _epoch_data: Self::EpochData,
+    ) -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream");
 
@@ -300,15 +282,11 @@ where
             import_block.body = Some(body);
             import_block.state_action =
                 StateAction::ApplyChanges(sc_consensus::StorageChanges::Changes(storage_changes));
-            import_block.intermediates.insert(
-                Cow::from(INTERMEDIATE_KEY),
-                Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
-            );
 
             return Ok(import_block);
         }
 
-        Err(sp_consensus::Error::CannotSign(
+        Err(ConsensusError::CannotSign(
             pre_digest.solution.public_key.to_raw_vec(),
             "Farmer didn't sign header".to_string(),
         ))
@@ -346,7 +324,7 @@ where
         Box::pin(
             self.env
                 .init(block)
-                .map_err(|e| sp_consensus::Error::ClientImport(format!("{:?}", e))),
+                .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e))),
         )
     }
 
@@ -372,7 +350,7 @@ where
     fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
         // This function is used in `sc-consensus-slots` in order to determine whether it is
         // possible to skip block production under certain circumstances, returning `None` or any
-        // number smaller than `1` disables that functionality and we don't want it
+        // number smaller or equal to `1` disables that functionality and we don't want that.
         Some(2)
     }
 }

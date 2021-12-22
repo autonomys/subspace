@@ -1,5 +1,7 @@
 # Subspace Proof-of-Storage Consensus
 
+TODO: Update this description, it is out of date
+
 Subspace is a slot-based block production mechanism which uses a Proof-of-Storage to randomly
 perform the slot allocation. On every slot, all the farmers evaluate their disk-based plot. If
 they have a tag (reflecting a commitment to a valid encoding) that it is lower than a given

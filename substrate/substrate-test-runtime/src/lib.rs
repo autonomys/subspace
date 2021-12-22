@@ -649,7 +649,6 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
-    type EpochDuration = EpochDuration;
     type EraDuration = ConstU32<5>;
     type EonDuration = ConstU64<11>;
     type EonNextSaltReveal = ConstU64<2>;
@@ -659,7 +658,6 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConstU32<10>;
     type RecordSize = ConstU32<3840>;
     type RecordedHistorySegmentSize = ConstU32<{3840 * 256 / 2}>;
-    type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
@@ -936,7 +934,6 @@ cfg_if! {
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
-                        epoch_length: <Runtime as pallet_subspace::Config>::EpochDuration::get(),
                         c: (3, 10),
                         randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
@@ -951,18 +948,6 @@ cfg_if! {
                         salt: <pallet_subspace::Pallet<Runtime>>::salt(),
                         next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
                     }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::next_epoch()
                 }
 
                 fn submit_report_equivocation_extrinsic(
@@ -1264,7 +1249,6 @@ cfg_if! {
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
-                        epoch_length: EpochDuration::get(),
                         c: (3, 10),
                         randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
@@ -1279,18 +1263,6 @@ cfg_if! {
                         salt: <pallet_subspace::Pallet<Runtime>>::salt(),
                         next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
                     }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::next_epoch()
                 }
 
                 fn submit_report_equivocation_extrinsic(

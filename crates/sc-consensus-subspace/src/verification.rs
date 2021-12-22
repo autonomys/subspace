@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification for Subspace headers.
-use super::{find_pre_digest, subspace_err, BlockT, Epoch, Error};
+use super::{find_pre_digest, subspace_err, BlockT, Error};
 use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
@@ -40,8 +40,6 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) pre_digest: Option<PreDigest<FarmerPublicKey>>,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
-    /// Epoch descriptor of the epoch this block _should_ be under, if it's valid.
-    pub(super) epoch: &'a Epoch,
     /// Solution range corresponding to this block.
     pub(super) solution_range: u64,
     /// Salt corresponding to this block.
@@ -71,7 +69,6 @@ pub(super) fn check_header<B: BlockT + Sized>(
         mut header,
         pre_digest,
         slot_now,
-        epoch,
         solution_range,
         salt,
         records_root,
@@ -114,11 +111,14 @@ pub(super) fn check_header<B: BlockT + Sized>(
         return Err(subspace_err(Error::BadSignature(pre_hash)));
     }
 
+    // TODO: Take proper randomness from runtime storage
+    let randomness = Default::default();
+
     // Verify that solution is valid
     verify_solution(
         &pre_digest.solution,
         VerifySolutionParams {
-            epoch_randomness: &epoch.randomness,
+            randomness: &randomness,
             solution_range,
             slot: pre_digest.slot,
             salt,
@@ -211,7 +211,7 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
 }
 
 pub(crate) struct VerifySolutionParams<'a> {
-    pub(crate) epoch_randomness: &'a Randomness,
+    pub(crate) randomness: &'a Randomness,
     pub(crate) solution_range: u64,
     pub(crate) slot: Slot,
     pub(crate) salt: Salt,
@@ -226,7 +226,7 @@ pub(crate) fn verify_solution<B: BlockT>(
     params: VerifySolutionParams,
 ) -> Result<(), Error<B>> {
     let VerifySolutionParams {
-        epoch_randomness,
+        randomness,
         solution_range,
         slot,
         salt,
@@ -237,7 +237,7 @@ pub(crate) fn verify_solution<B: BlockT>(
     } = params;
 
     if let Err(error) = is_local_challenge_valid(
-        derive_global_challenge(epoch_randomness, slot),
+        derive_global_challenge(randomness, slot),
         &solution.local_challenge,
         &solution.public_key,
     ) {

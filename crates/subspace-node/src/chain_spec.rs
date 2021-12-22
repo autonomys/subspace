@@ -22,8 +22,7 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
     AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, SS58Prefix, Signature,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK,
-    SSC, WASM_BINARY,
+    SudoConfig, SystemConfig, VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
 };
 
 // The URL for the telemetry server.
@@ -258,9 +257,6 @@ fn create_genesis_config(
             code: wasm_binary.to_vec(),
         },
         balances: BalancesConfig { balances },
-        subspace: SubspaceConfig {
-            epoch_config: Some(subspace_runtime::SUBSPACE_GENESIS_EPOCH_CONFIG),
-        },
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.

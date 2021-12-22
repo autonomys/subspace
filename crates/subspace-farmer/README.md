@@ -92,7 +92,7 @@ This process currently takes ~ 36 hours per TiB on a quad-core machine, but for 
 
 ### Solving
 1. Connect to a client and subscribe to `slot_notifications` via JSON-RPC.
-2. Given a global challenge as `hash(epoch_randomness || slot_index)` and `SOLUTION_RANGE`.
+2. Given a global challenge as `hash(randomness || slot_index)` and `SOLUTION_RANGE`.
 3. Derive local challenge as `hash(global_challenge || farmer_public_key_hash)`.
 4. Query the BST for the nearest tag to the local challenge.
 5. If it within `SOLUTION_RANGE` return a `SOLUTION` else return `None`
