@@ -56,12 +56,7 @@ pub type FarmerSignature = app::Signature;
 pub type FarmerPublicKey = app::Public;
 
 /// The `ConsensusEngineId` of Subspace.
-pub const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
-
-/// How many blocks to wait before running the median algorithm for relative time
-/// This will not vary from chain to chain as it is not dependent on slot duration
-/// or epoch length.
-pub const MEDIAN_ALGORITHM_CARDINALITY: usize = 1200; // arbitrary suggestion by w3f-research.
+const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerPublicKey>;
@@ -74,28 +69,28 @@ pub type SubspaceBlockWeight = u128;
 
 /// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum ConsensusLog {
+enum ConsensusLog {
     /// The epoch has changed. This provides information about the _next_
     /// epoch - information about the _current_ epoch (i.e. the one we've just
     /// entered) should already be available earlier in the chain.
     #[codec(index = 1)]
-    NextEpochData(NextEpochDescriptor),
+    NextEpoch(NextEpochDescriptor),
     /// The epoch has changed, and the epoch after the current one will
     /// enact different epoch configurations.
     #[codec(index = 2)]
-    NextConfigData(NextConfigDescriptor),
+    NextConfig(NextConfigDescriptor),
     /// Solution range for this block.
     #[codec(index = 3)]
-    SolutionRangeData(SolutionRangeDescriptor),
+    SolutionRange(SolutionRangeDescriptor),
     /// Salt for this block.
     #[codec(index = 4)]
-    SaltData(SaltDescriptor),
+    Salt(SaltDescriptor),
     /// The era has changed and the solution range has changed because of that.
     #[codec(index = 5)]
-    NextSolutionRangeData(UpdatedSolutionRangeDescriptor),
+    UpdatedSolutionRange(UpdatedSolutionRangeDescriptor),
     /// The eon has changed and the salt has changed because of that.
     #[codec(index = 6)]
-    UpdatedSaltData(UpdatedSaltDescriptor),
+    UpdatedSalt(UpdatedSaltDescriptor),
 }
 
 /// Configuration data used by the Subspace consensus engine.
@@ -160,8 +155,7 @@ where
     };
 
     let verify_seal_signature = |mut header: H, offender: &FarmerPublicKey| {
-        let seal =
-            CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&header.digest_mut().pop()?)?;
+        let seal = CompatibleDigestItem::as_subspace_seal(&header.digest_mut().pop()?)?;
         let pre_hash = header.hash();
 
         if !offender.verify(&pre_hash.as_ref(), &seal) {
