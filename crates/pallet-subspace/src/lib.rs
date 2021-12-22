@@ -28,7 +28,6 @@ mod mock;
 #[cfg(all(feature = "std", test))]
 mod tests;
 
-use codec::{Decode, Encode};
 use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
@@ -41,24 +40,21 @@ use frame_support::{
 use num_traits::float::FloatCore;
 pub use pallet::*;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{
-    digests::{
-        NextEpochDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
-        UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
-    },
-    offence::{OffenceDetails, OnOffenceHandler},
-    ConsensusLog, Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
-    SUBSPACE_ENGINE_ID,
+use sp_consensus_subspace::digests::{
+    CompatibleDigestItem, CompatibleDigestItemRef, NextEpochDescriptor, PreDigest, SaltDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
+use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
+use sp_consensus_subspace::{
+    Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
+};
+use sp_runtime::generic::{DigestItem, DigestItemRef};
+use sp_runtime::traits::{One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::{
-    generic::DigestItem,
-    traits::{One, SaturatedConversion, Saturating, Zero},
-    ConsensusEngineId,
-};
+use sp_runtime::ConsensusEngineId;
 use sp_std::prelude::*;
 use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
 
@@ -660,10 +656,11 @@ impl<T: Config> Pallet<T> {
         // so that nodes can track changes.
         let next_randomness = NextRandomness::<T>::get();
 
-        let next_epoch = NextEpochDescriptor {
-            randomness: next_randomness,
-        };
-        Self::deposit_consensus(ConsensusLog::NextEpochData(next_epoch));
+        frame_system::Pallet::<T>::deposit_log(DigestItem::next_epoch_descriptor(
+            NextEpochDescriptor {
+                randomness: next_randomness,
+            },
+        ));
 
         if let Some(next_config) = NextEpochConfig::<T>::get() {
             EpochConfig::<T>::put(next_config);
@@ -674,7 +671,9 @@ impl<T: Config> Pallet<T> {
                 pending_epoch_config_change.clone().into();
             NextEpochConfig::<T>::put(next_epoch_config);
 
-            Self::deposit_consensus(ConsensusLog::NextConfigData(pending_epoch_config_change));
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_config_descriptor(
+                pending_epoch_config_change,
+            ));
         }
     }
 
@@ -717,7 +716,7 @@ impl<T: Config> Pallet<T> {
         SolutionRange::<T>::put(solution_range);
         EraStartSlot::<T>::put(current_slot);
 
-        Self::deposit_consensus(ConsensusLog::NextSolutionRangeData(
+        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_solution_range_descriptor(
             UpdatedSolutionRangeDescriptor { solution_range },
         ));
     }
@@ -743,9 +742,9 @@ impl<T: Config> Pallet<T> {
         EonIndex::<T>::put(eon_index);
         Salt::<T>::put(salt);
 
-        Self::deposit_consensus(ConsensusLog::UpdatedSaltData(UpdatedSaltDescriptor {
-            salt,
-        }));
+        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_salt_descriptor(
+            UpdatedSaltDescriptor { salt },
+        ));
     }
 
     /// Finds the start slot of the current epoch. only guaranteed to
@@ -826,11 +825,6 @@ impl<T: Config> Pallet<T> {
             .into()
     }
 
-    fn deposit_consensus<U: Encode>(new: U) {
-        let log = DigestItem::Consensus(SUBSPACE_ENGINE_ID, new.encode());
-        <frame_system::Pallet<T>>::deposit_log(log)
-    }
-
     fn deposit_randomness(randomness: &subspace_core_primitives::Randomness) {
         let segment_idx = SegmentIndex::<T>::get();
         let mut segment = UnderConstruction::<T>::get(&segment_idx);
@@ -854,14 +848,7 @@ impl<T: Config> Pallet<T> {
         let maybe_pre_digest: Option<PreDigest<T::AccountId>> = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
-            .filter_map(|s| s.as_pre_runtime())
-            .find_map(|(id, mut data)| {
-                if id == SUBSPACE_ENGINE_ID {
-                    PreDigest::decode(&mut data).ok()
-                } else {
-                    None
-                }
-            });
+            .find_map(|s| s.as_subspace_pre_digest());
 
         let maybe_randomness: MaybeRandomness = maybe_pre_digest.map(|digest| {
             // on the first non-zero block (i.e. block #1)
@@ -871,14 +858,13 @@ impl<T: Config> Pallet<T> {
                 GenesisSlot::<T>::put(digest.slot);
                 debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
 
-                // deposit a log because this is the first block in epoch #0
-                // we use the same values as genesis because we haven't collected any
-                // randomness yet.
-                let next = NextEpochDescriptor {
-                    randomness: Self::randomness(),
-                };
-
-                Self::deposit_consensus(ConsensusLog::NextEpochData(next))
+                // Deposit a log because this is the first block in epoch #0 we use the same values
+                // as genesis because we haven't collected any randomness yet.
+                frame_system::Pallet::<T>::deposit_log(DigestItem::next_epoch_descriptor(
+                    NextEpochDescriptor {
+                        randomness: Self::randomness(),
+                    },
+                ))
             }
 
             // the slot number of the current block being initialized
@@ -903,11 +889,13 @@ impl<T: Config> Pallet<T> {
         AuthorPorRandomness::<T>::put(maybe_randomness);
 
         // Deposit solution range data such that light client can validate blocks later.
-        Self::deposit_consensus(ConsensusLog::SolutionRangeData(SolutionRangeDescriptor {
-            solution_range: SolutionRange::<T>::get(),
-        }));
+        frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
+            SolutionRangeDescriptor {
+                solution_range: SolutionRange::<T>::get(),
+            },
+        ));
         // Deposit salt data such that light client can validate blocks later.
-        Self::deposit_consensus(ConsensusLog::SaltData(SaltDescriptor {
+        frame_system::Pallet::<T>::deposit_log(DigestItem::salt_descriptor(SaltDescriptor {
             salt: Salt::<T>::get(),
         }));
 
@@ -1149,15 +1137,13 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
     where
         I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
     {
-        digests.into_iter().find_map(|(id, mut data)| {
-            if id == SUBSPACE_ENGINE_ID {
-                PreDigest::decode(&mut data)
-                    .map(|pre_digest| pre_digest.solution.public_key)
-                    .ok()
-            } else {
-                None
-            }
-        })
+        digests
+            .into_iter()
+            .find_map(|(id, data)| {
+                // TODO: Simplify once https://github.com/paritytech/substrate/pull/10536 is merged
+                DigestItemRef::PreRuntime(&id, &data.to_vec()).as_subspace_pre_digest()
+            })
+            .map(|pre_digest| pre_digest.solution.public_key)
     }
 }
 

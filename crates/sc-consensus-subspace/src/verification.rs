@@ -90,7 +90,8 @@ pub(super) fn check_header<B: BlockT + Sized>(
         .pop()
         .ok_or_else(|| subspace_err(Error::HeaderUnsealed(header.hash())))?;
 
-    let sig = CompatibleDigestItem::<FarmerPublicKey>::as_subspace_seal(&seal)
+    let sig = seal
+        .as_subspace_seal()
         .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
 
     // the pre-hash of the header doesn't include the seal
