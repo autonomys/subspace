@@ -43,6 +43,7 @@ use cirrus_node_primitives::{
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
+use subspace_core_primitives::Signature;
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
@@ -327,6 +328,7 @@ where
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
+		_solution_signature: Signature,
 	) -> Option<ProcessorResult> {
 		self.process_bundles_impl(primary_hash, bundles).await
 	}
@@ -397,11 +399,11 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 
 			bundler.produce_bundle(slot_info).instrument(bundler_span_clone.clone()).boxed()
 		}),
-		processor: Box::new(move |primary_hash, bundles| {
+		processor: Box::new(move |primary_hash, bundles, solution_signature| {
 			let processor = executor.clone();
 
 			processor
-				.process_bundles(primary_hash, bundles)
+				.process_bundles(primary_hash, bundles, solution_signature)
 				.instrument(span.clone())
 				.boxed()
 		}),

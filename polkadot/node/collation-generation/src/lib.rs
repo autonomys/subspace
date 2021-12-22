@@ -37,7 +37,7 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_extract_bundles, request_pending_head,
+	request_extract_bundles, request_extract_pre_digest, request_pending_head,
 };
 use std::sync::Arc;
 
@@ -310,7 +310,39 @@ async fn process_primary_block<Context: SubsystemContext>(
 
 	let bundles = request_extract_bundles(block_hash, extrinsics, ctx.sender()).await.await??;
 
-	let execution_receipt = match (config.processor)(block_hash, bundles).await {
+	let header = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BlockHeader(block_hash, tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
+				return Ok(())
+			},
+			Ok(None) => {
+				tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
+				return Ok(())
+			},
+			Ok(Some(h)) => h,
+		}
+	};
+
+	let pre_digest_validity =
+		request_extract_pre_digest(block_hash, header, ctx.sender()).await.await??;
+
+	let solution_signature = match pre_digest_validity {
+		Ok(pre_digest) => pre_digest.solution.signature,
+		Err(e) => {
+			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to extract Subspace pre-runtime digest");
+			return Ok(())
+		},
+	};
+
+	let execution_receipt = match (config.processor)(block_hash, bundles, solution_signature).await
+	{
 		Some(processor_result) => processor_result.to_execution_receipt(),
 		None => {
 			tracing::debug!(

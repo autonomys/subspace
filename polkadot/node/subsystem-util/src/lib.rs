@@ -50,6 +50,10 @@ use futures::{
 };
 use pin_project::pin_project;
 use polkadot_node_jaeger as jaeger;
+use sp_consensus_subspace::{
+	digests::{PreDigest, PreDigestError},
+	FarmerPublicKey,
+};
 use sp_core::traits::SpawnNamed;
 use sp_executor::OpaqueBundle;
 use sp_runtime::OpaqueExtrinsic;
@@ -63,7 +67,7 @@ use std::{
 	task::{Context, Poll},
 	time::Duration,
 };
-use subspace_runtime_primitives::Hash;
+use subspace_runtime_primitives::{opaque::Header, Hash};
 use thiserror::Error;
 
 pub use metered_channel as metered;
@@ -185,6 +189,7 @@ macro_rules! specialize_requests {
 specialize_requests! {
 	fn request_pending_head() -> Option<Hash>; PendingHead;
 	fn request_extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>; ExtractBundles;
+	fn request_extract_pre_digest(header: Header) -> Result<PreDigest<FarmerPublicKey>, PreDigestError>; ExtractPreDigest;
 }
 
 struct AbortOnDrop(future::AbortHandle);
