@@ -307,8 +307,6 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         );
     }
 
-    let role = config.role.clone();
-    let force_authoring = config.force_authoring;
     let backoff_authoring_blocks: Option<()> = None;
     let prometheus_registry = config.prometheus_registry().cloned();
 
@@ -316,7 +314,8 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let overseer_handle = if let Some(_keystore) = keystore_container.local_keystore() {
+    // TODO: In the future we want `--executor` CLI flag instead
+    let overseer_handle = if config.role.is_authority() {
         let active_leaves = active_leaves(&select_chain, &*client).await?;
 
         let spawner = task_manager.spawn_handle();
@@ -361,13 +360,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         {
             let handle = handle.clone();
             let overseer_client = client.clone();
-            // TODO: In order to make this stream available, the embedded subspace node has to be an
-            // authority node for now, but we'd like to avoid this eventually.
             let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
-            assert!(
-                role.is_authority(),
-                "Authority node is required by overseer"
-            );
             task_manager.spawn_essential_handle().spawn_blocking(
                 "overseer",
                 Some("overseer"),
@@ -408,7 +401,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         None
     };
 
-    if role.is_authority() {
+    if config.role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -460,7 +453,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
                     }
                 }
             },
-            force_authoring,
+            force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link,
             can_author_with,
