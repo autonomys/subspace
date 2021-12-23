@@ -26,7 +26,7 @@ use sp_core::bytes;
 use sp_executor::{ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
-use subspace_core_primitives::{Signature, Tag};
+use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::{BlockNumber, Hash};
 
 /// Data required to produce bundles on executor node.
@@ -166,7 +166,7 @@ pub type ProcessorFn = Box<
     dyn Fn(
             Hash,
             Vec<OpaqueBundle>,
-            Signature,
+            Randomness,
         ) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
         + Send
         + Sync,

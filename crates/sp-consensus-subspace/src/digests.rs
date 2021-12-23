@@ -29,7 +29,7 @@ use sp_runtime::{DigestItem, RuntimeDebug};
 use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
 
 /// Farmer solution for slot challenge.
-#[derive(PartialEq, Clone, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, RuntimeDebug, Encode, Decode)]
 pub struct Solution<AccountId> {
     /// Public key of the farmer that created the solution
     pub public_key: AccountId,
@@ -64,7 +64,7 @@ where
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
-#[derive(PartialEq, Clone, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, RuntimeDebug, Encode, Decode)]
 pub struct PreDigest<AccountId> {
     /// Slot
     pub slot: Slot,
@@ -84,28 +84,6 @@ impl<AccountId> PreDigest<AccountId> {
         let bidirectional_diff = diff.min(diff2);
         u128::from(u64::MAX - bidirectional_diff)
     }
-}
-
-impl<AccountId> PreDigest<AccountId>
-where
-    AccountId: UncheckedFrom<[u8; 32]>,
-{
-    /// Dummy PreDigest for the genesis block.
-    pub fn genesis_pre_digest() -> Self {
-        Self {
-            slot: Slot::from(0),
-            solution: Solution::genesis_solution(),
-        }
-    }
-}
-
-/// Error type when extracting a pre-runtime digest from the header.
-#[derive(PartialEq, Clone, RuntimeDebug, Encode, Decode)]
-pub enum PreDigestError {
-    /// No Subspace pre-runtime digest found.
-    NoDigest,
-    /// Multiple Subspace pre-runtime digests.
-    MultipleDigests,
 }
 
 /// Information about the next epoch. This is broadcast in the first block

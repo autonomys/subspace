@@ -2,10 +2,7 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
-use sp_runtime::{
-	generic::BlockId,
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT},
-};
+use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 use std::{
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
@@ -14,24 +11,22 @@ use std::{
 use cirrus_node_primitives::ProcessorResult;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{ExecutionReceipt, OpaqueBundle};
-use subspace_core_primitives::Signature;
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
 use super::{Executor, LOG_TARGET};
 use codec::{Decode, Encode};
 
-/// Shuffles the extrinsics in a deterministic way, using given `signature` as the randomness
-/// source.
+/// Shuffles the extrinsics in a deterministic way.
 ///
 /// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
 /// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
 /// while the order of items inside the same group is still maintained.
 fn shuffle_extrinsics<Extrinsic: Debug>(
 	extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
-	signature: Signature,
+	shuffling_seed: Randomness,
 ) -> Vec<Extrinsic> {
-	let seed = BlakeTwo256::hash_of(&signature);
-	let mut rng = ChaCha8Rng::from_seed(seed.into());
+	let mut rng = ChaCha8Rng::from_seed(shuffling_seed);
 
 	let mut positions = extrinsics
 		.iter()
@@ -79,7 +74,7 @@ where
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
-		solution_signature: Signature,
+		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
 		let mut extrinsics = bundles
 			.into_iter()
@@ -137,7 +132,7 @@ where
 		};
 
 		let _final_extrinsics =
-			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, solution_signature);
+			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.
@@ -171,6 +166,7 @@ where
 mod tests {
 	use super::*;
 	use sp_keyring::sr25519::Keyring;
+	use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 
 	#[test]
 	fn shuffle_extrinsics_should_work() {
@@ -188,12 +184,12 @@ mod tests {
 			(Some(charlie), 31),
 			(None, 101),
 			(None, 102),
-			(Some(alice), 13),
+			(Some(alice), 12),
 		];
 
-		let dummy_signature = [1u8; 64];
-		let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_signature.into());
+		let dummy_seed = BlakeTwo256::hash_of(&[1u8; 64]).into();
+		let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_seed);
 
-		assert_eq!(shuffled_extrinsics, vec![100, 30, 10, 1, 11, 101, 31, 13, 102, 2]);
+		assert_eq!(shuffled_extrinsics, vec![100, 30, 10, 1, 11, 101, 31, 12, 102, 2]);
 	}
 }

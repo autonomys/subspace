@@ -37,7 +37,7 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_extract_bundles, request_extract_pre_digest, request_pending_head,
+	request_extract_bundles, request_extrinsics_shuffling_seed, request_pending_head,
 };
 use std::sync::Arc;
 
@@ -330,19 +330,11 @@ async fn process_primary_block<Context: SubsystemContext>(
 		}
 	};
 
-	let pre_digest_validity =
-		request_extract_pre_digest(block_hash, header, ctx.sender()).await.await??;
+	let shuffling_seed = request_extrinsics_shuffling_seed(block_hash, header, ctx.sender())
+		.await
+		.await??;
 
-	let solution_signature = match pre_digest_validity {
-		Ok(pre_digest) => pre_digest.solution.signature,
-		Err(e) => {
-			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to extract Subspace pre-runtime digest");
-			return Ok(())
-		},
-	};
-
-	let execution_receipt = match (config.processor)(block_hash, bundles, solution_signature).await
-	{
+	let execution_receipt = match (config.processor)(block_hash, bundles, shuffling_seed).await {
 		Some(processor_result) => processor_result.to_execution_receipt(),
 		None => {
 			tracing::debug!(

@@ -27,12 +27,9 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_consensus_subspace::{
-	digests::{PreDigest, PreDigestError},
-	FarmerPublicKey,
-};
 use sp_executor::{ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::OpaqueExtrinsic;
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
 
 /// Subsystem messages where each message is always bound to a relay parent.
@@ -119,11 +116,8 @@ pub enum RuntimeApiRequest {
 	SubmitFraudProof(FraudProof),
 	/// Extract the bundles from the extrinsics of a block.
 	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<OpaqueBundle>>),
-	/// Extract the Subspace pre-runtime digest from a header.
-	ExtractPreDigest(
-		BlockHeader,
-		RuntimeApiSender<Result<PreDigest<FarmerPublicKey>, PreDigestError>>,
-	),
+	/// Get the randomness seed for extrinsics shuffling.
+	ExtrinsicsShufflingSeed(BlockHeader, RuntimeApiSender<Randomness>),
 	/// Get the pending head of executor chain.
 	PendingHead(RuntimeApiSender<Option<Hash>>),
 }
