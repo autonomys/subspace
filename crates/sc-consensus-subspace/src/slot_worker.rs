@@ -23,13 +23,14 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use log::{debug, trace, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
+use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
-    BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
+    BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
@@ -68,10 +69,10 @@ where
     C: ProvideRuntimeApi<B> + HeaderBackend<B> + HeaderMetadata<B, Error = ClientError> + 'static,
     C::Api: SubspaceApi<B>,
     E: Environment<B, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
-    I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
+    E::Proposer: Proposer<B, Error = Error, Transaction = TransactionFor<C, B>>,
+    I: BlockImport<B, Transaction = TransactionFor<C, B>> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone,
-    L: sc_consensus::JustificationSyncLink<B>,
+    L: JustificationSyncLink<B>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
@@ -250,10 +251,10 @@ where
         header: B::Header,
         header_hash: &B::Hash,
         body: Vec<B::Extrinsic>,
-        storage_changes: StorageChanges<I::Transaction, B>,
+        storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, B>,
         pre_digest: Self::Claim,
         _epoch_data: Self::EpochData,
-    ) -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, ConsensusError> {
+    ) -> Result<BlockImportParams<B, I::Transaction>, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream");
 
@@ -281,7 +282,7 @@ where
             import_block.post_digests.push(digest_item);
             import_block.body = Some(body);
             import_block.state_action =
-                StateAction::ApplyChanges(sc_consensus::StorageChanges::Changes(storage_changes));
+                StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
 
             return Ok(import_block);
         }
@@ -342,7 +343,7 @@ where
             slot_info,
             &self.block_proposal_slot_portion,
             self.max_block_proposal_slot_portion.as_ref(),
-            sc_consensus_slots::SlotLenienceType::Exponential,
+            SlotLenienceType::Exponential,
             self.logging_target(),
         )
     }

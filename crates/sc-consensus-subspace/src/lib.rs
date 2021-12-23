@@ -67,12 +67,13 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
 use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
-use sc_consensus::{
-    block_import::{
-        BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
-    },
-    import_queue::{BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier},
+use sc_consensus::block_import::{
+    BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
+use sc_consensus::import_queue::{
+    BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
+};
+use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
     SlotProportion,
@@ -398,7 +399,7 @@ where
         + Sync
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
-    L: sc_consensus::JustificationSyncLink<Block> + 'static,
+    L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
