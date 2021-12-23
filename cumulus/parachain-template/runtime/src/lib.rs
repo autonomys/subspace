@@ -24,14 +24,13 @@ use sp_version::RuntimeVersion;
 pub use cirrus_primitives::{AccountId, Address, Balance, BlockNumber, Hash, Index, Signature};
 use frame_support::{
 	construct_runtime, parameter_types,
-	traits::Everything,
+	traits::{ConstU16, ConstU32, Everything},
 	weights::{
 		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
 		DispatchClass, Weight, WeightToFeeCoefficient, WeightToFeeCoefficients,
 		WeightToFeePolynomial,
 	},
 };
-use frame_support::traits::{ConstU16, ConstU32};
 use frame_system::limits::{BlockLength, BlockWeights};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 

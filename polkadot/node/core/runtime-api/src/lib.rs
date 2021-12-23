@@ -115,6 +115,7 @@ where
 			SubmitTransactionBundle(..) => {},
 			SubmitFraudProof(..) => {},
 			ExtractBundles(..) => {},
+			ExtrinsicsShufflingSeed(..) => {},
 			PendingHead(..) => {},
 		}
 	}
@@ -152,6 +153,7 @@ where
 			Request::SubmitTransactionBundle(..) => None,
 			Request::SubmitFraudProof(..) => None,
 			Request::ExtractBundles(..) => None,
+			Request::ExtrinsicsShufflingSeed(..) => None,
 			Request::PendingHead(..) => None,
 		}
 	}
@@ -309,7 +311,17 @@ where
 
 			res.ok().map(|_res| RequestResult::ExtractBundles(relay_parent));
 		},
+		Request::ExtrinsicsShufflingSeed(header, sender) => {
+			let api = client.runtime_api();
+			let res = api
+				.extrinsics_shuffling_seed(&BlockId::Hash(relay_parent), header)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
 
+			let _ = sender.send(res.clone());
+
+			res.ok().map(|_res| RequestResult::ExtrinsicsShufflingSeed(relay_parent));
+		},
 		Request::PendingHead(sender) => {
 			let api = client.runtime_api();
 			let res = api

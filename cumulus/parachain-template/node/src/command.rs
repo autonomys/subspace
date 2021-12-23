@@ -336,8 +336,8 @@ impl CliConfiguration<Self> for RelayChainCli {
 		_logger_hook: F,
 		_config: &sc_service::Configuration,
 	) -> Result<()>
-		where
-			F: FnOnce(&mut sc_cli::LoggerBuilder, &sc_service::Configuration),
+	where
+		F: FnOnce(&mut sc_cli::LoggerBuilder, &sc_service::Configuration),
 	{
 		unreachable!("PolkadotCli is never initialized; qed");
 	}

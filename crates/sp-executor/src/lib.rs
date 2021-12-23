@@ -24,6 +24,7 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as 
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use subspace_core_primitives::Randomness;
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -139,6 +140,9 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;
+
+        /// Generates a randomness seed for extrinsics shuffling.
+        fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
         /// Returns the block hash given the block number.
         fn head_hash(
