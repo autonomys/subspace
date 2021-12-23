@@ -37,7 +37,7 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_extract_bundles, request_pending_head,
+	request_extract_bundles, request_extrinsics_shuffling_seed, request_pending_head,
 };
 use std::sync::Arc;
 
@@ -310,7 +310,31 @@ async fn process_primary_block<Context: SubsystemContext>(
 
 	let bundles = request_extract_bundles(block_hash, extrinsics, ctx.sender()).await.await??;
 
-	let execution_receipt = match (config.processor)(block_hash, bundles).await {
+	let header = {
+		let (tx, rx) = oneshot::channel();
+		ctx.send_message(ChainApiMessage::BlockHeader(block_hash, tx)).await;
+		match rx.await? {
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					?err,
+					"Chain API subsystem temporarily unreachable"
+				);
+				return Ok(())
+			},
+			Ok(None) => {
+				tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
+				return Ok(())
+			},
+			Ok(Some(h)) => h,
+		}
+	};
+
+	let shuffling_seed = request_extrinsics_shuffling_seed(block_hash, header, ctx.sender())
+		.await
+		.await??;
+
+	let execution_receipt = match (config.processor)(block_hash, bundles, shuffling_seed).await {
 		Some(processor_result) => processor_result.to_execution_receipt(),
 		None => {
 			tracing::debug!(

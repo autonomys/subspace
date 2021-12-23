@@ -797,6 +797,8 @@ dependencies = [
  "parking_lot",
  "polkadot-node-subsystem",
  "polkadot-overseer",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
  "sc-client-api",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -805,8 +807,10 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-executor",
+ "sp-keyring",
  "sp-runtime",
  "sp-trie",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -5071,6 +5075,7 @@ dependencies = [
  "smallvec",
  "sp-executor",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -5091,6 +5096,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -7438,6 +7444,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-trie",
+ "subspace-core-primitives",
 ]
 
 [[package]]

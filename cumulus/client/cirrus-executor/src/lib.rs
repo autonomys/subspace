@@ -45,6 +45,7 @@ use cirrus_node_primitives::{
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
@@ -311,8 +312,9 @@ where
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
+		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
-		self.process_bundles_impl(primary_hash, bundles).await
+		self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await
 	}
 }
 
@@ -453,11 +455,11 @@ where
 
 			bundler.produce_bundle(slot_info).instrument(bundler_span_clone.clone()).boxed()
 		}),
-		processor: Box::new(move |primary_hash, bundles| {
+		processor: Box::new(move |primary_hash, bundles, shuffling_seed| {
 			let processor = processor_clone.clone();
 
 			processor
-				.process_bundles(primary_hash, bundles)
+				.process_bundles(primary_hash, bundles, shuffling_seed)
 				.instrument(span.clone())
 				.boxed()
 		}),

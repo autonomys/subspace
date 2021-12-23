@@ -37,6 +37,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
 use sp_api::impl_runtime_apis;
+use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     Epoch, EquivocationProof, FarmerPublicKey, Salts, SubspaceEpochConfiguration,
     SubspaceGenesisConfiguration,
@@ -44,8 +45,8 @@ use sp_consensus_subspace::{
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Header as HeaderT,
-    PostDispatchInfoOf, Zero,
+    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Hash as HashT,
+    Header as HeaderT, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -57,7 +58,7 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 pub use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -746,6 +747,28 @@ fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
         .collect()
 }
 
+fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
+    if header.number().is_zero() {
+        Randomness::default()
+    } else {
+        let mut pre_digest: Option<_> = None;
+        for log in header.digest().logs() {
+            match (
+                log.as_subspace_pre_digest::<FarmerPublicKey>(),
+                pre_digest.is_some(),
+            ) {
+                (Some(_), true) => panic!("Multiple Subspace pre-runtime digests in a header"),
+                (None, _) => {}
+                (s, false) => pre_digest = s,
+            }
+        }
+
+        let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
+
+        BlakeTwo256::hash_of(&pre_digest.solution.signature).into()
+    }
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -903,6 +926,10 @@ impl_runtime_apis! {
 
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
             extract_bundles(extrinsics)
+        }
+
+        fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
+            extrinsics_shuffling_seed::<Block>(header)
         }
 
         fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {

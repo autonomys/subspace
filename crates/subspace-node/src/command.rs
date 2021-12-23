@@ -18,6 +18,7 @@ use crate::cli::{Cli, Subcommand};
 use crate::{chain_spec, service};
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
+use sp_core::crypto::Ss58AddressFormat;
 use subspace_runtime::Block;
 
 /// Subspace node error.
@@ -87,6 +88,26 @@ impl SubstrateCli for Cli {
     }
 }
 
+fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
+    let maybe_ss58_address_format = chain_spec
+        .as_ref()
+        .properties()
+        .get("ss58Format")
+        .map(|v| {
+            v.as_u64()
+                .expect("ss58Format must always be an unsigned number; qed")
+        })
+        .map(|v| {
+            v.try_into()
+                .expect("ss58Format must always be within u16 range; qed")
+        })
+        .map(Ss58AddressFormat::custom);
+
+    if let Some(ss58_address_format) = maybe_ss58_address_format {
+        sp_core::crypto::set_default_ss58_version(ss58_address_format);
+    }
+}
+
 /// Parse and run command line arguments
 pub fn run() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
@@ -99,6 +120,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -111,6 +133,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -122,6 +145,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -133,6 +157,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -149,6 +174,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -162,7 +188,7 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::Benchmark(cmd)) => {
             if cfg!(feature = "runtime-benchmarks") {
                 let runner = cli.create_runner(cmd)?;
-
+                set_default_ss58_version(&runner.config().chain_spec);
                 runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))?;
             } else {
                 return Err(Error::Other(
@@ -174,6 +200,7 @@ pub fn run() -> std::result::Result<(), Error> {
         }
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
+            set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
                 service::new_full(config)
                     .await
