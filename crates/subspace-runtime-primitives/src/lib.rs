@@ -23,6 +23,11 @@ use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
 
+/// SS58 prefix for Subspace mainnet.
+pub const MAINNET_SS58_PREFIX: u16 = 6094;
+/// SS58 prefix for Subspace testnet.
+pub const TESTNET_SS58_PREFIX: u16 = 2254;
+
 // TODO: Proper value here
 pub const CONFIRMATION_DEPTH_K: u32 = 100;
 /// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
@@ -148,4 +153,22 @@ pub mod opaque {
 
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
+}
+
+/// Identifies which network the SS58 address prefix targets.
+pub trait IdentifyNetwork {
+    /// Returns true if the address prefix is for Subspace mainnet.
+    fn is_mainnet(self) -> bool;
+    /// Returns true if the address prefix is for Subspace testnet.
+    fn is_testnet(self) -> bool;
+}
+
+impl IdentifyNetwork for u16 {
+    fn is_mainnet(self) -> bool {
+        self == MAINNET_SS58_PREFIX
+    }
+
+    fn is_testnet(self) -> bool {
+        self == TESTNET_SS58_PREFIX
+    }
 }

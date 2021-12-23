@@ -7999,6 +7999,7 @@ dependencies = [
  "sp-timestamp",
  "structopt",
  "subspace-runtime",
+ "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
