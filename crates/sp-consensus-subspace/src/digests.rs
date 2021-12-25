@@ -22,7 +22,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::generic::DigestItemRef;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use subspace_core_primitives::{LocalChallenge, Piece, Salt, Signature, Tag};
+use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
 
 /// Farmer solution for slot challenge.
 #[derive(Clone, RuntimeDebug, Encode, Decode)]
@@ -82,6 +82,13 @@ impl<AccountId> PreDigest<AccountId> {
     }
 }
 
+/// Information about the global randomness for the block.
+#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct GlobalRandomnessDescriptor {
+    /// Global randomness used for deriving global slot challenges.
+    pub global_randomness: Randomness,
+}
+
 /// Information about the solution range for the block.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct SolutionRangeDescriptor {
@@ -126,6 +133,12 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
+    /// Construct a digest item which contains a global randomness descriptor.
+    fn global_randomness_descriptor(global_randomness: GlobalRandomnessDescriptor) -> Self;
+
+    /// If this item is a Subspace global randomness descriptor, return it.
+    fn as_global_randomness_descriptor(&self) -> Option<GlobalRandomnessDescriptor>;
+
     /// Construct a digest item which contains a solution range descriptor.
     fn solution_range_descriptor(solution_range: SolutionRangeDescriptor) -> Self;
 
@@ -168,6 +181,25 @@ impl CompatibleDigestItem for DigestItem {
 
     fn as_subspace_seal(&self) -> Option<FarmerSignature> {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
+    }
+
+    /// Construct a digest item which contains a global randomness descriptor.
+    fn global_randomness_descriptor(global_randomness: GlobalRandomnessDescriptor) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::GlobalRandomness(global_randomness).encode(),
+        )
+    }
+
+    /// If this item is a Subspace global randomness descriptor, return it.
+    fn as_global_randomness_descriptor(&self) -> Option<GlobalRandomnessDescriptor> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::GlobalRandomness(global_randomness) = c {
+                Some(global_randomness)
+            } else {
+                None
+            }
+        })
     }
 
     fn solution_range_descriptor(solution_range: SolutionRangeDescriptor) -> Self {

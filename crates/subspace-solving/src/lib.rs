@@ -42,10 +42,10 @@ pub fn create_tag(piece: impl AsRef<[u8]>, salt: Salt) -> Tag {
         .expect("Slice is always of correct size; qed")
 }
 
-/// Derive global slot challenge from randomness.
-pub fn derive_global_challenge<Slot: Into<u64>>(randomness: &Randomness, slot: Slot) -> Tag {
+/// Derive global slot challenge from global randomness.
+pub fn derive_global_challenge<Slot: Into<u64>>(global_randomness: &Randomness, slot: Slot) -> Tag {
     let mut hasher = Sha256::new();
-    hasher.update(randomness);
+    hasher.update(global_randomness);
     hasher.update(&Into::<u64>::into(slot).to_le_bytes());
     hasher.finalize()[..TAG_SIZE]
         .try_into()

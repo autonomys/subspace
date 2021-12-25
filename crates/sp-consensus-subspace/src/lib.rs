@@ -24,10 +24,11 @@ pub mod inherents;
 pub mod offence;
 
 use crate::digests::{
-    CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
-    UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
+use scale_info::TypeInfo;
 use sp_api::{BlockT, HeaderT};
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
@@ -67,6 +68,9 @@ pub type SubspaceBlockWeight = u128;
 /// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
 enum ConsensusLog {
+    /// Global randomness for this block.
+    #[codec(index = 1)]
+    GlobalRandomness(GlobalRandomnessDescriptor),
     /// Solution range for this block.
     #[codec(index = 3)]
     SolutionRange(SolutionRangeDescriptor),
@@ -98,9 +102,6 @@ pub struct SubspaceGenesisConfiguration {
     /// In the threshold formula calculation, `1 - c` represents the probability
     /// of a slot being empty.
     pub c: (u64, u64),
-
-    /// The randomness for the genesis epoch.
-    pub randomness: Randomness,
 }
 
 #[cfg(feature = "std")]
@@ -181,6 +182,15 @@ pub struct Salts {
     pub next_salt: Option<Salt>,
 }
 
+/// Subspace global randomnesses used for deriving global challenges.
+#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Debug, TypeInfo)]
+pub struct GlobalRandomnesses {
+    /// Global randomness used for deriving global challenge in current block.
+    pub current: Randomness,
+    /// Global randomness that will be used for deriving global challenge in the next interval.
+    pub next: Option<Randomness>,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi {
@@ -196,6 +206,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the genesis configuration for Subspace. The configuration is only read on genesis.
         fn configuration() -> SubspaceGenesisConfiguration;
+
+        /// Global randomnesses used for deriving global challenges.
+        fn global_randomnesses() -> GlobalRandomnesses;
 
         /// Current solution range.
         fn solution_range() -> u64;

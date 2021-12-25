@@ -16,8 +16,10 @@
 
 //! Test utilities
 
+use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange, NormalEraChange,
+    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
+    NormalEraChange, NormalGlobalRandomnessInterval,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
@@ -28,7 +30,6 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
-use sp_io;
 use sp_runtime::{
     testing::{Digest, DigestItem, Header, TestXt},
     traits::{Header as _, IdentityLookup},
@@ -128,7 +129,7 @@ pub const INITIAL_SOLUTION_RANGE: u64 =
     u64::MAX / (1024 * 1024 * 1024 / 4096) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
-    pub const EpochDuration: u64 = 3;
+    pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
     pub const EonDuration: u32 = 5;
     pub const EonNextSaltReveal: u64 = 4;
@@ -144,6 +145,7 @@ parameter_types! {
 
 impl Config for Test {
     type Event = Event;
+    type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
     type EonNextSaltReveal = EonNextSaltReveal;
@@ -153,11 +155,11 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
 
-    type HandleEquivocation =
-        crate::equivocation::EquivocationHandler<OffencesSubspace, ReportLongevity>;
+    type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
 }

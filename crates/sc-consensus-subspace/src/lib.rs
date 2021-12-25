@@ -90,7 +90,8 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, Solution,
+    SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
@@ -153,18 +154,21 @@ pub enum Error<B: BlockT> {
     /// Multiple Subspace config change digests
     #[display(fmt = "Multiple Subspace config change digests, rejecting!")]
     MultipleConfigChangeDigests,
+    /// Multiple Subspace global randomness digests
+    #[display(fmt = "Multiple Subspace global randomness digests, rejecting!")]
+    MultipleGlobalRandomnessDigests,
     /// Multiple Subspace solution range digests
     #[display(fmt = "Multiple Subspace solution range digests, rejecting!")]
     MultipleSolutionRangeDigests,
-    /// Multiple Subspace next solution range digests
-    #[display(fmt = "Multiple Subspace next solution range digests, rejecting!")]
-    MultipleNextSolutionRangeDigests,
+    /// Multiple Subspace updated solution range digests
+    #[display(fmt = "Multiple Subspace updated solution range digests, rejecting!")]
+    MultipleUpdatedSolutionRangeDigests,
     /// Multiple Subspace salt digests
     #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
-    /// Multiple Subspace next salt digests
-    #[display(fmt = "Multiple Subspace next salt digests, rejecting!")]
-    MultipleNextSaltDigests,
+    /// Multiple Subspace updated salt digests
+    #[display(fmt = "Multiple Subspace updated salt digests, rejecting!")]
+    MultipleUpdatedSaltDigests,
     /// Could not extract timestamp and slot
     #[display(fmt = "Could not extract timestamp and slot: {:?}", _0)]
     Extraction(sp_consensus::Error),
@@ -211,6 +215,9 @@ pub enum Error<B: BlockT> {
     /// Parent block has no associated weight
     #[display(fmt = "Parent block of {} has no associated weight", _0)]
     ParentBlockNoAssociatedWeight(B::Hash),
+    /// Block has no associated global randomness
+    #[display(fmt = "Missing global randomness for block {}", _0)]
+    MissingGlobalRandomness(B::Hash),
     /// Block has no associated solution range
     #[display(fmt = "Missing solution range for block {}", _0)]
     MissingSolutionRange(B::Hash),
@@ -480,6 +487,28 @@ pub fn find_pre_digest<B: BlockT>(
     pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
 }
 
+/// Extract the Subspace global randomness descriptor from the given header.
+fn find_global_randomness_descriptor<B: BlockT>(
+    header: &B::Header,
+) -> Result<Option<GlobalRandomnessDescriptor>, Error<B>> {
+    let mut global_randomness_descriptor = None;
+    for log in header.digest().logs() {
+        trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
+        match (
+            log.as_global_randomness_descriptor(),
+            global_randomness_descriptor.is_some(),
+        ) {
+            (Some(_), true) => return Err(subspace_err(Error::MultipleGlobalRandomnessDigests)),
+            (Some(global_randomness), false) => {
+                global_randomness_descriptor = Some(global_randomness)
+            }
+            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
+        }
+    }
+
+    Ok(global_randomness_descriptor)
+}
+
 /// Extract the Subspace solution range descriptor from the given header.
 fn find_solution_range_descriptor<B: BlockT>(
     header: &B::Header,
@@ -739,7 +768,12 @@ where
 
         let checked_header = {
             let pre_digest = find_pre_digest::<Block>(&block.header)?;
-            // TODO: Is it actually secure to validate it using solution range digest?
+            // TODO: Is it actually secure to validate it using log items? Should probably switch to
+            //  reading runtime storage (which wasn't working for light client, but we don't have
+            //  light client either right now)
+            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
+                .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
+                .global_randomness;
             let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
@@ -820,6 +854,7 @@ where
                 header: block.header.clone(),
                 pre_digest,
                 slot_now: slot_now + 1,
+                global_randomness: &global_randomness,
                 solution_range,
                 salt,
                 records_root: &records_root,

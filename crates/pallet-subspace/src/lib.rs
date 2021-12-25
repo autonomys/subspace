@@ -40,11 +40,12 @@ use num_traits::float::FloatCore;
 pub use pallet::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, CompatibleDigestItemRef, SaltDescriptor, SolutionRangeDescriptor,
-    UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
 use sp_runtime::traits::{One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
@@ -53,8 +54,12 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::ConsensusEngineId;
 use sp_std::prelude::*;
-use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
+use subspace_core_primitives::{
+    crypto, Randomness, RootBlock, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+};
 
+const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
+const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
 const SALT_HASHING_PREFIX: &[u8] = b"salt";
 const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
@@ -63,20 +68,39 @@ pub trait WeightInfo {
     fn store_root_blocks(root_blocks_count: usize) -> Weight;
 }
 
+/// Trigger global randomness every interval.
+pub trait GlobalRandomnessIntervalTrigger {
+    /// Trigger a global randomness update. This should be called during every block, after
+    /// initialization is done.
+    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness);
+}
+
+/// A type signifying to Subspace that it should perform a global randomness update with an internal
+/// trigger.
+pub struct NormalGlobalRandomnessInterval;
+
+impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
+    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness) {
+        if <Pallet<T>>::should_update_global_randomness(block_number) {
+            <Pallet<T>>::enact_update_global_randomness(block_number, por_randomness);
+        }
+    }
+}
+
 /// Trigger an era change, if any should take place.
 pub trait EraChangeTrigger {
     /// Trigger an era change, if any should take place. This should be called
     /// during every block, after initialization is done.
-    fn trigger<T: Config>(now: T::BlockNumber);
+    fn trigger<T: Config>(block_number: T::BlockNumber);
 }
 
 /// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEraChange;
 
 impl EraChangeTrigger for NormalEraChange {
-    fn trigger<T: Config>(now: T::BlockNumber) {
-        if <Pallet<T>>::should_era_change(now) {
-            <Pallet<T>>::enact_era_change(now);
+    fn trigger<T: Config>(block_number: T::BlockNumber) {
+        if <Pallet<T>>::should_era_change(block_number) {
+            <Pallet<T>>::enact_era_change(block_number);
         }
     }
 }
@@ -85,23 +109,23 @@ impl EraChangeTrigger for NormalEraChange {
 pub trait EonChangeTrigger {
     /// Trigger an era change, if any should take place. This should be called
     /// during every block, after initialization is done.
-    fn trigger<T: Config>(now: T::BlockNumber);
+    fn trigger<T: Config>(block_number: T::BlockNumber);
 }
 
 /// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEonChange;
 
 impl EonChangeTrigger for NormalEonChange {
-    fn trigger<T: Config>(now: T::BlockNumber) {
-        if <Pallet<T>>::should_eon_change(now) {
-            <Pallet<T>>::enact_eon_change();
+    fn trigger<T: Config>(block_number: T::BlockNumber) {
+        if <Pallet<T>>::should_eon_change(block_number) {
+            <Pallet<T>>::enact_eon_change(block_number);
         }
     }
 }
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{EonChangeTrigger, EraChangeTrigger, WeightInfo};
+    use super::{EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, WeightInfo};
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -122,6 +146,10 @@ mod pallet {
     pub trait Config: pallet_timestamp::Config {
         /// The overarching event type.
         type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+
+        /// The amount of time, in blocks, between updates of global randomness.
+        #[pallet::constant]
+        type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
 
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
@@ -176,6 +204,9 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
+        /// Subspace requires periodic global randomness update.
+        type GlobalRandomnessIntervalTrigger: GlobalRandomnessIntervalTrigger;
+
         /// Subspace requires some logic to be triggered on every block to query for whether an era
         /// has ended and to perform the transition to the next era.
         type EraChangeTrigger: EraChangeTrigger;
@@ -227,29 +258,16 @@ mod pallet {
     #[pallet::getter(fn current_slot)]
     pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
 
-    // TODO: Update this as needed
-    /// The epoch randomness for the *current* epoch.
-    ///
-    /// # Security
-    ///
-    /// This MUST NOT be used for gambling, as it can be influenced by a
-    /// malicious validator in the short term. It MAY be used in many
-    /// cryptographic protocols, however, so long as one remembers that this
-    /// (like everything else on-chain) it is public. For example, it can be
-    /// used where a number is needed that cannot have been chosen by an
-    /// adversary, for purposes such as public-coin zero-knowledge proofs.
-    // NOTE: the following fields don't use the constants to define the
-    // array size because the metadata API currently doesn't resolve the
-    // variable to its underlying value.
+    /// Global randomnesses derived from from PoR signature and used for deriving global challenges.
     #[pallet::storage]
-    #[pallet::getter(fn randomness)]
-    pub type Randomness<T> = StorageValue<_, subspace_core_primitives::Randomness, ValueQuery>;
+    #[pallet::getter(fn global_randomnesses)]
+    pub(super) type GlobalRandomnesses<T> =
+        StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
     #[pallet::getter(fn solution_range)]
-    pub type SolutionRange<T> =
-        StorageValue<_, u64, ValueQuery, <T as Config>::InitialSolutionRange>;
+    pub type SolutionRange<T: Config> = StorageValue<_, u64, ValueQuery, T::InitialSolutionRange>;
 
     /// Salt for *current* eon.
     #[pallet::storage]
@@ -387,6 +405,12 @@ impl<T: Config> Pallet<T> {
         <T as pallet_timestamp::Config>::MinimumPeriod::get().saturating_mul(2u32.into())
     }
 
+    /// Determine whether a randomness update should take place at this block.
+    /// Assumes that initialization has already taken place.
+    pub fn should_update_global_randomness(now: T::BlockNumber) -> bool {
+        now % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
+    }
+
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
     pub fn should_era_change(now: T::BlockNumber) -> bool {
@@ -406,6 +430,17 @@ impl<T: Config> Pallet<T> {
             let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
             *diff >= T::EonDuration::get()
         }
+    }
+
+    /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
+    /// returned `true`, and the caller is the only caller of this function.
+    pub fn enact_update_global_randomness(
+        _block_number: T::BlockNumber,
+        por_randomness: Randomness,
+    ) {
+        GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
+            global_randomnesses.next = Some(por_randomness);
+        });
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
@@ -453,7 +488,7 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_eon_change() {
+    pub fn enact_eon_change(_block_number: T::BlockNumber) {
         let salt = NextSalt::<T>::take().expect(
             "NextSalt is always set in block initialization before eon change is checked; qed",
         );
@@ -495,7 +530,7 @@ impl<T: Config> Pallet<T> {
             .into()
     }
 
-    fn do_initialize(now: T::BlockNumber) {
+    fn do_initialize(block_number: T::BlockNumber) {
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
@@ -512,9 +547,32 @@ impl<T: Config> Pallet<T> {
         // The slot number of the current block being initialized.
         CurrentSlot::<T>::put(pre_digest.slot);
 
-        // TODO: Probably useful
-        // let maybe_randomness = sp_io::hashing::blake2_256(&digest.solution.signature)
+        // If global randomness was updated in previous block, set it as current.
+        if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
+            GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
+                current: next_randomness,
+                next: None,
+            });
+        }
 
+        // Extract PoR randomness from pre-digest.
+        let por_randomness: Randomness = hashing::blake2_256(&{
+            let mut input =
+                [0u8; GLOBAL_CHALLENGE_HASHING_PREFIX_LEN + mem::size_of::<Signature>()];
+            input[..GLOBAL_CHALLENGE_HASHING_PREFIX_LEN]
+                .copy_from_slice(GLOBAL_CHALLENGE_HASHING_PREFIX);
+            input[GLOBAL_CHALLENGE_HASHING_PREFIX_LEN..]
+                .copy_from_slice(&pre_digest.solution.signature);
+
+            input
+        });
+
+        // Deposit global randomness data such that light client can validate blocks later.
+        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness_descriptor(
+            GlobalRandomnessDescriptor {
+                global_randomness: GlobalRandomnesses::<T>::get().current,
+            },
+        ));
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
             SolutionRangeDescriptor {
@@ -528,7 +586,10 @@ impl<T: Config> Pallet<T> {
 
         let next_salt_reveal = Self::current_eon_start() + T::EonNextSaltReveal::get();
         let current_slot = Self::current_slot();
-        if now != One::one() && current_slot >= next_salt_reveal && !NextSalt::<T>::exists() {
+        if block_number != One::one()
+            && current_slot >= next_salt_reveal
+            && !NextSalt::<T>::exists()
+        {
             let eon_index = Self::eon_index();
             log::info!(
                 target: "runtime::subspace",
@@ -538,14 +599,16 @@ impl<T: Config> Pallet<T> {
             );
             NextSalt::<T>::put(Self::derive_next_salt_from_randomness(
                 eon_index,
-                &Self::randomness(),
+                &por_randomness,
             ));
         }
 
-        // enact era change, if necessary.
-        T::EraChangeTrigger::trigger::<T>(now);
-        // enact eon change, if necessary.
-        T::EonChangeTrigger::trigger::<T>(now);
+        // Enact global randomness update, if necessary.
+        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
+        // Enact era change, if necessary.
+        T::EraChangeTrigger::trigger::<T>(block_number);
+        // Enact eon change, if necessary.
+        T::EonChangeTrigger::trigger::<T>(block_number);
     }
 
     fn do_report_equivocation(

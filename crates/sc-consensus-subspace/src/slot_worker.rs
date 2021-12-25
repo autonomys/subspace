@@ -112,9 +112,24 @@ where
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let runtime_api = self.client.runtime_api();
 
-        // TODO: Take proper randomness from runtime storage
-        let randomness = Default::default();
-
+        // Here we always use parent block as the source of information, thus on the edge of the
+        // update interval the very first block of the interval still uses global randomness from
+        // the previous one, but the block after it uses "next" global randomness deposited in the
+        // first block.
+        let global_randomness = runtime_api
+            .global_randomnesses(&parent_block_id)
+            .map(|randomnesses| {
+                if let Some(randomness) = randomnesses.next {
+                    randomness
+                } else {
+                    randomnesses.current
+                }
+            })
+            .ok()?;
+        // TODO: The following 2 groups should probably migrate from abusing digests to reading
+        //  runtime storage instead (with data structures like
+        //   Salts {salt: Salt, next_salt: Option<Salt>, just_updated: bool}
+        //  ).
         // Here we always use parent block as the source of information, thus on the edge of the
         // era the very first block of the era still uses solution range from the previous one,
         // but the block after it uses "next" solution range deposited in the first block.
@@ -122,8 +137,8 @@ where
             .ok()?
             .map(|d| d.solution_range)
             .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no solution range stored yet
+                // We use runtime API as it will fallback to default value for genesis or when
+                // there is no solution range update in last block
                 runtime_api.solution_range(&parent_block_id).ok()
             })?;
         // Here we always use parent block as the source of information, thus on the edge of the
@@ -136,14 +151,14 @@ where
                 next_salt: None,
             })
             .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no salt stored yet
+                // We use runtime API as it will fallback to default value for genesis or when
+                // there is no salt update in latest block
                 runtime_api.salts(&parent_block_id).ok()
             })?;
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge: subspace_solving::derive_global_challenge(&randomness, slot),
+            global_challenge: subspace_solving::derive_global_challenge(&global_randomness, slot),
             salt,
             next_salt,
             solution_range,
@@ -218,7 +233,7 @@ where
             match verification::verify_solution::<B>(
                 &solution,
                 verification::VerifySolutionParams {
-                    randomness: &randomness,
+                    global_randomness: &global_randomness,
                     solution_range,
                     slot,
                     salt,
@@ -362,13 +377,13 @@ fn find_updated_solution_range_descriptor<B: BlockT>(
 ) -> Result<Option<UpdatedSolutionRangeDescriptor>, Error<B>> {
     let mut updated_solution_range_descriptor = None;
     for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for updated solution range digest.", log);
         match (
             log.as_updated_solution_range_descriptor(),
             updated_solution_range_descriptor.is_some(),
         ) {
             (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests));
+                return Err(subspace_err(Error::MultipleUpdatedSolutionRangeDigests));
             }
             (Some(solution_range), false) => {
                 updated_solution_range_descriptor.replace(solution_range);
@@ -388,13 +403,13 @@ fn find_updated_salt_descriptor<B: BlockT>(
 ) -> Result<Option<UpdatedSaltDescriptor>, Error<B>> {
     let mut updated_salt_descriptor = None;
     for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for updated salt digest.", log);
         match (
             log.as_updated_salt_descriptor(),
             updated_salt_descriptor.is_some(),
         ) {
             (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleSaltDigests));
+                return Err(subspace_err(Error::MultipleUpdatedSaltDigests));
             }
             (Some(salt), false) => {
                 updated_salt_descriptor.replace(salt);

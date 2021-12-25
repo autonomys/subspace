@@ -34,27 +34,21 @@ use sp_trie::{
     PrefixedMemoryDB, StorageProof,
 };
 use trie_db::{Trie, TrieMut};
-use frame_support::traits::Get;
 
 use cfg_if::cfg_if;
-use frame_support::{
-    parameter_types,
-    traits::{CrateVersion, KeyOwnerProofSystem},
-    weights::RuntimeDbWeight,
-};
-use frame_support::traits::{ConstU32, ConstU64};
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem};
+use frame_support::{parameter_types, weights::RuntimeDbWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
-use sp_api::{decl_runtime_apis, impl_runtime_apis};
+use sp_api::{decl_runtime_apis, impl_runtime_apis, BlockT, HeaderT};
 pub use sp_core::hash::H256;
 use sp_inherents::{CheckInherentsResult, InherentData};
 #[cfg(feature = "std")]
 use sp_runtime::traits::NumberFor;
-use sp_api::{BlockT, HeaderT};
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
     traits::{
-        BlakeTwo256, BlindCheckable, Extrinsic as ExtrinsicT, GetNodeBlockType, GetRuntimeBlockType,
-        IdentityLookup, Verify,
+        BlakeTwo256, BlindCheckable, Extrinsic as ExtrinsicT, GetNodeBlockType,
+        GetRuntimeBlockType, IdentityLookup, Verify,
     },
     transaction_validity::{
         InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -601,7 +595,7 @@ impl frame_system::Config for Runtime {
     type SystemWeightInfo = ();
     type SS58Prefix = ();
     type OnSetCode = ();
-	type MaxConsumers = ConstU32<16>;
+    type MaxConsumers = ConstU32<16>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -650,6 +644,7 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
+    type GlobalRandomnessUpdateInterval = ConstU64<10>;
     type EraDuration = ConstU64<5>;
     type EonDuration = ConstU64<11>;
     type EonNextSaltReveal = ConstU64<2>;
@@ -658,7 +653,8 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
-    type RecordedHistorySegmentSize = ConstU32<{3840 * 256 / 2}>;
+    type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
+    type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
@@ -936,8 +932,11 @@ cfg_if! {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
                         c: (3, 10),
-                        randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
+                }
+
+                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                    <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
                 fn solution_range() -> u64 {
@@ -1251,8 +1250,11 @@ cfg_if! {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
                         c: (3, 10),
-                        randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
+                }
+
+                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                    <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
                 fn solution_range() -> u64 {

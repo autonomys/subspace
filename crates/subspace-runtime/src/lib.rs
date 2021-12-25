@@ -39,7 +39,7 @@ use pallet_balances::NegativeImbalance;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, Salts, SubspaceGenesisConfiguration,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
@@ -126,6 +126,9 @@ const SLOT_DURATION: u64 = 1000;
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
 const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+
+/// The amount of time, in blocks, between updates of global randomness.
+const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 100;
 
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
@@ -223,6 +226,7 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
+    type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type EonDuration = ConstU64<EON_DURATION_IN_SLOTS>;
     type EonNextSaltReveal = ConstU64<EON_NEXT_SALT_REVEAL>;
@@ -232,6 +236,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
     type RecordSize = ConstU32<RECORD_SIZE>;
     type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
+    type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
@@ -836,8 +841,11 @@ impl_runtime_apis! {
             SubspaceGenesisConfiguration {
                 slot_duration: Subspace::slot_duration(),
                 c: SlotProbability::get(),
-                randomness: Subspace::randomness(),
             }
+        }
+
+        fn global_randomnesses() -> GlobalRandomnesses {
+            Subspace::global_randomnesses()
         }
 
         fn solution_range() -> u64 {
