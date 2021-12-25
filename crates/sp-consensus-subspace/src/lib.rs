@@ -28,8 +28,9 @@ use crate::digests::{
     UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
 };
 use codec::{Decode, Encode};
+use sp_api::{BlockT, HeaderT};
 use sp_core::crypto::KeyTypeId;
-use sp_runtime::{traits::Header, ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
+use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash};
@@ -116,7 +117,7 @@ impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
 /// the same authority.
 pub fn check_equivocation_proof<H>(proof: EquivocationProof<H>) -> bool
 where
-    H: Header,
+    H: HeaderT,
 {
     let find_pre_digest = |header: &H| -> Option<PreDigest<FarmerPublicKey>> {
         header
@@ -185,7 +186,7 @@ sp_api::decl_runtime_apis! {
     pub trait SubspaceApi {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
-        fn confirmation_depth_k() -> u32;
+        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
 
         /// The size of data in one piece (in bytes).
         fn record_size() -> u32;

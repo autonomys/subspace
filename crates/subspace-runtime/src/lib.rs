@@ -36,17 +36,14 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use sp_api::impl_runtime_apis;
+use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     EquivocationProof, FarmerPublicKey, Salts, SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Hash as HashT,
-    Header as HeaderT, PostDispatchInfoOf, Zero,
-};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
@@ -818,16 +815,16 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-        fn confirmation_depth_k() -> u32 {
-            <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+            <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
 
         fn record_size() -> u32 {
-            <Runtime as pallet_subspace::Config>::RecordSize::get()
+            <Self as pallet_subspace::Config>::RecordSize::get()
         }
 
         fn recorded_history_segment_size() -> u32 {
-            <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+            <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
         }
 
         fn configuration() -> SubspaceGenesisConfiguration {

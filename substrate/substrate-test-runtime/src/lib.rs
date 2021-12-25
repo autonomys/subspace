@@ -49,11 +49,12 @@ pub use sp_core::hash::H256;
 use sp_inherents::{CheckInherentsResult, InherentData};
 #[cfg(feature = "std")]
 use sp_runtime::traits::NumberFor;
+use sp_api::{BlockT, HeaderT};
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
     traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, IdentityLookup, Verify,
+        BlakeTwo256, BlindCheckable, Extrinsic as ExtrinsicT, GetNodeBlockType, GetRuntimeBlockType,
+        IdentityLookup, Verify,
     },
     transaction_validity::{
         InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -649,13 +650,13 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
-    type EraDuration = ConstU32<5>;
+    type EraDuration = ConstU64<5>;
     type EonDuration = ConstU64<11>;
     type EonNextSaltReveal = ConstU64<2>;
     type InitialSolutionRange = ConstU64<{ u64::MAX }>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
-    type ConfirmationDepthK = ConstU32<10>;
+    type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
     type RecordedHistorySegmentSize = ConstU32<{3840 * 256 / 2}>;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -919,16 +920,16 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-                fn confirmation_depth_k() -> u32 {
-                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordSize::get()
+                    <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
@@ -1234,16 +1235,16 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-                fn confirmation_depth_k() -> u32 {
-                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordSize::get()
+                    <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {

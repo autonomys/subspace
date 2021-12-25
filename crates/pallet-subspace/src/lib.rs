@@ -127,7 +127,7 @@ mod pallet {
         /// NOTE: Currently it is not possible to change the era duration after
         /// the chain has started. Attempting to do so will brick block production.
         #[pallet::constant]
-        type EraDuration: Get<u32>;
+        type EraDuration: Get<Self::BlockNumber>;
 
         /// The amount of time, in slots, that each eon should last.
         /// NOTE: Currently it is not possible to change the eon duration after
@@ -165,7 +165,7 @@ mod pallet {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         #[pallet::constant]
-        type ConfirmationDepthK: Get<u32>;
+        type ConfirmationDepthK: Get<Self::BlockNumber>;
 
         /// The size of data in one piece (in bytes).
         #[pallet::constant]
@@ -275,9 +275,9 @@ mod pallet {
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+    impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         /// Initialization
-        fn on_initialize(now: BlockNumberFor<T>) -> Weight {
+        fn on_initialize(now: T::BlockNumber) -> Weight {
             Self::do_initialize(now);
             0
         }
@@ -393,7 +393,7 @@ impl<T: Config> Pallet<T> {
         // The era has technically ended during the passage of time
         // between this block and the last, but we have to "end" the era now,
         // since there is no earlier possible block we could have done it.
-        now != One::one() && now % T::EraDuration::get().into() == 1_u32.into()
+        now != One::one() && now % T::EraDuration::get() == One::one()
     }
 
     /// Determine whether an eon change should take place at this block.
@@ -423,7 +423,10 @@ impl<T: Config> Pallet<T> {
         // Now we need to re-calculate solution range. The idea here is to keep block production at
         // the same pace while space pledged on the network changes. For this we adjust previous
         // solution range according to actual and expected number of blocks per era.
-        let actual_slots_per_block = era_slot_count as f64 / T::EraDuration::get() as f64;
+        let era_duration: u64 = T::EraDuration::get()
+            .try_into()
+            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
+        let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
         let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
         let adjustment_factor =
             (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);

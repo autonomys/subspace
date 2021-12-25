@@ -1208,10 +1208,16 @@ where
 
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
-    let confirmation_depth_k = client
-        .runtime_api()
-        .confirmation_depth_k(&best_block_id)
-        .expect("Failed to get `confirmation_depth_k` from runtime API");
+    let confirmation_depth_k = TryInto::<u32>::try_into(
+        client
+            .runtime_api()
+            .confirmation_depth_k(&best_block_id)
+            .expect("Failed to get `confirmation_depth_k` from runtime API"),
+    )
+    .unwrap_or_else(|_| {
+        // TODO: We might bump block number from `u32` to `u64` in the future
+        panic!("Confirmation depth K can't be converted into u32");
+    });
 
     let link = SubspaceLink {
         config: config.clone(),
