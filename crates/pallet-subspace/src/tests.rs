@@ -28,7 +28,7 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::FarmerPublicKey;
+use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
@@ -44,6 +44,43 @@ fn genesis_slot_is_correct() {
         // this sets the genesis slot to 6;
         go_to_block(&keypair, 1, 6);
         assert_eq!(*Subspace::genesis_slot(), 6);
+    })
+}
+
+#[test]
+fn can_update_global_randomness() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        assert_eq!(<Test as Config>::GlobalRandomnessUpdateInterval::get(), 10);
+
+        let initial_randomnesses = GlobalRandomnesses {
+            current: Default::default(),
+            next: None,
+        };
+        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
+
+        // Progress to almost interval edge
+        progress_to_block(&keypair, 9);
+        // Still no randomness update
+        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
+
+        // Global randomness update interval edge
+        progress_to_block(&keypair, 10);
+        // Next randomness should be updated, but current is still unchanged
+        let updated_randomnesses = Subspace::global_randomnesses();
+        assert_eq!(updated_randomnesses.current, initial_randomnesses.current);
+        assert!(updated_randomnesses.next.is_some());
+
+        progress_to_block(&keypair, 11);
+        // Next randomness should become current
+        assert_eq!(
+            Subspace::global_randomnesses(),
+            GlobalRandomnesses {
+                current: updated_randomnesses.next.unwrap(),
+                next: None
+            }
+        );
     })
 }
 
