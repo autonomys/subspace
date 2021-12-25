@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification for Subspace headers.
-use super::{find_pre_digest, subspace_err, BlockT, Error};
+use super::{subspace_err, BlockT, Error};
 use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
@@ -34,10 +34,8 @@ use subspace_solving::{derive_global_challenge, is_local_challenge_valid, Subspa
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     /// The header being verified.
     pub(super) header: B::Header,
-    /// The pre-digest of the header being verified. this is optional - if prior
-    /// verification code had to read it, it can be included here to avoid duplicate
-    /// work.
-    pub(super) pre_digest: Option<PreDigest<FarmerPublicKey>>,
+    /// The pre-digest of the header being verified to avoid duplicated work.
+    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
     /// Solution range corresponding to this block.
@@ -77,10 +75,6 @@ pub(super) fn check_header<B: BlockT + Sized>(
         signing_context,
     } = params;
 
-    let pre_digest = pre_digest
-        .map(Ok)
-        .unwrap_or_else(|| find_pre_digest::<B>(&header))?;
-
     trace!(target: "subspace", "Checking header");
     let seal = header
         .digest_mut()
@@ -91,8 +85,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         .as_subspace_seal()
         .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
 
-    // the pre-hash of the header doesn't include the seal
-    // and that's what we sign
+    // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
 
     if pre_digest.slot > slot_now {
@@ -129,15 +122,14 @@ pub(super) fn check_header<B: BlockT + Sized>(
         },
     )?;
 
-    let info = VerifiedHeaderInfo {
-        pre_digest: CompatibleDigestItem::subspace_pre_digest(&pre_digest),
-        seal,
-    };
-    Ok(CheckedHeader::Checked(header, info))
+    Ok(CheckedHeader::Checked(
+        header,
+        VerifiedHeaderInfo { pre_digest, seal },
+    ))
 }
 
 pub(super) struct VerifiedHeaderInfo {
-    pub(super) pre_digest: DigestItem,
+    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
     pub(super) seal: DigestItem,
 }
 

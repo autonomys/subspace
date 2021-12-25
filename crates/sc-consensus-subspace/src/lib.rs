@@ -737,8 +737,8 @@ where
         //     .header_metadata(parent_hash)
         //     .map_err(Error::<Block>::FetchParentHeader)?;
 
-        let pre_digest = find_pre_digest::<Block>(&block.header)?;
         let checked_header = {
+            let pre_digest = find_pre_digest::<Block>(&block.header)?;
             // TODO: Is it actually secure to validate it using solution range digest?
             let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
@@ -818,7 +818,7 @@ where
             // FIXME #1019 in the future, alter this queue to allow deferring of headers
             let v_params = verification::VerificationParams {
                 header: block.header.clone(),
-                pre_digest: Some(pre_digest),
+                pre_digest,
                 slot_now: slot_now + 1,
                 solution_range,
                 salt,
@@ -833,11 +833,7 @@ where
 
         match checked_header {
             CheckedHeader::Checked(pre_header, verified_info) => {
-                let subspace_pre_digest = verified_info
-                    .pre_digest
-                    .as_subspace_pre_digest()
-                    .expect("check_header always returns a pre-digest digest item; qed");
-                let slot = subspace_pre_digest.slot;
+                let slot = verified_info.pre_digest.slot;
 
                 // the header is valid but let's check if there was something else already
                 // proposed at the same slot by the given author. if there was, we will
@@ -847,7 +843,7 @@ where
                         slot_now,
                         slot,
                         &block.header,
-                        &subspace_pre_digest.solution.public_key,
+                        &verified_info.pre_digest.solution.public_key,
                         &block.origin,
                     )
                     .await
