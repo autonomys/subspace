@@ -47,7 +47,7 @@ use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
 use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
-use sp_runtime::traits::{One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -292,12 +292,19 @@ mod pallet {
     #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
+    /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
+    #[pallet::storage]
+    pub(super) type PorRandomness<T> = StorageValue<_, subspace_core_primitives::Randomness>;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        /// Initialization
-        fn on_initialize(now: T::BlockNumber) -> Weight {
-            Self::do_initialize(now);
+        fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            Self::do_initialize(block_number);
             0
+        }
+
+        fn on_finalize(block_number: T::BlockNumber) {
+            Self::do_finalize(block_number)
         }
     }
 
@@ -566,6 +573,8 @@ impl<T: Config> Pallet<T> {
 
             input
         });
+        // Store PoR randomness for block duration as it might be useful.
+        PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness_descriptor(
@@ -609,6 +618,10 @@ impl<T: Config> Pallet<T> {
         T::EraChangeTrigger::trigger::<T>(block_number);
         // Enact eon change, if necessary.
         T::EonChangeTrigger::trigger::<T>(block_number);
+    }
+
+    fn do_finalize(_block_number: T::BlockNumber) {
+        PorRandomness::<T>::take();
     }
 
     fn do_report_equivocation(
@@ -813,6 +826,34 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
                 DigestItemRef::PreRuntime(&id, &data.to_vec()).as_subspace_pre_digest()
             })
             .map(|pre_digest| pre_digest.solution.public_key)
+    }
+}
+
+impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
+    fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
+        let mut subject = subject.to_vec();
+        subject.reserve(RANDOMNESS_LENGTH);
+        subject.extend_from_slice(
+            PorRandomness::<T>::get()
+                .expect("PoR randomness is always set in block initialization; qed")
+                .as_ref(),
+        );
+
+        (
+            T::Hashing::hash(&subject),
+            frame_system::Pallet::<T>::current_block_number(),
+        )
+    }
+
+    fn random_seed() -> (T::Hash, T::BlockNumber) {
+        (
+            T::Hashing::hash(
+                PorRandomness::<T>::get()
+                    .expect("PoR randomness is always set in block initialization; qed")
+                    .as_ref(),
+            ),
+            frame_system::Pallet::<T>::current_block_number(),
+        )
     }
 }
 
