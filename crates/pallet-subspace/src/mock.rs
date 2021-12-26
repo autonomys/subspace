@@ -49,11 +49,11 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        Subspace: pallet_subspace::{Pallet, Call, Storage, Event, ValidateUnsigned},
-        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
-        Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
+        System: frame_system,
+        Balances: pallet_balances,
+        Subspace: pallet_subspace,
+        OffencesSubspace: pallet_offences_subspace,
+        Timestamp: pallet_timestamp,
     }
 );
 

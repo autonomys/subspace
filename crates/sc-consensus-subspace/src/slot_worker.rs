@@ -346,13 +346,7 @@ where
     client
         .runtime_api()
         .global_randomnesses(parent_block_id)
-        .map(|randomnesses| {
-            if let Some(randomness) = randomnesses.next {
-                randomness
-            } else {
-                randomnesses.current
-            }
-        })
+        .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 
 /// Extract solution range for block, given ID of the parent block.
@@ -368,13 +362,7 @@ where
     client
         .runtime_api()
         .solution_ranges(parent_block_id)
-        .map(|solution_ranges| {
-            if let Some(solution_range) = solution_ranges.next {
-                solution_range
-            } else {
-                solution_ranges.current
-            }
-        })
+        .map(|solution_ranges| solution_ranges.next.unwrap_or(solution_ranges.current))
 }
 
 /// Extract salt and next salt for block, given ID of the parent block.

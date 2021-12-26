@@ -616,13 +616,6 @@ impl<T: Config> Pallet<T> {
             .checked_add(T::EonNextSaltReveal::get())
             .expect("Will not overflow until the end of universe; qed");
         let current_slot = Self::current_slot();
-        #[cfg(feature = "std")]
-        println!(
-            "Self::current_eon_start() {} current_slot {} next_salt_reveal {}",
-            Self::current_eon_start(),
-            current_slot,
-            next_salt_reveal
-        );
         if current_slot >= next_salt_reveal {
             Salts::<T>::mutate(|salts| {
                 if salts.next.is_none() {
