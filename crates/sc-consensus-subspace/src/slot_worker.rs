@@ -16,12 +16,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    find_pre_digest, subspace_err, verification, BlockSigningNotification, Error, NewSlotInfo,
-    NewSlotNotification, SubspaceLink,
+    find_pre_digest, verification, BlockSigningNotification, NewSlotInfo, NewSlotNotification,
+    SubspaceLink,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
-use log::{debug, trace, warn};
+use log::{debug, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
@@ -34,8 +34,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor};
-use sp_consensus_subspace::{FarmerPublicKey, Salts, SubspaceApi};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
@@ -127,13 +127,6 @@ where
                 }
             })
             .ok()?;
-        // TODO: The following 2 groups should probably migrate from abusing digests to reading
-        //  runtime storage instead (with data structures like
-        //   Salts {salt: Salt, next_salt: Option<Salt>, just_updated: bool}
-        //  ).
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // era the very first block of the era still uses solution range from the previous one,
-        // but the block after it uses "next" solution range deposited in the first block.
         let solution_range = runtime_api
             .solution_ranges(&parent_block_id)
             .map(|solution_ranges| {
@@ -144,20 +137,13 @@ where
                 }
             })
             .ok()?;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // eon the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let Salts { salt, next_salt } = find_updated_salt_descriptor::<B>(parent_header)
-            .ok()?
-            .map(|UpdatedSaltDescriptor { salt }| Salts {
-                salt,
-                next_salt: None,
-            })
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis or when
-                // there is no salt update in latest block
-                runtime_api.salts(&parent_block_id).ok()
-            })?;
+        let (salt, next_salt) = runtime_api.salts(&parent_block_id).ok().and_then(|salts| {
+            if salts.switch_next_block {
+                Some((salts.next?, None))
+            } else {
+                Some((salts.current, salts.next))
+            }
+        })?;
 
         let new_slot_info = NewSlotInfo {
             slot,
@@ -365,30 +351,4 @@ where
             self.logging_target(),
         )
     }
-}
-
-/// Extract the updated Subspace salt descriptor from the given header if it exists.
-fn find_updated_salt_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<UpdatedSaltDescriptor>, Error<B>> {
-    let mut updated_salt_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for updated salt digest.", log);
-        match (
-            log.as_updated_salt_descriptor(),
-            updated_salt_descriptor.is_some(),
-        ) {
-            (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleUpdatedSaltDigests));
-            }
-            (Some(salt), false) => {
-                updated_salt_descriptor.replace(salt);
-            }
-            _ => {
-                trace!(target: "subspace", "Ignoring digest not meant for us");
-            }
-        }
-    }
-
-    Ok(updated_salt_descriptor)
 }

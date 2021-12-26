@@ -25,7 +25,7 @@ pub mod offence;
 
 use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor,
+    SolutionRangeDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -72,14 +72,11 @@ enum ConsensusLog {
     #[codec(index = 1)]
     GlobalRandomness(GlobalRandomnessDescriptor),
     /// Solution range for this block/era.
-    #[codec(index = 3)]
+    #[codec(index = 2)]
     SolutionRange(SolutionRangeDescriptor),
     /// Salt for this block/eon.
-    #[codec(index = 4)]
+    #[codec(index = 3)]
     Salt(SaltDescriptor),
-    /// The eon has changed and the salt has changed because of that.
-    #[codec(index = 6)]
-    UpdatedSalt(UpdatedSaltDescriptor),
 }
 
 // TODO: Can we kill this too?
@@ -171,7 +168,7 @@ where
 }
 
 /// Subspace global randomnesses used for deriving global challenges.
-#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Debug, TypeInfo)]
+#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
 pub struct GlobalRandomnesses {
     /// Global randomness used for deriving global challenge in current block/interval.
     pub current: Randomness,
@@ -181,7 +178,7 @@ pub struct GlobalRandomnesses {
 }
 
 /// Subspace solution ranges used for challenges.
-#[derive(Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Debug, TypeInfo)]
+#[derive(Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
 pub struct SolutionRanges {
     /// Solution range in current block/era.
     pub current: u64,
@@ -199,12 +196,15 @@ impl Default for SolutionRanges {
 }
 
 /// Subspace salts used for challenges.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
+#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
 pub struct Salts {
     /// Salt used for challenges in current block/eon.
-    pub salt: Salt,
-    /// Salt used for challenges after `salt` in the next block/eon.
-    pub next_salt: Option<Salt>,
+    pub current: Salt,
+    /// Salt used for challenges after `salt` in the next eon.
+    pub next: Option<Salt>,
+    /// Whether salt should be updated in the next block (next salt is known upfront for some time
+    /// and is not necessarily switching in the very next block).
+    pub switch_next_block: bool,
 }
 
 sp_api::decl_runtime_apis! {

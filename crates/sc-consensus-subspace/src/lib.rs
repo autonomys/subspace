@@ -163,9 +163,6 @@ pub enum Error<B: BlockT> {
     /// Multiple Subspace salt digests
     #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
-    /// Multiple Subspace updated salt digests
-    #[display(fmt = "Multiple Subspace updated salt digests, rejecting!")]
-    MultipleUpdatedSaltDigests,
     /// Could not extract timestamp and slot
     #[display(fmt = "Could not extract timestamp and slot: {:?}", _0)]
     Extraction(sp_consensus::Error),

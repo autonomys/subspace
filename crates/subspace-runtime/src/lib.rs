@@ -854,10 +854,7 @@ impl_runtime_apis! {
         }
 
         fn salts() -> Salts {
-            Salts {
-                salt: Subspace::salt(),
-                next_salt: Subspace::next_salt(),
-            }
+            Subspace::salts()
         }
 
         fn submit_report_equivocation_extrinsic(

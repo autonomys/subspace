@@ -944,10 +944,7 @@ cfg_if! {
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {
-                    sp_consensus_subspace::Salts {
-                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
-                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
-                    }
+                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(
@@ -1262,10 +1259,7 @@ cfg_if! {
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {
-                    sp_consensus_subspace::Salts {
-                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
-                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
-                    }
+                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(

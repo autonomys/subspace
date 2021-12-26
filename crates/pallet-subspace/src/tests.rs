@@ -28,7 +28,7 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, SolutionRanges};
+use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
@@ -147,49 +147,52 @@ fn can_update_salt_on_eon_change() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
-        let genesis_salt = 0u64.to_le_bytes();
         assert_eq!(<Test as Config>::EonDuration::get(), 5);
-        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 4);
-        // Initial salt equals to eon
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is not present
-        assert_eq!(Subspace::next_salt(), None);
+        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 3);
+        let initial_salts = Salts::default();
+        assert_eq!(Subspace::salts(), initial_salts);
 
-        // We produce blocks on every slot
+        // Almost salt reveal
+        progress_to_block(&keypair, 3);
+        // No salts update
+        assert_eq!(Subspace::salts(), initial_salts);
+
+        // Salt reveal
         progress_to_block(&keypair, 4);
-        // Still no salt update
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is not revealed yet
-        assert_eq!(Subspace::next_salt(), None);
+        // Next salt should be revealed, but current is still unchanged and it is not yet scheduled
+        // for switch in the next block.
+        let revealed_salts = Subspace::salts();
+        assert_eq!(revealed_salts.current, initial_salts.current);
+        assert!(revealed_salts.next.is_some());
+        assert_eq!(revealed_salts.switch_next_block, false);
 
+        // Almost eon edge
         progress_to_block(&keypair, 5);
-        // Still no salt update
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is revealed now
-        let next_salt = Subspace::next_salt().unwrap();
-        assert_ne!(next_salt, genesis_salt);
+        // No changes from before
+        assert_eq!(Subspace::salts(), revealed_salts);
 
+        // Eon edge
         progress_to_block(&keypair, 6);
-        // Second eon should have salt updated
-        assert_eq!(Subspace::salt(), next_salt);
-        // And next salt must be removed
-        assert_eq!(Subspace::next_salt(), None);
+        // Same salts, scheduled to be updated in the next block
+        assert_eq!(
+            Subspace::salts(),
+            Salts {
+                current: revealed_salts.current,
+                next: revealed_salts.next,
+                switch_next_block: true
+            }
+        );
 
-        // We produce blocks on every slot
-        progress_to_block(&keypair, 10);
-        // Just before eon update, still the same salt as before
-        assert_eq!(Subspace::salt(), next_salt);
-        // But next salt is revealed again
-        let old_next_salt = next_salt;
-        let next_salt = Subspace::next_salt().unwrap();
-        assert_ne!(next_salt, genesis_salt);
-        assert_ne!(next_salt, old_next_salt);
-
-        progress_to_block(&keypair, 11);
-        // Third eon should have salt updated again
-        assert_eq!(Subspace::salt(), next_salt);
-        // And next salt must be removed
-        assert_eq!(Subspace::next_salt(), None);
+        progress_to_block(&keypair, 7);
+        // Salts switched
+        assert_eq!(
+            Subspace::salts(),
+            Salts {
+                current: revealed_salts.next.unwrap(),
+                next: None,
+                switch_next_block: false
+            }
+        );
     })
 }
 

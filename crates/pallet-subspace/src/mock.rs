@@ -132,7 +132,7 @@ parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
     pub const EonDuration: u32 = 5;
-    pub const EonNextSaltReveal: u64 = 4;
+    pub const EonNextSaltReveal: u64 = 3;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
@@ -181,7 +181,14 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_solving.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&encoding, Subspace::salt());
+    let tag: Tag = subspace_solving::create_tag(&encoding, {
+        let salts = Subspace::salts();
+        if salts.switch_next_block {
+            salts.next.unwrap()
+        } else {
+            salts.current
+        }
+    });
 
     let pre_digest = make_pre_digest(
         slot.into(),

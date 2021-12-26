@@ -41,13 +41,13 @@ pub use pallet::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor,
+    SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
 use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -287,15 +287,10 @@ mod pallet {
         InitialSolutionRanges<T>,
     >;
 
-    /// Salt for *current* eon.
+    /// Salts used for challenges.
     #[pallet::storage]
-    #[pallet::getter(fn salt)]
-    pub type Salt<T> = StorageValue<_, subspace_core_primitives::Salt, ValueQuery>;
-
-    /// Salt for *next* eon.
-    #[pallet::storage]
-    #[pallet::getter(fn next_salt)]
-    pub type NextSalt<T> = StorageValue<_, subspace_core_primitives::Salt>;
+    #[pallet::getter(fn salts)]
+    pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
@@ -432,26 +427,21 @@ impl<T: Config> Pallet<T> {
 
     /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_update_global_randomness(now: T::BlockNumber) -> bool {
-        now % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
+    pub fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
+        block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
 
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_era_change(now: T::BlockNumber) -> bool {
-        now % T::EraDuration::get() == Zero::zero()
+    pub fn should_era_change(block_number: T::BlockNumber) -> bool {
+        block_number % T::EraDuration::get() == Zero::zero()
     }
 
     /// Determine whether an eon change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_eon_change(now: T::BlockNumber) -> bool {
-        // The eon has technically ended during the passage of time
-        // between this block and the last, but we have to "end" the eon now,
-        // since there is no earlier possible block we could have done it.
-        now != One::one() && {
-            let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
-            *diff >= T::EonDuration::get()
-        }
+    pub fn should_eon_change(_block_number: T::BlockNumber) -> bool {
+        let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
+        *diff >= T::EonDuration::get()
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
@@ -509,10 +499,6 @@ impl<T: Config> Pallet<T> {
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
     /// returned `true`, and the caller is the only caller of this function.
     pub fn enact_eon_change(_block_number: T::BlockNumber) {
-        let salt = NextSalt::<T>::take().expect(
-            "NextSalt is always set in block initialization before eon change is checked; qed",
-        );
-
         let current_slot = *Self::current_slot();
         let eon_index = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
@@ -521,16 +507,14 @@ impl<T: Config> Pallet<T> {
             .expect("Eon duration is never zero; qed");
 
         EonIndex::<T>::put(eon_index);
-        Salt::<T>::put(salt);
-
-        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_salt_descriptor(
-            UpdatedSaltDescriptor { salt },
-        ));
+        Salts::<T>::mutate(|salts| {
+            salts.switch_next_block = true;
+        });
     }
 
-    /// Finds the start slot of the current eon. only guaranteed to
-    /// give correct results after `do_initialize` of the first block
-    /// in the chain (as its result is based off of `GenesisSlot`).
+    /// Finds the start slot of the current eon. Only guaranteed to give correct results after
+    /// `do_initialize` of the first block in the chain (as its result is based off of
+    /// `GenesisSlot`).
     pub fn current_eon_start() -> Slot {
         Self::eon_start(EonIndex::<T>::get())
     }
@@ -583,6 +567,20 @@ impl<T: Config> Pallet<T> {
             });
         }
 
+        // Update current salt if needed
+        {
+            let salts = Salts::<T>::get();
+            if salts.switch_next_block {
+                if let Some(next_salt) = salts.next {
+                    Salts::<T>::put(sp_consensus_subspace::Salts {
+                        current: next_salt,
+                        next: None,
+                        switch_next_block: false,
+                    });
+                }
+            }
+        }
+
         // Extract PoR randomness from pre-digest.
         let por_randomness: Randomness = hashing::blake2_256(&{
             let mut input =
@@ -611,26 +609,36 @@ impl<T: Config> Pallet<T> {
         ));
         // Deposit salt data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::salt_descriptor(SaltDescriptor {
-            salt: Salt::<T>::get(),
+            salt: Salts::<T>::get().current,
         }));
 
-        let next_salt_reveal = Self::current_eon_start() + T::EonNextSaltReveal::get();
+        let next_salt_reveal = Self::current_eon_start()
+            .checked_add(T::EonNextSaltReveal::get())
+            .expect("Will not overflow until the end of universe; qed");
         let current_slot = Self::current_slot();
-        if block_number != One::one()
-            && current_slot >= next_salt_reveal
-            && !NextSalt::<T>::exists()
-        {
-            let eon_index = Self::eon_index();
-            log::info!(
-                target: "runtime::subspace",
-                "🔃 Updating next salt on eon {} slot {}",
-                eon_index,
-                *current_slot
-            );
-            NextSalt::<T>::put(Self::derive_next_salt_from_randomness(
-                eon_index,
-                &por_randomness,
-            ));
+        #[cfg(feature = "std")]
+        println!(
+            "Self::current_eon_start() {} current_slot {} next_salt_reveal {}",
+            Self::current_eon_start(),
+            current_slot,
+            next_salt_reveal
+        );
+        if current_slot >= next_salt_reveal {
+            Salts::<T>::mutate(|salts| {
+                if salts.next.is_none() {
+                    let eon_index = Self::eon_index();
+                    log::info!(
+                        target: "runtime::subspace",
+                        "🔃 Updating next salt on eon {} slot {}",
+                        eon_index,
+                        *current_slot
+                    );
+                    salts.next.replace(Self::derive_next_salt_from_randomness(
+                        eon_index,
+                        &por_randomness,
+                    ));
+                }
+            });
         }
 
         // Enact global randomness update, if necessary.

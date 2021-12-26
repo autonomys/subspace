@@ -103,14 +103,6 @@ pub struct SaltDescriptor {
     pub salt: Salt,
 }
 
-/// Salt update, this is broadcast in the first block of the eon, but only applies to the block
-/// after that.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct UpdatedSaltDescriptor {
-    /// Salt used for challenges.
-    pub salt: Salt,
-}
-
 /// A digest item which is usable with Subspace consensus.
 pub trait CompatibleDigestItem: Sized {
     /// Construct a digest item which contains a Subspace pre-digest.
@@ -142,12 +134,6 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace salt descriptor, return it.
     fn as_salt_descriptor(&self) -> Option<SaltDescriptor>;
-
-    /// Construct a digest item which contains an updated salt descriptor.
-    fn updated_salt_descriptor(updated_salt: UpdatedSaltDescriptor) -> Self;
-
-    /// If this item is a Subspace updated salt descriptor, return it.
-    fn as_updated_salt_descriptor(&self) -> Option<UpdatedSaltDescriptor>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -210,23 +196,6 @@ impl CompatibleDigestItem for DigestItem {
     fn as_salt_descriptor(&self) -> Option<SaltDescriptor> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::Salt(salt) = c {
-                Some(salt)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn updated_salt_descriptor(updated_salt: UpdatedSaltDescriptor) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::UpdatedSalt(updated_salt).encode(),
-        )
-    }
-
-    fn as_updated_salt_descriptor(&self) -> Option<UpdatedSaltDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::UpdatedSalt(salt) = c {
                 Some(salt)
             } else {
                 None
