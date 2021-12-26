@@ -76,14 +76,14 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
-    type EpochData = ();
-    type Claim = PreDigest<FarmerPublicKey>;
+    type BlockImport = I;
     type SyncOracle = SO;
     type JustificationSyncLink = L;
     type CreateProposer =
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
-    type BlockImport = I;
+    type Claim = PreDigest<FarmerPublicKey>;
+    type EpochData = ();
 
     fn logging_target(&self) -> &'static str {
         "subspace"
@@ -99,6 +99,13 @@ where
         _slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
         Ok(())
+    }
+
+    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
+        // This function is used in `sc-consensus-slots` in order to determine whether it is
+        // possible to skip block production under certain circumstances, returning `None` or any
+        // number smaller or equal to `1` disables that functionality and we don't want that.
+        Some(2)
     }
 
     async fn claim_slot(
@@ -361,13 +368,6 @@ where
             SlotLenienceType::Exponential,
             self.logging_target(),
         )
-    }
-
-    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
-        // This function is used in `sc-consensus-slots` in order to determine whether it is
-        // possible to skip block production under certain circumstances, returning `None` or any
-        // number smaller or equal to `1` disables that functionality and we don't want that.
-        Some(2)
     }
 }
 
