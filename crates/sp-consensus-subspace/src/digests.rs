@@ -103,14 +103,6 @@ pub struct SaltDescriptor {
     pub salt: Salt,
 }
 
-/// Solution range update. This is broadcast in the first block of the era, but only applies to the
-/// block after that.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct UpdatedSolutionRangeDescriptor {
-    /// Solution range used for challenges.
-    pub solution_range: u64,
-}
-
 /// Salt update, this is broadcast in the first block of the eon, but only applies to the block
 /// after that.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -144,14 +136,6 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace solution range descriptor, return it.
     fn as_solution_range_descriptor(&self) -> Option<SolutionRangeDescriptor>;
-
-    /// Construct a digest item which contains an updated solution range descriptor.
-    fn updated_solution_range_descriptor(
-        updated_solution_range: UpdatedSolutionRangeDescriptor,
-    ) -> Self;
-
-    /// If this item is a Subspace updated solution range descriptor, return it.
-    fn as_updated_solution_range_descriptor(&self) -> Option<UpdatedSolutionRangeDescriptor>;
 
     /// Construct a digest item which contains a salt descriptor.
     fn salt_descriptor(salt: SaltDescriptor) -> Self;
@@ -212,25 +196,6 @@ impl CompatibleDigestItem for DigestItem {
     fn as_solution_range_descriptor(&self) -> Option<SolutionRangeDescriptor> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::SolutionRange(solution_range) = c {
-                Some(solution_range)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn updated_solution_range_descriptor(
-        updated_solution_range: UpdatedSolutionRangeDescriptor,
-    ) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::UpdatedSolutionRange(updated_solution_range).encode(),
-        )
-    }
-
-    fn as_updated_solution_range_descriptor(&self) -> Option<UpdatedSolutionRangeDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::UpdatedSolutionRange(solution_range) = c {
                 Some(solution_range)
             } else {
                 None

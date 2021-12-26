@@ -28,7 +28,7 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses};
+use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
@@ -94,34 +94,51 @@ fn can_update_solution_range_on_era_change() {
             <Test as Config>::InitialSolutionRange::get(),
             INITIAL_SOLUTION_RANGE
         );
-        // There should be no solution range stored during first era
-        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
 
-        // We produce blocks on every slot
+        // Progress to almost era edge
+        progress_to_block(&keypair, 3);
+        // No solution range update
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+
+        // Era edge
         progress_to_block(&keypair, 4);
-        // Still no solution range update
-        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
-        progress_to_block(&keypair, 5);
+        // Next solution range should be updated, but current is still unchanged
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(
+            updated_solution_ranges.current,
+            initial_solution_ranges.current
+        );
+        assert!(updated_solution_ranges.next.is_some());
 
-        // Second era should have solution range updated
-        assert_ne!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
+        progress_to_block(&keypair, 5);
+        // Next solution range should become current
+        assert_eq!(
+            Subspace::solution_ranges(),
+            SolutionRanges {
+                current: updated_solution_ranges.next.unwrap(),
+                next: None
+            }
+        );
 
         // Because blocks were produced on every slot, apparent pledged space must increase and
         // solution range should decrease
-        let last_solution_range = Subspace::solution_range();
+        let last_solution_range = Subspace::solution_ranges().current;
         assert!(last_solution_range < INITIAL_SOLUTION_RANGE);
 
-        // Progress almost to era change
-        progress_to_block(&keypair, 8);
-        // Change era such that it takes more slots than expected
+        // Progress to era edge such that it takes more slots than expected
         go_to_block(
             &keypair,
-            9,
+            8,
             u64::from(Subspace::current_slot())
                 + (4 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0 + 10),
         );
         // This should cause solution range to increase as apparent pledged space decreased
-        assert!(Subspace::solution_range() > last_solution_range);
+        assert!(Subspace::solution_ranges().next.unwrap() > last_solution_range);
     })
 }
 

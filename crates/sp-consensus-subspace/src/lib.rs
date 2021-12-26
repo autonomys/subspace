@@ -25,7 +25,7 @@ pub mod offence;
 
 use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -68,18 +68,15 @@ pub type SubspaceBlockWeight = u128;
 /// An consensus log item for Subspace.
 #[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
 enum ConsensusLog {
-    /// Global randomness for this block.
+    /// Global randomness for this block/interval.
     #[codec(index = 1)]
     GlobalRandomness(GlobalRandomnessDescriptor),
-    /// Solution range for this block.
+    /// Solution range for this block/era.
     #[codec(index = 3)]
     SolutionRange(SolutionRangeDescriptor),
-    /// Salt for this block.
+    /// Salt for this block/eon.
     #[codec(index = 4)]
     Salt(SaltDescriptor),
-    /// The era has changed and the solution range has changed because of that.
-    #[codec(index = 5)]
-    UpdatedSolutionRange(UpdatedSolutionRangeDescriptor),
     /// The eon has changed and the salt has changed because of that.
     #[codec(index = 6)]
     UpdatedSalt(UpdatedSaltDescriptor),
@@ -173,22 +170,41 @@ where
     verify_proof().is_some()
 }
 
-/// Subspace salts used for challenges.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
-pub struct Salts {
-    /// Salt used for challenges.
-    pub salt: Salt,
-    /// Salt used for challenges after `salt`.
-    pub next_salt: Option<Salt>,
-}
-
 /// Subspace global randomnesses used for deriving global challenges.
 #[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Debug, TypeInfo)]
 pub struct GlobalRandomnesses {
-    /// Global randomness used for deriving global challenge in current block.
+    /// Global randomness used for deriving global challenge in current block/interval.
     pub current: Randomness,
-    /// Global randomness that will be used for deriving global challenge in the next interval.
+    /// Global randomness that will be used for deriving global challenge in the next
+    /// block/interval.
     pub next: Option<Randomness>,
+}
+
+/// Subspace solution ranges used for challenges.
+#[derive(Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Debug, TypeInfo)]
+pub struct SolutionRanges {
+    /// Solution range in current block/era.
+    pub current: u64,
+    /// Solution range that will be used in the next block/era.
+    pub next: Option<u64>,
+}
+
+impl Default for SolutionRanges {
+    fn default() -> Self {
+        Self {
+            current: u64::MAX,
+            next: None,
+        }
+    }
+}
+
+/// Subspace salts used for challenges.
+#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
+pub struct Salts {
+    /// Salt used for challenges in current block/eon.
+    pub salt: Salt,
+    /// Salt used for challenges after `salt` in the next block/eon.
+    pub next_salt: Option<Salt>,
 }
 
 sp_api::decl_runtime_apis! {
@@ -210,8 +226,8 @@ sp_api::decl_runtime_apis! {
         /// Global randomnesses used for deriving global challenges.
         fn global_randomnesses() -> GlobalRandomnesses;
 
-        /// Current solution range.
-        fn solution_range() -> u64;
+        /// Solution ranges.
+        fn solution_ranges() -> SolutionRanges;
 
         /// Subspace salts used for challenges.
         fn salts() -> Salts;

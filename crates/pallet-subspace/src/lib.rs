@@ -41,7 +41,7 @@ pub use pallet::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    SolutionRangeDescriptor, UpdatedSaltDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
@@ -134,6 +134,19 @@ mod pallet {
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
     use sp_std::prelude::*;
     use subspace_core_primitives::{RootBlock, Sha256Hash};
+
+    pub(super) struct InitialSolutionRanges<T: Config> {
+        _config: T,
+    }
+
+    impl<T: Config> Get<sp_consensus_subspace::SolutionRanges> for InitialSolutionRanges<T> {
+        fn get() -> sp_consensus_subspace::SolutionRanges {
+            sp_consensus_subspace::SolutionRanges {
+                current: T::InitialSolutionRange::get(),
+                next: None,
+            }
+        }
+    }
 
     /// The Subspace Pallet
     #[pallet::pallet]
@@ -264,10 +277,15 @@ mod pallet {
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
-    /// The solution range for *current* era.
+    /// Solution ranges used for challenges.
     #[pallet::storage]
-    #[pallet::getter(fn solution_range)]
-    pub type SolutionRange<T: Config> = StorageValue<_, u64, ValueQuery, T::InitialSolutionRange>;
+    #[pallet::getter(fn solution_ranges)]
+    pub(super) type SolutionRanges<T: Config> = StorageValue<
+        _,
+        sp_consensus_subspace::SolutionRanges,
+        ValueQuery,
+        InitialSolutionRanges<T>,
+    >;
 
     /// Salt for *current* eon.
     #[pallet::storage]
@@ -421,10 +439,7 @@ impl<T: Config> Pallet<T> {
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
     pub fn should_era_change(now: T::BlockNumber) -> bool {
-        // The era has technically ended during the passage of time
-        // between this block and the last, but we have to "end" the era now,
-        // since there is no earlier possible block we could have done it.
-        now != One::one() && now % T::EraDuration::get() == One::one()
+        now % T::EraDuration::get() == Zero::zero()
     }
 
     /// Determine whether an eon change should take place at this block.
@@ -455,42 +470,40 @@ impl<T: Config> Pallet<T> {
     pub fn enact_era_change(block_number: T::BlockNumber) {
         let slot_probability = T::SlotProbability::get();
 
-        let previous_solution_range = SolutionRange::<T>::get();
-
         let current_slot = Self::current_slot();
-        // If Era start slot is not found it means we have just finished the first era
-        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-        let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-        // Now we need to re-calculate solution range. The idea here is to keep block production at
-        // the same pace while space pledged on the network changes. For this we adjust previous
-        // solution range according to actual and expected number of blocks per era.
-        let era_duration: u64 = T::EraDuration::get()
-            .try_into()
-            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-        let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-        let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
-        let adjustment_factor =
-            (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+        SolutionRanges::<T>::mutate(|solution_ranges| {
+            // If Era start slot is not found it means we have just finished the first era
+            let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
+            let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-        // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
-        //  in order to seed the blockchain with data quickly
-        let solution_range = if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
-            if block_number < 15_000_u32.into() {
-                previous_solution_range
-            } else {
-                (previous_solution_range as f64 * adjustment_factor).round() as u64
-            }
-        } else {
-            (previous_solution_range as f64 * adjustment_factor).round() as u64
-        };
+            // Now we need to re-calculate solution range. The idea here is to keep block production at
+            // the same pace while space pledged on the network changes. For this we adjust previous
+            // solution range according to actual and expected number of blocks per era.
+            let era_duration: u64 = T::EraDuration::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
+            let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+            let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
+            let adjustment_factor =
+                (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-        SolutionRange::<T>::put(solution_range);
+            solution_ranges.next.replace(
+                // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
+                //  in order to seed the blockchain with data quickly
+                if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
+                    if block_number < 15_000_u32.into() {
+                        solution_ranges.current
+                    } else {
+                        (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                    }
+                } else {
+                    (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                },
+            );
+        });
+
         EraStartSlot::<T>::put(current_slot);
-
-        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_solution_range_descriptor(
-            UpdatedSolutionRangeDescriptor { solution_range },
-        ));
     }
 
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
@@ -562,6 +575,14 @@ impl<T: Config> Pallet<T> {
             });
         }
 
+        // If solution range was updated in previous block, set it as current.
+        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+            SolutionRanges::<T>::put(sp_consensus_subspace::SolutionRanges {
+                current: next_solution_range,
+                next: None,
+            });
+        }
+
         // Extract PoR randomness from pre-digest.
         let por_randomness: Randomness = hashing::blake2_256(&{
             let mut input =
@@ -585,7 +606,7 @@ impl<T: Config> Pallet<T> {
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
             SolutionRangeDescriptor {
-                solution_range: SolutionRange::<T>::get(),
+                solution_range: SolutionRanges::<T>::get().current,
             },
         ));
         // Deposit salt data such that light client can validate blocks later.

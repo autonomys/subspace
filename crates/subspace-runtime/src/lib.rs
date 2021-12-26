@@ -39,7 +39,8 @@ use pallet_balances::NegativeImbalance;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SubspaceGenesisConfiguration,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
+    SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
@@ -292,7 +293,7 @@ impl Get<u64> for TotalSpacePledged {
             .expect("Piece size is definitely small enough to fit into u64; qed");
         // Operations reordered to avoid u64 overflow, but essentially are:
         // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
-        u64::MAX / Subspace::solution_range() * piece_size * SlotProbability::get().0
+        u64::MAX / Subspace::solution_ranges().current * piece_size * SlotProbability::get().0
             / SlotProbability::get().1
     }
 }
@@ -848,8 +849,8 @@ impl_runtime_apis! {
             Subspace::global_randomnesses()
         }
 
-        fn solution_range() -> u64 {
-            Subspace::solution_range()
+        fn solution_ranges() -> SolutionRanges {
+            Subspace::solution_ranges()
         }
 
         fn salts() -> Salts {

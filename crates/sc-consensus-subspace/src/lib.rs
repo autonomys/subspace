@@ -160,9 +160,6 @@ pub enum Error<B: BlockT> {
     /// Multiple Subspace solution range digests
     #[display(fmt = "Multiple Subspace solution range digests, rejecting!")]
     MultipleSolutionRangeDigests,
-    /// Multiple Subspace updated solution range digests
-    #[display(fmt = "Multiple Subspace updated solution range digests, rejecting!")]
-    MultipleUpdatedSolutionRangeDigests,
     /// Multiple Subspace salt digests
     #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,

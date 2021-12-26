@@ -939,8 +939,8 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
-                fn solution_range() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::solution_range()
+                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                    <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {
@@ -1257,8 +1257,8 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
-                fn solution_range() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::solution_range()
+                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                    <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {

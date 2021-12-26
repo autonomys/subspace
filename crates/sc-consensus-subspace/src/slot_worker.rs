@@ -34,9 +34,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
-};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor};
 use sp_consensus_subspace::{FarmerPublicKey, Salts, SubspaceApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
@@ -119,10 +117,6 @@ where
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let runtime_api = self.client.runtime_api();
 
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // update interval the very first block of the interval still uses global randomness from
-        // the previous one, but the block after it uses "next" global randomness deposited in the
-        // first block.
         let global_randomness = runtime_api
             .global_randomnesses(&parent_block_id)
             .map(|randomnesses| {
@@ -140,14 +134,16 @@ where
         // Here we always use parent block as the source of information, thus on the edge of the
         // era the very first block of the era still uses solution range from the previous one,
         // but the block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_updated_solution_range_descriptor::<B>(parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis or when
-                // there is no solution range update in last block
-                runtime_api.solution_range(&parent_block_id).ok()
-            })?;
+        let solution_range = runtime_api
+            .solution_ranges(&parent_block_id)
+            .map(|solution_ranges| {
+                if let Some(solution_range) = solution_ranges.next {
+                    solution_range
+                } else {
+                    solution_ranges.current
+                }
+            })
+            .ok()?;
         // Here we always use parent block as the source of information, thus on the edge of the
         // eon the very first block of the eon still uses salt from the previous one, but the
         // block after it uses "next" salt deposited in the first block.
@@ -369,32 +365,6 @@ where
             self.logging_target(),
         )
     }
-}
-
-/// Extract the updated Subspace solution range descriptor from the given header if it exists.
-fn find_updated_solution_range_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<UpdatedSolutionRangeDescriptor>, Error<B>> {
-    let mut updated_solution_range_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for updated solution range digest.", log);
-        match (
-            log.as_updated_solution_range_descriptor(),
-            updated_solution_range_descriptor.is_some(),
-        ) {
-            (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleUpdatedSolutionRangeDigests));
-            }
-            (Some(solution_range), false) => {
-                updated_solution_range_descriptor.replace(solution_range);
-            }
-            _ => {
-                trace!(target: "subspace", "Ignoring digest not meant for us");
-            }
-        }
-    }
-
-    Ok(updated_solution_range_descriptor)
 }
 
 /// Extract the updated Subspace salt descriptor from the given header if it exists.
