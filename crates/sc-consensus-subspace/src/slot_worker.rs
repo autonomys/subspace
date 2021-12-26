@@ -30,7 +30,7 @@ use sc_consensus_slots::{
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
-use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
@@ -44,6 +44,7 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::{Randomness, Salt};
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     pub(super) client: Arc<C>,
@@ -117,33 +118,12 @@ where
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let runtime_api = self.client.runtime_api();
 
-        let global_randomness = runtime_api
-            .global_randomnesses(&parent_block_id)
-            .map(|randomnesses| {
-                if let Some(randomness) = randomnesses.next {
-                    randomness
-                } else {
-                    randomnesses.current
-                }
-            })
-            .ok()?;
-        let solution_range = runtime_api
-            .solution_ranges(&parent_block_id)
-            .map(|solution_ranges| {
-                if let Some(solution_range) = solution_ranges.next {
-                    solution_range
-                } else {
-                    solution_ranges.current
-                }
-            })
-            .ok()?;
-        let (salt, next_salt) = runtime_api.salts(&parent_block_id).ok().and_then(|salts| {
-            if salts.switch_next_block {
-                Some((salts.next?, None))
-            } else {
-                Some((salts.current, salts.next))
-            }
-        })?;
+        let global_randomness =
+            extract_global_randomness_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+        let solution_range =
+            extract_solution_range_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+        let (salt, next_salt) =
+            extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
 
         let new_slot_info = NewSlotInfo {
             slot,
@@ -351,4 +331,72 @@ where
             self.logging_target(),
         )
     }
+}
+
+/// Extract global randomness for block, given ID of the parent block.
+pub(crate) fn extract_global_randomness_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<Randomness, ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client
+        .runtime_api()
+        .global_randomnesses(parent_block_id)
+        .map(|randomnesses| {
+            if let Some(randomness) = randomnesses.next {
+                randomness
+            } else {
+                randomnesses.current
+            }
+        })
+}
+
+/// Extract solution range for block, given ID of the parent block.
+pub(crate) fn extract_solution_range_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<u64, ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client
+        .runtime_api()
+        .solution_ranges(parent_block_id)
+        .map(|solution_ranges| {
+            if let Some(solution_range) = solution_ranges.next {
+                solution_range
+            } else {
+                solution_ranges.current
+            }
+        })
+}
+
+/// Extract salt and next salt for block, given ID of the parent block.
+pub(crate) fn extract_salt_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<(Salt, Option<Salt>), ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client.runtime_api().salts(parent_block_id).map(|salts| {
+        if salts.switch_next_block {
+            (
+                salts.next.expect(
+                    "Next salt must always be present if `switch_next_block` is `true`; qed",
+                ),
+                None,
+            )
+        } else {
+            (salts.current, salts.next)
+        }
+    })
 }

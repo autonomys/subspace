@@ -212,12 +212,21 @@ pub enum Error<B: BlockT> {
     /// Block has no associated global randomness
     #[display(fmt = "Missing global randomness for block {}", _0)]
     MissingGlobalRandomness(B::Hash),
+    /// Block has invalid associated global randomness
+    #[display(fmt = "Invalid global randomness for block {}", _0)]
+    InvalidGlobalRandomness(B::Hash),
     /// Block has no associated solution range
     #[display(fmt = "Missing solution range for block {}", _0)]
     MissingSolutionRange(B::Hash),
+    /// Block has invalid associated solution range
+    #[display(fmt = "Invalid solution range for block {}", _0)]
+    InvalidSolutionRange(B::Hash),
     /// Block has no associated salt
     #[display(fmt = "Missing salt for block {}", _0)]
     MissingSalt(B::Hash),
+    /// Block has invalid associated salt
+    #[display(fmt = "Invalid salt for block {}", _0)]
+    InvalidSalt(B::Hash),
     /// Farmer in block list
     #[display(fmt = "Farmer {} is in block list", _0)]
     FarmerInBlockList(FarmerPublicKey),
@@ -755,25 +764,43 @@ where
 
         let slot_now = create_inherent_data_providers.slot();
 
-        // let parent_header_metadata = self
-        //     .client
-        //     .header_metadata(parent_hash)
-        //     .map_err(Error::<Block>::FetchParentHeader)?;
-
         let checked_header = {
             let pre_digest = find_pre_digest::<Block>(&block.header)?;
-            // TODO: Is it actually secure to validate it using log items? Should probably switch to
-            //  reading runtime storage (which wasn't working for light client, but we don't have
-            //  light client either right now)
+
             let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
                 .global_randomness;
+            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )
+            .map_err(Error::<Block>::RuntimeApi)?;
+            if global_randomness != correct_global_randomness {
+                return Err(Error::<Block>::InvalidGlobalRandomness(hash).into());
+            }
+
             let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
+            let correct_solution_range = slot_worker::extract_solution_range_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )
+            .map_err(Error::<Block>::RuntimeApi)?;
+            if solution_range != correct_solution_range {
+                return Err(Error::<Block>::InvalidSolutionRange(hash).into());
+            }
+
             let salt = find_salt_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
+            let correct_salt =
+                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)
+                    .map_err(Error::<Block>::RuntimeApi)?
+                    .0;
+            if salt != correct_salt {
+                return Err(Error::<Block>::InvalidSalt(hash).into());
+            }
 
             if self
                 .client
