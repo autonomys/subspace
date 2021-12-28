@@ -36,18 +36,15 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use sp_api::impl_runtime_apis;
+use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    Epoch, EquivocationProof, FarmerPublicKey, Salts, SubspaceEpochConfiguration,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
     SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Hash as HashT,
-    Header as HeaderT, PostDispatchInfoOf, Zero,
-};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
@@ -131,12 +128,13 @@ const SLOT_DURATION: u64 = 1000;
 /// Must match ratio between block and slot duration in constants above.
 const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
+/// The amount of time, in blocks, between updates of global randomness.
+const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 100;
+
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
-const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 256;
-const EPOCH_DURATION_IN_SLOTS: u64 =
-    EPOCH_DURATION_IN_BLOCKS as u64 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0;
+const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
 /// Eon duration is 7 days
 const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
@@ -144,11 +142,6 @@ const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
 const EON_NEXT_SALT_REVEAL: u64 = EON_DURATION_IN_SLOTS
     .checked_sub(3600 * 24)
     .expect("Offset is smaller than eon duration; qed");
-
-/// The Subspace epoch configuration at genesis.
-pub const SUBSPACE_GENESIS_EPOCH_CONFIG: SubspaceEpochConfiguration = SubspaceEpochConfiguration {
-    c: SLOT_PROBABILITY,
-};
 
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
@@ -234,7 +227,7 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
-    type EpochDuration = ConstU64<EPOCH_DURATION_IN_SLOTS>;
+    type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type EonDuration = ConstU64<EON_DURATION_IN_SLOTS>;
     type EonNextSaltReveal = ConstU64<EON_NEXT_SALT_REVEAL>;
@@ -244,13 +237,13 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
     type RecordSize = ConstU32<RECORD_SIZE>;
     type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
-    type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
+    type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
         OffencesSubspace,
-        ConstU64<{ EPOCH_DURATION_IN_BLOCKS as u64 }>,
+        ConstU64<{ EQUIVOCATION_REPORT_LONGEVITY as u64 }>,
     >;
 
     type WeightInfo = ();
@@ -300,7 +293,7 @@ impl Get<u64> for TotalSpacePledged {
             .expect("Piece size is definitely small enough to fit into u64; qed");
         // Operations reordered to avoid u64 overflow, but essentially are:
         // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
-        u64::MAX / Subspace::solution_range() * piece_size * SlotProbability::get().0
+        u64::MAX / Subspace::solution_ranges().current * piece_size * SlotProbability::get().0
             / SlotProbability::get().1
     }
 }
@@ -828,16 +821,16 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-        fn confirmation_depth_k() -> u32 {
-            <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+            <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
 
         fn record_size() -> u32 {
-            <Runtime as pallet_subspace::Config>::RecordSize::get()
+            <Self as pallet_subspace::Config>::RecordSize::get()
         }
 
         fn recorded_history_segment_size() -> u32 {
-            <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+            <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
         }
 
         fn configuration() -> SubspaceGenesisConfiguration {
@@ -848,33 +841,20 @@ impl_runtime_apis! {
             // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
             SubspaceGenesisConfiguration {
                 slot_duration: Subspace::slot_duration(),
-                epoch_length: <Runtime as pallet_subspace::Config>::EpochDuration::get(),
                 c: SlotProbability::get(),
-                randomness: Subspace::randomness(),
             }
         }
 
-        fn solution_range() -> u64 {
-            Subspace::solution_range()
+        fn global_randomnesses() -> GlobalRandomnesses {
+            Subspace::global_randomnesses()
+        }
+
+        fn solution_ranges() -> SolutionRanges {
+            Subspace::solution_ranges()
         }
 
         fn salts() -> Salts {
-            Salts {
-                salt: Subspace::salt(),
-                next_salt: Subspace::next_salt(),
-            }
-        }
-
-        fn current_epoch_start() -> sp_consensus_slots::Slot {
-            Subspace::current_epoch_start()
-        }
-
-        fn current_epoch() -> Epoch {
-            Subspace::current_epoch()
-        }
-
-        fn next_epoch() -> Epoch {
-            Subspace::next_epoch()
+            Subspace::salts()
         }
 
         fn submit_report_equivocation_extrinsic(

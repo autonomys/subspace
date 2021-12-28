@@ -16,9 +16,10 @@
 
 //! Test utilities
 
+use crate::equivocation::EquivocationHandler;
 use crate::{
     self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
-    NormalEpochChange, NormalEraChange,
+    NormalEraChange, NormalGlobalRandomnessInterval,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
@@ -29,7 +30,6 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
-use sp_io;
 use sp_runtime::{
     testing::{Digest, DigestItem, Header, TestXt},
     traits::{Header as _, IdentityLookup},
@@ -49,11 +49,11 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        Subspace: pallet_subspace::{Pallet, Call, Storage, Config, Event, ValidateUnsigned},
-        OffencesSubspace: pallet_offences_subspace::{Pallet, Storage, Event},
-        Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
+        System: frame_system,
+        Balances: pallet_balances,
+        Subspace: pallet_subspace,
+        OffencesSubspace: pallet_offences_subspace,
+        Timestamp: pallet_timestamp,
     }
 );
 
@@ -129,10 +129,10 @@ pub const INITIAL_SOLUTION_RANGE: u64 =
     u64::MAX / (1024 * 1024 * 1024 / 4096) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
-    pub const EpochDuration: u64 = 3;
+    pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
     pub const EonDuration: u32 = 5;
-    pub const EonNextSaltReveal: u64 = 4;
+    pub const EonNextSaltReveal: u64 = 3;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
@@ -145,7 +145,7 @@ parameter_types! {
 
 impl Config for Test {
     type Event = Event;
-    type EpochDuration = EpochDuration;
+    type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type EraDuration = EraDuration;
     type EonDuration = EonDuration;
     type EonNextSaltReveal = EonNextSaltReveal;
@@ -155,12 +155,11 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
-    type EpochChangeTrigger = NormalEpochChange;
+    type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
 
-    type HandleEquivocation =
-        crate::equivocation::EquivocationHandler<OffencesSubspace, ReportLongevity>;
+    type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -182,7 +181,14 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_solving.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&encoding, Subspace::salt());
+    let tag: Tag = subspace_solving::create_tag(&encoding, {
+        let salts = Subspace::salts();
+        if salts.switch_next_block {
+            salts.next.unwrap()
+        } else {
+            salts.current
+        }
+    });
 
     let pre_digest = make_pre_digest(
         slot.into(),

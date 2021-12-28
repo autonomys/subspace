@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification for Subspace headers.
-use super::{find_pre_digest, subspace_err, BlockT, Epoch, Error};
+use super::{subspace_err, BlockT, Error};
 use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
@@ -34,14 +34,12 @@ use subspace_solving::{derive_global_challenge, is_local_challenge_valid, Subspa
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     /// The header being verified.
     pub(super) header: B::Header,
-    /// The pre-digest of the header being verified. this is optional - if prior
-    /// verification code had to read it, it can be included here to avoid duplicate
-    /// work.
-    pub(super) pre_digest: Option<PreDigest<FarmerPublicKey>>,
+    /// The pre-digest of the header being verified to avoid duplicated work.
+    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
-    /// Epoch descriptor of the epoch this block _should_ be under, if it's valid.
-    pub(super) epoch: &'a Epoch,
+    /// Global randomness used for driving local slot challenges.
+    pub(super) global_randomness: &'a Randomness,
     /// Solution range corresponding to this block.
     pub(super) solution_range: u64,
     /// Salt corresponding to this block.
@@ -71,7 +69,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         mut header,
         pre_digest,
         slot_now,
-        epoch,
+        global_randomness,
         solution_range,
         salt,
         records_root,
@@ -79,10 +77,6 @@ pub(super) fn check_header<B: BlockT + Sized>(
         record_size,
         signing_context,
     } = params;
-
-    let pre_digest = pre_digest
-        .map(Ok)
-        .unwrap_or_else(|| find_pre_digest::<B>(&header))?;
 
     trace!(target: "subspace", "Checking header");
     let seal = header
@@ -94,8 +88,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         .as_subspace_seal()
         .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
 
-    // the pre-hash of the header doesn't include the seal
-    // and that's what we sign
+    // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
 
     if pre_digest.slot > slot_now {
@@ -118,7 +111,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
     verify_solution(
         &pre_digest.solution,
         VerifySolutionParams {
-            epoch_randomness: &epoch.randomness,
+            global_randomness,
             solution_range,
             slot: pre_digest.slot,
             salt,
@@ -129,15 +122,14 @@ pub(super) fn check_header<B: BlockT + Sized>(
         },
     )?;
 
-    let info = VerifiedHeaderInfo {
-        pre_digest: CompatibleDigestItem::subspace_pre_digest(&pre_digest),
-        seal,
-    };
-    Ok(CheckedHeader::Checked(header, info))
+    Ok(CheckedHeader::Checked(
+        header,
+        VerifiedHeaderInfo { pre_digest, seal },
+    ))
 }
 
 pub(super) struct VerifiedHeaderInfo {
-    pub(super) pre_digest: DigestItem,
+    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
     pub(super) seal: DigestItem,
 }
 
@@ -211,7 +203,7 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
 }
 
 pub(crate) struct VerifySolutionParams<'a> {
-    pub(crate) epoch_randomness: &'a Randomness,
+    pub(crate) global_randomness: &'a Randomness,
     pub(crate) solution_range: u64,
     pub(crate) slot: Slot,
     pub(crate) salt: Salt,
@@ -226,7 +218,7 @@ pub(crate) fn verify_solution<B: BlockT>(
     params: VerifySolutionParams,
 ) -> Result<(), Error<B>> {
     let VerifySolutionParams {
-        epoch_randomness,
+        global_randomness,
         solution_range,
         slot,
         salt,
@@ -237,7 +229,7 @@ pub(crate) fn verify_solution<B: BlockT>(
     } = params;
 
     if let Err(error) = is_local_challenge_valid(
-        derive_global_challenge(epoch_randomness, slot),
+        derive_global_challenge(global_randomness, slot),
         &solution.local_challenge,
         &solution.public_key,
     ) {

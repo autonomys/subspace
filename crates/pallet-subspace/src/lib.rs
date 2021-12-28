@@ -32,54 +32,57 @@ use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
     dispatch::{DispatchResult, DispatchResultWithPostInfo},
-    traits::{ConstU32, Get, OnTimestampSet},
+    traits::{Get, OnTimestampSet},
     weights::{Pays, Weight},
-    BoundedVec,
 };
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 pub use pallet::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, CompatibleDigestItemRef, NextEpochDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
+    CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
+    SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
-use sp_consensus_subspace::{
-    Epoch, EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration,
-};
+use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
-use sp_runtime::traits::{One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
 use sp_runtime::ConsensusEngineId;
 use sp_std::prelude::*;
-use subspace_core_primitives::{crypto, RootBlock, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE};
+use subspace_core_primitives::{
+    crypto, Randomness, RootBlock, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+};
 
+const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
+const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
 const SALT_HASHING_PREFIX: &[u8] = b"salt";
 const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
 pub trait WeightInfo {
-    fn plan_config_change() -> Weight;
     fn report_equivocation() -> Weight;
     fn store_root_blocks(root_blocks_count: usize) -> Weight;
 }
 
-/// Trigger an epoch change, if any should take place.
-pub trait EpochChangeTrigger {
-    /// Trigger an epoch change, if any should take place. This should be called
-    /// during every block, after initialization is done.
-    fn trigger<T: Config>(now: T::BlockNumber);
+/// Trigger global randomness every interval.
+pub trait GlobalRandomnessIntervalTrigger {
+    /// Trigger a global randomness update. This should be called during every block, after
+    /// initialization is done.
+    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness);
 }
-/// A type signifying to Subspace that it should perform epoch changes with an internal trigger.
-pub struct NormalEpochChange;
 
-impl EpochChangeTrigger for NormalEpochChange {
-    fn trigger<T: Config>(now: T::BlockNumber) {
-        if <Pallet<T>>::should_epoch_change(now) {
-            <Pallet<T>>::enact_epoch_change();
+/// A type signifying to Subspace that it should perform a global randomness update with an internal
+/// trigger.
+pub struct NormalGlobalRandomnessInterval;
+
+impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
+    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness) {
+        if <Pallet<T>>::should_update_global_randomness(block_number) {
+            <Pallet<T>>::enact_update_global_randomness(block_number, por_randomness);
         }
     }
 }
@@ -88,16 +91,16 @@ impl EpochChangeTrigger for NormalEpochChange {
 pub trait EraChangeTrigger {
     /// Trigger an era change, if any should take place. This should be called
     /// during every block, after initialization is done.
-    fn trigger<T: Config>(now: T::BlockNumber);
+    fn trigger<T: Config>(block_number: T::BlockNumber);
 }
 
 /// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEraChange;
 
 impl EraChangeTrigger for NormalEraChange {
-    fn trigger<T: Config>(now: T::BlockNumber) {
-        if <Pallet<T>>::should_era_change(now) {
-            <Pallet<T>>::enact_era_change(now);
+    fn trigger<T: Config>(block_number: T::BlockNumber) {
+        if <Pallet<T>>::should_era_change(block_number) {
+            <Pallet<T>>::enact_era_change(block_number);
         }
     }
 }
@@ -106,36 +109,44 @@ impl EraChangeTrigger for NormalEraChange {
 pub trait EonChangeTrigger {
     /// Trigger an era change, if any should take place. This should be called
     /// during every block, after initialization is done.
-    fn trigger<T: Config>(now: T::BlockNumber);
+    fn trigger<T: Config>(block_number: T::BlockNumber);
 }
 
 /// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEonChange;
 
 impl EonChangeTrigger for NormalEonChange {
-    fn trigger<T: Config>(now: T::BlockNumber) {
-        if <Pallet<T>>::should_eon_change(now) {
-            <Pallet<T>>::enact_eon_change();
+    fn trigger<T: Config>(block_number: T::BlockNumber) {
+        if <Pallet<T>>::should_eon_change(block_number) {
+            <Pallet<T>>::enact_eon_change(block_number);
         }
     }
 }
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{EonChangeTrigger, EpochChangeTrigger, EraChangeTrigger, WeightInfo};
+    use super::{EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, WeightInfo};
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
-    use sp_consensus_subspace::digests::NextConfigDescriptor;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SubspaceEpochConfiguration};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
     use sp_std::prelude::*;
     use subspace_core_primitives::{RootBlock, Sha256Hash};
 
-    pub(super) const UNDER_CONSTRUCTION_SEGMENT_LENGTH: u32 = 256;
+    pub(super) struct InitialSolutionRanges<T: Config> {
+        _config: T,
+    }
 
-    pub(super) type MaybeRandomness = Option<subspace_core_primitives::Randomness>;
+    impl<T: Config> Get<sp_consensus_subspace::SolutionRanges> for InitialSolutionRanges<T> {
+        fn get() -> sp_consensus_subspace::SolutionRanges {
+            sp_consensus_subspace::SolutionRanges {
+                current: T::InitialSolutionRange::get(),
+                next: None,
+            }
+        }
+    }
 
     /// The Subspace Pallet
     #[pallet::pallet]
@@ -149,17 +160,15 @@ mod pallet {
         /// The overarching event type.
         type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
 
-        /// The amount of time, in slots, that each epoch should last.
-        /// NOTE: Currently it is not possible to change the epoch duration after
-        /// the chain has started. Attempting to do so will brick block production.
+        /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
-        type EpochDuration: Get<u64>;
+        type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
 
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
         /// the chain has started. Attempting to do so will brick block production.
         #[pallet::constant]
-        type EraDuration: Get<u32>;
+        type EraDuration: Get<Self::BlockNumber>;
 
         /// The amount of time, in slots, that each eon should last.
         /// NOTE: Currently it is not possible to change the eon duration after
@@ -197,7 +206,7 @@ mod pallet {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         #[pallet::constant]
-        type ConfirmationDepthK: Get<u32>;
+        type ConfirmationDepthK: Get<Self::BlockNumber>;
 
         /// The size of data in one piece (in bytes).
         #[pallet::constant]
@@ -208,12 +217,8 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
-        /// Subspace requires some logic to be triggered on every block to query for whether an epoch
-        /// has ended and to perform the transition to the next epoch.
-        ///
-        /// Typically, the `ExternalTrigger` type should be used. An internal trigger should only be used
-        /// when no other module is responsible for changing epochs.
-        type EpochChangeTrigger: EpochChangeTrigger;
+        /// Subspace requires periodic global randomness update.
+        type GlobalRandomnessIntervalTrigger: GlobalRandomnessIntervalTrigger;
 
         /// Subspace requires some logic to be triggered on every block to query for whether an era
         /// has ended and to perform the transition to the next era.
@@ -247,24 +252,16 @@ mod pallet {
     pub enum Error<T> {
         /// An equivocation proof provided as part of an equivocation report is invalid.
         InvalidEquivocationProof,
-        /// A key ownership proof provided as part of an equivocation report is invalid.
-        InvalidKeyOwnershipProof,
         /// A given equivocation report is valid but already previously reported.
         DuplicateOffenceReport,
     }
-
-    /// Current epoch index.
-    #[pallet::storage]
-    #[pallet::getter(fn epoch_index)]
-    pub type EpochIndex<T> = StorageValue<_, u64, ValueQuery>;
 
     /// Current eon index.
     #[pallet::storage]
     #[pallet::getter(fn eon_index)]
     pub type EonIndex<T> = StorageValue<_, u64, ValueQuery>;
 
-    /// The slot at which the first epoch actually started. This is 0
-    /// until the first block of the chain.
+    /// The slot at which the block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
     pub type GenesisSlot<T> = StorageValue<_, Slot, ValueQuery>;
@@ -274,116 +271,30 @@ mod pallet {
     #[pallet::getter(fn current_slot)]
     pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
 
-    /// The epoch randomness for the *current* epoch.
-    ///
-    /// # Security
-    ///
-    /// This MUST NOT be used for gambling, as it can be influenced by a
-    /// malicious validator in the short term. It MAY be used in many
-    /// cryptographic protocols, however, so long as one remembers that this
-    /// (like everything else on-chain) it is public. For example, it can be
-    /// used where a number is needed that cannot have been chosen by an
-    /// adversary, for purposes such as public-coin zero-knowledge proofs.
-    // NOTE: the following fields don't use the constants to define the
-    // array size because the metadata API currently doesn't resolve the
-    // variable to its underlying value.
+    /// Global randomnesses derived from from PoR signature and used for deriving global challenges.
     #[pallet::storage]
-    #[pallet::getter(fn randomness)]
-    pub type Randomness<T> = StorageValue<_, subspace_core_primitives::Randomness, ValueQuery>;
+    #[pallet::getter(fn global_randomnesses)]
+    pub(super) type GlobalRandomnesses<T> =
+        StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
-    /// The solution range for *current* era.
+    /// Solution ranges used for challenges.
     #[pallet::storage]
-    #[pallet::getter(fn solution_range)]
-    pub type SolutionRange<T> =
-        StorageValue<_, u64, ValueQuery, <T as Config>::InitialSolutionRange>;
+    #[pallet::getter(fn solution_ranges)]
+    pub(super) type SolutionRanges<T: Config> = StorageValue<
+        _,
+        sp_consensus_subspace::SolutionRanges,
+        ValueQuery,
+        InitialSolutionRanges<T>,
+    >;
 
-    /// Salt for *current* eon.
+    /// Salts used for challenges.
     #[pallet::storage]
-    #[pallet::getter(fn salt)]
-    pub type Salt<T> = StorageValue<_, subspace_core_primitives::Salt, ValueQuery>;
-
-    /// Salt for *next* eon.
-    #[pallet::storage]
-    #[pallet::getter(fn next_salt)]
-    pub type NextSalt<T> = StorageValue<_, subspace_core_primitives::Salt>;
+    #[pallet::getter(fn salts)]
+    pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
 
     /// The solution range for *current* era.
     #[pallet::storage]
     pub type EraStartSlot<T> = StorageValue<_, Slot>;
-
-    /// Pending epoch configuration change that will be applied when the next epoch is enacted.
-    #[pallet::storage]
-    pub(super) type PendingEpochConfigChange<T> = StorageValue<_, NextConfigDescriptor>;
-
-    /// Next epoch randomness.
-    #[pallet::storage]
-    pub(super) type NextRandomness<T> =
-        StorageValue<_, subspace_core_primitives::Randomness, ValueQuery>;
-
-    /// Randomness under construction.
-    ///
-    /// We make a tradeoff between storage accesses and list length.
-    /// We store the under-construction randomness in segments of up to
-    /// `UNDER_CONSTRUCTION_SEGMENT_LENGTH`.
-    ///
-    /// Once a segment reaches this length, we begin the next one.
-    /// We reset all segments and return to `0` at the beginning of every
-    /// epoch.
-    #[pallet::storage]
-    pub(super) type SegmentIndex<T> = StorageValue<_, u32, ValueQuery>;
-
-    /// TWOX-NOTE: `SegmentIndex` is an increasing integer, so this is okay.
-    #[pallet::storage]
-    pub(super) type UnderConstruction<T: Config> = StorageMap<
-        _,
-        Twox64Concat,
-        u32,
-        BoundedVec<
-            subspace_core_primitives::Randomness,
-            ConstU32<UNDER_CONSTRUCTION_SEGMENT_LENGTH>,
-        >,
-        ValueQuery,
-    >;
-
-    /// Temporary value (cleared at block finalization) which is `Some`
-    /// if per-block initialization has already been called for current block.
-    #[pallet::storage]
-    #[pallet::getter(fn initialized)]
-    pub(super) type Initialized<T> = StorageValue<_, MaybeRandomness>;
-
-    /// This field should always be populated during block processing.
-    ///
-    /// It is set in `on_initialize`, before it will contain the value from the last block.
-    #[pallet::storage]
-    #[pallet::getter(fn author_por_randomness)]
-    pub(super) type AuthorPorRandomness<T> = StorageValue<_, MaybeRandomness, ValueQuery>;
-
-    /// The block numbers when the last and current epoch have started, respectively `N-1` and
-    /// `N`.
-    /// NOTE: We track this is in order to annotate the block number when a given pool of
-    /// entropy was fixed (i.e. it was known to chain observers). Since epochs are defined in
-    /// slots, which may be skipped, the block numbers may not line up with the slot numbers.
-    #[pallet::storage]
-    pub(super) type EpochStart<T: Config> =
-        StorageValue<_, (T::BlockNumber, T::BlockNumber), ValueQuery>;
-
-    /// How late the current block is compared to its parent.
-    ///
-    /// This entry is populated as part of block execution and is cleaned up
-    /// on block finalization. Querying this storage entry outside of block
-    /// execution context should always yield zero.
-    #[pallet::storage]
-    #[pallet::getter(fn lateness)]
-    pub(super) type Lateness<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
-
-    /// The configuration for the current epoch. Should never be `None` as it is initialized in genesis.
-    #[pallet::storage]
-    pub(super) type EpochConfig<T> = StorageValue<_, SubspaceEpochConfiguration>;
-
-    /// The configuration for the next epoch, `None` if the config will not change
-    /// (you can fallback to `EpochConfig` instead in that case).
-    #[pallet::storage]
-    pub(super) type NextEpochConfig<T> = StorageValue<_, SubspaceEpochConfiguration>;
 
     /// A set of blocked farmers keyed by their public key.
     #[pallet::storage]
@@ -394,45 +305,19 @@ mod pallet {
     #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
-    #[pallet::genesis_config]
-    #[cfg_attr(feature = "std", derive(Default))]
-    pub struct GenesisConfig {
-        pub epoch_config: Option<SubspaceEpochConfiguration>,
-    }
-
-    #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
-        fn build(&self) {
-            SegmentIndex::<T>::put(0);
-            EpochConfig::<T>::put(
-                self.epoch_config
-                    .clone()
-                    .expect("epoch_config must not be None"),
-            );
-        }
-    }
+    /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
+    #[pallet::storage]
+    pub(super) type PorRandomness<T> = StorageValue<_, subspace_core_primitives::Randomness>;
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// Initialization
-        fn on_initialize(now: BlockNumberFor<T>) -> Weight {
-            Self::do_initialize(now);
+    impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
+        fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            Self::do_initialize(block_number);
             0
         }
 
-        /// Block finalization
-        fn on_finalize(_n: BlockNumberFor<T>) {
-            // at the end of the block, we can safely include the new PoR output
-            // from this block into the under-construction randomness. If we've determined
-            // that this block was the first in a new epoch, the changeover logic has
-            // already occurred at this point, so the under-construction randomness
-            // will only contain outputs from the right epoch.
-            if let Some(Some(randomness)) = Initialized::<T>::take() {
-                Self::deposit_randomness(&randomness);
-            }
-
-            // remove temporary "environment" entry from storage
-            Lateness::<T>::kill();
+        fn on_finalize(block_number: T::BlockNumber) {
+            Self::do_finalize(block_number)
         }
     }
 
@@ -455,20 +340,6 @@ mod pallet {
             ensure_none(origin)?;
 
             Self::do_report_equivocation(*equivocation_proof)
-        }
-
-        /// Plan an epoch config change. The epoch config change is recorded and will be enacted on
-        /// the next call to `enact_epoch_change`. The config will be activated one epoch after.
-        /// Multiple calls to this method will replace any existing planned config change that had
-        /// not been enacted yet.
-        #[pallet::weight(<T as Config>::WeightInfo::plan_config_change())]
-        pub fn plan_config_change(
-            origin: OriginFor<T>,
-            config: NextConfigDescriptor,
-        ) -> DispatchResult {
-            ensure_root(origin)?;
-            PendingEpochConfigChange::<T>::put(config);
-            Ok(())
         }
 
         /// Submit new root block to the blockchain. This is an inherent extrinsic and part of the
@@ -554,184 +425,80 @@ impl<T: Config> Pallet<T> {
         <T as pallet_timestamp::Config>::MinimumPeriod::get().saturating_mul(2u32.into())
     }
 
-    /// Determine whether an epoch change should take place at this block.
+    /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_epoch_change(now: T::BlockNumber) -> bool {
-        // The epoch has technically ended during the passage of time
-        // between this block and the last, but we have to "end" the epoch now,
-        // since there is no earlier possible block we could have done it.
-        //
-        // The exception is for block 1: the genesis has slot 0, so we treat
-        // epoch 0 as having started at the slot of block 1. We want to use
-        // the same randomness and validator set as signalled in the genesis,
-        // so we don't rotate the epoch.
-        now != One::one() && {
-            let diff = Self::current_slot().saturating_sub(Self::current_epoch_start());
-            *diff >= T::EpochDuration::get()
-        }
+    pub fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
+        block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
 
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_era_change(now: T::BlockNumber) -> bool {
-        // The era has technically ended during the passage of time
-        // between this block and the last, but we have to "end" the era now,
-        // since there is no earlier possible block we could have done it.
-        now != One::one() && now % T::EraDuration::get().into() == 1_u32.into()
+    pub fn should_era_change(block_number: T::BlockNumber) -> bool {
+        block_number % T::EraDuration::get() == Zero::zero()
     }
 
     /// Determine whether an eon change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_eon_change(now: T::BlockNumber) -> bool {
-        // The eon has technically ended during the passage of time
-        // between this block and the last, but we have to "end" the eon now,
-        // since there is no earlier possible block we could have done it.
-        now != One::one() && {
-            let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
-            *diff >= T::EonDuration::get()
-        }
+    pub fn should_eon_change(_block_number: T::BlockNumber) -> bool {
+        let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
+        *diff >= T::EonDuration::get()
     }
 
-    /// Return the _best guess_ block number, at which the next epoch change is predicted to happen.
-    ///
-    /// Returns None if the prediction is in the past; This implies an error internally in Subspace
-    /// and should not happen under normal circumstances.
-    ///
-    /// In other words, this is only accurate if no slots are missed. Given missed slots, the slot
-    /// number will grow while the block number will not. Hence, the result can be interpreted as an
-    /// upper bound.
-    //
-    // ## IMPORTANT NOTE
-    //
-    // This implementation is linked to how [`should_epoch_change`] is working. This might need to
-    // be updated accordingly, if the underlying mechanics of slot and epochs change.
-    //
-    // WEIGHT NOTE: This function is tied to the weight of `EstimateNextSessionRotation`. If you
-    // update this function, you must also update the corresponding weight.
-    pub fn next_expected_epoch_change(now: T::BlockNumber) -> Option<T::BlockNumber> {
-        let next_slot = Self::current_epoch_start().saturating_add(T::EpochDuration::get());
-        next_slot
-            .checked_sub(*Self::current_slot())
-            .map(|slots_remaining| {
-                // This is a best effort guess. Drifts in the slot/block ratio will cause errors here.
-                let blocks_remaining: T::BlockNumber = slots_remaining.saturated_into();
-                now.saturating_add(blocks_remaining)
-            })
-    }
-
-    /// DANGEROUS: Enact an epoch change. Should be done on every block where `should_epoch_change` has returned `true`,
-    /// and the caller is the only caller of this function.
-    ///
-    /// Typically, this is not handled directly by the user, but by higher-level validator-set manager logic like
-    /// `pallet-session`.
-    pub fn enact_epoch_change() {
-        // PRECONDITION: caller has done initialization and is guaranteed
-        // by the session module to be called before this.
-        debug_assert!(Self::initialized().is_some());
-
-        // Update epoch index
-        let epoch_index = EpochIndex::<T>::get()
-            .checked_add(1)
-            .expect("epoch indices will never reach 2^64 before the death of the universe; qed");
-
-        EpochIndex::<T>::put(epoch_index);
-
-        // Update epoch randomness.
-        let next_epoch_index = epoch_index
-            .checked_add(1)
-            .expect("epoch indices will never reach 2^64 before the death of the universe; qed");
-
-        // Returns randomness for the current epoch and computes the *next*
-        // epoch randomness.
-        let randomness = Self::randomness_change_epoch(next_epoch_index);
-        Randomness::<T>::put(randomness);
-
-        // Update the start blocks of the previous and new current epoch.
-        <EpochStart<T>>::mutate(|(previous_epoch_start_block, current_epoch_start_block)| {
-            *previous_epoch_start_block = sp_std::mem::take(current_epoch_start_block);
-            *current_epoch_start_block = <frame_system::Pallet<T>>::block_number();
+    /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
+    /// returned `true`, and the caller is the only caller of this function.
+    pub fn enact_update_global_randomness(
+        _block_number: T::BlockNumber,
+        por_randomness: Randomness,
+    ) {
+        GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
+            global_randomnesses.next = Some(por_randomness);
         });
-
-        // After we update the current epoch, we signal the *next* epoch change
-        // so that nodes can track changes.
-        let next_randomness = NextRandomness::<T>::get();
-
-        frame_system::Pallet::<T>::deposit_log(DigestItem::next_epoch_descriptor(
-            NextEpochDescriptor {
-                randomness: next_randomness,
-            },
-        ));
-
-        if let Some(next_config) = NextEpochConfig::<T>::get() {
-            EpochConfig::<T>::put(next_config);
-        }
-
-        if let Some(pending_epoch_config_change) = PendingEpochConfigChange::<T>::take() {
-            let next_epoch_config: SubspaceEpochConfiguration =
-                pending_epoch_config_change.clone().into();
-            NextEpochConfig::<T>::put(next_epoch_config);
-
-            frame_system::Pallet::<T>::deposit_log(DigestItem::next_config_descriptor(
-                pending_epoch_config_change,
-            ));
-        }
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
     /// returned `true`, and the caller is the only caller of this function.
     pub fn enact_era_change(block_number: T::BlockNumber) {
-        // PRECONDITION: caller has done initialization and is guaranteed by the session module to
-        // be called before this.
-        debug_assert!(Self::initialized().is_some());
-
         let slot_probability = T::SlotProbability::get();
 
-        let previous_solution_range = SolutionRange::<T>::get();
-
         let current_slot = Self::current_slot();
-        // If Era start slot is not found it means we have just finished the first era
-        let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-        let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-        // Now we need to re-calculate solution range. The idea here is to keep block production at
-        // the same pace while space pledged on the network changes. For this we adjust previous
-        // solution range according to actual and expected number of blocks per era.
-        let actual_slots_per_block = era_slot_count as f64 / T::EraDuration::get() as f64;
-        let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
-        let adjustment_factor =
-            (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+        SolutionRanges::<T>::mutate(|solution_ranges| {
+            // If Era start slot is not found it means we have just finished the first era
+            let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
+            let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-        // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
-        //  in order to seed the blockchain with data quickly
-        let solution_range = if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
-            if block_number < 15_000_u32.into() {
-                previous_solution_range
-            } else {
-                (previous_solution_range as f64 * adjustment_factor).round() as u64
-            }
-        } else {
-            (previous_solution_range as f64 * adjustment_factor).round() as u64
-        };
+            // Now we need to re-calculate solution range. The idea here is to keep block production at
+            // the same pace while space pledged on the network changes. For this we adjust previous
+            // solution range according to actual and expected number of blocks per era.
+            let era_duration: u64 = T::EraDuration::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
+            let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+            let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
+            let adjustment_factor =
+                (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-        SolutionRange::<T>::put(solution_range);
+            solution_ranges.next.replace(
+                // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
+                //  in order to seed the blockchain with data quickly
+                if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
+                    if block_number < 15_000_u32.into() {
+                        solution_ranges.current
+                    } else {
+                        (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                    }
+                } else {
+                    (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                },
+            );
+        });
+
         EraStartSlot::<T>::put(current_slot);
-
-        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_solution_range_descriptor(
-            UpdatedSolutionRangeDescriptor { solution_range },
-        ));
     }
 
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_eon_change() {
-        // PRECONDITION: caller has done initialization and is guaranteed
-        // by the session module to be called before this.
-        debug_assert!(Self::initialized().is_some());
-
-        let salt = NextSalt::<T>::take().expect(
-            "NextSalt is always set in block initialization before eon change is checked; qed",
-        );
-
+    pub fn enact_eon_change(_block_number: T::BlockNumber) {
         let current_slot = *Self::current_slot();
         let eon_index = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
@@ -740,74 +507,16 @@ impl<T: Config> Pallet<T> {
             .expect("Eon duration is never zero; qed");
 
         EonIndex::<T>::put(eon_index);
-        Salt::<T>::put(salt);
-
-        frame_system::Pallet::<T>::deposit_log(DigestItem::updated_salt_descriptor(
-            UpdatedSaltDescriptor { salt },
-        ));
+        Salts::<T>::mutate(|salts| {
+            salts.switch_next_block = true;
+        });
     }
 
-    /// Finds the start slot of the current epoch. only guaranteed to
-    /// give correct results after `do_initialize` of the first block
-    /// in the chain (as its result is based off of `GenesisSlot`).
-    pub fn current_epoch_start() -> Slot {
-        Self::epoch_start(EpochIndex::<T>::get())
-    }
-
-    /// Finds the start slot of the current eon. only guaranteed to
-    /// give correct results after `do_initialize` of the first block
-    /// in the chain (as its result is based off of `GenesisSlot`).
+    /// Finds the start slot of the current eon. Only guaranteed to give correct results after
+    /// `do_initialize` of the first block in the chain (as its result is based off of
+    /// `GenesisSlot`).
     pub fn current_eon_start() -> Slot {
         Self::eon_start(EonIndex::<T>::get())
-    }
-
-    /// Produces information about the current epoch.
-    pub fn current_epoch() -> Epoch {
-        Epoch {
-            epoch_index: EpochIndex::<T>::get(),
-            start_slot: Self::current_epoch_start(),
-            duration: T::EpochDuration::get(),
-            randomness: Self::randomness(),
-            config: EpochConfig::<T>::get()
-                .expect("EpochConfig is initialized in genesis; we never `take` or `kill` it; qed"),
-        }
-    }
-
-    /// Produces information about the next epoch (which was already previously
-    /// announced).
-    pub fn next_epoch() -> Epoch {
-        let next_epoch_index = EpochIndex::<T>::get().checked_add(1).expect(
-            "epoch index is u64; it is always only incremented by one; \
-			 if u64 is not enough we should crash for safety; qed.",
-        );
-
-        Epoch {
-            epoch_index: next_epoch_index,
-            start_slot: Self::epoch_start(next_epoch_index),
-            duration: T::EpochDuration::get(),
-            randomness: NextRandomness::<T>::get(),
-            config: NextEpochConfig::<T>::get().unwrap_or_else(|| {
-                EpochConfig::<T>::get().expect(
-                    "EpochConfig is initialized in genesis; we never `take` or `kill` it; qed",
-                )
-            }),
-        }
-    }
-
-    fn epoch_start(epoch_index: u64) -> Slot {
-        // (epoch_index * epoch_duration) + genesis_slot
-
-        const PROOF: &str = "slot number is u64; it should relate in some way to wall clock time; \
-							 if u64 is not enough we should crash for safety; qed.";
-
-        let epoch_start = epoch_index
-            .checked_mul(T::EpochDuration::get())
-            .expect(PROOF);
-
-        epoch_start
-            .checked_add(*GenesisSlot::<T>::get())
-            .expect(PROOF)
-            .into()
     }
 
     fn eon_start(eon_index: u64) -> Slot {
@@ -825,121 +534,116 @@ impl<T: Config> Pallet<T> {
             .into()
     }
 
-    fn deposit_randomness(randomness: &subspace_core_primitives::Randomness) {
-        let segment_idx = SegmentIndex::<T>::get();
-        let mut segment = UnderConstruction::<T>::get(&segment_idx);
-        if segment.try_push(*randomness).is_ok() {
-            // push onto current segment: not full.
-            UnderConstruction::<T>::insert(&segment_idx, &segment);
-        } else {
-            // move onto the next segment and update the index.
-            let segment_idx = segment_idx + 1;
-            let bounded_randomness =
-                BoundedVec::<_, ConstU32<UNDER_CONSTRUCTION_SEGMENT_LENGTH>>::try_from(vec![
-                    *randomness,
-                ])
-                .expect("UNDER_CONSTRUCTION_SEGMENT_LENGTH >= 1");
-            UnderConstruction::<T>::insert(&segment_idx, bounded_randomness);
-            SegmentIndex::<T>::put(&segment_idx);
-        }
-    }
-
-    fn do_initialize(now: T::BlockNumber) {
-        let maybe_pre_digest: Option<PreDigest<T::AccountId>> = <frame_system::Pallet<T>>::digest()
+    fn do_initialize(block_number: T::BlockNumber) {
+        let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
-            .find_map(|s| s.as_subspace_pre_digest());
+            .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
+            .expect("Block must always have pre-digest");
 
-        let maybe_randomness: MaybeRandomness = maybe_pre_digest.map(|digest| {
-            // on the first non-zero block (i.e. block #1)
-            // this is where the first epoch (epoch #0) actually starts.
-            // we need to adjust internal storage accordingly.
-            if *GenesisSlot::<T>::get() == 0 {
-                GenesisSlot::<T>::put(digest.slot);
-                debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
+        // On the first non-zero block (i.e. block #1) we need to adjust internal storage
+        // accordingly.
+        if *GenesisSlot::<T>::get() == 0 {
+            GenesisSlot::<T>::put(pre_digest.slot);
+            debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
+        }
 
-                // Deposit a log because this is the first block in epoch #0 we use the same values
-                // as genesis because we haven't collected any randomness yet.
-                frame_system::Pallet::<T>::deposit_log(DigestItem::next_epoch_descriptor(
-                    NextEpochDescriptor {
-                        randomness: Self::randomness(),
-                    },
-                ))
+        // The slot number of the current block being initialized.
+        CurrentSlot::<T>::put(pre_digest.slot);
+
+        // If global randomness was updated in previous block, set it as current.
+        if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
+            GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
+                current: next_randomness,
+                next: None,
+            });
+        }
+
+        // If solution range was updated in previous block, set it as current.
+        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+            SolutionRanges::<T>::put(sp_consensus_subspace::SolutionRanges {
+                current: next_solution_range,
+                next: None,
+            });
+        }
+
+        // Update current salt if needed
+        {
+            let salts = Salts::<T>::get();
+            if salts.switch_next_block {
+                if let Some(next_salt) = salts.next {
+                    Salts::<T>::put(sp_consensus_subspace::Salts {
+                        current: next_salt,
+                        next: None,
+                        switch_next_block: false,
+                    });
+                }
             }
+        }
 
-            // the slot number of the current block being initialized
-            let current_slot = digest.slot;
+        // Extract PoR randomness from pre-digest.
+        let por_randomness: Randomness = hashing::blake2_256(&{
+            let mut input =
+                [0u8; GLOBAL_CHALLENGE_HASHING_PREFIX_LEN + mem::size_of::<Signature>()];
+            input[..GLOBAL_CHALLENGE_HASHING_PREFIX_LEN]
+                .copy_from_slice(GLOBAL_CHALLENGE_HASHING_PREFIX);
+            input[GLOBAL_CHALLENGE_HASHING_PREFIX_LEN..]
+                .copy_from_slice(&pre_digest.solution.signature);
 
-            // how many slots were skipped between current and last block
-            let lateness = current_slot.saturating_sub(Self::current_slot() + 1);
-            let lateness = T::BlockNumber::from(*lateness as u32);
-
-            Lateness::<T>::put(lateness);
-            CurrentSlot::<T>::put(current_slot);
-
-            sp_io::hashing::blake2_256(&digest.solution.signature)
+            input
         });
+        // Store PoR randomness for block duration as it might be useful.
+        PorRandomness::<T>::put(por_randomness);
 
-        // For PoR output we place it in the `Initialized` storage
-        // item and it'll be put onto the under-construction randomness later,
-        // once we've decided which epoch this block is in.
-        Initialized::<T>::put(maybe_randomness);
-
-        // Place PoR output into the `AuthorPorRandomness` storage item.
-        AuthorPorRandomness::<T>::put(maybe_randomness);
-
+        // Deposit global randomness data such that light client can validate blocks later.
+        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness_descriptor(
+            GlobalRandomnessDescriptor {
+                global_randomness: GlobalRandomnesses::<T>::get().current,
+            },
+        ));
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
             SolutionRangeDescriptor {
-                solution_range: SolutionRange::<T>::get(),
+                solution_range: SolutionRanges::<T>::get().current,
             },
         ));
         // Deposit salt data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::salt_descriptor(SaltDescriptor {
-            salt: Salt::<T>::get(),
+            salt: Salts::<T>::get().current,
         }));
 
-        let next_salt_reveal = Self::current_eon_start() + T::EonNextSaltReveal::get();
+        let next_salt_reveal = Self::current_eon_start()
+            .checked_add(T::EonNextSaltReveal::get())
+            .expect("Will not overflow until the end of universe; qed");
         let current_slot = Self::current_slot();
-        if now != One::one() && current_slot >= next_salt_reveal && !NextSalt::<T>::exists() {
-            let eon_index = Self::eon_index();
-            log::info!(
-                target: "runtime::subspace",
-                "🔃 Updating next salt on eon {} slot {}",
-                eon_index,
-                *current_slot
-            );
-            NextSalt::<T>::put(Self::derive_next_salt_from_randomness(
-                eon_index,
-                &Self::randomness(),
-            ));
+        if current_slot >= next_salt_reveal {
+            Salts::<T>::mutate(|salts| {
+                if salts.next.is_none() {
+                    let eon_index = Self::eon_index();
+                    log::info!(
+                        target: "runtime::subspace",
+                        "🔃 Updating next salt on eon {} slot {}",
+                        eon_index,
+                        *current_slot
+                    );
+                    salts.next.replace(Self::derive_next_salt_from_randomness(
+                        eon_index,
+                        &por_randomness,
+                    ));
+                }
+            });
         }
 
-        // enact epoch change, if necessary.
-        T::EpochChangeTrigger::trigger::<T>(now);
-        // enact era change, if necessary.
-        T::EraChangeTrigger::trigger::<T>(now);
-        // enact eon change, if necessary.
-        T::EonChangeTrigger::trigger::<T>(now);
+        // Enact global randomness update, if necessary.
+        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
+        // Enact era change, if necessary.
+        T::EraChangeTrigger::trigger::<T>(block_number);
+        // Enact eon change, if necessary.
+        T::EonChangeTrigger::trigger::<T>(block_number);
     }
 
-    /// Call this function exactly once when an epoch changes, to update the
-    /// randomness. Returns the new randomness.
-    fn randomness_change_epoch(next_epoch_index: u64) -> subspace_core_primitives::Randomness {
-        let this_randomness = NextRandomness::<T>::get();
-        let segment_idx: u32 = SegmentIndex::<T>::mutate(|s| sp_std::mem::replace(s, 0));
-
-        // overestimate to the segment being full.
-        let rho_size = (segment_idx.saturating_add(1) * UNDER_CONSTRUCTION_SEGMENT_LENGTH) as usize;
-
-        let next_randomness = compute_randomness(
-            this_randomness,
-            next_epoch_index,
-            (0..segment_idx).flat_map(|i| UnderConstruction::<T>::take(&i)),
-            Some(rho_size),
-        );
-        NextRandomness::<T>::put(&next_randomness);
-        this_randomness
+    fn do_finalize(_block_number: T::BlockNumber) {
+        PorRandomness::<T>::take();
     }
 
     fn do_report_equivocation(
@@ -1147,9 +851,31 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
     }
 }
 
-impl<T: Config> frame_support::traits::Lateness<T::BlockNumber> for Pallet<T> {
-    fn lateness(&self) -> T::BlockNumber {
-        Self::lateness()
+impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
+    fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
+        let mut subject = subject.to_vec();
+        subject.reserve(RANDOMNESS_LENGTH);
+        subject.extend_from_slice(
+            PorRandomness::<T>::get()
+                .expect("PoR randomness is always set in block initialization; qed")
+                .as_ref(),
+        );
+
+        (
+            T::Hashing::hash(&subject),
+            frame_system::Pallet::<T>::current_block_number(),
+        )
+    }
+
+    fn random_seed() -> (T::Hash, T::BlockNumber) {
+        (
+            T::Hashing::hash(
+                PorRandomness::<T>::get()
+                    .expect("PoR randomness is always set in block initialization; qed")
+                    .as_ref(),
+            ),
+            frame_system::Pallet::<T>::current_block_number(),
+        )
     }
 }
 
@@ -1163,25 +889,4 @@ impl<T: Config> OnOffenceHandler<FarmerPublicKey> for Pallet<T> {
             BlockList::<T>::insert(offender.offender.clone(), ());
         }
     }
-}
-
-// Compute randomness for a new epoch. rho is the concatenation of all
-// PoR outputs in the prior epoch.
-//
-// An optional size hint as to how many PoR outputs there were may be provided.
-fn compute_randomness(
-    last_epoch_randomness: subspace_core_primitives::Randomness,
-    epoch_index: u64,
-    rho: impl Iterator<Item = subspace_core_primitives::Randomness>,
-    rho_size_hint: Option<usize>,
-) -> subspace_core_primitives::Randomness {
-    let mut s = Vec::with_capacity(40 + rho_size_hint.unwrap_or(0) * RANDOMNESS_LENGTH);
-    s.extend_from_slice(&last_epoch_randomness);
-    s.extend_from_slice(&epoch_index.to_le_bytes());
-
-    for output in rho {
-        s.extend_from_slice(&output[..]);
-    }
-
-    sp_io::hashing::blake2_256(&s)
 }

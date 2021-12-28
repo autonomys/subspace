@@ -17,128 +17,69 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_root_block, generate_equivocation_proof, go_to_block, make_pre_digest, new_test_ext,
-    progress_to_block, Event, Origin, ReportLongevity, Subspace, System, Test,
-    INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    create_root_block, generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
+    Event, Origin, ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
+    SLOT_PROBABILITY,
 };
-use crate::{
-    compute_randomness, Call, Config, CurrentSlot, EpochConfig, EpochStart, Error, NextEpochConfig,
-    NextRandomness, SegmentIndex, UnderConstruction, WeightInfo,
-};
+use crate::{Call, Config, CurrentSlot, Error, WeightInfo};
 use codec::Encode;
-use frame_support::traits::OnFinalize;
 use frame_support::weights::{GetDispatchInfo, Pays};
-use frame_support::{assert_err, assert_noop, assert_ok};
+use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor,
-};
-use sp_consensus_subspace::{digests::Solution, FarmerPublicKey, SubspaceEpochConfiguration};
+use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     ValidTransaction,
 };
-use sp_runtime::{DigestItem, DispatchError};
-use subspace_core_primitives::RANDOMNESS_LENGTH;
-
-const EMPTY_RANDOMNESS: [u8; 32] = [
-    74, 25, 49, 128, 53, 97, 244, 49, 222, 202, 176, 2, 231, 66, 95, 10, 133, 49, 213, 228, 86,
-    161, 164, 127, 217, 153, 138, 37, 48, 192, 248, 0,
-];
 
 #[test]
-fn empty_randomness_is_correct() {
-    let s = compute_randomness([0; RANDOMNESS_LENGTH], 0, std::iter::empty(), None);
-    assert_eq!(s, EMPTY_RANDOMNESS);
-}
-
-#[test]
-fn first_block_epoch_zero_start() {
-    let mut ext = new_test_ext();
-
-    ext.execute_with(|| {
-        let genesis_slot = Slot::from(100);
-        let solution = Solution::genesis_solution();
-        let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
-        let pre_digest = make_pre_digest(genesis_slot, solution);
-
-        assert_eq!(Subspace::genesis_slot(), Slot::from(0));
-        System::initialize(&1, &Default::default(), &pre_digest, Default::default());
-
-        Subspace::do_initialize(1);
-        assert_eq!(Subspace::genesis_slot(), genesis_slot);
-        assert_eq!(Subspace::current_slot(), genesis_slot);
-        assert_eq!(Subspace::epoch_index(), 0);
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
-
-        Subspace::on_finalize(1);
-        let header = System::finalize();
-
-        assert_eq!(SegmentIndex::<Test>::get(), 0);
-        assert_eq!(UnderConstruction::<Test>::get(0), vec![por_randomness]);
-        assert_eq!(Subspace::randomness(), [0; 32]);
-        assert_eq!(NextRandomness::<Test>::get(), [0; 32]);
-
-        assert_eq!(header.digest.logs.len(), 4);
-        assert_eq!(pre_digest.logs.len(), 1);
-        assert_eq!(header.digest.logs[0], pre_digest.logs[0]);
-
-        let consensus_digest = DigestItem::next_epoch_descriptor(NextEpochDescriptor {
-            randomness: Subspace::randomness(),
-        });
-
-        // first epoch descriptor has same info as last.
-        assert_eq!(header.digest.logs[1], consensus_digest.clone())
-    })
-}
-
-#[test]
-fn author_por_output() {
-    let mut ext = new_test_ext();
-
-    ext.execute_with(|| {
-        let genesis_slot = Slot::from(10);
-        let solution = Solution::genesis_solution();
-        let por_randomness = sp_io::hashing::blake2_256(&solution.signature);
-        let pre_digest = make_pre_digest(genesis_slot, solution);
-
-        System::initialize(&1, &Default::default(), &pre_digest, Default::default());
-
-        Subspace::do_initialize(1);
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
-
-        Subspace::on_finalize(1);
-        System::finalize();
-        assert_eq!(Subspace::author_por_randomness(), Some(por_randomness));
-    })
-}
-
-#[test]
-fn can_predict_next_epoch_change() {
+fn genesis_slot_is_correct() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
-        assert_eq!(<Test as Config>::EpochDuration::get(), 3);
         // this sets the genesis slot to 6;
         go_to_block(&keypair, 1, 6);
         assert_eq!(*Subspace::genesis_slot(), 6);
-        assert_eq!(*Subspace::current_slot(), 6);
-        assert_eq!(Subspace::epoch_index(), 0);
+    })
+}
 
-        progress_to_block(&keypair, 5);
+#[test]
+fn can_update_global_randomness() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
 
-        assert_eq!(Subspace::epoch_index(), 5 / 3);
-        assert_eq!(*Subspace::current_slot(), 10);
+        assert_eq!(<Test as Config>::GlobalRandomnessUpdateInterval::get(), 10);
 
-        // next epoch change will be at
-        assert_eq!(*Subspace::current_epoch_start(), 9); // next change will be 12, 2 slots from now
+        let initial_randomnesses = GlobalRandomnesses {
+            current: Default::default(),
+            next: None,
+        };
+        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
+
+        // Progress to almost interval edge
+        progress_to_block(&keypair, 9);
+        // Still no randomness update
+        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
+
+        // Global randomness update interval edge
+        progress_to_block(&keypair, 10);
+        // Next randomness should be updated, but current is still unchanged
+        let updated_randomnesses = Subspace::global_randomnesses();
+        assert_eq!(updated_randomnesses.current, initial_randomnesses.current);
+        assert!(updated_randomnesses.next.is_some());
+
+        progress_to_block(&keypair, 11);
+        // Next randomness should become current
         assert_eq!(
-            Subspace::next_expected_epoch_change(System::block_number()),
-            Some(5 + 2)
+            Subspace::global_randomnesses(),
+            GlobalRandomnesses {
+                current: updated_randomnesses.next.unwrap(),
+                next: None
+            }
         );
     })
 }
@@ -153,34 +94,51 @@ fn can_update_solution_range_on_era_change() {
             <Test as Config>::InitialSolutionRange::get(),
             INITIAL_SOLUTION_RANGE
         );
-        // There should be no solution range stored during first era
-        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
 
-        // We produce blocks on every slot
+        // Progress to almost era edge
+        progress_to_block(&keypair, 3);
+        // No solution range update
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+
+        // Era edge
         progress_to_block(&keypair, 4);
-        // Still no solution range update
-        assert_eq!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
-        progress_to_block(&keypair, 5);
+        // Next solution range should be updated, but current is still unchanged
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(
+            updated_solution_ranges.current,
+            initial_solution_ranges.current
+        );
+        assert!(updated_solution_ranges.next.is_some());
 
-        // Second era should have solution range updated
-        assert_ne!(Subspace::solution_range(), INITIAL_SOLUTION_RANGE);
+        progress_to_block(&keypair, 5);
+        // Next solution range should become current
+        assert_eq!(
+            Subspace::solution_ranges(),
+            SolutionRanges {
+                current: updated_solution_ranges.next.unwrap(),
+                next: None
+            }
+        );
 
         // Because blocks were produced on every slot, apparent pledged space must increase and
         // solution range should decrease
-        let last_solution_range = Subspace::solution_range();
+        let last_solution_range = Subspace::solution_ranges().current;
         assert!(last_solution_range < INITIAL_SOLUTION_RANGE);
 
-        // Progress almost to era change
-        progress_to_block(&keypair, 8);
-        // Change era such that it takes more slots than expected
+        // Progress to era edge such that it takes more slots than expected
         go_to_block(
             &keypair,
-            9,
+            8,
             u64::from(Subspace::current_slot())
                 + (4 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0 + 10),
         );
         // This should cause solution range to increase as apparent pledged space decreased
-        assert!(Subspace::solution_range() > last_solution_range);
+        assert!(Subspace::solution_ranges().next.unwrap() > last_solution_range);
     })
 }
 
@@ -189,168 +147,53 @@ fn can_update_salt_on_eon_change() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
-        let genesis_salt = 0u64.to_le_bytes();
         assert_eq!(<Test as Config>::EonDuration::get(), 5);
-        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 4);
-        // Initial salt equals to eon
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is not present
-        assert_eq!(Subspace::next_salt(), None);
+        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 3);
+        let initial_salts = Salts::default();
+        assert_eq!(Subspace::salts(), initial_salts);
 
-        // We produce blocks on every slot
+        // Almost salt reveal
+        progress_to_block(&keypair, 3);
+        // No salts update
+        assert_eq!(Subspace::salts(), initial_salts);
+
+        // Salt reveal
         progress_to_block(&keypair, 4);
-        // Still no salt update
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is not revealed yet
-        assert_eq!(Subspace::next_salt(), None);
+        // Next salt should be revealed, but current is still unchanged and it is not yet scheduled
+        // for switch in the next block.
+        let revealed_salts = Subspace::salts();
+        assert_eq!(revealed_salts.current, initial_salts.current);
+        assert!(revealed_salts.next.is_some());
+        assert_eq!(revealed_salts.switch_next_block, false);
 
+        // Almost eon edge
         progress_to_block(&keypair, 5);
-        // Still no salt update
-        assert_eq!(Subspace::salt(), genesis_salt);
-        // Next salt is revealed now
-        let next_salt = Subspace::next_salt().unwrap();
-        assert_ne!(next_salt, genesis_salt);
+        // No changes from before
+        assert_eq!(Subspace::salts(), revealed_salts);
 
+        // Eon edge
         progress_to_block(&keypair, 6);
-        // Second eon should have salt updated
-        assert_eq!(Subspace::salt(), next_salt);
-        // And next salt must be removed
-        assert_eq!(Subspace::next_salt(), None);
-
-        // We produce blocks on every slot
-        progress_to_block(&keypair, 10);
-        // Just before eon update, still the same salt as before
-        assert_eq!(Subspace::salt(), next_salt);
-        // But next salt is revealed again
-        let old_next_salt = next_salt;
-        let next_salt = Subspace::next_salt().unwrap();
-        assert_ne!(next_salt, genesis_salt);
-        assert_ne!(next_salt, old_next_salt);
-
-        progress_to_block(&keypair, 11);
-        // Third eon should have salt updated again
-        assert_eq!(Subspace::salt(), next_salt);
-        // And next salt must be removed
-        assert_eq!(Subspace::next_salt(), None);
-    })
-}
-
-#[test]
-fn can_enact_next_config() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        assert_eq!(<Test as Config>::EpochDuration::get(), 3);
-        // this sets the genesis slot to 6;
-        go_to_block(&keypair, 1, 6);
-        assert_eq!(*Subspace::genesis_slot(), 6);
-        assert_eq!(*Subspace::current_slot(), 6);
-        assert_eq!(Subspace::epoch_index(), 0);
-        go_to_block(&keypair, 2, 7);
-
-        let current_config = SubspaceEpochConfiguration { c: (0, 4) };
-
-        let next_config = SubspaceEpochConfiguration { c: (1, 4) };
-
-        let next_next_config = SubspaceEpochConfiguration { c: (2, 4) };
-
-        EpochConfig::<Test>::put(current_config);
-        NextEpochConfig::<Test>::put(next_config.clone());
-
-        assert_eq!(NextEpochConfig::<Test>::get(), Some(next_config.clone()));
-
-        Subspace::plan_config_change(
-            Origin::root(),
-            NextConfigDescriptor::V1 {
-                c: next_next_config.c,
-            },
-        )
-        .unwrap();
-
-        progress_to_block(&keypair, 4);
-        Subspace::on_finalize(9);
-        let header = System::finalize();
-
-        assert_eq!(EpochConfig::<Test>::get(), Some(next_config));
+        // Same salts, scheduled to be updated in the next block
         assert_eq!(
-            NextEpochConfig::<Test>::get(),
-            Some(next_next_config.clone())
+            Subspace::salts(),
+            Salts {
+                current: revealed_salts.current,
+                next: revealed_salts.next,
+                switch_next_block: true
+            }
         );
 
-        let consensus_digest = DigestItem::next_config_descriptor(NextConfigDescriptor::V1 {
-            c: next_next_config.c,
-        });
-
-        assert_eq!(header.digest.logs[4], consensus_digest.clone())
-    });
-}
-
-#[test]
-fn only_root_can_enact_config_change() {
-    new_test_ext().execute_with(|| {
-        let next_config = NextConfigDescriptor::V1 { c: (1, 4) };
-
-        let res = Subspace::plan_config_change(Origin::none(), next_config.clone());
-
-        assert_noop!(res, DispatchError::BadOrigin);
-
-        let res = Subspace::plan_config_change(Origin::signed(1), next_config.clone());
-
-        assert_noop!(res, DispatchError::BadOrigin);
-
-        let res = Subspace::plan_config_change(Origin::root(), next_config);
-
-        assert!(res.is_ok());
-    });
-}
-
-#[test]
-fn can_fetch_current_and_next_epoch_data() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        EpochConfig::<Test>::put(SubspaceEpochConfiguration { c: (1, 4) });
-
-        progress_to_block(&keypair, System::block_number() + 4);
-
-        let current_epoch = Subspace::current_epoch();
-        assert_eq!(current_epoch.epoch_index, 1);
-        assert_eq!(*current_epoch.start_slot, 4);
-
-        let next_epoch = Subspace::next_epoch();
-        assert_eq!(next_epoch.epoch_index, 2);
-        assert_eq!(*next_epoch.start_slot, 7);
-
-        // the on-chain randomness should always change across epochs
-        assert_ne!(current_epoch.randomness, next_epoch.randomness);
-    });
-}
-
-#[test]
-fn tracks_block_numbers_when_current_and_previous_epoch_started() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        // an epoch is 3 slots therefore at block 8 we should be in epoch #3
-        // with the previous epochs having the following blocks:
-        // epoch 1 - [1, 2, 3]
-        // epoch 2 - [4, 5, 6]
-        // epoch 3 - [7, 8, 9]
-        progress_to_block(&keypair, 8);
-
-        let (last_epoch, current_epoch) = EpochStart::<Test>::get();
-
-        assert_eq!(last_epoch, 4);
-        assert_eq!(current_epoch, 7);
-
-        // once we reach block 10 we switch to epoch #4
-        progress_to_block(&keypair, 10);
-
-        let (last_epoch, current_epoch) = EpochStart::<Test>::get();
-
-        assert_eq!(last_epoch, 7);
-        assert_eq!(current_epoch, 10);
-    });
+        progress_to_block(&keypair, 7);
+        // Salts switched
+        assert_eq!(
+            Subspace::salts(),
+            Salts {
+                current: revealed_salts.next.unwrap(),
+                next: None,
+                switch_next_block: false
+            }
+        );
+    })
 }
 
 #[test]

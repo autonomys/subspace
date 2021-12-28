@@ -467,7 +467,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         // Subspace authoring task is considered essential, i.e. if it fails we take down the
         // service with it.
         task_manager.spawn_essential_handle().spawn_blocking(
-            "subspace-proposer-",
+            "subspace-proposer",
             Some("block-authoring"),
             subspace,
         );
