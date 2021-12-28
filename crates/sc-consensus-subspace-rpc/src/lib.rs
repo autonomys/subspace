@@ -230,7 +230,13 @@ where
 
             let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
                 FarmerMetadata {
-                    confirmation_depth_k: runtime_api.confirmation_depth_k(&best_block_id)?,
+                    confirmation_depth_k: TryInto::<u32>::try_into(
+                        runtime_api.confirmation_depth_k(&best_block_id)?,
+                    )
+                    .unwrap_or_else(|_| {
+                        // TODO: We might bump block number from `u32` to `u64` in the future
+                        panic!("Confirmation depth K can't be converted into u32");
+                    }),
                     record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
                         .recorded_history_segment_size(&best_block_id)?,

@@ -34,17 +34,12 @@ use sp_trie::{
     PrefixedMemoryDB, StorageProof,
 };
 use trie_db::{Trie, TrieMut};
-use frame_support::traits::Get;
 
 use cfg_if::cfg_if;
-use frame_support::{
-    parameter_types,
-    traits::{CrateVersion, KeyOwnerProofSystem},
-    weights::RuntimeDbWeight,
-};
-use frame_support::traits::{ConstU32, ConstU64};
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem};
+use frame_support::{parameter_types, weights::RuntimeDbWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
-use sp_api::{decl_runtime_apis, impl_runtime_apis};
+use sp_api::{decl_runtime_apis, impl_runtime_apis, BlockT, HeaderT};
 pub use sp_core::hash::H256;
 use sp_inherents::{CheckInherentsResult, InherentData};
 #[cfg(feature = "std")]
@@ -52,7 +47,7 @@ use sp_runtime::traits::NumberFor;
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
     traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+        BlakeTwo256, BlindCheckable, Extrinsic as ExtrinsicT, GetNodeBlockType,
         GetRuntimeBlockType, IdentityLookup, Verify,
     },
     transaction_validity::{
@@ -600,7 +595,7 @@ impl frame_system::Config for Runtime {
     type SystemWeightInfo = ();
     type SS58Prefix = ();
     type OnSetCode = ();
-	type MaxConsumers = ConstU32<16>;
+    type MaxConsumers = ConstU32<16>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -649,17 +644,17 @@ parameter_types! {
 
 impl pallet_subspace::Config for Runtime {
     type Event = Event;
-    type EpochDuration = EpochDuration;
-    type EraDuration = ConstU32<5>;
+    type GlobalRandomnessUpdateInterval = ConstU64<10>;
+    type EraDuration = ConstU64<5>;
     type EonDuration = ConstU64<11>;
     type EonNextSaltReveal = ConstU64<2>;
     type InitialSolutionRange = ConstU64<{ u64::MAX }>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
-    type ConfirmationDepthK = ConstU32<10>;
+    type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
-    type RecordedHistorySegmentSize = ConstU32<{3840 * 256 / 2}>;
-    type EpochChangeTrigger = pallet_subspace::NormalEpochChange;
+    type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
+    type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
@@ -921,48 +916,35 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-                fn confirmation_depth_k() -> u32 {
-                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordSize::get()
+                    <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
-                        epoch_length: <Runtime as pallet_subspace::Config>::EpochDuration::get(),
                         c: (3, 10),
-                        randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
                 }
 
-                fn solution_range() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::solution_range()
+                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                    <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
+                }
+
+                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                    <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {
-                    sp_consensus_subspace::Salts {
-                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
-                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
-                    }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::next_epoch()
+                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(
@@ -1249,48 +1231,35 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
-                fn confirmation_depth_k() -> u32 {
-                    <Runtime as pallet_subspace::Config>::ConfirmationDepthK::get()
+                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
+                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
                 fn record_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordSize::get()
+                    <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Runtime as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
                 fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
                     sp_consensus_subspace::SubspaceGenesisConfiguration {
                         slot_duration: 1000,
-                        epoch_length: EpochDuration::get(),
                         c: (3, 10),
-                        randomness: <pallet_subspace::Pallet<Runtime>>::randomness(),
                     }
                 }
 
-                fn solution_range() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::solution_range()
+                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                    <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
+                }
+
+                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                    <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
                 fn salts() -> sp_consensus_subspace::Salts {
-                    sp_consensus_subspace::Salts {
-                        salt: <pallet_subspace::Pallet<Runtime>>::salt(),
-                        next_salt: <pallet_subspace::Pallet<Runtime>>::next_salt(),
-                    }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_subspace::Epoch {
-                    <pallet_subspace::Pallet<Runtime>>::next_epoch()
+                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(

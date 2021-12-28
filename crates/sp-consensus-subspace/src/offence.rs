@@ -59,18 +59,15 @@ pub trait Offence<Offender> {
     ///
     /// The timescale is abstract and doesn't have to be the same across different implementations
     /// of this trait. The value doesn't represent absolute timescale though since it is interpreted
-    /// along with the `session_index`. Two offences are considered to happen at the same time iff
-    /// both `session_index` and `time_slot` are equal.
-    ///
-    /// As an example, for GRANDPA timescale could be a round number and for BABE it could be a slot
-    /// number. Note that for GRANDPA the round number is reset each epoch.
+    /// along with the `session_index`. Two offences are considered to happen at the same time if
+    /// `time_slot` is the same.
     fn time_slot(&self) -> Self::TimeSlot;
 }
 
 /// Errors that may happen on offence reports.
 #[derive(PartialEq, sp_runtime::RuntimeDebug)]
 pub enum OffenceError {
-    /// The report has already been sumbmitted.
+    /// The report has already been submmitted.
     DuplicateReport,
 
     /// Other error has happened.

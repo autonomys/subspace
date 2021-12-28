@@ -16,12 +16,8 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{
-    ConsensusLog, FarmerSignature, SubspaceBlockWeight, SubspaceEpochConfiguration,
-    SUBSPACE_ENGINE_ID,
-};
-use codec::{Decode, Encode, MaxEncodedLen};
-use scale_info::TypeInfo;
+use crate::{ConsensusLog, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID};
+use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::generic::DigestItemRef;
@@ -86,32 +82,11 @@ impl<AccountId> PreDigest<AccountId> {
     }
 }
 
-/// Information about the next epoch. This is broadcast in the first block
-/// of the epoch.
+/// Information about the global randomness for the block.
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct NextEpochDescriptor {
-    /// The value of randomness to use for the slot-assignment.
-    pub randomness: Randomness,
-}
-
-/// Information about the next epoch config, if changed. This is broadcast in the first
-/// block of the epoch, and applies using the same rules as `NextEpochDescriptor`.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-pub enum NextConfigDescriptor {
-    /// Version 1.
-    #[codec(index = 1)]
-    V1 {
-        /// Value of `c` in `SubspaceEpochConfiguration`.
-        c: (u64, u64),
-    },
-}
-
-impl From<NextConfigDescriptor> for SubspaceEpochConfiguration {
-    fn from(desc: NextConfigDescriptor) -> Self {
-        match desc {
-            NextConfigDescriptor::V1 { c } => Self { c },
-        }
-    }
+pub struct GlobalRandomnessDescriptor {
+    /// Global randomness used for deriving global slot challenges.
+    pub global_randomness: Randomness,
 }
 
 /// Information about the solution range for the block.
@@ -125,22 +100,6 @@ pub struct SolutionRangeDescriptor {
 #[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct SaltDescriptor {
     /// Salt used with challenges.
-    pub salt: Salt,
-}
-
-/// Solution range update. This is broadcast in the first block of the era, but only applies to the
-/// block after that.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct UpdatedSolutionRangeDescriptor {
-    /// Solution range used for challenges.
-    pub solution_range: u64,
-}
-
-/// Salt update, this is broadcast in the first block of the eon, but only applies to the block
-/// after that.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct UpdatedSaltDescriptor {
-    /// Salt used for challenges.
     pub salt: Salt,
 }
 
@@ -158,17 +117,11 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
-    /// Construct a digest item which contains a next epoch descriptor.
-    fn next_epoch_descriptor(next_epoch: NextEpochDescriptor) -> Self;
+    /// Construct a digest item which contains a global randomness descriptor.
+    fn global_randomness_descriptor(global_randomness: GlobalRandomnessDescriptor) -> Self;
 
-    /// If this item is a Subspace epoch descriptor, return it.
-    fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor>;
-
-    /// Construct a digest item which contains a next config descriptor.
-    fn next_config_descriptor(next_config: NextConfigDescriptor) -> Self;
-
-    /// If this item is a Subspace config descriptor, return it.
-    fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor>;
+    /// If this item is a Subspace global randomness descriptor, return it.
+    fn as_global_randomness_descriptor(&self) -> Option<GlobalRandomnessDescriptor>;
 
     /// Construct a digest item which contains a solution range descriptor.
     fn solution_range_descriptor(solution_range: SolutionRangeDescriptor) -> Self;
@@ -176,25 +129,11 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace solution range descriptor, return it.
     fn as_solution_range_descriptor(&self) -> Option<SolutionRangeDescriptor>;
 
-    /// Construct a digest item which contains an updated solution range descriptor.
-    fn updated_solution_range_descriptor(
-        updated_solution_range: UpdatedSolutionRangeDescriptor,
-    ) -> Self;
-
-    /// If this item is a Subspace updated solution range descriptor, return it.
-    fn as_updated_solution_range_descriptor(&self) -> Option<UpdatedSolutionRangeDescriptor>;
-
     /// Construct a digest item which contains a salt descriptor.
     fn salt_descriptor(salt: SaltDescriptor) -> Self;
 
     /// If this item is a Subspace salt descriptor, return it.
     fn as_salt_descriptor(&self) -> Option<SaltDescriptor>;
-
-    /// Construct a digest item which contains an updated salt descriptor.
-    fn updated_salt_descriptor(updated_salt: UpdatedSaltDescriptor) -> Self;
-
-    /// If this item is a Subspace updated salt descriptor, return it.
-    fn as_updated_salt_descriptor(&self) -> Option<UpdatedSaltDescriptor>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -214,34 +153,19 @@ impl CompatibleDigestItem for DigestItem {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
-    fn next_epoch_descriptor(next_epoch: NextEpochDescriptor) -> Self {
+    /// Construct a digest item which contains a global randomness descriptor.
+    fn global_randomness_descriptor(global_randomness: GlobalRandomnessDescriptor) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
-            ConsensusLog::NextEpoch(next_epoch).encode(),
+            ConsensusLog::GlobalRandomness(global_randomness).encode(),
         )
     }
 
-    fn as_next_epoch_descriptor(&self) -> Option<NextEpochDescriptor> {
+    /// If this item is a Subspace global randomness descriptor, return it.
+    fn as_global_randomness_descriptor(&self) -> Option<GlobalRandomnessDescriptor> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::NextEpoch(next_epoch) = c {
-                Some(next_epoch)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn next_config_descriptor(next_config: NextConfigDescriptor) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::NextConfig(next_config).encode(),
-        )
-    }
-
-    fn as_next_config_descriptor(&self) -> Option<NextConfigDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::NextConfig(next_config) = c {
-                Some(next_config)
+            if let ConsensusLog::GlobalRandomness(global_randomness) = c {
+                Some(global_randomness)
             } else {
                 None
             }
@@ -265,25 +189,6 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn updated_solution_range_descriptor(
-        updated_solution_range: UpdatedSolutionRangeDescriptor,
-    ) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::UpdatedSolutionRange(updated_solution_range).encode(),
-        )
-    }
-
-    fn as_updated_solution_range_descriptor(&self) -> Option<UpdatedSolutionRangeDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::UpdatedSolutionRange(solution_range) = c {
-                Some(solution_range)
-            } else {
-                None
-            }
-        })
-    }
-
     fn salt_descriptor(salt: SaltDescriptor) -> Self {
         Self::Consensus(SUBSPACE_ENGINE_ID, ConsensusLog::Salt(salt).encode())
     }
@@ -291,23 +196,6 @@ impl CompatibleDigestItem for DigestItem {
     fn as_salt_descriptor(&self) -> Option<SaltDescriptor> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::Salt(salt) = c {
-                Some(salt)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn updated_salt_descriptor(updated_salt: UpdatedSaltDescriptor) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::UpdatedSalt(updated_salt).encode(),
-        )
-    }
-
-    fn as_updated_salt_descriptor(&self) -> Option<UpdatedSaltDescriptor> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::UpdatedSalt(salt) = c {
                 Some(salt)
             } else {
                 None

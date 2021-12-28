@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// TODO: Update this description, it is out of date now
 //! # Subspace Proof-of-Storage Consensus
 //!
 //! Subspace is a slot-based block production mechanism which uses a Proof-of-Storage to randomly
@@ -59,23 +60,20 @@ mod verification;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use archiver::start_subspace_archiver;
-use codec::{Decode, Encode};
-use futures::channel::{mpsc, oneshot};
-use futures::{future, FutureExt, SinkExt, StreamExt};
-use log::{debug, info, log, trace, warn};
+use futures::channel::mpsc;
+use futures::StreamExt;
+use log::{debug, info, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
 use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
-use sc_consensus::{
-    block_import::{
-        BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
-    },
-    import_queue::{BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier},
+use sc_consensus::block_import::{
+    BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus_epochs::{
-    descendent_query, Epoch as EpochT, EpochChangesFor, SharedEpochChanges, ViableEpochDescriptor,
+use sc_consensus::import_queue::{
+    BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
+use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
     SlotProportion,
@@ -92,22 +90,22 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, NextConfigDescriptor, NextEpochDescriptor, PreDigest, SaltDescriptor,
-    Solution, SolutionRangeDescriptor,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, Solution,
+    SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceEpochConfiguration,
-    SubspaceGenesisConfiguration,
+    FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceGenesisConfiguration,
 };
 use sp_core::{ExecutionContext, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::cmp::Ordering;
-use std::{borrow::Cow, collections::HashMap, pin::Pin, sync::Arc, time::Duration};
+use std::future::Future;
+use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Randomness, RootBlock, Salt, Tag};
+use subspace_core_primitives::{RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 /// Information about new slot that just arrived
@@ -143,63 +141,7 @@ pub struct BlockSigningNotification {
     pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }
 
-/// Subspace epoch information
-#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
-pub struct Epoch {
-    /// The epoch index.
-    pub epoch_index: u64,
-    /// The starting slot of the epoch.
-    pub start_slot: Slot,
-    /// The duration of this epoch.
-    pub duration: u64,
-    /// Randomness for this epoch.
-    pub randomness: Randomness,
-    /// Configuration of the epoch.
-    pub config: SubspaceEpochConfiguration,
-}
-
-impl EpochT for Epoch {
-    type NextEpochDescriptor = (NextEpochDescriptor, SubspaceEpochConfiguration);
-    type Slot = Slot;
-
-    fn increment(
-        &self,
-        (descriptor, config): (NextEpochDescriptor, SubspaceEpochConfiguration),
-    ) -> Epoch {
-        Epoch {
-            epoch_index: self.epoch_index + 1,
-            start_slot: self.start_slot + self.duration,
-            duration: self.duration,
-            randomness: descriptor.randomness,
-            config,
-        }
-    }
-
-    fn start_slot(&self) -> Slot {
-        self.start_slot
-    }
-
-    fn end_slot(&self) -> Slot {
-        self.start_slot + self.duration
-    }
-}
-
-impl Epoch {
-    /// Create the genesis epoch (epoch #0). This is defined to start at the slot of
-    /// the first block, so that has to be provided.
-    pub fn genesis(genesis_config: &SubspaceGenesisConfiguration, slot: Slot) -> Epoch {
-        Epoch {
-            epoch_index: 0,
-            start_slot: slot,
-            duration: genesis_config.epoch_length,
-            randomness: genesis_config.randomness,
-            config: SubspaceEpochConfiguration {
-                c: genesis_config.c,
-            },
-        }
-    }
-}
-
+// TODO: Re-check errors that are still in use
 /// Errors encountered by the Subspace authorship task.
 #[derive(derive_more::Display, Debug)]
 pub enum Error<B: BlockT> {
@@ -209,30 +151,21 @@ pub enum Error<B: BlockT> {
     /// No Subspace pre-runtime digest found
     #[display(fmt = "No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
-    /// Multiple Subspace epoch change digests
-    #[display(fmt = "Multiple Subspace epoch change digests, rejecting!")]
-    MultipleEpochChangeDigests,
     /// Multiple Subspace config change digests
     #[display(fmt = "Multiple Subspace config change digests, rejecting!")]
     MultipleConfigChangeDigests,
+    /// Multiple Subspace global randomness digests
+    #[display(fmt = "Multiple Subspace global randomness digests, rejecting!")]
+    MultipleGlobalRandomnessDigests,
     /// Multiple Subspace solution range digests
     #[display(fmt = "Multiple Subspace solution range digests, rejecting!")]
     MultipleSolutionRangeDigests,
-    /// Multiple Subspace next solution range digests
-    #[display(fmt = "Multiple Subspace next solution range digests, rejecting!")]
-    MultipleNextSolutionRangeDigests,
     /// Multiple Subspace salt digests
     #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
-    /// Multiple Subspace next salt digests
-    #[display(fmt = "Multiple Subspace next salt digests, rejecting!")]
-    MultipleNextSaltDigests,
     /// Could not extract timestamp and slot
     #[display(fmt = "Could not extract timestamp and slot: {:?}", _0)]
     Extraction(sp_consensus::Error),
-    /// Could not fetch epoch
-    #[display(fmt = "Could not fetch epoch at {:?}", _0)]
-    FetchEpoch(B::Hash),
     /// Header rejected: too far in the future
     #[display(fmt = "Header {:?} rejected: too far in the future", _0)]
     TooFarInFuture(B::Hash),
@@ -273,24 +206,27 @@ pub enum Error<B: BlockT> {
     /// Could not fetch parent header
     #[display(fmt = "Could not fetch parent header: {:?}", _0)]
     FetchParentHeader(sp_blockchain::Error),
-    /// Expected epoch change to happen.
-    #[display(fmt = "Expected epoch change to happen at {:?}, s{}", _0, _1)]
-    ExpectedEpochChange(B::Hash, Slot),
-    /// Unexpected config change.
-    #[display(fmt = "Unexpected config change")]
-    UnexpectedConfigChange,
-    /// Unexpected epoch change
-    #[display(fmt = "Unexpected epoch change")]
-    UnexpectedEpochChange,
     /// Parent block has no associated weight
     #[display(fmt = "Parent block of {} has no associated weight", _0)]
     ParentBlockNoAssociatedWeight(B::Hash),
+    /// Block has no associated global randomness
+    #[display(fmt = "Missing global randomness for block {}", _0)]
+    MissingGlobalRandomness(B::Hash),
+    /// Block has invalid associated global randomness
+    #[display(fmt = "Invalid global randomness for block {}", _0)]
+    InvalidGlobalRandomness(B::Hash),
     /// Block has no associated solution range
     #[display(fmt = "Missing solution range for block {}", _0)]
     MissingSolutionRange(B::Hash),
+    /// Block has invalid associated solution range
+    #[display(fmt = "Invalid solution range for block {}", _0)]
+    InvalidSolutionRange(B::Hash),
     /// Block has no associated salt
     #[display(fmt = "Missing salt for block {}", _0)]
     MissingSalt(B::Hash),
+    /// Block has invalid associated salt
+    #[display(fmt = "Invalid salt for block {}", _0)]
+    InvalidSalt(B::Hash),
     /// Farmer in block list
     #[display(fmt = "Farmer {} is in block list", _0)]
     FarmerInBlockList(FarmerPublicKey),
@@ -327,15 +263,6 @@ fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
     debug!(target: "subspace", "{}", error);
     error
 }
-
-/// Intermediate value passed to block importer.
-pub struct SubspaceIntermediate<B: BlockT> {
-    /// The epoch descriptor.
-    pub epoch_descriptor: ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>,
-}
-
-/// Intermediate key for Subspace engine.
-pub static INTERMEDIATE_KEY: &[u8] = b"sub_";
 
 /// A slot duration. Create with `get_or_compute`.
 // FIXME: Once Rust has higher-kinded types, the duplication between this
@@ -458,7 +385,7 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         max_block_proposal_slot_portion,
         telemetry,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, CAW>,
-) -> Result<SubspaceWorker<Block>, sp_consensus::Error>
+) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -482,17 +409,15 @@ where
         + Sync
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
-    L: sc_consensus::JustificationSyncLink<Block> + 'static,
+    L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
-    const HANDLE_BUFFER_SIZE: usize = 1024;
-
     let worker = SubspaceSlotWorker {
-        client: client.clone(),
+        client,
         block_import,
         env,
         sync_oracle: sync_oracle.clone(),
@@ -509,7 +434,7 @@ where
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
     let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.config.0.clone(),
+        subspace_link.config.0,
         select_chain,
         worker,
         sync_oracle,
@@ -517,114 +442,18 @@ where
         can_author_with,
     );
 
-    let (worker_tx, worker_rx) = mpsc::channel(HANDLE_BUFFER_SIZE);
-
-    let answer_requests = answer_requests(
-        worker_rx,
-        subspace_link.config.0,
-        client,
-        subspace_link.epoch_changes,
-    );
-
     Ok(SubspaceWorker {
-        inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
-        handle: SubspaceWorkerHandle(worker_tx),
+        inner: Box::pin(inner),
     })
-}
-
-async fn answer_requests<B: BlockT, C>(
-    mut request_rx: mpsc::Receiver<SubspaceRequest<B>>,
-    genesis_config: sc_consensus_slots::SlotDuration<SubspaceGenesisConfiguration>,
-    client: Arc<C>,
-    epoch_changes: SharedEpochChanges<B, Epoch>,
-) where
-    C: ProvideRuntimeApi<B>
-        + ProvideUncles<B>
-        + BlockchainEvents<B>
-        + HeaderBackend<B>
-        + HeaderMetadata<B, Error = ClientError>
-        + Send
-        + Sync
-        + 'static,
-{
-    while let Some(request) = request_rx.next().await {
-        match request {
-            SubspaceRequest::EpochForChild(parent_hash, parent_number, slot_number, response) => {
-                let lookup = || {
-                    let epoch_changes = epoch_changes.shared_data();
-                    let epoch_descriptor = epoch_changes
-                        .epoch_descriptor_for_child_of(
-                            descendent_query(&*client),
-                            &parent_hash,
-                            parent_number,
-                            slot_number,
-                        )
-                        .map_err(|e| Error::<B>::ForkTree(Box::new(e)))?
-                        .ok_or(Error::<B>::FetchEpoch(parent_hash))?;
-
-                    let viable_epoch = epoch_changes
-                        .viable_epoch(&epoch_descriptor, |slot| {
-                            Epoch::genesis(&genesis_config, slot)
-                        })
-                        .ok_or(Error::<B>::FetchEpoch(parent_hash))?;
-
-                    Ok(sp_consensus_subspace::Epoch {
-                        epoch_index: viable_epoch.as_ref().epoch_index,
-                        start_slot: viable_epoch.as_ref().start_slot,
-                        duration: viable_epoch.as_ref().duration,
-                        randomness: viable_epoch.as_ref().randomness,
-                        config: viable_epoch.as_ref().config.clone(),
-                    })
-                };
-
-                let _ = response.send(lookup());
-            }
-        }
-    }
-}
-
-/// Requests to the Subspace service.
-#[non_exhaustive]
-pub enum SubspaceRequest<B: BlockT> {
-    /// Request the epoch that a child of the given block, with the given slot number would have.
-    ///
-    /// The parent block is identified by its hash and number.
-    EpochForChild(
-        B::Hash,
-        NumberFor<B>,
-        Slot,
-        oneshot::Sender<Result<sp_consensus_subspace::Epoch, Error<B>>>,
-    ),
-}
-
-/// A handle to the Subspace worker for issuing requests.
-#[derive(Clone)]
-pub struct SubspaceWorkerHandle<B: BlockT>(mpsc::Sender<SubspaceRequest<B>>);
-
-impl<B: BlockT> SubspaceWorkerHandle<B> {
-    /// Send a request to the Subspace service.
-    pub async fn send(&mut self, request: SubspaceRequest<B>) {
-        // Failure to send means that the service is down.
-        // This will manifest as the receiver of the request being dropped.
-        let _ = self.0.send(request).await;
-    }
 }
 
 /// Worker for Subspace which implements `Future<Output=()>`. This must be polled.
 #[must_use]
-pub struct SubspaceWorker<B: BlockT> {
-    inner: Pin<Box<dyn futures::Future<Output = ()> + Send + 'static>>,
-    handle: SubspaceWorkerHandle<B>,
+pub struct SubspaceWorker {
+    inner: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
 }
 
-impl<B: BlockT> SubspaceWorker<B> {
-    /// Get a handle to the worker.
-    pub fn handle(&self) -> SubspaceWorkerHandle<B> {
-        self.handle.clone()
-    }
-}
-
-impl<B: BlockT> futures::Future for SubspaceWorker<B> {
+impl Future for SubspaceWorker {
     type Output = ();
 
     fn poll(
@@ -661,44 +490,26 @@ pub fn find_pre_digest<B: BlockT>(
     pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
 }
 
-/// Extract the Subspace epoch change descriptor from the given header, if it exists.
-fn find_next_epoch_descriptor<B: BlockT>(
+/// Extract the Subspace global randomness descriptor from the given header.
+fn find_global_randomness_descriptor<B: BlockT>(
     header: &B::Header,
-) -> Result<Option<NextEpochDescriptor>, Error<B>> {
-    let mut next_epoch_descriptor = None;
+) -> Result<Option<GlobalRandomnessDescriptor>, Error<B>> {
+    let mut global_randomness_descriptor = None;
     for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
+        trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
         match (
-            log.as_next_epoch_descriptor(),
-            next_epoch_descriptor.is_some(),
+            log.as_global_randomness_descriptor(),
+            global_randomness_descriptor.is_some(),
         ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleEpochChangeDigests)),
-            (Some(epoch), false) => next_epoch_descriptor = Some(epoch),
+            (Some(_), true) => return Err(subspace_err(Error::MultipleGlobalRandomnessDigests)),
+            (Some(global_randomness), false) => {
+                global_randomness_descriptor = Some(global_randomness)
+            }
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
     }
 
-    Ok(next_epoch_descriptor)
-}
-
-/// Extract the Subspace config change descriptor from the given header, if it exists.
-fn find_next_config_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<NextConfigDescriptor>, Error<B>> {
-    let mut next_config_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for epoch change digest.", log);
-        match (
-            log.as_next_config_descriptor(),
-            next_config_descriptor.is_some(),
-        ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleConfigChangeDigests)),
-            (Some(config), false) => next_config_descriptor = Some(config),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(next_config_descriptor)
+    Ok(global_randomness_descriptor)
 }
 
 /// Extract the Subspace solution range descriptor from the given header.
@@ -739,7 +550,6 @@ fn find_salt_descriptor<B: BlockT>(header: &B::Header) -> Result<Option<SaltDesc
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
-    epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -755,11 +565,6 @@ pub struct SubspaceLink<Block: BlockT> {
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
-    /// Get the epoch changes of this link.
-    pub fn epoch_changes(&self) -> &SharedEpochChanges<Block, Epoch> {
-        &self.epoch_changes
-    }
-
     /// Get the config of this link.
     pub fn config(&self) -> &Config {
         &self.config
@@ -800,8 +605,6 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
     client: Arc<Client>,
     select_chain: SelectChain,
     create_inherent_data_providers: CIDP,
-    config: Config,
-    epoch_changes: SharedEpochChanges<Block, Epoch>,
     can_author_with: CAW,
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
     /// validation
@@ -961,33 +764,43 @@ where
 
         let slot_now = create_inherent_data_providers.slot();
 
-        let parent_header_metadata = self
-            .client
-            .header_metadata(parent_hash)
-            .map_err(Error::<Block>::FetchParentHeader)?;
+        let checked_header = {
+            let pre_digest = find_pre_digest::<Block>(&block.header)?;
 
-        let pre_digest = find_pre_digest::<Block>(&block.header)?;
-        let (check_header, epoch_descriptor) = {
-            let epoch_changes = self.epoch_changes.shared_data();
-            let epoch_descriptor = epoch_changes
-                .epoch_descriptor_for_child_of(
-                    descendent_query(&*self.client),
-                    &parent_hash,
-                    parent_header_metadata.number,
-                    pre_digest.slot,
-                )
-                .map_err(|e| Error::<Block>::ForkTree(Box::new(e)))?
-                .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
-            let viable_epoch = epoch_changes
-                .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))
-                .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
-            // TODO: Is it actually secure to validate it using solution range digest?
+            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
+                .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
+                .global_randomness;
+            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )
+            .map_err(Error::<Block>::RuntimeApi)?;
+            if global_randomness != correct_global_randomness {
+                return Err(Error::<Block>::InvalidGlobalRandomness(hash).into());
+            }
+
             let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
+            let correct_solution_range = slot_worker::extract_solution_range_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )
+            .map_err(Error::<Block>::RuntimeApi)?;
+            if solution_range != correct_solution_range {
+                return Err(Error::<Block>::InvalidSolutionRange(hash).into());
+            }
+
             let salt = find_salt_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
+            let correct_salt =
+                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)
+                    .map_err(Error::<Block>::RuntimeApi)?
+                    .0;
+            if salt != correct_salt {
+                return Err(Error::<Block>::InvalidSalt(hash).into());
+            }
 
             if self
                 .client
@@ -1060,9 +873,9 @@ where
             // FIXME #1019 in the future, alter this queue to allow deferring of headers
             let v_params = verification::VerificationParams {
                 header: block.header.clone(),
-                pre_digest: Some(pre_digest),
+                pre_digest,
                 slot_now: slot_now + 1,
-                epoch: viable_epoch.as_ref(),
+                global_randomness: &global_randomness,
                 solution_range,
                 salt,
                 records_root: &records_root,
@@ -1071,19 +884,12 @@ where
                 signing_context: &self.signing_context,
             };
 
-            (
-                verification::check_header::<Block>(v_params)?,
-                epoch_descriptor,
-            )
+            verification::check_header::<Block>(v_params)?
         };
 
-        match check_header {
+        match checked_header {
             CheckedHeader::Checked(pre_header, verified_info) => {
-                let subspace_pre_digest = verified_info
-                    .pre_digest
-                    .as_subspace_pre_digest()
-                    .expect("check_header always returns a pre-digest digest item; qed");
-                let slot = subspace_pre_digest.slot;
+                let slot = verified_info.pre_digest.slot;
 
                 // the header is valid but let's check if there was something else already
                 // proposed at the same slot by the given author. if there was, we will
@@ -1093,7 +899,7 @@ where
                         slot_now,
                         slot,
                         &block.header,
-                        &subspace_pre_digest.solution.public_key,
+                        &verified_info.pre_digest.solution.public_key,
                         &block.origin,
                     )
                     .await
@@ -1146,10 +952,6 @@ where
 
                 block.header = pre_header;
                 block.post_digests.push(verified_info.seal);
-                block.intermediates.insert(
-                    Cow::from(INTERMEDIATE_KEY),
-                    Box::new(SubspaceIntermediate::<Block> { epoch_descriptor }) as Box<_>,
-                );
                 block.post_hash = Some(hash);
 
                 Ok((block, Default::default()))
@@ -1179,7 +981,6 @@ where
 pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
     inner: I,
     client: Arc<Client>,
-    epoch_changes: SharedEpochChanges<Block, Epoch>,
     config: Config,
     imported_block_notification_sender:
         SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
@@ -1193,7 +994,6 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            epoch_changes: self.epoch_changes.clone(),
             config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
             root_blocks: Arc::clone(&self.root_blocks),
@@ -1204,7 +1004,6 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
 impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
     fn new(
         client: Arc<Client>,
-        epoch_changes: SharedEpochChanges<Block, Epoch>,
         block_import: I,
         config: Config,
         imported_block_notification_sender: SubspaceNotificationSender<(
@@ -1216,7 +1015,6 @@ impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
         SubspaceBlockImport {
             client,
             inner: block_import,
-            epoch_changes,
             config,
             imported_block_notification_sender,
             root_blocks,
@@ -1228,7 +1026,12 @@ impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
 impl<Block, Client, Inner> BlockImport<Block> for SubspaceBlockImport<Block, Client, Inner>
 where
     Block: BlockT,
-    Inner: BlockImport<Block, Transaction = sp_api::TransactionFor<Client, Block>> + Send + Sync,
+    Inner: BlockImport<
+            Block,
+            Transaction = sp_api::TransactionFor<Client, Block>,
+            Error = ConsensusError,
+        > + Send
+        + Sync,
     Inner::Error: Into<ConsensusError>,
     Client: HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
@@ -1253,8 +1056,6 @@ where
         // epoch changes will error when trying to re-import an epoch change
         match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
-                // When re-importing existing block strip away intermediates.
-                let _ = block.take_intermediate::<SubspaceIntermediate<Block>>(INTERMEDIATE_KEY);
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
                 return self
                     .inner
@@ -1290,285 +1091,138 @@ where
                 already been verified; qed",
             );
 
-        // make sure that slot number is strictly increasing
+        // TODO: There doesn't seem to be any protection from slots being too far in the future, at
+        //  least there isn't now
+        // Make sure that slot number is strictly increasing
         if slot <= parent_slot {
             return Err(ConsensusError::ClientImport(
                 subspace_err(Error::<Block>::SlotMustIncrease(parent_slot, slot)).into(),
             ));
         }
 
-        // if there's a pending epoch we'll save the previous epoch changes here
-        // this way we can revert it if there's any error
-        let mut old_epoch_changes = None;
-
-        // Use an extra scope to make the compiler happy, because otherwise he complains about the
-        // mutex, even if we dropped it...
-        let mut epoch_changes = {
-            let mut epoch_changes = self.epoch_changes.shared_data_locked();
-
-            // check if there's any epoch change expected to happen at this slot.
-            // `epoch` is the epoch to verify the block under, and `first_in_epoch` is true
-            // if this is the first block in its chain for that epoch.
-            //
-            // also provides the total weight of the chain, including the imported block.
-            let (epoch_descriptor, first_in_epoch, parent_weight) = {
-                let parent_weight = if *parent_header.number() == Zero::zero() {
-                    0
-                } else {
-                    aux_schema::load_block_weight(&*self.client, parent_hash)
-                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                        .ok_or_else(|| {
-                            ConsensusError::ClientImport(
-                                subspace_err(Error::<Block>::ParentBlockNoAssociatedWeight(
-                                    block_hash,
-                                ))
-                                .into(),
-                            )
-                        })?
-                };
-
-                let intermediate =
-                    block.take_intermediate::<SubspaceIntermediate<Block>>(INTERMEDIATE_KEY)?;
-
-                let epoch_descriptor = intermediate.epoch_descriptor;
-                let first_in_epoch = parent_slot < epoch_descriptor.start_slot();
-                (epoch_descriptor, first_in_epoch, parent_weight)
-            };
-
-            let total_weight = parent_weight + pre_digest.added_weight();
-
-            // search for this all the time so we can reject unexpected announcements.
-            let next_epoch_digest = find_next_epoch_descriptor::<Block>(&block.header)
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-            let next_config_digest = find_next_config_descriptor::<Block>(&block.header)
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-
-            match (
-                first_in_epoch,
-                next_epoch_digest.is_some(),
-                next_config_digest.is_some(),
-            ) {
-                (true, true, _) => {}
-                (false, false, false) => {}
-                (false, false, true) => {
-                    return Err(ConsensusError::ClientImport(
-                        subspace_err(Error::<Block>::UnexpectedConfigChange).into(),
-                    ))
-                }
-                (true, false, _) => {
-                    return Err(ConsensusError::ClientImport(
-                        subspace_err(Error::<Block>::ExpectedEpochChange(block_hash, slot)).into(),
-                    ))
-                }
-                (false, true, _) => {
-                    return Err(ConsensusError::ClientImport(
-                        subspace_err(Error::<Block>::UnexpectedEpochChange).into(),
-                    ))
-                }
-            }
-
-            let info = self.client.info();
-
-            if let Some(next_epoch_descriptor) = next_epoch_digest {
-                old_epoch_changes = Some((*epoch_changes).clone());
-
-                let viable_epoch = epoch_changes
-                    .viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&self.config, slot))
-                    .ok_or_else(|| {
-                        ConsensusError::ClientImport(Error::<Block>::FetchEpoch(parent_hash).into())
-                    })?;
-
-                let epoch_config = next_config_digest
-                    .map(Into::into)
-                    .unwrap_or_else(|| viable_epoch.as_ref().config.clone());
-
-                // restrict info logging during initial sync to avoid spam
-                let log_level = if block.origin == BlockOrigin::NetworkInitialSync {
-                    log::Level::Debug
-                } else {
-                    log::Level::Info
-                };
-
-                log!(target: "subspace",
-                     log_level,
-                     "🧑‍🌾 New epoch {} launching at block {} (block slot {} >= start slot {}).",
-                     viable_epoch.as_ref().epoch_index,
-                     block_hash,
-                     slot,
-                     viable_epoch.as_ref().start_slot,
-                );
-
-                let next_epoch = viable_epoch.increment((next_epoch_descriptor, epoch_config));
-
-                log!(target: "subspace",
-                     log_level,
-                     "🧑‍🌾 Next epoch starts at slot {}",
-                     next_epoch.as_ref().start_slot,
-                );
-
-                // prune the tree of epochs not part of the finalized chain or
-                // that are not live anymore, and then track the given epoch change
-                // in the tree.
-                // NOTE: it is important that these operations are done in this
-                // order, otherwise if pruning after import the `is_descendent_of`
-                // used by pruning may not know about the block that is being
-                // imported.
-                let prune_and_import = || {
-                    prune_finalized(&*self.client, &mut epoch_changes)?;
-
-                    epoch_changes
-                        .import(
-                            descendent_query(&*self.client),
-                            block_hash,
-                            block_number,
-                            *block.header.parent_hash(),
-                            next_epoch,
-                        )
-                        .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?;
-
-                    Ok(())
-                };
-
-                if let Err(e) = prune_and_import() {
-                    debug!(target: "subspace", "Failed to launch next epoch: {:?}", e);
-                    *epoch_changes =
-                        old_epoch_changes.expect("set `Some` above and not taken; qed");
-                    return Err(e);
-                }
-
-                crate::aux_schema::write_epoch_changes::<Block, _, _>(&*epoch_changes, |insert| {
-                    block
-                        .auxiliary
-                        .extend(insert.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-            }
-
-            aux_schema::write_block_weight(block_hash, total_weight, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
-
-            // The fork choice rule is that we pick the heaviest chain (i.e.
-            // more primary blocks), if there's a tie we go with the longest
-            // chain.
-            block.fork_choice = {
-                let (last_best, last_best_number) = (info.best_hash, info.best_number);
-
-                let last_best_weight = if &last_best == block.header.parent_hash() {
-                    // the parent=genesis case is already covered for loading parent weight,
-                    // so we don't need to cover again here.
-                    parent_weight
-                } else {
-                    aux_schema::load_block_weight(&*self.client, last_best)
-                        .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
-                        .ok_or_else(|| {
-                            ConsensusError::ChainLookup(
-                                "No block weight for parent header.".to_string(),
-                            )
-                        })?
-                };
-
-                Some(ForkChoiceStrategy::Custom(
-                    match total_weight.cmp(&last_best_weight) {
-                        Ordering::Greater => true,
-                        Ordering::Equal => block_number > last_best_number,
-                        Ordering::Less => false,
-                    },
-                ))
-            };
-
-            // Release the mutex, but it stays locked
-            epoch_changes.release_mutex()
+        let parent_weight = if *parent_header.number() == Zero::zero() {
+            0
+        } else {
+            aux_schema::load_block_weight(&*self.client, parent_hash)
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                .ok_or_else(|| {
+                    ConsensusError::ClientImport(
+                        subspace_err(Error::<Block>::ParentBlockNoAssociatedWeight(block_hash))
+                            .into(),
+                    )
+                })?
         };
 
-        {
-            let root_blocks = self.root_blocks.lock();
-            // If there are root blocks expected to be included in this block, check them
-            if let Some(correct_root_blocks) = root_blocks.peek(&block_number) {
-                let mut found = false;
-                for extrinsic in block
-                    .body
-                    .as_ref()
-                    .expect("Light client or fast sync is unsupported; qed")
+        let total_weight = parent_weight + pre_digest.added_weight();
+
+        let info = self.client.info();
+
+        aux_schema::write_block_weight(block_hash, total_weight, |values| {
+            block
+                .auxiliary
+                .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+        });
+
+        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
+        // range), if there's a tie we go with the longest chain.
+        block.fork_choice = {
+            let (last_best, last_best_number) = (info.best_hash, info.best_number);
+
+            let last_best_weight = if &last_best == block.header.parent_hash() {
+                // the parent=genesis case is already covered for loading parent weight,
+                // so we don't need to cover again here.
+                parent_weight
+            } else {
+                aux_schema::load_block_weight(&*self.client, last_best)
+                    .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
+                    .ok_or_else(|| {
+                        ConsensusError::ChainLookup(
+                            "No block weight for parent header.".to_string(),
+                        )
+                    })?
+            };
+
+            Some(ForkChoiceStrategy::Custom(
+                match total_weight.cmp(&last_best_weight) {
+                    Ordering::Greater => true,
+                    Ordering::Equal => block_number > last_best_number,
+                    Ordering::Less => false,
+                },
+            ))
+        };
+
+        // If there are root blocks expected to be included in this block, check them
+        if let Some(correct_root_blocks) = self.root_blocks.lock().peek(&block_number) {
+            let mut found = false;
+            for extrinsic in block
+                .body
+                .as_ref()
+                .expect("Light client or fast sync is unsupported; qed")
+            {
+                match self
+                    .client
+                    .runtime_api()
+                    .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)
                 {
-                    match self
-                        .client
-                        .runtime_api()
-                        .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)
-                    {
-                        Ok(Some(found_root_blocks)) => {
-                            if correct_root_blocks == &found_root_blocks {
-                                found = true;
-                                break;
-                            } else {
-                                warn!(
-                                    target: "subspace",
-                                    "Found root blocks: {:?}",
-                                    found_root_blocks
-                                );
-                                warn!(
-                                    target: "subspace",
-                                    "Correct root blocks: {:?}",
-                                    correct_root_blocks
-                                );
-                                return Err(ConsensusError::ClientImport(
-                                    "Found incorrect set of root blocks".to_string(),
-                                ));
-                            }
-                        }
-                        Ok(None) => {
-                            // Some other extrinsic, ignore
-                        }
-                        Err(error) => {
-                            return Err(ConsensusError::ClientImport(format!(
-                                "Failed to make runtime API call: {:?}",
-                                error
-                            )));
+                    Ok(Some(found_root_blocks)) => {
+                        if correct_root_blocks == &found_root_blocks {
+                            found = true;
+                            break;
+                        } else {
+                            warn!(
+                                target: "subspace",
+                                "Found root blocks: {:?}",
+                                found_root_blocks
+                            );
+                            warn!(
+                                target: "subspace",
+                                "Correct root blocks: {:?}",
+                                correct_root_blocks
+                            );
+                            return Err(ConsensusError::ClientImport(
+                                "Found incorrect set of root blocks".to_string(),
+                            ));
                         }
                     }
+                    Ok(None) => {
+                        // Some other extrinsic, ignore
+                    }
+                    Err(error) => {
+                        return Err(ConsensusError::ClientImport(format!(
+                            "Failed to make runtime API call: {:?}",
+                            error
+                        )));
+                    }
                 }
+            }
 
-                if !found {
-                    return Err(ConsensusError::ClientImport(format!(
-                        "Stored root block extrinsics were not found: {:?}",
-                        correct_root_blocks,
-                    )));
-                }
+            if !found {
+                return Err(ConsensusError::ClientImport(format!(
+                    "Stored root block extrinsics were not found: {:?}",
+                    correct_root_blocks,
+                )));
             }
         }
 
-        let import_result = self.inner.import_block(block, new_cache).await;
+        let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
 
-        match import_result {
-            Ok(import_result) => {
-                self.imported_block_notification_sender
-                    .notify(move || (block_number, root_block_sender));
+        self.imported_block_notification_sender
+            .notify(move || (block_number, root_block_sender));
 
-                let next_block_number = block_number + One::one();
-                while let Some(root_block) = root_block_receiver.next().await {
-                    {
-                        let mut root_blocks = self.root_blocks.lock();
-                        if let Some(list) = root_blocks.get_mut(&next_block_number) {
-                            list.push(root_block);
-                        } else {
-                            root_blocks.put(next_block_number, vec![root_block]);
-                        }
-                    }
+        let next_block_number = block_number + One::one();
+        while let Some(root_block) = root_block_receiver.next().await {
+            {
+                let mut root_blocks = self.root_blocks.lock();
+                if let Some(list) = root_blocks.get_mut(&next_block_number) {
+                    list.push(root_block);
+                } else {
+                    root_blocks.put(next_block_number, vec![root_block]);
                 }
-
-                Ok(import_result)
-            }
-            Err(error) => {
-                // revert to the original epoch changes in case there's an error importing the block
-                if let Some(old_epoch_changes) = old_epoch_changes {
-                    *epoch_changes.upgrade() = old_epoch_changes;
-                }
-
-                Err(error.into())
             }
         }
+
+        Ok(import_result)
     }
 
     async fn check_block(
@@ -1577,76 +1231,6 @@ where
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)
     }
-}
-
-/// Gets the best finalized block and its slot, and prunes the given epoch tree.
-fn prune_finalized<Block, Client>(
-    client: &Client,
-    epoch_changes: &mut EpochChangesFor<Block, Epoch>,
-) -> Result<(), ConsensusError>
-where
-    Block: BlockT,
-    Client: HeaderBackend<Block> + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    // TODO: Following 2 lines are for hacky implementation
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block>,
-{
-    let info = client.info();
-    // let finalized_hash = info.finalized_hash;
-    // let finalized_number = info.finalized_number;
-    //
-    // let finalized_slot = {
-    //     let finalized_header = client
-    //         .header(BlockId::Hash(finalized_hash))
-    //         .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
-    //         .expect(
-    //             "best finalized hash was given by client; \
-    //              finalized headers must exist in db; qed",
-    //         );
-    //
-    //     find_pre_digest::<Block>(&finalized_header)
-    //         .expect(
-    //             "finalized header must be valid; \
-    //              valid blocks have a pre-digest; qed",
-    //         )
-    //         .slot
-    // };
-    // TODO: This is a hack and not a real finalization by any means, it primarily works around
-    //  https://github.com/paritytech/substrate/discussions/9990 until we have a better solution so
-    //  that our nodes don't crash in the meantime.
-    let finalized_number = info.best_number.saturating_sub(
-        client
-            .runtime_api()
-            .confirmation_depth_k(&BlockId::Number(info.best_number))
-            .expect("Must always be able to query constant at best block height; qed")
-            .into(),
-    );
-    let finalized_header = client
-        .header(BlockId::Number(finalized_number))
-        .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?
-        .expect(
-            "best finalized hash was given by client; \
-                 finalized headers must exist in db; qed",
-        );
-    let finalized_hash = finalized_header.hash();
-    let finalized_slot = find_pre_digest::<Block>(&finalized_header)
-        .expect(
-            "finalized header must be valid; \
-                 valid blocks have a pre-digest; qed",
-        )
-        .slot;
-    // Hack ends here
-
-    epoch_changes
-        .prune_finalized(
-            descendent_query(client),
-            &finalized_hash,
-            finalized_number,
-            finalized_slot,
-        )
-        .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e)))?;
-
-    Ok(())
 }
 
 /// Produce a Subspace block-import object to be used later on in the construction of an
@@ -1665,8 +1249,6 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
     Client::Api: SubspaceApi<Block>,
 {
-    let epoch_changes = aux_schema::load_epoch_changes::<Block, _>(&*client, &config)?;
-
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
     let (block_signing_notification_sender, block_signing_notification_stream) =
@@ -1678,13 +1260,18 @@ where
 
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
-    let confirmation_depth_k = client
-        .runtime_api()
-        .confirmation_depth_k(&best_block_id)
-        .expect("Failed to get `confirmation_depth_k` from runtime API");
+    let confirmation_depth_k = TryInto::<u32>::try_into(
+        client
+            .runtime_api()
+            .confirmation_depth_k(&best_block_id)
+            .expect("Failed to get `confirmation_depth_k` from runtime API"),
+    )
+    .unwrap_or_else(|_| {
+        // TODO: We might bump block number from `u32` to `u64` in the future
+        panic!("Confirmation depth K can't be converted into u32");
+    });
 
     let link = SubspaceLink {
-        epoch_changes: epoch_changes.clone(),
         config: config.clone(),
         new_slot_notification_sender,
         new_slot_notification_stream,
@@ -1696,14 +1283,8 @@ where
         root_blocks: Arc::new(Mutex::new(LruCache::new(confirmation_depth_k as usize))),
     };
 
-    // NOTE: this isn't entirely necessary, but since we didn't use to prune the
-    // epoch tree it is useful as a migration, so that nodes prune long trees on
-    // startup rather than waiting until importing the next epoch change block.
-    prune_finalized(&*client, &mut epoch_changes.shared_data())?;
-
     let import = SubspaceBlockImport::new(
         client,
-        epoch_changes,
         wrapped_block_import,
         config,
         imported_block_notification_sender,
@@ -1760,8 +1341,6 @@ where
     let verifier = SubspaceVerifier {
         select_chain,
         create_inherent_data_providers,
-        config: subspace_link.config.clone(),
-        epoch_changes: subspace_link.epoch_changes.clone(),
         can_author_with,
         root_blocks: Arc::clone(&subspace_link.root_blocks),
         telemetry,

@@ -16,36 +16,35 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    find_pre_digest, subspace_err, verification, BlockSigningNotification, Epoch, Error,
-    NewSlotInfo, NewSlotNotification, SubspaceIntermediate, SubspaceLink, INTERMEDIATE_KEY,
+    find_pre_digest, verification, BlockSigningNotification, NewSlotInfo, NewSlotNotification,
+    SubspaceLink,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
-use log::{debug, trace, warn};
+use log::{debug, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
-use sc_consensus_epochs::{descendent_query, ViableEpochDescriptor};
+use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
-    BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotProportion, StorageChanges,
+    BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, UpdatedSaltDescriptor, UpdatedSolutionRangeDescriptor,
-};
-use sp_consensus_subspace::{FarmerPublicKey, Salts, SubspaceApi};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{AppVerify, Block as BlockT, Header, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
-use std::{borrow::Cow, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::{Randomness, Salt};
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     pub(super) client: Arc<C>,
@@ -69,21 +68,21 @@ where
     C: ProvideRuntimeApi<B> + HeaderBackend<B> + HeaderMetadata<B, Error = ClientError> + 'static,
     C::Api: SubspaceApi<B>,
     E: Environment<B, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
-    I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
+    E::Proposer: Proposer<B, Error = Error, Transaction = TransactionFor<C, B>>,
+    I: BlockImport<B, Transaction = TransactionFor<C, B>> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone,
-    L: sc_consensus::JustificationSyncLink<B>,
+    L: JustificationSyncLink<B>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
-    type EpochData = ViableEpochDescriptor<B::Hash, NumberFor<B>, Epoch>;
-    type Claim = PreDigest<FarmerPublicKey>;
+    type BlockImport = I;
     type SyncOracle = SO;
     type JustificationSyncLink = L;
     type CreateProposer =
-        Pin<Box<dyn Future<Output = Result<E::Proposer, sp_consensus::Error>> + Send + 'static>>;
+        Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
-    type BlockImport = I;
+    type Claim = PreDigest<FarmerPublicKey>;
+    type EpochData = ();
 
     fn logging_target(&self) -> &'static str {
         "subspace"
@@ -95,72 +94,40 @@ where
 
     fn epoch_data(
         &self,
-        parent: &B::Header,
-        slot: Slot,
+        _parent: &B::Header,
+        _slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
-        self.subspace_link
-            .epoch_changes
-            .shared_data()
-            .epoch_descriptor_for_child_of(
-                descendent_query(&*self.client),
-                &parent.hash(),
-                *parent.number(),
-                slot,
-            )
-            .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
-            .ok_or(sp_consensus::Error::InvalidAuthoritiesSet)
+        Ok(())
+    }
+
+    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
+        // This function is used in `sc-consensus-slots` in order to determine whether it is
+        // possible to skip block production under certain circumstances, returning `None` or any
+        // number smaller or equal to `1` disables that functionality and we don't want that.
+        Some(2)
     }
 
     async fn claim_slot(
         &self,
         parent_header: &B::Header,
         slot: Slot,
-        epoch_descriptor: &Self::EpochData,
+        _epoch_data: &Self::EpochData,
     ) -> Option<Self::Claim> {
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
         let runtime_api = self.client.runtime_api();
 
-        let epoch_randomness = self
-            .subspace_link
-            .epoch_changes
-            .shared_data()
-            .viable_epoch(epoch_descriptor, |slot| {
-                Epoch::genesis(&self.subspace_link.config, slot)
-            })?
-            .as_ref()
-            .randomness;
-
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // era the very first block of the era still uses solution range from the previous one,
-        // but the block after it uses "next" solution range deposited in the first block.
-        let solution_range = find_updated_solution_range_descriptor::<B>(parent_header)
-            .ok()?
-            .map(|d| d.solution_range)
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no solution range stored yet
-                runtime_api.solution_range(&parent_block_id).ok()
-            })?;
-        // Here we always use parent block as the source of information, thus on the edge of the
-        // eon the very first block of the eon still uses salt from the previous one, but the
-        // block after it uses "next" salt deposited in the first block.
-        let Salts { salt, next_salt } = find_updated_salt_descriptor::<B>(parent_header)
-            .ok()?
-            .map(|UpdatedSaltDescriptor { salt }| Salts {
-                salt,
-                next_salt: None,
-            })
-            .or_else(|| {
-                // We use runtime API as it will fallback to default value for genesis when
-                // there is no salt stored yet
-                runtime_api.salts(&parent_block_id).ok()
-            })?;
+        let global_randomness =
+            extract_global_randomness_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+        let solution_range =
+            extract_solution_range_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+        let (salt, next_salt) =
+            extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge: subspace_solving::derive_global_challenge(&epoch_randomness, slot),
+            global_challenge: subspace_solving::derive_global_challenge(&global_randomness, slot),
             salt,
             next_salt,
             solution_range,
@@ -235,7 +202,7 @@ where
             match verification::verify_solution::<B>(
                 &solution,
                 verification::VerifySolutionParams {
-                    epoch_randomness: &epoch_randomness,
+                    global_randomness: &global_randomness,
                     solution_range,
                     slot,
                     salt,
@@ -268,10 +235,10 @@ where
         header: B::Header,
         header_hash: &B::Hash,
         body: Vec<B::Extrinsic>,
-        storage_changes: StorageChanges<I::Transaction, B>,
+        storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, B>,
         pre_digest: Self::Claim,
-        epoch_descriptor: Self::EpochData,
-    ) -> Result<sc_consensus::BlockImportParams<B, I::Transaction>, sp_consensus::Error> {
+        _epoch_data: Self::EpochData,
+    ) -> Result<BlockImportParams<B, I::Transaction>, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream");
 
@@ -299,16 +266,12 @@ where
             import_block.post_digests.push(digest_item);
             import_block.body = Some(body);
             import_block.state_action =
-                StateAction::ApplyChanges(sc_consensus::StorageChanges::Changes(storage_changes));
-            import_block.intermediates.insert(
-                Cow::from(INTERMEDIATE_KEY),
-                Box::new(SubspaceIntermediate::<B> { epoch_descriptor }) as Box<_>,
-            );
+                StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
 
             return Ok(import_block);
         }
 
-        Err(sp_consensus::Error::CannotSign(
+        Err(ConsensusError::CannotSign(
             pre_digest.solution.public_key.to_raw_vec(),
             "Farmer didn't sign header".to_string(),
         ))
@@ -346,7 +309,7 @@ where
         Box::pin(
             self.env
                 .init(block)
-                .map_err(|e| sp_consensus::Error::ClientImport(format!("{:?}", e))),
+                .map_err(|e| ConsensusError::ClientImport(format!("{:?}", e))),
         )
     }
 
@@ -364,67 +327,64 @@ where
             slot_info,
             &self.block_proposal_slot_portion,
             self.max_block_proposal_slot_portion.as_ref(),
-            sc_consensus_slots::SlotLenienceType::Exponential,
+            SlotLenienceType::Exponential,
             self.logging_target(),
         )
     }
-
-    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
-        // This function is used in `sc-consensus-slots` in order to determine whether it is
-        // possible to skip block production under certain circumstances, returning `None` or any
-        // number smaller than `1` disables that functionality and we don't want it
-        Some(2)
-    }
 }
 
-/// Extract the updated Subspace solution range descriptor from the given header if it exists.
-fn find_updated_solution_range_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<UpdatedSolutionRangeDescriptor>, Error<B>> {
-    let mut updated_solution_range_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for next solution range digest.", log);
-        match (
-            log.as_updated_solution_range_descriptor(),
-            updated_solution_range_descriptor.is_some(),
-        ) {
-            (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleNextSolutionRangeDigests));
-            }
-            (Some(solution_range), false) => {
-                updated_solution_range_descriptor.replace(solution_range);
-            }
-            _ => {
-                trace!(target: "subspace", "Ignoring digest not meant for us");
-            }
-        }
-    }
-
-    Ok(updated_solution_range_descriptor)
+/// Extract global randomness for block, given ID of the parent block.
+pub(crate) fn extract_global_randomness_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<Randomness, ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client
+        .runtime_api()
+        .global_randomnesses(parent_block_id)
+        .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 
-/// Extract the updated Subspace salt descriptor from the given header if it exists.
-fn find_updated_salt_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<UpdatedSaltDescriptor>, Error<B>> {
-    let mut updated_salt_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        match (
-            log.as_updated_salt_descriptor(),
-            updated_salt_descriptor.is_some(),
-        ) {
-            (Some(_), true) => {
-                return Err(subspace_err(Error::MultipleSaltDigests));
-            }
-            (Some(salt), false) => {
-                updated_salt_descriptor.replace(salt);
-            }
-            _ => {
-                trace!(target: "subspace", "Ignoring digest not meant for us");
-            }
-        }
-    }
+/// Extract solution range for block, given ID of the parent block.
+pub(crate) fn extract_solution_range_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<u64, ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client
+        .runtime_api()
+        .solution_ranges(parent_block_id)
+        .map(|solution_ranges| solution_ranges.next.unwrap_or(solution_ranges.current))
+}
 
-    Ok(updated_salt_descriptor)
+/// Extract salt and next salt for block, given ID of the parent block.
+pub(crate) fn extract_salt_for_block<Block, Client>(
+    client: &Client,
+    parent_block_id: &BlockId<Block>,
+) -> Result<(Salt, Option<Salt>), ApiError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block>,
+{
+    client.runtime_api().salts(parent_block_id).map(|salts| {
+        if salts.switch_next_block {
+            (
+                salts.next.expect(
+                    "Next salt must always be present if `switch_next_block` is `true`; qed",
+                ),
+                None,
+            )
+        } else {
+            (salts.current, salts.next)
+        }
+    })
 }
