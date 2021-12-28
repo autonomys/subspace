@@ -62,7 +62,9 @@ impl<Block: BlockT, E: GossipMessageHandler<Block>> GossipWorker<Block, E> {
 							GossipMessage::ExecutionReceipt(execution_receipt) => {
 								let outcome = self.executor.on_execution_receipt(&execution_receipt).await;
 								if outcome.rebroadcast_execution_receipt() {
-									// TODO: gossip executon receipt
+									let outgoing_message: GossipMessage<Block> = execution_receipt.into();
+									let encoded_message = outgoing_message.encode();
+									self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 								}
 							}
 						}
@@ -79,7 +81,8 @@ impl<Block: BlockT, E: GossipMessageHandler<Block>> GossipWorker<Block, E> {
 				}
 				execution_receipt = self.execution_receipt_receiver.next().fuse() => {
 					if let Some(execution_receipt) = execution_receipt {
-						let encoded_message = execution_receipt.encode();
+						let outgoing_message: GossipMessage<Block> = execution_receipt.into();
+						let encoded_message = outgoing_message.encode();
 						self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 					}
 				}

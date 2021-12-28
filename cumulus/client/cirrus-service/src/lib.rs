@@ -125,8 +125,7 @@ where
 		.spawn("cumulus-consensus", None, consensus);
 
 	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-	// TODO: impl execution receipt channel.
-	let (_execution_receipt_sender, execution_receipt_receiver) =
+	let (execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
 
 	let overseer_handle = primary_chain_full_node
@@ -146,6 +145,7 @@ where
 			parachain_consensus,
 			transaction_pool,
 			bundle_sender,
+			execution_receipt_sender,
 		})
 		.await;
 

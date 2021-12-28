@@ -45,6 +45,12 @@ impl<Block: BlockT> From<Bundle<Block::Extrinsic>> for GossipMessage<Block> {
 	}
 }
 
+impl<Block: BlockT> From<ExecutionReceipt<Block::Hash>> for GossipMessage<Block> {
+	fn from(execution_receipt: ExecutionReceipt<Block::Hash>) -> Self {
+		Self::ExecutionReceipt(execution_receipt)
+	}
+}
+
 /// Outcome of the network gossip message processing.
 #[derive(Debug)]
 pub enum HandlerOutcome {

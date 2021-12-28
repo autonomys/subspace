@@ -65,6 +65,7 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
 	overseer_handle: OverseerHandle,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 }
 
 impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
@@ -79,6 +80,7 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			bundle_sender: self.bundle_sender.clone(),
+			execution_receipt_sender: self.execution_receipt_sender.clone(),
 		}
 	}
 }
@@ -101,6 +103,7 @@ where
 		overseer_handle: OverseerHandle,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	) -> Self {
 		Self {
 			block_status,
@@ -110,6 +113,7 @@ where
 			overseer_handle,
 			transaction_pool,
 			bundle_sender,
+			execution_receipt_sender,
 		}
 	}
 
@@ -395,6 +399,7 @@ pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client, Transacti
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
+	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 }
 
 /// Start the executor.
@@ -410,6 +415,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 		runtime_api,
 		transaction_pool,
 		bundle_sender,
+		execution_receipt_sender,
 	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool>,
 ) -> Executor<Block, BS, RA, Client, TransactionPool>
 where
@@ -430,6 +436,7 @@ where
 		overseer_handle.clone(),
 		transaction_pool,
 		Arc::new(bundle_sender),
+		Arc::new(execution_receipt_sender),
 	);
 
 	let span = tracing::Span::current();

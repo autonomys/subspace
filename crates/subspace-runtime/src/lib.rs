@@ -911,9 +911,15 @@ impl_runtime_apis! {
         }
 
         fn submit_execution_receipt_unsigned(
-            execution_receipt: sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>,
+            opaque_execution_receipt: sp_executor::OpaqueExecutionReceipt,
         ) -> Option<()> {
-            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+            <sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>>::decode(
+                &mut opaque_execution_receipt.encode().as_slice(),
+            )
+            .ok()
+            .and_then(|execution_receipt| {
+                Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+            })
         }
 
         fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()> {

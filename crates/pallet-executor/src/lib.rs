@@ -58,7 +58,7 @@ mod pallet {
             head_hash: T::Hash,
         },
         /// A new candidate receipt was backed.
-        ExecutionReceiptStored { receipt_hash: T::Hash },
+        ExecutionReceiptStored { receipt_hash: H256 },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
         /// A fraud proof was processed.

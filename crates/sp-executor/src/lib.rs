@@ -95,7 +95,7 @@ impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> 
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
     /// Primary block hash.
-    pub primary_hash: Hash,
+    pub primary_hash: H256,
     /// Secondary block hash?
     pub secondary_hash: Hash,
     /// State root after finishing the execution.
@@ -104,10 +104,19 @@ pub struct ExecutionReceipt<Hash> {
     pub state_transition_root: Hash,
 }
 
-impl<Hash: Copy> ExecutionReceipt<Hash> {
-    /// TODO: hash of ER?
-    pub fn hash(&self) -> Hash {
-        self.primary_hash
+impl<Hash: Encode> ExecutionReceipt<Hash> {
+    /// Returns the hash of this execution receipt.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+}
+
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct OpaqueExecutionReceipt(Vec<u8>);
+
+impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
+    fn from(inner: ExecutionReceipt<Hash>) -> Self {
+        Self(inner.encode())
     }
 }
 
@@ -129,7 +138,7 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
-            execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
+            opaque_execution_receipt: OpaqueExecutionReceipt,
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.

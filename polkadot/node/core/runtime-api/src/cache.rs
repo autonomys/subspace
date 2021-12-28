@@ -55,7 +55,7 @@ impl Default for RequestResultCache {
 
 pub(crate) enum RequestResult {
 	SubmitCandidateReceipt(Hash, u32, Hash),
-	SubmitExecutionReceipt(Hash, Hash),
+	SubmitExecutionReceipt(Hash),
 	SubmitTransactionBundle(Hash, Hash),
 	SubmitFraudProof(Hash),
 	ExtractBundles(Hash),

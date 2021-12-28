@@ -27,7 +27,7 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_executor::{ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_executor::{FraudProof, OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
@@ -109,7 +109,7 @@ pub enum RuntimeApiRequest {
 	// TODO: remove later
 	SubmitCandidateReceipt(u32, Hash),
 	/// Submit the execution receipt to primary chain.
-	SubmitExecutionReceipt(ExecutionReceipt<Hash>),
+	SubmitExecutionReceipt(OpaqueExecutionReceipt),
 	/// Submit the transaction bundle to primary chain.
 	SubmitTransactionBundle(OpaqueBundle),
 	/// Submit the fraud proof to primary chain.

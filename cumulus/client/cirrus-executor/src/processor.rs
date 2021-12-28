@@ -138,6 +138,12 @@ where
 		// - apply each tx one by one.
 		// - compute the incremental state root and add to the execution trace
 		// - produce ExecutionReceipt
+		let execution_receipt = ExecutionReceipt {
+			primary_hash,
+			secondary_hash: Block::Hash::default(),
+			state_root: Block::Hash::default(),
+			state_transition_root: Block::Hash::default(),
+		};
 
 		// The applied txs can be fully removed from the transaction pool
 
@@ -145,17 +151,13 @@ where
 		let is_elected = true;
 
 		if is_elected {
-			// TODO: broadcast ER to all executors.
+			if let Err(e) = self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
+			{
+				tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send execution receipt");
+			}
 
 			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Some(ProcessorResult {
-				execution_receipt: ExecutionReceipt {
-					primary_hash,
-					secondary_hash: Default::default(),
-					state_root: Default::default(),
-					state_transition_root: Default::default(),
-				},
-			})
+			Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() })
 		} else {
 			None
 		}

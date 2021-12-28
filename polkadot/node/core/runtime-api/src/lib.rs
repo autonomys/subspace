@@ -271,16 +271,16 @@ where
 				RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash)
 			});
 		},
-		Request::SubmitExecutionReceipt(execution_receipt) => {
+		Request::SubmitExecutionReceipt(opaque_execution_receipt) => {
 			let api = client.runtime_api();
-			let execution_receipt_hash = execution_receipt.hash();
 			let res = api
-				.submit_execution_receipt_unsigned(&BlockId::Hash(relay_parent), execution_receipt)
+				.submit_execution_receipt_unsigned(
+					&BlockId::Hash(relay_parent),
+					opaque_execution_receipt,
+				)
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
-			res.ok().map(|_res| {
-				RequestResult::SubmitExecutionReceipt(relay_parent, execution_receipt_hash)
-			});
+			res.ok().map(|_res| RequestResult::SubmitExecutionReceipt(relay_parent));
 		},
 		Request::SubmitTransactionBundle(opaque_bundle) => {
 			let api = client.runtime_api();
