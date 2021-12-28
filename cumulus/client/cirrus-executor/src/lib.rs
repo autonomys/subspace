@@ -335,7 +335,6 @@ where
 		let bundle_exists = false;
 
 		if bundle_exists {
-			// TODO?
 			HandlerOutcome::Good
 		} else {
 			// TODO: validate the PoE
@@ -347,12 +346,13 @@ where
 					// TODO: Set the status of each tx in the bundle to seen
 				} else {
 					// TODO: check the legality
+					//
 					// if illegal => illegal tx proof
 				}
 			}
 
 			// TODO: all checks pass, add to the bundle pool
-			// gossip to the other executors
+
 			HandlerOutcome::RebroadcastBundle
 		}
 	}
@@ -369,13 +369,11 @@ where
 		let same_with_produced_locally = true;
 
 		if same_with_produced_locally {
-			// TODO: rebroadcast ER
 			HandlerOutcome::RebroadcastExecutionReceipt
 		} else {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
-			// TODO: gossip the fraud proof to farmers
 			self.overseer_handle
 				.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
 				.await;

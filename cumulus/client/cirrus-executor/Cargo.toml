@@ -32,9 +32,9 @@ tracing = "0.1.25"
 polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 
+cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
-cirrus-client-executor-gossip = { path = "../executor-gossip" }
 sp-executor = { path = "../../../crates/sp-executor" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

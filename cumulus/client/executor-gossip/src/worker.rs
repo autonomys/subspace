@@ -18,7 +18,7 @@ pub struct GossipWorker<Block: BlockT, E> {
 }
 
 impl<Block: BlockT, E: GossipMessageHandler<Block>> GossipWorker<Block, E> {
-	pub fn new(
+	pub(super) fn new(
 		executor: E,
 		gossip_validator: Arc<GossipValidator<Block>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
@@ -34,15 +34,10 @@ impl<Block: BlockT, E: GossipMessageHandler<Block>> GossipWorker<Block, E> {
 		}
 	}
 
-	pub async fn run(mut self) {
+	pub(super) async fn run(mut self) {
 		let mut incoming =
 			Box::pin(self.gossip_engine.lock().messages_for(topic::<Block>()).filter_map(
 				|notification| async move {
-					tracing::debug!(
-						target: LOG_TARGET,
-						?notification,
-						"incoming executor gossip notification"
-					);
 					GossipMessage::<Block>::decode(&mut &notification.message[..]).ok()
 				},
 			));
@@ -52,14 +47,16 @@ impl<Block: BlockT, E: GossipMessageHandler<Block>> GossipWorker<Block, E> {
 			let gossip_engine = future::poll_fn(|cx| engine.lock().poll_unpin(cx));
 
 			futures::select! {
-				message = incoming.next().fuse() => {
-					if let Some(message) = message {
-						tracing::debug!(target: LOG_TARGET, ?message, "Received a new message");
+				gossip_message = incoming.next().fuse() => {
+					if let Some(message) = gossip_message {
+						tracing::debug!(target: LOG_TARGET, ?message, "Received a new executor gossip message");
 						match message {
-							GossipMessage::TransactionBundle(bundle) => {
+							GossipMessage::Bundle(bundle) => {
 								let outcome = self.executor.on_bundle(&bundle).await;
 								if outcome.rebroadcast_bundle() {
-									// TODO: gossip bundle
+									let outgoing_message: GossipMessage<Block> = bundle.into();
+									let encoded_message = outgoing_message.encode();
+									self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 								}
 							}
 							GossipMessage::ExecutionReceipt(execution_receipt) => {

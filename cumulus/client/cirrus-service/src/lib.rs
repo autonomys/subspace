@@ -124,10 +124,9 @@ where
 		.spawn_essential_handle()
 		.spawn("cumulus-consensus", None, consensus);
 
-	// TODO: start_executor_gossip
 	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-
-	let (execution_receipt_sender, execution_receipt_receiver) =
+	// TODO: impl execution receipt channel.
+	let (_execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
 
 	let overseer_handle = primary_chain_full_node
@@ -150,7 +149,7 @@ where
 		})
 		.await;
 
-	let network_gossip = cirrus_client_executor_gossip::start_gossip_worker(
+	let executor_gossip = cirrus_client_executor_gossip::start_gossip_worker(
 		cirrus_client_executor_gossip::ExecutorGossipParams {
 			network,
 			executor,
@@ -160,7 +159,7 @@ where
 	);
 	task_manager
 		.spawn_essential_handle()
-		.spawn_blocking("cirrus-gossip", None, network_gossip);
+		.spawn_blocking("cirrus-gossip", None, executor_gossip);
 
 	task_manager.add_child(primary_chain_full_node.primary_chain_full_node.task_manager);
 
