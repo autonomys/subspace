@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 mod worker;
 
 use self::worker::GossipWorker;
@@ -215,10 +217,11 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validat
 	fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
 		Box::new(move |_topic, mut data| {
 			let msg_hash = twox_64(data);
-			match GossipMessage::<Block>::decode(&mut data) {
-				Ok(_msg) => {},
+			// TODO: can be expired due to the message itself might be too old?
+			let _msg = match GossipMessage::<Block>::decode(&mut data) {
+				Ok(msg) => msg,
 				Err(_) => return true,
-			}
+			};
 			let expired = {
 				let known_rebroadcasted = self.known_rebroadcasted.read();
 				known_rebroadcasted.contains(&msg_hash)
