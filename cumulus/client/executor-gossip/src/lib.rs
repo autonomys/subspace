@@ -11,11 +11,20 @@ use sc_network_gossip::{
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use std::{fmt::Debug, sync::Arc};
+use std::{
+	fmt::Debug,
+	sync::Arc,
+	time::{Duration, Instant},
+};
 
 const LOG_TARGET: &str = "gossip::executor";
 
 const EXECUTOR_PROTOCOL_NAME: &str = "/subspace/executor/1";
+
+// TODO: proper timeout
+/// Timeout for rebroadcasting messages.
+/// The default value used in network-gossip is 1100ms.
+const REBROADCAST_AFTER: Duration = Duration::from_secs(6);
 
 /// Returns the configuration value to put in [`sc_network::config::NetworkConfiguration::extra_sets`].
 pub fn executor_gossip_peers_set_config() -> sc_network::config::NonDefaultSetConfig {
@@ -100,11 +109,16 @@ pub trait GossipMessageHandler<Block: BlockT> {
 pub struct GossipValidator<Block: BlockT, Executor> {
 	topic: Block::Hash,
 	executor: Executor,
+	next_rebroadcast: Mutex<Instant>,
 }
 
 impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block, Executor> {
 	pub fn new(executor: Executor) -> Self {
-		Self { topic: topic::<Block>(), executor }
+		Self {
+			topic: topic::<Block>(),
+			executor,
+			next_rebroadcast: Mutex::new(Instant::now() + REBROADCAST_AFTER),
+		}
 	}
 
 	fn validate_message(&self, msg: GossipMessage<Block>) -> ValidationResult<Block::Hash> {
@@ -184,15 +198,40 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validat
 	}
 
 	/// Produce a closure for validating messages on a given topic.
+	///
+	/// The gossip engine will periodically prune old or no longer relevant messages using
+	/// `message_expired`.
 	fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
 		Box::new(move |_topic, _data| false)
 	}
 
 	/// Produce a closure for filtering egress messages.
+	///
+	/// Called before actually sending a message to a peer.
 	fn message_allowed<'a>(
 		&'a self,
 	) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
-		Box::new(move |_who, _intent, _topic, _data| true)
+		let do_rebroadcast = {
+			let now = Instant::now();
+			let mut next_rebroadcast = self.next_rebroadcast.lock();
+			if now >= *next_rebroadcast {
+				*next_rebroadcast = now + REBROADCAST_AFTER;
+				true
+			} else {
+				false
+			}
+		};
+
+		Box::new(move |_who, intent, _topic, mut data| {
+			if let MessageIntent::PeriodicRebroadcast = intent {
+				return do_rebroadcast
+			}
+
+			match GossipMessage::<Block>::decode(&mut data) {
+				Ok(_) => true,
+				Err(_) => false,
+			}
+		})
 	}
 }
 
