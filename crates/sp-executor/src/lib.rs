@@ -111,6 +111,8 @@ impl<Hash: Encode> ExecutionReceipt<Hash> {
     }
 }
 
+// TODO: this might be unneccessary, ideally we could interact with the runtime using `ExecutionReceipt` directly.
+// Refer to the comment https://github.com/subspace/subspace/pull/219#discussion_r776749767
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct OpaqueExecutionReceipt(Vec<u8>);
 
