@@ -38,7 +38,7 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
-use cirrus_client_executor_gossip::{GossipMessageHandler, HandlerOutcome};
+use cirrus_client_executor_gossip::{Action, GossipMessageHandler, HandlerOutcome};
 use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
@@ -62,6 +62,7 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
+	spawner: Arc<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
@@ -77,6 +78,7 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
 			parachain_consensus: self.parachain_consensus.clone(),
 			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
+			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			bundle_sender: self.bundle_sender.clone(),
@@ -100,6 +102,7 @@ where
 		runtime_api: Arc<RA>,
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
+		spawner: Arc<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
@@ -110,6 +113,7 @@ where
 			runtime_api,
 			parachain_consensus,
 			client,
+			spawner,
 			overseer_handle,
 			transaction_pool,
 			bundle_sender,
@@ -248,11 +252,6 @@ where
 		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
 
-	// TODO:
-	// - gossip the bundle to the executor peers
-	//     - OnBundleReceivedBySecondaryNode
-	//         - OnBundleEquivocationProof(farmer only)
-	//         - OnInvalidBundleProof(farmer only)
 	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
@@ -322,7 +321,10 @@ where
 	}
 }
 
-#[async_trait::async_trait]
+// TODO: proper error type
+#[derive(Debug)]
+pub struct GossipMessageError;
+
 impl<Block, BS, RA, Client, TransactionPool> GossipMessageHandler<Block>
 	for Executor<Block, BS, RA, Client, TransactionPool>
 where
@@ -333,13 +335,15 @@ where
 	RA::Api: SecondaryApi<Block, AccountId>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-	async fn on_bundle(&mut self, bundle: &Bundle<Block::Extrinsic>) -> HandlerOutcome {
-		// TODO: check transaction equovocation
+	type Error = GossipMessageError;
+
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerOutcome<Self::Error> {
+		// TODO: check bundle equivocation
 
 		let bundle_exists = false;
 
 		if bundle_exists {
-			HandlerOutcome::Good
+			HandlerOutcome::Good(Action::Empty)
 		} else {
 			// TODO: validate the PoE
 
@@ -357,32 +361,47 @@ where
 
 			// TODO: all checks pass, add to the bundle pool
 
-			HandlerOutcome::RebroadcastBundle
+			HandlerOutcome::Good(Action::RebroadcastBundle)
 		}
 	}
 
 	/// Checks the execution receipt from the executor peers.
-	#[allow(unused)]
-	async fn on_execution_receipt(
-		&mut self,
+	fn on_execution_receipt(
+		&self,
 		_execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
-	) -> HandlerOutcome {
+	) -> HandlerOutcome<Self::Error> {
 		// TODO: validate the Proof-of-Election
 
 		// TODO: check if the received ER is same with the one produced locally.
 		let same_with_produced_locally = true;
 
 		if same_with_produced_locally {
-			HandlerOutcome::RebroadcastExecutionReceipt
+			HandlerOutcome::Good(Action::RebroadcastExecutionReceipt)
 		} else {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
-			self.overseer_handle
-				.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
-				.await;
+			let mut overseer_handle_clone = self.overseer_handle.clone();
+			self.spawner.spawn(
+				"cirrus-submit-fraud-proof",
+				None,
+				async move {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Submitting fraud proof in a background task..."
+					);
+					overseer_handle_clone
+						.send_msg(
+							CollationGenerationMessage::FraudProof(fraud_proof),
+							"SubmitFraudProof",
+						)
+						.await;
+					tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+				}
+				.boxed(),
+			);
 
-			HandlerOutcome::Good
+			HandlerOutcome::Good(Action::Empty)
 		}
 	}
 }
@@ -409,7 +428,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 		block_status,
 		announce_block: _,
 		mut overseer_handle,
-		spawner: _,
+		spawner,
 		key,
 		parachain_consensus,
 		runtime_api,
@@ -433,6 +452,7 @@ where
 		runtime_api,
 		parachain_consensus,
 		client,
+		Arc::new(spawner),
 		overseer_handle.clone(),
 		transaction_pool,
 		Arc::new(bundle_sender),

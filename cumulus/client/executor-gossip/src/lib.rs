@@ -11,7 +11,7 @@ use sc_network_gossip::{
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 const LOG_TARGET: &str = "gossip::executor";
 
@@ -51,18 +51,18 @@ impl<Block: BlockT> From<ExecutionReceipt<Block::Hash>> for GossipMessage<Block>
 	}
 }
 
-/// Outcome of the network gossip message processing.
+/// What to do with the successfully verified gossip message.
 #[derive(Debug)]
-pub enum HandlerOutcome {
+pub enum Action {
 	/// All good, no message needs to be rebroadcasted.
-	Good,
+	Empty,
 	/// Gossip the bundle message to other executor peers.
 	RebroadcastBundle,
 	/// Gossip the execution exceipt message to other executor peers.
 	RebroadcastExecutionReceipt,
 }
 
-impl HandlerOutcome {
+impl Action {
 	fn rebroadcast_bundle(&self) -> bool {
 		matches!(self, Self::RebroadcastBundle)
 	}
@@ -72,34 +72,84 @@ impl HandlerOutcome {
 	}
 }
 
-/// Handler for the messages received from the executor gossip network.
-#[async_trait::async_trait]
-pub trait GossipMessageHandler<Block: BlockT> {
-	/// A transaction bundle was received.
-	async fn on_bundle(&mut self, bundle: &Bundle<Block::Extrinsic>) -> HandlerOutcome;
+/// Outcome of the network gossip message processing.
+#[derive(Debug)]
+pub enum HandlerOutcome<Error> {
+	/// The message is valid.
+	Good(Action),
+	/// The message is invalid.
+	Bad(Error),
+}
 
-	/// An execution receipt was received.
-	async fn on_execution_receipt(
-		&mut self,
+/// Handler for the messages received from the executor gossip network.
+pub trait GossipMessageHandler<Block: BlockT> {
+	/// Error type.
+	type Error: Debug;
+
+	/// Validates and applies when a transaction bundle was received.
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerOutcome<Self::Error>;
+
+	/// Validates and applies when an execution receipt was received.
+	fn on_execution_receipt(
+		&self,
 		execution_receipt: &ExecutionReceipt<Block::Hash>,
-	) -> HandlerOutcome;
+	) -> HandlerOutcome<Self::Error>;
 }
 
 /// Validator for the gossip messages.
-pub struct GossipValidator<Block: BlockT> {
+pub struct GossipValidator<Block: BlockT, Executor> {
 	topic: Block::Hash,
-	// inner: parking_lot::RwLock<Inner<Block>>,
-	// set_state: environment::SharedVoterSetState<Block>,
-	// report_sender: TracingUnboundedSender<PeerReport>,
+	executor: Executor,
 }
 
-impl<Block: BlockT> GossipValidator<Block> {
-	pub fn new() -> Self {
-		Self { topic: topic::<Block>() }
+impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block, Executor> {
+	pub fn new(executor: Executor) -> Self {
+		Self { topic: topic::<Block>(), executor }
+	}
+
+	fn validate_message(&self, msg: GossipMessage<Block>) -> ValidationResult<Block::Hash> {
+		use HandlerOutcome::{Bad, Good};
+
+		match msg {
+			GossipMessage::Bundle(bundle) => {
+				let outcome = self.executor.on_bundle(&bundle);
+				match outcome {
+					Good(action) if action.rebroadcast_bundle() =>
+						ValidationResult::ProcessAndKeep(self.topic),
+					Bad(err) => {
+						tracing::debug!(
+							target: LOG_TARGET,
+							?err,
+							"Invalid GossipMessage::Bundle discarded"
+						);
+						ValidationResult::Discard
+					},
+					_ => ValidationResult::ProcessAndDiscard(self.topic),
+				}
+			},
+			GossipMessage::ExecutionReceipt(execution_receipt) => {
+				let outcome = self.executor.on_execution_receipt(&execution_receipt);
+				match outcome {
+					Good(action) if action.rebroadcast_execution_receipt() =>
+						ValidationResult::ProcessAndKeep(self.topic),
+					Bad(err) => {
+						tracing::debug!(
+							target: LOG_TARGET,
+							?err,
+							"Invalid GossipMessage::ExecutionReceipt discarded"
+						);
+						ValidationResult::Discard
+					},
+					_ => ValidationResult::ProcessAndDiscard(self.topic),
+				}
+			},
+		}
 	}
 }
 
-impl<Block: BlockT> Validator<Block> for GossipValidator<Block> {
+impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validator<Block>
+	for GossipValidator<Block, Executor>
+{
 	fn new_peer(
 		&self,
 		_context: &mut dyn ValidatorContext<Block>,
@@ -116,16 +166,21 @@ impl<Block: BlockT> Validator<Block> for GossipValidator<Block> {
 		_sender: &PeerId,
 		mut data: &[u8],
 	) -> ValidationResult<Block::Hash> {
-		if let Ok(msg) = GossipMessage::<Block>::decode(&mut data) {
-			tracing::debug!(target: LOG_TARGET, ?msg, "Validating incoming message");
-
-			// TODO: handle the message properly
-			return ValidationResult::ProcessAndKeep(self.topic)
+		match GossipMessage::<Block>::decode(&mut data) {
+			Ok(msg) => {
+				tracing::debug!(target: LOG_TARGET, ?msg, "Validating incoming message");
+				self.validate_message(msg)
+			},
+			Err(err) => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					?err,
+					?data,
+					"Message discarded due to the decoding error"
+				);
+				ValidationResult::Discard
+			},
 		}
-
-		tracing::debug!(target: LOG_TARGET, ?data, "Message discarded");
-
-		ValidationResult::Discard
 	}
 
 	/// Produce a closure for validating messages on a given topic.
@@ -142,11 +197,11 @@ impl<Block: BlockT> Validator<Block> for GossipValidator<Block> {
 }
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<Block: BlockT, N, E> {
+pub struct ExecutorGossipParams<Block: BlockT, Network, Executor> {
 	/// Substrate network service.
-	pub network: N,
+	pub network: Network,
 	/// Executor instance.
-	pub executor: E,
+	pub executor: Executor,
 	/// Stream of transaction bundle produced locally.
 	pub bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
 	/// Stream of execution receipt produced locally.
@@ -154,22 +209,20 @@ pub struct ExecutorGossipParams<Block: BlockT, N, E> {
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<Block, N, E>(gossip_params: ExecutorGossipParams<Block, N, E>)
-where
+pub async fn start_gossip_worker<Block, Network, Executor>(
+	gossip_params: ExecutorGossipParams<Block, Network, Executor>,
+) where
 	Block: BlockT,
-	N: GossipNetwork<Block> + Send + Sync + Clone + 'static,
-	E: GossipMessageHandler<Block>,
+	Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
+	Executor: GossipMessageHandler<Block> + Send + Sync + 'static,
 {
 	let ExecutorGossipParams { network, executor, bundle_receiver, execution_receipt_receiver } =
 		gossip_params;
 
-	let gossip_validator = Arc::new(GossipValidator::new());
-	let gossip_engine =
-		GossipEngine::new(network, EXECUTOR_PROTOCOL_NAME, gossip_validator.clone(), None);
+	let gossip_validator = Arc::new(GossipValidator::new(executor));
+	let gossip_engine = GossipEngine::new(network, EXECUTOR_PROTOCOL_NAME, gossip_validator, None);
 
 	let gossip_worker = GossipWorker::new(
-		executor,
-		gossip_validator,
 		Arc::new(Mutex::new(gossip_engine)),
 		bundle_receiver,
 		execution_receipt_receiver,
