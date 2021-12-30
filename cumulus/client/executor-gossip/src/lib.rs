@@ -88,13 +88,7 @@ impl Action {
 }
 
 /// Outcome of the network gossip message processing.
-#[derive(Debug)]
-pub enum HandlerOutcome<Error> {
-	/// The message is valid.
-	Good(Action),
-	/// The message is invalid.
-	Bad(Error),
-}
+pub type HandlerResult<E> = Result<Action, E>;
 
 /// Handler for the messages received from the executor gossip network.
 pub trait GossipMessageHandler<Block: BlockT> {
@@ -102,13 +96,13 @@ pub trait GossipMessageHandler<Block: BlockT> {
 	type Error: Debug;
 
 	/// Validates and applies when a transaction bundle was received.
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerOutcome<Self::Error>;
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerResult<Self::Error>;
 
 	/// Validates and applies when an execution receipt was received.
 	fn on_execution_receipt(
 		&self,
 		execution_receipt: &ExecutionReceipt<Block::Hash>,
-	) -> HandlerOutcome<Self::Error>;
+	) -> HandlerResult<Self::Error>;
 }
 
 /// Validator for the gossip messages.
@@ -135,15 +129,13 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block
 	}
 
 	fn validate_message(&self, msg: GossipMessage<Block>) -> ValidationResult<Block::Hash> {
-		use HandlerOutcome::{Bad, Good};
-
 		match msg {
 			GossipMessage::Bundle(bundle) => {
 				let outcome = self.executor.on_bundle(&bundle);
 				match outcome {
-					Good(action) if action.rebroadcast_bundle() =>
+					Ok(action) if action.rebroadcast_bundle() =>
 						ValidationResult::ProcessAndKeep(self.topic),
-					Bad(err) => {
+					Err(err) => {
 						tracing::debug!(
 							target: LOG_TARGET,
 							?err,
@@ -157,9 +149,9 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block
 			GossipMessage::ExecutionReceipt(execution_receipt) => {
 				let outcome = self.executor.on_execution_receipt(&execution_receipt);
 				match outcome {
-					Good(action) if action.rebroadcast_execution_receipt() =>
+					Ok(action) if action.rebroadcast_execution_receipt() =>
 						ValidationResult::ProcessAndKeep(self.topic),
-					Bad(err) => {
+					Err(err) => {
 						tracing::debug!(
 							target: LOG_TARGET,
 							?err,
