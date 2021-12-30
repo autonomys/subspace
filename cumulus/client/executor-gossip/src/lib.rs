@@ -69,11 +69,11 @@ impl<Block: BlockT> From<ExecutionReceipt<Block::Hash>> for GossipMessage<Block>
 /// What to do with the successfully verified gossip message.
 #[derive(Debug)]
 pub enum Action {
-	/// All good, no message needs to be rebroadcasted.
+	/// The message does not have to be re-gossiped.
 	Empty,
-	/// Gossip the bundle message to other executor peers.
+	/// Gossip the bundle message to other peers.
 	RebroadcastBundle,
-	/// Gossip the execution exceipt message to other executor peers.
+	/// Gossip the execution exceipt message to other peers.
 	RebroadcastExecutionReceipt,
 }
 
