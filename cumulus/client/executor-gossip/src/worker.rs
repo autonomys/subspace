@@ -26,6 +26,24 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipWorker<Block, E
 		Self { gossip_validator, gossip_engine, bundle_receiver, execution_receipt_receiver }
 	}
 
+	fn gossip_bundle(&self, bundle: Bundle<Block::Extrinsic>) {
+		let outgoing_message: GossipMessage<Block> = bundle.into();
+		let encoded_message = outgoing_message.encode();
+		self.gossip_validator.note_rebroadcasted(&encoded_message);
+		self.gossip_engine
+			.lock()
+			.gossip_message(topic::<Block>(), encoded_message, false);
+	}
+
+	fn gossip_execution_receipt(&self, execution_receipt: ExecutionReceipt<Block::Hash>) {
+		let outgoing_message: GossipMessage<Block> = execution_receipt.into();
+		let encoded_message = outgoing_message.encode();
+		self.gossip_validator.note_rebroadcasted(&encoded_message);
+		self.gossip_engine
+			.lock()
+			.gossip_message(topic::<Block>(), encoded_message, false);
+	}
+
 	pub(super) async fn run(mut self) {
 		let mut incoming =
 			Box::pin(self.gossip_engine.lock().messages_for(topic::<Block>()).filter_map(
@@ -43,18 +61,8 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipWorker<Block, E
 					if let Some(message) = gossip_message {
 						tracing::debug!(target: LOG_TARGET, ?message, "Rebroadcasting an executor gossip message");
 						match message {
-							GossipMessage::Bundle(bundle) => {
-								let outgoing_message: GossipMessage<Block> = bundle.into();
-								let encoded_message = outgoing_message.encode();
-								self.gossip_validator.note_rebroadcasted(&encoded_message);
-								self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
-							}
-							GossipMessage::ExecutionReceipt(execution_receipt) => {
-								let outgoing_message: GossipMessage<Block> = execution_receipt.into();
-								let encoded_message = outgoing_message.encode();
-								self.gossip_validator.note_rebroadcasted(&encoded_message);
-								self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
-							}
+							GossipMessage::Bundle(bundle) => self.gossip_bundle(bundle),
+							GossipMessage::ExecutionReceipt(execution_receipt) => self.gossip_execution_receipt(execution_receipt)
 						}
 					} else {
 						return
@@ -62,18 +70,12 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipWorker<Block, E
 				}
 				bundle = self.bundle_receiver.next().fuse() => {
 					if let Some(bundle) = bundle {
-						let outgoing_message: GossipMessage<Block> = bundle.into();
-						let encoded_message = outgoing_message.encode();
-						self.gossip_validator.note_rebroadcasted(&encoded_message);
-						self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
+						self.gossip_bundle(bundle);
 					}
 				}
 				execution_receipt = self.execution_receipt_receiver.next().fuse() => {
 					if let Some(execution_receipt) = execution_receipt {
-						let outgoing_message: GossipMessage<Block> = execution_receipt.into();
-						let encoded_message = outgoing_message.encode();
-						self.gossip_validator.note_rebroadcasted(&encoded_message);
-						self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
+						self.gossip_execution_receipt(execution_receipt);
 					}
 				}
 				_ = gossip_engine.fuse() => {
