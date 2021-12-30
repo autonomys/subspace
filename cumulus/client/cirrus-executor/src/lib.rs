@@ -381,7 +381,7 @@ where
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
-			let mut overseer_handle_clone = self.overseer_handle.clone();
+			let mut overseer_handle = self.overseer_handle.clone();
 			self.spawner.spawn(
 				"cirrus-submit-fraud-proof",
 				None,
@@ -390,7 +390,7 @@ where
 						target: LOG_TARGET,
 						"Submitting fraud proof in a background task..."
 					);
-					overseer_handle_clone
+					overseer_handle
 						.send_msg(
 							CollationGenerationMessage::FraudProof(fraud_proof),
 							"SubmitFraudProof",
@@ -460,34 +460,40 @@ where
 	);
 
 	let span = tracing::Span::current();
-	let collator_clone = executor.clone();
-	let bundler_clone = executor.clone();
-	let processor_clone = executor.clone();
-	let collator_span_clone = span.clone();
-	let bundler_span_clone = span.clone();
 	let config = CollationGenerationConfig {
 		key,
-		collator: Box::new(move |relay_parent, validation_data| {
-			let collator = collator_clone.clone();
+		collator: {
+			let executor = executor.clone();
+			let span = span.clone();
 
-			collator
-				.produce_candidate(relay_parent, validation_data.clone())
-				.instrument(collator_span_clone.clone())
-				.boxed()
-		}),
-		bundler: Box::new(move |slot_info| {
-			let bundler = bundler_clone.clone();
+			Box::new(move |relay_parent, validation_data| {
+				let executor = executor.clone();
+				executor
+					.produce_candidate(relay_parent, validation_data.clone())
+					.instrument(span.clone())
+					.boxed()
+			})
+		},
+		bundler: {
+			let executor = executor.clone();
+			let span = span.clone();
 
-			bundler.produce_bundle(slot_info).instrument(bundler_span_clone.clone()).boxed()
-		}),
-		processor: Box::new(move |primary_hash, bundles, shuffling_seed| {
-			let processor = processor_clone.clone();
+			Box::new(move |slot_info| {
+				let executor = executor.clone();
+				executor.produce_bundle(slot_info).instrument(span.clone()).boxed()
+			})
+		},
+		processor: {
+			let executor = executor.clone();
 
-			processor
-				.process_bundles(primary_hash, bundles, shuffling_seed)
-				.instrument(span.clone())
-				.boxed()
-		}),
+			Box::new(move |primary_hash, bundles, shuffling_seed| {
+				let executor = executor.clone();
+				executor
+					.process_bundles(primary_hash, bundles, shuffling_seed)
+					.instrument(span.clone())
+					.boxed()
+			})
+		},
 	};
 
 	overseer_handle
