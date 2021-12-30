@@ -87,22 +87,19 @@ impl Action {
 	}
 }
 
-/// Outcome of the network gossip message processing.
-pub type HandlerResult<E> = Result<Action, E>;
-
 /// Handler for the messages received from the executor gossip network.
 pub trait GossipMessageHandler<Block: BlockT> {
 	/// Error type.
 	type Error: Debug;
 
 	/// Validates and applies when a transaction bundle was received.
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerResult<Self::Error>;
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error>;
 
 	/// Validates and applies when an execution receipt was received.
 	fn on_execution_receipt(
 		&self,
 		execution_receipt: &ExecutionReceipt<Block::Hash>,
-	) -> HandlerResult<Self::Error>;
+	) -> Result<Action, Self::Error>;
 }
 
 /// Validator for the gossip messages.

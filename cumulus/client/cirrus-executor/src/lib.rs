@@ -38,7 +38,7 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
-use cirrus_client_executor_gossip::{Action, GossipMessageHandler, HandlerResult};
+use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
@@ -337,7 +337,7 @@ where
 {
 	type Error = GossipMessageError;
 
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> HandlerResult<Self::Error> {
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
 		// TODO: check bundle equivocation
 
 		let bundle_exists = false;
@@ -369,7 +369,7 @@ where
 	fn on_execution_receipt(
 		&self,
 		_execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
-	) -> HandlerResult<Self::Error> {
+	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
 		// TODO: check if the received ER is same with the one produced locally.
