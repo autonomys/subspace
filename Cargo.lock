@@ -824,6 +824,7 @@ dependencies = [
  "sc-network",
  "sc-network-gossip",
  "sc-utils",
+ "sp-core",
  "sp-executor",
  "sp-runtime",
  "tracing",

@@ -2,16 +2,18 @@ mod worker;
 
 use self::worker::GossipWorker;
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use sc_network::{ObservedRole, PeerId};
 use sc_network_gossip::{
 	GossipEngine, MessageIntent, Network as GossipNetwork, ValidationResult, Validator,
 	ValidatorContext,
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
+use sp_core::hashing::twox_64;
 use sp_executor::{Bundle, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::{
+	collections::HashSet,
 	fmt::Debug,
 	sync::Arc,
 	time::{Duration, Instant},
@@ -25,6 +27,8 @@ const EXECUTOR_PROTOCOL_NAME: &str = "/subspace/executor/1";
 /// Timeout for rebroadcasting messages.
 /// The default value used in network-gossip is 1100ms.
 const REBROADCAST_AFTER: Duration = Duration::from_secs(6);
+
+type MessageHash = [u8; 8];
 
 /// Returns the configuration value to put in [`sc_network::config::NetworkConfiguration::extra_sets`].
 pub fn executor_gossip_peers_set_config() -> sc_network::config::NonDefaultSetConfig {
@@ -110,6 +114,7 @@ pub struct GossipValidator<Block: BlockT, Executor> {
 	topic: Block::Hash,
 	executor: Executor,
 	next_rebroadcast: Mutex<Instant>,
+	known_rebroadcasted: RwLock<HashSet<MessageHash>>,
 }
 
 impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block, Executor> {
@@ -118,7 +123,13 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block
 			topic: topic::<Block>(),
 			executor,
 			next_rebroadcast: Mutex::new(Instant::now() + REBROADCAST_AFTER),
+			known_rebroadcasted: RwLock::new(HashSet::new()),
 		}
+	}
+
+	pub(crate) fn note_rebroadcasted(&self, encoded_message: &[u8]) {
+		let mut known_rebroadcasted = self.known_rebroadcasted.write();
+		known_rebroadcasted.insert(twox_64(encoded_message));
 	}
 
 	fn validate_message(&self, msg: GossipMessage<Block>) -> ValidationResult<Block::Hash> {
@@ -202,7 +213,22 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validat
 	/// The gossip engine will periodically prune old or no longer relevant messages using
 	/// `message_expired`.
 	fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-		Box::new(move |_topic, _data| false)
+		Box::new(move |_topic, mut data| {
+			let msg_hash = twox_64(data);
+			match GossipMessage::<Block>::decode(&mut data) {
+				Ok(_msg) => {},
+				Err(_) => return true,
+			}
+			let expired = {
+				let known_rebroadcasted = self.known_rebroadcasted.read();
+				known_rebroadcasted.contains(&msg_hash)
+			};
+			if expired {
+				let mut known_rebroadcasted = self.known_rebroadcasted.write();
+				known_rebroadcasted.remove(&msg_hash);
+			}
+			expired
+		})
 	}
 
 	/// Produce a closure for filtering egress messages.
@@ -259,9 +285,11 @@ pub async fn start_gossip_worker<Block, Network, Executor>(
 		gossip_params;
 
 	let gossip_validator = Arc::new(GossipValidator::new(executor));
-	let gossip_engine = GossipEngine::new(network, EXECUTOR_PROTOCOL_NAME, gossip_validator, None);
+	let gossip_engine =
+		GossipEngine::new(network, EXECUTOR_PROTOCOL_NAME, gossip_validator.clone(), None);
 
 	let gossip_worker = GossipWorker::new(
+		gossip_validator,
 		Arc::new(Mutex::new(gossip_engine)),
 		bundle_receiver,
 		execution_receipt_receiver,

@@ -1,4 +1,4 @@
-use crate::{topic, GossipMessage, LOG_TARGET};
+use crate::{topic, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET};
 use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -9,19 +9,21 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<Block: BlockT> {
+pub struct GossipWorker<Block: BlockT, Executor> {
+	gossip_validator: Arc<GossipValidator<Block, Executor>>,
 	gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 	bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
 	execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
 }
 
-impl<Block: BlockT> GossipWorker<Block> {
+impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipWorker<Block, Executor> {
 	pub(super) fn new(
+		gossip_validator: Arc<GossipValidator<Block, Executor>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 		bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
 		execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
 	) -> Self {
-		Self { gossip_engine, bundle_receiver, execution_receipt_receiver }
+		Self { gossip_validator, gossip_engine, bundle_receiver, execution_receipt_receiver }
 	}
 
 	pub(super) async fn run(mut self) {
@@ -44,11 +46,13 @@ impl<Block: BlockT> GossipWorker<Block> {
 							GossipMessage::Bundle(bundle) => {
 								let outgoing_message: GossipMessage<Block> = bundle.into();
 								let encoded_message = outgoing_message.encode();
+								self.gossip_validator.note_rebroadcasted(&encoded_message);
 								self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 							}
 							GossipMessage::ExecutionReceipt(execution_receipt) => {
 								let outgoing_message: GossipMessage<Block> = execution_receipt.into();
 								let encoded_message = outgoing_message.encode();
+								self.gossip_validator.note_rebroadcasted(&encoded_message);
 								self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 							}
 						}
@@ -60,6 +64,7 @@ impl<Block: BlockT> GossipWorker<Block> {
 					if let Some(bundle) = bundle {
 						let outgoing_message: GossipMessage<Block> = bundle.into();
 						let encoded_message = outgoing_message.encode();
+						self.gossip_validator.note_rebroadcasted(&encoded_message);
 						self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 					}
 				}
@@ -67,6 +72,7 @@ impl<Block: BlockT> GossipWorker<Block> {
 					if let Some(execution_receipt) = execution_receipt {
 						let outgoing_message: GossipMessage<Block> = execution_receipt.into();
 						let encoded_message = outgoing_message.encode();
+						self.gossip_validator.note_rebroadcasted(&encoded_message);
 						self.gossip_engine.lock().gossip_message(topic::<Block>(), encoded_message, false);
 					}
 				}
