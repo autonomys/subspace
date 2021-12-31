@@ -72,6 +72,8 @@ sha3 = { opt-level = 3 }
 sloth256-189 = { opt-level = 3 }
 smallvec = { opt-level = 3 }
 snow = { opt-level = 3 }
+subspace-core-primitives = { opt-level = 3 }
+subspace-archiving = { opt-level = 3 }
 twox-hash = { opt-level = 3 }
 uint = { opt-level = 3 }
 wasmi = { opt-level = 3 }
