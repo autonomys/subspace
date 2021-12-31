@@ -45,12 +45,20 @@ jobs:
           - ubuntu-20.04
           - macos-11
           - windows-2019
+          - windows-2022
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      - name: Add MSVC compiler
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: 14.29
+        if: matrix.os == 'windows-2022'
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -100,12 +108,20 @@ jobs:
           - ubuntu-20.04
           - macos-11
           - windows-2019
+          - windows-2022
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      - name: Add MSVC compiler
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: 14.29
+        if: matrix.os == 'windows-2022'
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
