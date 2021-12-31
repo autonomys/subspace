@@ -58,7 +58,7 @@ mod pallet {
             head_hash: T::Hash,
         },
         /// A new candidate receipt was backed.
-        ExecutionReceiptStored { receipt_hash: T::Hash },
+        ExecutionReceiptStored { receipt_hash: H256 },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
         /// A fraud proof was processed.
@@ -224,6 +224,7 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
+                    // TODO: prevent the spamming of fraud proof transaction.
                     if let Err(e) = Self::check_fraud_proof(fraud_proof) {
                         log::error!(
                             target: "runtime::subspace::executor",

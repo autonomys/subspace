@@ -227,9 +227,15 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	let parachain_config = prepare_node_config(parachain_config);
+	let mut parachain_config = prepare_node_config(parachain_config);
+
+	parachain_config
+		.network
+		.extra_sets
+		.push(cirrus_client_executor_gossip::executor_gossip_peers_set_config());
 
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
+
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
 	let relay_chain_full_node =
@@ -297,7 +303,7 @@ where
 			&task_manager,
 			&relay_chain_full_node,
 			transaction_pool.clone(),
-			network,
+			network.clone(),
 			params.keystore_container.sync_keystore(),
 			force_authoring,
 		)?;
@@ -314,6 +320,7 @@ where
 			parachain_consensus,
 			import_queue,
 			transaction_pool,
+			network,
 		};
 
 		cirrus_client_service::start_executor(params).await?;

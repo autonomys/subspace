@@ -29,8 +29,10 @@ use sc_consensus::{
 	import_queue::{ImportQueue, IncomingBlock, Link, Origin},
 	BlockImport,
 };
+use sc_network::NetworkService;
 use sc_service::{Configuration, Role, TaskManager};
 use sc_transaction_pool_api::TransactionPool;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -75,6 +77,7 @@ pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, 
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub import_queue: IQ,
 	pub transaction_pool: Arc<TP>,
+	pub network: Arc<NetworkService<Block, Block::Hash>>,
 }
 
 /// Start an executor node.
@@ -89,6 +92,7 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		parachain_consensus,
 		import_queue: _,
 		transaction_pool,
+		network,
 	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP>,
 ) -> sc_service::error::Result<()>
 where
@@ -120,21 +124,42 @@ where
 		.spawn_essential_handle()
 		.spawn("cumulus-consensus", None, consensus);
 
-	cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
-		runtime_api: client.clone(),
-		client,
-		block_status,
-		announce_block,
-		overseer_handle: primary_chain_full_node
-			.overseer_handle
-			.clone()
-			.ok_or_else(|| "Subspace full node did not provide an `OverseerHandle`!")?,
-		spawner,
-		key: primary_chain_full_node.collator_key.clone(),
-		parachain_consensus,
-		transaction_pool,
-	})
-	.await;
+	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
+	let (execution_receipt_sender, execution_receipt_receiver) =
+		tracing_unbounded("execution_receipt_stream");
+
+	let overseer_handle = primary_chain_full_node
+		.overseer_handle
+		.clone()
+		.ok_or_else(|| "Subspace full node did not provide an `OverseerHandle`!")?;
+
+	let executor =
+		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
+			runtime_api: client.clone(),
+			client,
+			block_status,
+			announce_block,
+			overseer_handle,
+			spawner,
+			key: primary_chain_full_node.collator_key.clone(),
+			parachain_consensus,
+			transaction_pool,
+			bundle_sender,
+			execution_receipt_sender,
+		})
+		.await;
+
+	let executor_gossip = cirrus_client_executor_gossip::start_gossip_worker(
+		cirrus_client_executor_gossip::ExecutorGossipParams {
+			network,
+			executor,
+			bundle_receiver,
+			execution_receipt_receiver,
+		},
+	);
+	task_manager
+		.spawn_essential_handle()
+		.spawn_blocking("cirrus-gossip", None, executor_gossip);
 
 	task_manager.add_child(primary_chain_full_node.primary_chain_full_node.task_manager);
 

@@ -334,16 +334,17 @@ async fn process_primary_block<Context: SubsystemContext>(
 		.await
 		.await??;
 
-	let execution_receipt = match (config.processor)(block_hash, bundles, shuffling_seed).await {
-		Some(processor_result) => processor_result.to_execution_receipt(),
-		None => {
-			tracing::debug!(
-				target: LOG_TARGET,
-				"Skip sending the execution receipt because executor is not elected",
-			);
-			return Ok(())
-		},
-	};
+	let opaque_execution_receipt =
+		match (config.processor)(block_hash, bundles, shuffling_seed).await {
+			Some(processor_result) => processor_result.to_opaque_execution_receipt(),
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Skip sending the execution receipt because executor is not elected",
+				);
+				return Ok(())
+			},
+		};
 
 	let best_hash = request_best_primary_hash(ctx).await?;
 
@@ -354,7 +355,7 @@ async fn process_primary_block<Context: SubsystemContext>(
 			if let Err(err) = task_sender
 				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
 					best_hash,
-					RuntimeApiRequest::SubmitExecutionReceipt(execution_receipt),
+					RuntimeApiRequest::SubmitExecutionReceipt(opaque_execution_receipt),
 				)))
 				.await
 			{

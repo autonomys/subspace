@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use sp_application_crypto::KeyTypeId;
 use sp_consensus_slots::Slot;
 use sp_core::bytes;
-use sp_executor::{ExecutionReceipt, OpaqueBundle};
+use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::pin::Pin;
 use subspace_core_primitives::{Randomness, Tag};
@@ -94,14 +94,14 @@ impl BundleResult {
 }
 
 /// Result of the [`ProcessorFn`] invocation.
-pub struct ProcessorResult<H = Hash> {
-    /// The execution receipt that was built.
-    pub execution_receipt: ExecutionReceipt<H>,
+pub struct ProcessorResult {
+    /// The opaque execution receipt that was built.
+    pub opaque_execution_receipt: OpaqueExecutionReceipt,
 }
 
 impl ProcessorResult {
-    pub fn to_execution_receipt(self) -> ExecutionReceipt<Hash> {
-        self.execution_receipt
+    pub fn to_opaque_execution_receipt(self) -> OpaqueExecutionReceipt {
+        self.opaque_execution_receipt
     }
 }
 

@@ -21,6 +21,7 @@ mod processor;
 
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
@@ -37,6 +38,7 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
+use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
@@ -60,8 +62,11 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
+	spawner: Arc<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
 	transaction_pool: Arc<TransactionPool>,
+	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 }
 
 impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
@@ -73,8 +78,11 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
 			parachain_consensus: self.parachain_consensus.clone(),
 			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
+			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
+			bundle_sender: self.bundle_sender.clone(),
+			execution_receipt_sender: self.execution_receipt_sender.clone(),
 		}
 	}
 }
@@ -94,16 +102,22 @@ where
 		runtime_api: Arc<RA>,
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
+		spawner: Arc<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
 		transaction_pool: Arc<TransactionPool>,
+		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	) -> Self {
 		Self {
 			block_status,
 			runtime_api,
 			parachain_consensus,
 			client,
+			spawner,
 			overseer_handle,
 			transaction_pool,
+			bundle_sender,
+			execution_receipt_sender,
 		}
 	}
 
@@ -166,32 +180,6 @@ where
 				);
 				false
 			},
-		}
-	}
-
-	/// Checks the execution receipt from the executor peers.
-	///
-	/// TODO: invoke this once the external ER is received.
-	#[allow(unused)]
-	async fn on_execution_receipt_received(
-		&mut self,
-		_execution_receipt: ExecutionReceipt<<Block as BlockT>::Hash>,
-	) {
-		// TODO: validate the Proof-of-Election
-
-		// TODO: check if the received ER is same with the one produced locally.
-		let same_with_produced_locally = true;
-
-		if same_with_produced_locally {
-			// TODO: rebroadcast ER
-		} else {
-			// TODO: generate a fraud proof
-			let fraud_proof = FraudProof { proof: StorageProof::empty() };
-
-			// TODO: gossip the fraud proof to farmers
-			self.overseer_handle
-				.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
-				.await;
 		}
 	}
 
@@ -264,11 +252,6 @@ where
 		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
 
-	// TODO:
-	// - gossip the bundle to the executor peers
-	//     - OnBundleReceivedBySecondaryNode
-	//         - OnBundleEquivocationProof(farmer only)
-	//         - OnInvalidBundleProof(farmer only)
 	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
@@ -321,6 +304,10 @@ where
 			extrinsics,
 		};
 
+		if let Err(e) = self.bundle_sender.unbounded_send(bundle.clone()) {
+			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+		}
+
 		Some(BundleResult { opaque_bundle: bundle.into() })
 	}
 
@@ -331,6 +318,91 @@ where
 		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
 		self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await
+	}
+}
+
+// TODO: proper error type
+#[derive(Debug)]
+pub struct GossipMessageError;
+
+impl<Block, BS, RA, Client, TransactionPool> GossipMessageHandler<Block>
+	for Executor<Block, BS, RA, Client, TransactionPool>
+where
+	Block: BlockT,
+	Client: sp_blockchain::HeaderBackend<Block>,
+	BS: BlockBackend<Block> + Send + Sync,
+	RA: ProvideRuntimeApi<Block> + Send + Sync,
+	RA::Api: SecondaryApi<Block, AccountId>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+{
+	type Error = GossipMessageError;
+
+	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
+		// TODO: check bundle equivocation
+
+		let bundle_exists = false;
+
+		if bundle_exists {
+			Ok(Action::Empty)
+		} else {
+			// TODO: validate the PoE
+
+			for extrinsic in bundle.extrinsics.iter() {
+				let tx_hash = self.transaction_pool.hash_of(extrinsic);
+
+				if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
+					// TODO: Set the status of each tx in the bundle to seen
+				} else {
+					// TODO: check the legality
+					//
+					// if illegal => illegal tx proof
+				}
+			}
+
+			// TODO: all checks pass, add to the bundle pool
+
+			Ok(Action::RebroadcastBundle)
+		}
+	}
+
+	/// Checks the execution receipt from the executor peers.
+	fn on_execution_receipt(
+		&self,
+		_execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
+	) -> Result<Action, Self::Error> {
+		// TODO: validate the Proof-of-Election
+
+		// TODO: check if the received ER is same with the one produced locally.
+		let same_with_produced_locally = true;
+
+		if same_with_produced_locally {
+			Ok(Action::RebroadcastExecutionReceipt)
+		} else {
+			// TODO: generate a fraud proof
+			let fraud_proof = FraudProof { proof: StorageProof::empty() };
+
+			let mut overseer_handle = self.overseer_handle.clone();
+			self.spawner.spawn(
+				"cirrus-submit-fraud-proof",
+				None,
+				async move {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Submitting fraud proof in a background task..."
+					);
+					overseer_handle
+						.send_msg(
+							CollationGenerationMessage::FraudProof(fraud_proof),
+							"SubmitFraudProof",
+						)
+						.await;
+					tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+				}
+				.boxed(),
+			);
+
+			Ok(Action::Empty)
+		}
 	}
 }
 
@@ -345,6 +417,8 @@ pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client, Transacti
 	pub key: CollatorPair,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub transaction_pool: Arc<TransactionPool>,
+	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
+	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 }
 
 /// Start the executor.
@@ -354,13 +428,16 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 		block_status,
 		announce_block: _,
 		mut overseer_handle,
-		spawner: _,
+		spawner,
 		key,
 		parachain_consensus,
 		runtime_api,
 		transaction_pool,
+		bundle_sender,
+		execution_receipt_sender,
 	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool>,
-) where
+) -> Executor<Block, BS, RA, Client, TransactionPool>
+where
 	Block: BlockT,
 	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
@@ -375,41 +452,53 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 		runtime_api,
 		parachain_consensus,
 		client,
+		Arc::new(spawner),
 		overseer_handle.clone(),
 		transaction_pool,
+		Arc::new(bundle_sender),
+		Arc::new(execution_receipt_sender),
 	);
 
 	let span = tracing::Span::current();
-	let collator_clone = executor.clone();
-	let bundler_clone = executor.clone();
-	let collator_span_clone = span.clone();
-	let bundler_span_clone = span.clone();
 	let config = CollationGenerationConfig {
 		key,
-		collator: Box::new(move |relay_parent, validation_data| {
-			let collator = collator_clone.clone();
+		collator: {
+			let executor = executor.clone();
+			let span = span.clone();
 
-			collator
-				.produce_candidate(relay_parent, validation_data.clone())
-				.instrument(collator_span_clone.clone())
-				.boxed()
-		}),
-		bundler: Box::new(move |slot_info| {
-			let bundler = bundler_clone.clone();
+			Box::new(move |relay_parent, validation_data| {
+				let executor = executor.clone();
+				executor
+					.produce_candidate(relay_parent, validation_data.clone())
+					.instrument(span.clone())
+					.boxed()
+			})
+		},
+		bundler: {
+			let executor = executor.clone();
+			let span = span.clone();
 
-			bundler.produce_bundle(slot_info).instrument(bundler_span_clone.clone()).boxed()
-		}),
-		processor: Box::new(move |primary_hash, bundles, shuffling_seed| {
-			let processor = executor.clone();
+			Box::new(move |slot_info| {
+				let executor = executor.clone();
+				executor.produce_bundle(slot_info).instrument(span.clone()).boxed()
+			})
+		},
+		processor: {
+			let executor = executor.clone();
 
-			processor
-				.process_bundles(primary_hash, bundles, shuffling_seed)
-				.instrument(span.clone())
-				.boxed()
-		}),
+			Box::new(move |primary_hash, bundles, shuffling_seed| {
+				let executor = executor.clone();
+				executor
+					.process_bundles(primary_hash, bundles, shuffling_seed)
+					.instrument(span.clone())
+					.boxed()
+			})
+		},
 	};
 
 	overseer_handle
 		.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
 		.await;
+
+	executor
 }

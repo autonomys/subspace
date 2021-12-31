@@ -81,6 +81,7 @@ cumulus-client-cli = { path = "../../client/cli" }
 cumulus-client-consensus-common = { path = "../../client/consensus/common" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
+cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
 cirrus-client-service = { path = "../../client/cirrus-service" }
 cirrus-primitives = { path = "../../primitives" }
 

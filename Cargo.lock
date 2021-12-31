@@ -786,6 +786,7 @@ dependencies = [
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
+ "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
  "cumulus-client-consensus-common",
@@ -799,6 +800,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "sc-client-api",
  "sc-transaction-pool-api",
+ "sc-utils",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -813,10 +815,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-client-executor-gossip"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.17",
+ "parity-scale-codec",
+ "parking_lot",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-utils",
+ "sp-core",
+ "sp-executor",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "cirrus-client-service"
 version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
+ "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
  "cumulus-client-consensus-common",
@@ -825,10 +844,12 @@ dependencies = [
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
+ "sc-network",
  "sc-service",
  "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool-api",
+ "sc-utils",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -4552,6 +4573,7 @@ name = "parachain-template-node"
 version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
+ "cirrus-client-executor-gossip",
  "cirrus-client-service",
  "cirrus-primitives",
  "cumulus-client-cli",
@@ -6324,6 +6346,22 @@ dependencies = [
  "unsigned-varint 0.6.0",
  "void",
  "zeroize",
+]
+
+[[package]]
+name = "sc-network-gossip"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=5bd5b842d4ea520d281b1398e1f54907c9862fcd#5bd5b842d4ea520d281b1398e1f54907c9862fcd"
+dependencies = [
+ "futures 0.3.17",
+ "futures-timer 3.0.2",
+ "libp2p",
+ "log",
+ "lru 0.7.0",
+ "sc-network",
+ "sp-runtime",
+ "substrate-prometheus-endpoint",
+ "tracing",
 ]
 
 [[package]]
