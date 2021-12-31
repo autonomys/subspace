@@ -256,13 +256,11 @@ impl AsMut<[u8]> for Piece {
 pub struct FlatPieces(Vec<u8>);
 
 impl FlatPieces {
-    /// Create new instance, returns error if `pieces` is not multiple of full pieces.
-    pub fn new(pieces: Vec<u8>) -> Result<Self, Vec<u8>> {
-        if pieces.len() % PIECE_SIZE != 0 {
-            return Err(pieces);
-        }
-
-        Ok(Self(pieces))
+    /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
+    pub fn new(piece_count: usize) -> Self {
+        let mut pieces = Vec::with_capacity(piece_count * PIECE_SIZE);
+        pieces.resize(pieces.capacity(), 0);
+        Self(pieces)
     }
 
     /// Number of pieces contained.
@@ -274,13 +272,27 @@ impl FlatPieces {
     pub fn into_inner(self) -> Vec<u8> {
         self.0
     }
+
+    /// Iterator over individual pieces as byte slices.
+    pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = &[u8]> {
+        self.0.chunks_exact(PIECE_SIZE)
+    }
+
+    /// Iterator over individual pieces as byte slices.
+    pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = &mut [u8]> {
+        self.0.chunks_exact_mut(PIECE_SIZE)
+    }
 }
 
 impl TryFrom<Vec<u8>> for FlatPieces {
     type Error = Vec<u8>;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        Self::new(value)
+        if value.len() % PIECE_SIZE != 0 {
+            return Err(value);
+        }
+
+        Ok(Self(value))
     }
 }
 

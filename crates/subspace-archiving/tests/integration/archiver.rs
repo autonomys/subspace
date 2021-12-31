@@ -130,7 +130,7 @@ fn archiver() {
             .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter()));
         let piece_objects = first_archived_segment
             .pieces
-            .chunks_exact(PIECE_SIZE)
+            .as_pieces()
             .zip(&first_archived_segment.object_mapping)
             .flat_map(|(piece, object_mapping)| {
                 iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
@@ -140,11 +140,7 @@ fn archiver() {
     }
 
     // Check that all pieces are valid
-    for (position, piece) in first_archived_segment
-        .pieces
-        .chunks_exact(PIECE_SIZE)
-        .enumerate()
-    {
+    for (position, piece) in first_archived_segment.pieces.as_pieces().enumerate() {
         assert!(archiver::is_piece_valid(
             piece,
             first_archived_segment.root_block.records_root(),
@@ -193,7 +189,7 @@ fn archiver() {
             iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter().skip(2));
         let piece_objects = archived_segments[0]
             .pieces
-            .chunks_exact(PIECE_SIZE)
+            .as_pieces()
             .zip(&archived_segments[0].object_mapping)
             .flat_map(|(piece, object_mapping)| {
                 iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
@@ -231,7 +227,7 @@ fn archiver() {
             previous_root_block_hash
         );
 
-        for (position, piece) in archived_segment.pieces.chunks_exact(PIECE_SIZE).enumerate() {
+        for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.records_root(),
@@ -274,7 +270,7 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.partial_archived(), None);
 
-        for (position, piece) in archived_segment.pieces.chunks_exact(PIECE_SIZE).enumerate() {
+        for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.records_root(),
