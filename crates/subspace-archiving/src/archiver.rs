@@ -12,17 +12,19 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+mod record_shards;
+
 extern crate alloc;
 
+use crate::archiver::record_shards::RecordShards;
 use crate::merkle_tree::{MerkleTree, Witness};
-use crate::utils;
-use crate::utils::{Gf16Element, GF_16_ELEMENT_BYTES};
+use crate::utils::GF_16_ELEMENT_BYTES;
 use alloc::borrow::Cow;
 use alloc::collections::VecDeque;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-use core::iter;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::objects::{
@@ -135,6 +137,9 @@ pub enum ArchiverInstantiationError {
         error("Segment size is not bigger than record size")
     )]
     SegmentSizeTooSmall,
+    /// Segment size must be multiple of two
+    #[cfg_attr(feature = "thiserror", error("Segment size must be multiple of two"))]
+    SegmentSizeNotMultipleOfTwo,
     /// Segment size is not a multiple of record size
     #[cfg_attr(
         feature = "thiserror",
@@ -219,6 +224,9 @@ impl Archiver {
         }
         if segment_size <= record_size {
             return Err(ArchiverInstantiationError::SegmentSizeTooSmall);
+        }
+        if segment_size % GF_16_ELEMENT_BYTES != 0 {
+            return Err(ArchiverInstantiationError::SegmentSizeNotMultipleOfTwo);
         }
         if segment_size % record_size != 0 {
             return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
@@ -611,64 +619,54 @@ impl Archiver {
             }
             corrected_object_mapping
         };
-        let segment = {
-            let mut segment = segment.encode();
-            // Add a few bytes of padding if needed to get constant size (caused by compact length
-            // encoding of scale codec)
-            assert!(self.segment_size >= segment.len());
-            segment.resize(self.segment_size, 0u8);
-            segment
+        let mut record_shards = {
+            // Allocate record shards that can hold both data and parity record shards (hence `*2`)
+            let mut record_shards =
+                RecordShards::new(self.segment_size / self.record_size * 2, self.record_size);
+            segment.encode_to(&mut record_shards);
+            record_shards
         };
-
-        let data_shards: Vec<Vec<Gf16Element>> = segment
-            .chunks_exact(self.record_size)
-            .map(utils::slice_to_arrays)
-            .collect();
 
         drop(segment);
 
-        let mut parity_shards: Vec<Vec<Gf16Element>> =
-            iter::repeat(vec![Gf16Element::default(); self.record_size / 2])
-                .take(data_shards.len())
-                .collect();
+        let mut record_shards_slices = record_shards.as_mut_slices();
 
         // Apply erasure coding to to create parity shards/records
         self.reed_solomon
-            .encode_sep(&data_shards, &mut parity_shards)
-            .expect("Encoding is running with fixed parameters and should never fail");
+            .encode(&mut record_shards_slices)
+            .expect("Encoding is running with fixed parameters and should never fail; qed");
 
-        let mut pieces = vec![0u8; (data_shards.len() + parity_shards.len()) * PIECE_SIZE];
-        // Combine data and parity records back into flat vector of pieces (witness part of piece is
-        // still zeroes after this and is filled later)
-        pieces
-            .chunks_exact_mut(PIECE_SIZE)
-            .zip(data_shards.into_iter().chain(parity_shards))
-            .flat_map(|(piece, shard)| {
-                piece
-                    .chunks_exact_mut(GF_16_ELEMENT_BYTES)
-                    .zip(shard.into_iter())
-            })
-            .for_each(|(piece_chunk, shard_chunk)| {
-                piece_chunk.copy_from_slice(&shard_chunk);
-            });
+        let mut pieces = FlatPieces::new(record_shards_slices.len());
+        drop(record_shards_slices);
 
         // Build a Merkle tree over all records
         let merkle_tree = MerkleTree::from_data(
-            pieces
-                .chunks_exact(PIECE_SIZE)
-                .map(|piece| &piece[..self.record_size]),
+            record_shards
+                .as_bytes()
+                .as_ref()
+                .chunks_exact(self.record_size),
         );
 
-        // Fill witnesses (Merkle proofs) in pieces created earlier
+        // Combine data and parity records back into flat vector of pieces along with corresponding
+        // witnesses (Merkle proofs) created above.
         pieces
-            .chunks_exact_mut(PIECE_SIZE)
+            .as_pieces_mut()
             .enumerate()
-            .for_each(|(position, piece)| {
-                let witness = merkle_tree
-                    .get_witness(position)
-                    .expect("We use the same indexes as during Merkle tree creation; qed");
+            .zip(
+                record_shards
+                    .as_bytes()
+                    .as_ref()
+                    .chunks_exact(self.record_size),
+            )
+            .for_each(|((position, piece), shard_chunk)| {
+                let (record_part, witness_part) = piece.split_at_mut(self.record_size);
 
-                piece[self.record_size..].copy_from_slice(&witness);
+                record_part.copy_from_slice(shard_chunk);
+                witness_part.copy_from_slice(
+                    &merkle_tree
+                        .get_witness(position)
+                        .expect("We use the same indexes as during Merkle tree creation; qed"),
+                );
             });
 
         // Now produce root block
@@ -689,9 +687,7 @@ impl Archiver {
 
         ArchivedSegment {
             root_block,
-            pieces: pieces
-                .try_into()
-                .expect("Pieces length is correct as created above; qed"),
+            pieces,
             object_mapping,
         }
     }
