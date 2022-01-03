@@ -16,7 +16,7 @@ const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
     pieces
-        .chunks_exact(PIECE_SIZE)
+        .as_pieces()
         .map(|piece| piece.try_into().unwrap())
         .collect()
 }

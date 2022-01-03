@@ -1,5 +1,5 @@
 use std::iter;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::{FlatPieces, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 
 #[test]
@@ -25,10 +25,10 @@ fn batch() {
     // Use 2.5 batches worth of pieces
     let piece_count = subspace_codec.batch_size() * 2 + subspace_codec.batch_size() / 2;
 
-    let mut pieces: Vec<u8> = vec![0u8; PIECE_SIZE * piece_count];
-    pieces.chunks_exact_mut(PIECE_SIZE).for_each(|piece| {
+    let mut pieces = FlatPieces::new(piece_count);
+    for piece in pieces.as_pieces_mut() {
         piece.copy_from_slice(&rand::random::<[u8; PIECE_SIZE]>());
-    });
+    }
     let original_pieces = pieces.clone();
     let piece_indexes: Vec<u64> = iter::repeat_with(|| rand::random())
         .take(piece_count)
@@ -39,8 +39,8 @@ fn batch() {
         .unwrap();
 
     for ((original_piece, piece), piece_index) in original_pieces
-        .chunks_exact(PIECE_SIZE)
-        .zip(pieces.chunks_exact_mut(PIECE_SIZE))
+        .as_pieces()
+        .zip(pieces.as_pieces_mut())
         .zip(piece_indexes)
     {
         assert_ne!(original_piece, piece);

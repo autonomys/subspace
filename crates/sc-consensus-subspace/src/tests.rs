@@ -67,7 +67,7 @@ use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -538,7 +538,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .await
                 .unwrap()
                 .iter()
-                .flat_map(|flat_pieces| flat_pieces.chunks_exact(PIECE_SIZE))
+                .flat_map(|flat_pieces| flat_pieces.as_pieces())
                 .enumerate()
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
