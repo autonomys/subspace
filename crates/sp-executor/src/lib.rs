@@ -131,9 +131,9 @@ pub struct FraudProof {
     pub proof: StorageProof,
 }
 
-/// Represents an equivocation proof. An equivocation happens when a validator
-/// produces more than one block on the same slot. The proof of equivocation
-/// are the given distinct headers that were signed by the validator and which
+/// Represents a bundle equivocation proof. An equivocation happens when an executor
+/// produces more than one bundle on the same slot. The proof of equivocation
+/// are the given distinct bundle headers that were signed by the validator and which
 /// include the slot number.
 #[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
 pub struct BundleEquivocationProof {
@@ -170,6 +170,10 @@ impl BundleEquivocationProof {
     }
 }
 
+/// Represents an invalid transaction proof.
+#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
+pub struct InvalidTransactionProof;
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi {
@@ -193,6 +197,11 @@ sp_api::decl_runtime_apis! {
         /// Submits the bundle equivocation proof via an unsigned extrinsic.
         fn submit_bundle_equivocation_proof_unsigned(
             bundle_equivocation_proof: BundleEquivocationProof,
+        ) -> Option<()>;
+
+        /// Submits the invalid transaction proof via an unsigned extrinsic.
+        fn submit_invalid_transaction_proof_unsigned(
+            invalid_transaction_proof: InvalidTransactionProof,
         ) -> Option<()>;
 
         /// Extract the bundles from extrinsics in a block.

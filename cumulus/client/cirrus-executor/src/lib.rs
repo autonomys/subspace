@@ -45,7 +45,8 @@ use cirrus_node_primitives::{
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
-	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle,
+	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof,
+	InvalidTransactionProof, OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
@@ -229,6 +230,33 @@ where
 					)
 					.await;
 				tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+			}
+			.boxed(),
+		);
+	}
+
+	fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-invalid-transaction-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting invalid transaction proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::InvalidTransactionProof(
+							invalid_transaction_proof,
+						),
+						"SubmitInvalidTransactionProof",
+					)
+					.await;
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Invalid transaction proof submission finished"
+				);
 			}
 			.boxed(),
 		);
@@ -423,6 +451,9 @@ where
 					// TODO: check the legality
 					//
 					// if illegal => illegal tx proof
+					let invalid_transaction_proof = InvalidTransactionProof;
+
+					self.submit_invalid_transaction_proof(invalid_transaction_proof);
 				}
 			}
 

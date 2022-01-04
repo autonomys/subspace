@@ -115,6 +115,7 @@ where
 			SubmitTransactionBundle(..) => {},
 			SubmitFraudProof(..) => {},
 			SubmitBundleEquivocationProof(..) => {},
+			SubmitInvalidTransactionProof(..) => {},
 			ExtractBundles(..) => {},
 			ExtrinsicsShufflingSeed(..) => {},
 			PendingHead(..) => {},
@@ -154,6 +155,7 @@ where
 			Request::SubmitTransactionBundle(..) => None,
 			Request::SubmitFraudProof(..) => None,
 			Request::SubmitBundleEquivocationProof(..) => None,
+			Request::SubmitInvalidTransactionProof(..) => None,
 			Request::ExtractBundles(..) => None,
 			Request::ExtrinsicsShufflingSeed(..) => None,
 			Request::PendingHead(..) => None,
@@ -312,6 +314,17 @@ where
 				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitBundleEquivocationProof(relay_parent));
+		},
+		Request::SubmitInvalidTransactionProof(invalid_transaction_proof) => {
+			let api = client.runtime_api();
+			let res = api
+				.submit_invalid_transaction_proof_unsigned(
+					&BlockId::Hash(relay_parent),
+					invalid_transaction_proof,
+				)
+				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+			metrics.on_request(res.is_ok());
+			res.ok().map(|_res| RequestResult::SubmitInvalidTransactionProof(relay_parent));
 		},
 		Request::ExtractBundles(extrinsics, sender) => {
 			let api = client.runtime_api();

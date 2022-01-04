@@ -59,6 +59,7 @@ pub(crate) enum RequestResult {
 	SubmitTransactionBundle(Hash, Hash),
 	SubmitFraudProof(Hash),
 	SubmitBundleEquivocationProof(Hash),
+	SubmitInvalidTransactionProof(Hash),
 	ExtractBundles(Hash),
 	ExtrinsicsShufflingSeed(Hash),
 	PendingHead(Hash, Option<Hash>),
