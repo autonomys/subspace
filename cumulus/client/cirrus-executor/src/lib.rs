@@ -185,6 +185,55 @@ where
 		}
 	}
 
+	fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-bundle-equivocation-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting bundle equivocation proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::BundleEquivocationProof(
+							bundle_equivocation_proof,
+						),
+						"SubmitBundleEquivocationProof",
+					)
+					.await;
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Bundle equivocation proof submission finished"
+				);
+			}
+			.boxed(),
+		);
+	}
+
+	fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-fraud-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting fraud proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::FraudProof(fraud_proof),
+						"SubmitFraudProof",
+					)
+					.await;
+				tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+			}
+			.boxed(),
+		);
+	}
+
 	async fn produce_candidate(
 		mut self,
 		relay_parent: PHash,
@@ -353,32 +402,8 @@ where
 		};
 
 		// A bundle equivocation occurs.
-		if let Some(bundle_equivocation_proof) = check_equivocation(bundle) {
-			let mut overseer_handle = self.overseer_handle.clone();
-			self.spawner.spawn(
-				"cirrus-submit-bundle-equivocation-proof",
-				None,
-				async move {
-					tracing::debug!(
-						target: LOG_TARGET,
-						"Submitting bundle equivocation proof in a background task..."
-					);
-					overseer_handle
-						.send_msg(
-							CollationGenerationMessage::BundleEquivocationProof(
-								bundle_equivocation_proof,
-							),
-							"SubmitBundleEquivocationProof",
-						)
-						.await;
-					tracing::debug!(
-						target: LOG_TARGET,
-						"Bundle equivocation proof submission finished"
-					);
-				}
-				.boxed(),
-			);
-
+		if let Some(equivocation_proof) = check_equivocation(bundle) {
+			self.submit_bundle_equivocation_proof(equivocation_proof);
 			return Err(GossipMessageError::BundleEquivocation)
 		}
 
@@ -423,25 +448,7 @@ where
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
-			let mut overseer_handle = self.overseer_handle.clone();
-			self.spawner.spawn(
-				"cirrus-submit-fraud-proof",
-				None,
-				async move {
-					tracing::debug!(
-						target: LOG_TARGET,
-						"Submitting fraud proof in a background task..."
-					);
-					overseer_handle
-						.send_msg(
-							CollationGenerationMessage::FraudProof(fraud_proof),
-							"SubmitFraudProof",
-						)
-						.await;
-					tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
-				}
-				.boxed(),
-			);
+			self.submit_fraud_proof(fraud_proof);
 
 			Ok(Action::Empty)
 		}

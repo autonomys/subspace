@@ -25,9 +25,11 @@ use sp_executor::{BundleEquivocationProof, ExecutionReceipt, FraudProof, OpaqueB
 const INVALID_FRAUD_PROOF: u8 = 100;
 const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
 
+const LOG_TARGET: &str = "runtime::subspace::executor";
+
 #[frame_support::pallet]
 mod pallet {
-    use crate::{INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_FRAUD_PROOF};
+    use crate::{INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_FRAUD_PROOF, LOG_TARGET};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
@@ -79,9 +81,10 @@ mod pallet {
             ensure_none(origin)?;
 
             log::debug!(
-                target: "runtime::subspace::executor",
+                target: LOG_TARGET,
                 "Submitting candidate receipt, head_number: {:?}, head_hash: {:?}",
-                head_number, head_hash
+                head_number,
+                head_hash
             );
 
             ensure!(
@@ -113,7 +116,7 @@ mod pallet {
             ensure_none(origin)?;
 
             log::debug!(
-                target: "runtime::subspace::executor",
+                target: LOG_TARGET,
                 "Submitting execution receipt: {:?}",
                 execution_receipt
             );
@@ -135,7 +138,7 @@ mod pallet {
             ensure_none(origin)?;
 
             log::debug!(
-                target: "runtime::subspace::executor",
+                target: LOG_TARGET,
                 "Submitting transaction bundle: {:?}",
                 opaque_bundle
             );
@@ -152,7 +155,7 @@ mod pallet {
             ensure_none(origin)?;
 
             log::debug!(
-                target: "runtime::subspace::executor",
+                target: LOG_TARGET,
                 "Submitting fraud proof: {:?}",
                 fraud_proof
             );
@@ -172,7 +175,7 @@ mod pallet {
             ensure_none(origin)?;
 
             log::debug!(
-                target: "runtime::subspace::executor",
+                target: LOG_TARGET,
                 "Submitting bundle equivocation proof: {:?}",
                 bundle_equivocation_proof
             );
@@ -197,6 +200,17 @@ mod pallet {
     #[pallet::getter(fn heads)]
     pub(super) type Heads<T: Config> = StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash>;
 
+    /// Constructs a `TransactionValidity` with pallet-executor specific defaults.
+    fn unsigned_validity(prefix: &'static str, tag: impl Encode) -> TransactionValidity {
+        ValidTransaction::with_tag_prefix(prefix)
+            .priority(TransactionPriority::MAX)
+            .and_provides(tag)
+            .longevity(TransactionLongevity::MAX)
+            // We need this extrinsic to be propagted to the farmer nodes.
+            .propagate(true)
+            .build()
+    }
+
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -216,55 +230,25 @@ mod pallet {
                 Call::submit_candidate_receipt {
                     head_number,
                     head_hash,
-                } => {
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitCandidateReceipt")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides((head_number, head_hash))
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagted to the farmer nodes.
-                        .propagate(true)
-                        .build()
-                }
+                } => unsigned_validity("SubspaceSubmitCandidateReceipt", (head_number, head_hash)),
                 Call::submit_execution_receipt { execution_receipt } => {
                     // TODO: validate the Proof-of-Election
 
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitExecutionReceipt")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(execution_receipt.hash())
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagted to the farmer nodes.
-                        .propagate(true)
-                        .build()
+                    unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
                 }
                 Call::submit_transaction_bundle { opaque_bundle } => {
                     // TODO: validate the Proof-of-Election
 
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitTransactionBundle")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(opaque_bundle.hash())
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagted to the farmer nodes.
-                        .propagate(true)
-                        .build()
+                    unsigned_validity("SubspaceSubmitTransactionBundle", opaque_bundle.hash())
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     // TODO: prevent the spamming of fraud proof transaction.
                     if let Err(e) = Self::check_fraud_proof(fraud_proof) {
-                        log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid fraud proof: {:?}",
-                            e
-                        );
+                        log::error!(target: LOG_TARGET, "Invalid fraud proof: {:?}", e);
                         return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
                     }
-
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(fraud_proof.proof.clone()) // TODO: proper value later.
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagted to the farmer nodes.
-                        .propagate(true)
-                        .build()
+                    // TODO: proper tag value.
+                    unsigned_validity("SubspaceSubmitFraudProof", fraud_proof.clone())
                 }
                 Call::submit_bundle_equivocation_proof {
                     bundle_equivocation_proof,
@@ -272,7 +256,7 @@ mod pallet {
                     if let Err(e) = Self::check_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
                         log::error!(
-                            target: "runtime::subspace::executor",
+                            target: LOG_TARGET,
                             "Invalid bundle equivocation proof: {:?}",
                             e
                         );
@@ -280,15 +264,11 @@ mod pallet {
                             .into();
                     }
 
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundleEquivocationProof")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(bundle_equivocation_proof.hash())
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagted to the farmer nodes.
-                        .propagate(true)
-                        .build()
+                    unsigned_validity(
+                        "SubspaceSubmitBundleEquivocationProof",
+                        bundle_equivocation_proof.hash(),
+                    )
                 }
-
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -334,14 +314,11 @@ where
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace::executor",
-                "Submitted Subspace candidate receipt.",
-            ),
+            Ok(()) => log::info!(target: LOG_TARGET, "Submitted candidate receipt."),
             Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting Subspace candidate receipt: {:?}",
-                e,
+                target: LOG_TARGET,
+                "Error submitting candidate receipt: {:?}",
+                e
             ),
         }
 
@@ -355,14 +332,11 @@ where
         let call = Call::submit_execution_receipt { execution_receipt };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace::executor",
-                "Submitted Subspace execution receipt.",
-            ),
+            Ok(()) => log::info!(target: LOG_TARGET, "Submitted execution receipt."),
             Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting Subspace execution receipt: {:?}",
-                e,
+                target: LOG_TARGET,
+                "Error submitting execution receipt: {:?}",
+                e
             ),
         }
 
@@ -376,13 +350,10 @@ where
         let call = Call::submit_transaction_bundle { opaque_bundle };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace::executor",
-                "Submitted Subspace transaction bundle.",
-            ),
+            Ok(()) => log::info!(target: LOG_TARGET, "Submitted transaction bundle."),
             Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting Subspace transaction bundle: {:?}",
+                target: LOG_TARGET,
+                "Error submitting transaction bundle: {:?}",
                 e,
             ),
         }
@@ -397,21 +368,14 @@ where
         let call = Call::submit_fraud_proof { fraud_proof };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace::executor",
-                "Submitted Subspace fraud proof.",
-            ),
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting Subspace fraud proof: {:?}",
-                e,
-            ),
+            Ok(()) => log::info!(target: LOG_TARGET, "Submitted fraud proof."),
+            Err(e) => log::error!(target: LOG_TARGET, "Error submitting fraud proof: {:?}", e,),
         }
 
         Ok(())
     }
 
-    /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
+    /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
         bundle_equivocation_proof: BundleEquivocationProof,
     ) -> frame_support::pallet_prelude::DispatchResult {
@@ -420,13 +384,10 @@ where
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(
-                target: "runtime::subspace::executor",
-                "Submitted Subspace bundle equivocation proof.",
-            ),
+            Ok(()) => log::info!(target: LOG_TARGET, "Submitted bundle equivocation proof."),
             Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting Subspace bundle equivocation proof: {:?}",
+                target: LOG_TARGET,
+                "Error submitting bundle equivocation proof: {:?}",
                 e,
             ),
         }
