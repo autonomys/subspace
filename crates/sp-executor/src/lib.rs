@@ -19,12 +19,14 @@
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::AccountId;
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -129,6 +131,45 @@ pub struct FraudProof {
     pub proof: StorageProof,
 }
 
+/// Represents an equivocation proof. An equivocation happens when a validator
+/// produces more than one block on the same slot. The proof of equivocation
+/// are the given distinct headers that were signed by the validator and which
+/// include the slot number.
+#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
+pub struct BundleEquivocationProof {
+    /// The authority id of the equivocator.
+    pub offender: AccountId,
+    /// The slot at which the equivocation happened.
+    pub slot: Slot,
+    /// The first header involved in the equivocation.
+    pub first_header: BundleHeader,
+    /// The second header involved in the equivocation.
+    pub second_header: BundleHeader,
+}
+
+impl BundleEquivocationProof {
+    /// Returns the hash of this bundle equivocation proof.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+
+    // TODO: remove this later.
+    /// Constructs a dummy bundle equivocation proof.
+    pub fn dummy_at(slot_number: u64) -> Self {
+        let dummy_header = BundleHeader {
+            slot_number,
+            extrinsics_root: H256::default(),
+        };
+        Self {
+            offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
+                .expect("Failed to create zero account"),
+            slot: Slot::default(),
+            first_header: dummy_header.clone(),
+            second_header: dummy_header,
+        }
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi {
@@ -148,6 +189,11 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;
+
+        /// Submits the bundle equivocation proof via an unsigned extrinsic.
+        fn submit_bundle_equivocation_proof_unsigned(
+            bundle_equivocation_proof: BundleEquivocationProof,
+        ) -> Option<()>;
 
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;

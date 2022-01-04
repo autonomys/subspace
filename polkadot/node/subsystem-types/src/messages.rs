@@ -27,7 +27,7 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_executor::{FraudProof, OpaqueBundle, OpaqueExecutionReceipt};
+use sp_executor::{BundleEquivocationProof, FraudProof, OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};
@@ -114,6 +114,8 @@ pub enum RuntimeApiRequest {
 	SubmitTransactionBundle(OpaqueBundle),
 	/// Submit the fraud proof to primary chain.
 	SubmitFraudProof(FraudProof),
+	/// Submit the bundle equivocation proof to primary chain.
+	SubmitBundleEquivocationProof(BundleEquivocationProof),
 	/// Extract the bundles from the extrinsics of a block.
 	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<OpaqueBundle>>),
 	/// Get the randomness seed for extrinsics shuffling.
@@ -145,6 +147,8 @@ pub enum CollationGenerationMessage {
 	Initialize(CollationGenerationConfig),
 	/// Fraud proof needs to be submitted to primary chain.
 	FraudProof(FraudProof),
+	/// Bundle equivocation proof needs to be submitted to primary chain.
+	BundleEquivocationProof(BundleEquivocationProof),
 }
 
 impl CollationGenerationMessage {

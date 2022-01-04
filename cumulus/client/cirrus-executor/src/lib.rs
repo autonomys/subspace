@@ -44,7 +44,9 @@ use cirrus_node_primitives::{
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_executor::{
+	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle,
+};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -323,7 +325,9 @@ where
 
 // TODO: proper error type
 #[derive(Debug)]
-pub struct GossipMessageError;
+pub enum GossipMessageError {
+	BundleEquivocation,
+}
 
 impl<Block, BS, RA, Client, TransactionPool> GossipMessageHandler<Block>
 	for Executor<Block, BS, RA, Client, TransactionPool>
@@ -338,7 +342,45 @@ where
 	type Error = GossipMessageError;
 
 	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
-		// TODO: check bundle equivocation
+		let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
+			// TODO: check bundle equivocation
+			let bundle_is_an_equivocation = false;
+			if bundle_is_an_equivocation {
+				Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
+			} else {
+				None
+			}
+		};
+
+		// A bundle equivocation occurs.
+		if let Some(bundle_equivocation_proof) = check_equivocation(bundle) {
+			let mut overseer_handle = self.overseer_handle.clone();
+			self.spawner.spawn(
+				"cirrus-submit-bundle-equivocation-proof",
+				None,
+				async move {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Submitting bundle equivocation proof in a background task..."
+					);
+					overseer_handle
+						.send_msg(
+							CollationGenerationMessage::BundleEquivocationProof(
+								bundle_equivocation_proof,
+							),
+							"SubmitBundleEquivocationProof",
+						)
+						.await;
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Bundle equivocation proof submission finished"
+					);
+				}
+				.boxed(),
+			);
+
+			return Err(GossipMessageError::BundleEquivocation)
+		}
 
 		let bundle_exists = false;
 

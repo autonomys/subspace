@@ -910,6 +910,12 @@ impl_runtime_apis! {
             Executor::submit_fraud_proof_unsigned(fraud_proof).ok()
         }
 
+        fn submit_bundle_equivocation_proof_unsigned(
+            bundle_equivocation_proof: sp_executor::BundleEquivocationProof,
+        ) -> Option<()> {
+            Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof).ok()
+        }
+
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
             extract_bundles(extrinsics)
         }
