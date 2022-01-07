@@ -44,7 +44,7 @@ use std::sync::Arc;
 use cirrus_node_primitives::{
 	CollationGenerationConfig, ExecutorSlotInfo, PersistedValidationData,
 };
-use sp_executor::FraudProof;
+use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::Hash;
 
 mod error;
@@ -141,21 +141,51 @@ impl CollationGenerationSubsystem {
 				false
 			},
 			Ok(FromOverseer::Signal(OverseerSignal::Conclude)) => true,
-			Ok(FromOverseer::Communication {
-				msg: CollationGenerationMessage::Initialize(config),
-			}) => {
-				if self.config.is_some() {
-					tracing::error!(target: LOG_TARGET, "double initialization");
-				} else {
-					self.config = Some(Arc::new(config));
-				}
-				false
-			},
-			Ok(FromOverseer::Communication {
-				msg: CollationGenerationMessage::FraudProof(fraud_proof),
-			}) => {
-				if let Err(err) = submit_fraud_proof(fraud_proof, ctx, sender).await {
-					tracing::warn!(target: LOG_TARGET, ?err, "failed to submit fraud proof");
+			Ok(FromOverseer::Communication { msg }) => {
+				match msg {
+					CollationGenerationMessage::Initialize(config) =>
+						if self.config.is_some() {
+							tracing::error!(target: LOG_TARGET, "double initialization");
+						} else {
+							self.config = Some(Arc::new(config));
+						},
+					CollationGenerationMessage::FraudProof(fraud_proof) => {
+						if let Err(err) = submit_fraud_proof(fraud_proof, ctx, sender).await {
+							tracing::warn!(
+								target: LOG_TARGET,
+								?err,
+								"failed to submit fraud proof"
+							);
+						}
+					},
+					CollationGenerationMessage::BundleEquivocationProof(
+						bundle_equivocation_proof,
+					) => {
+						if let Err(err) =
+							submit_bundle_equivocation_proof(bundle_equivocation_proof, ctx, sender)
+								.await
+						{
+							tracing::warn!(
+								target: LOG_TARGET,
+								?err,
+								"failed to submit bundle equivocation proof"
+							);
+						}
+					},
+					CollationGenerationMessage::InvalidTransactionProof(
+						invalid_transaction_proof,
+					) => {
+						if let Err(err) =
+							submit_invalid_transaction_proof(invalid_transaction_proof, ctx, sender)
+								.await
+						{
+							tracing::warn!(
+								target: LOG_TARGET,
+								?err,
+								"failed to submit invalid transaction proof"
+							);
+						}
+					},
 				}
 				false
 			},
@@ -455,6 +485,76 @@ async fn submit_fraud_proof<Context: SubsystemContext>(
 				tracing::debug!(
 					target: LOG_TARGET,
 					"Sent RuntimeApiRequest::SubmitFraudProof successfully",
+				);
+			}
+		}),
+	)?;
+
+	Ok(())
+}
+
+async fn submit_bundle_equivocation_proof<Context: SubsystemContext>(
+	bundle_equivocation_proof: BundleEquivocationProof,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> SubsystemResult<()> {
+	let best_hash = request_best_primary_hash(ctx).await?;
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation bundle equivocation proof builder",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitBundleEquivocationProof(bundle_equivocation_proof),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"Failed to send RuntimeApiRequest::SubmitBundleEquivocationProof",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitBundleEquivocationProof successfully",
+				);
+			}
+		}),
+	)?;
+
+	Ok(())
+}
+
+async fn submit_invalid_transaction_proof<Context: SubsystemContext>(
+	invalid_transaction_proof: InvalidTransactionProof,
+	ctx: &mut Context,
+	sender: &mpsc::Sender<AllMessages>,
+) -> SubsystemResult<()> {
+	let best_hash = request_best_primary_hash(ctx).await?;
+
+	let mut task_sender = sender.clone();
+	ctx.spawn(
+		"collation generation invalid transaction proof builder",
+		Box::pin(async move {
+			if let Err(err) = task_sender
+				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
+					best_hash,
+					RuntimeApiRequest::SubmitInvalidTransactionProof(invalid_transaction_proof),
+				)))
+				.await
+			{
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?err,
+					"Failed to send RuntimeApiRequest::SubmitInvalidTransactionProof",
+				);
+			} else {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Sent RuntimeApiRequest::SubmitInvalidTransactionProof successfully",
 				);
 			}
 		}),

@@ -816,6 +816,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
+ "sp-consensus-slots",
  "sp-core",
  "sp-executor",
  "sp-keyring",
@@ -7545,11 +7546,13 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-api",
+ "sp-consensus-slots",
  "sp-core",
  "sp-runtime",
  "sp-std",
  "sp-trie",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]

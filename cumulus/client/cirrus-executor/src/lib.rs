@@ -44,7 +44,10 @@ use cirrus_node_primitives::{
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader, ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_executor::{
+	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof,
+	InvalidTransactionProof, OpaqueBundle,
+};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -181,6 +184,82 @@ where
 				false
 			},
 		}
+	}
+
+	fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-bundle-equivocation-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting bundle equivocation proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::BundleEquivocationProof(
+							bundle_equivocation_proof,
+						),
+						"SubmitBundleEquivocationProof",
+					)
+					.await;
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Bundle equivocation proof submission finished"
+				);
+			}
+			.boxed(),
+		);
+	}
+
+	fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-fraud-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting fraud proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::FraudProof(fraud_proof),
+						"SubmitFraudProof",
+					)
+					.await;
+				tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+			}
+			.boxed(),
+		);
+	}
+
+	fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
+		let mut overseer_handle = self.overseer_handle.clone();
+		self.spawner.spawn(
+			"cirrus-submit-invalid-transaction-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting invalid transaction proof in a background task..."
+				);
+				overseer_handle
+					.send_msg(
+						CollationGenerationMessage::InvalidTransactionProof(
+							invalid_transaction_proof,
+						),
+						"SubmitInvalidTransactionProof",
+					)
+					.await;
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Invalid transaction proof submission finished"
+				);
+			}
+			.boxed(),
+		);
 	}
 
 	async fn produce_candidate(
@@ -323,7 +402,9 @@ where
 
 // TODO: proper error type
 #[derive(Debug)]
-pub struct GossipMessageError;
+pub enum GossipMessageError {
+	BundleEquivocation,
+}
 
 impl<Block, BS, RA, Client, TransactionPool> GossipMessageHandler<Block>
 	for Executor<Block, BS, RA, Client, TransactionPool>
@@ -338,7 +419,21 @@ where
 	type Error = GossipMessageError;
 
 	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
-		// TODO: check bundle equivocation
+		let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
+			// TODO: check bundle equivocation
+			let bundle_is_an_equivocation = false;
+			if bundle_is_an_equivocation {
+				Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
+			} else {
+				None
+			}
+		};
+
+		// A bundle equivocation occurs.
+		if let Some(equivocation_proof) = check_equivocation(bundle) {
+			self.submit_bundle_equivocation_proof(equivocation_proof);
+			return Err(GossipMessageError::BundleEquivocation)
+		}
 
 		let bundle_exists = false;
 
@@ -356,6 +451,9 @@ where
 					// TODO: check the legality
 					//
 					// if illegal => illegal tx proof
+					let invalid_transaction_proof = InvalidTransactionProof;
+
+					self.submit_invalid_transaction_proof(invalid_transaction_proof);
 				}
 			}
 
@@ -381,25 +479,7 @@ where
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
-			let mut overseer_handle = self.overseer_handle.clone();
-			self.spawner.spawn(
-				"cirrus-submit-fraud-proof",
-				None,
-				async move {
-					tracing::debug!(
-						target: LOG_TARGET,
-						"Submitting fraud proof in a background task..."
-					);
-					overseer_handle
-						.send_msg(
-							CollationGenerationMessage::FraudProof(fraud_proof),
-							"SubmitFraudProof",
-						)
-						.await;
-					tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
-				}
-				.boxed(),
-			);
+			self.submit_fraud_proof(fraud_proof);
 
 			Ok(Action::Empty)
 		}
