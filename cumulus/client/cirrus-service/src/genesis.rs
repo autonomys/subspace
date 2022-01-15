@@ -27,15 +27,19 @@ pub fn generate_genesis_block<Block: BlockT>(
 	let child_roots = storage.children_default.iter().map(|(sk, child_content)| {
 		let state_root = <<<Block as BlockT>::Header as HeaderT>::Hashing as HashT>::trie_root(
 			child_content.data.clone().into_iter().collect(),
+			sp_core::storage::StateVersion::V1,
 		);
 		(sk.clone(), state_root.encode())
 	});
 	let state_root = <<<Block as BlockT>::Header as HeaderT>::Hashing as HashT>::trie_root(
 		storage.top.clone().into_iter().chain(child_roots).collect(),
+		sp_core::storage::StateVersion::V1,
 	);
 
-	let extrinsics_root =
-		<<<Block as BlockT>::Header as HeaderT>::Hashing as HashT>::trie_root(Vec::new());
+	let extrinsics_root = <<<Block as BlockT>::Header as HeaderT>::Hashing as HashT>::trie_root(
+		Vec::new(),
+		sp_core::storage::StateVersion::V1,
+	);
 
 	Ok(Block::new(
 		<<Block as BlockT>::Header as HeaderT>::new(

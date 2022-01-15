@@ -372,8 +372,10 @@ where
 			extrinsics.push(pending_tx_data);
 		}
 
-		let extrinsics_root =
-			BlakeTwo256::ordered_trie_root(extrinsics.iter().map(|xt| xt.encode()).collect());
+		let extrinsics_root = BlakeTwo256::ordered_trie_root(
+			extrinsics.iter().map(|xt| xt.encode()).collect(),
+			sp_core::storage::StateVersion::V1,
+		);
 
 		let _state_root =
 			self.client.expect_header(BlockId::Number(block_number)).ok()?.state_root();

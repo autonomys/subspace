@@ -264,7 +264,9 @@ fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
     error
 }
 
-/// A slot duration. Create with `get_or_compute`.
+/// A slot duration.
+///
+/// Create with [`Self::get`].
 // FIXME: Once Rust has higher-kinded types, the duplication between this
 // and `super::subspace::Config` can be eliminated.
 // https://github.com/paritytech/substrate/issues/2434
@@ -272,33 +274,35 @@ fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
 pub struct Config(sc_consensus_slots::SlotDuration<SubspaceGenesisConfiguration>);
 
 impl Config {
-    /// Either fetch the slot duration from disk or compute it from the genesis
-    /// state.
-    pub fn get_or_compute<B: BlockT, C>(client: &C) -> ClientResult<Self>
+    /// Fetch the config from the runtime.
+    pub fn get<B: BlockT, C>(client: &C) -> ClientResult<Self>
     where
         C: AuxStore + ProvideRuntimeApi<B> + UsageProvider<B>,
         C::Api: SubspaceApi<B>,
     {
         trace!(target: "subspace", "Getting slot duration");
-        match sc_consensus_slots::SlotDuration::get_or_compute(client, |a, b| {
-            let has_api_v1 = a.has_api_with::<dyn SubspaceApi<B>, _>(b, |v| v == 1)?;
 
-            if has_api_v1 {
-                a.configuration(b).map_err(Into::into)
-            } else {
-                Err(sp_blockchain::Error::VersionInvalid(
-                    "Unsupported or invalid SubspaceApi version".to_string(),
-                ))
-            }
-        })
-        .map(Self)
-        {
-            Ok(s) => Ok(s),
-            Err(s) => {
-                warn!(target: "subspace", "Failed to get slot duration");
-                Err(s)
-            }
+        let mut best_block_id = BlockId::Hash(client.usage_info().chain.best_hash);
+        if client.usage_info().chain.finalized_state.is_none() {
+            debug!(
+                target: "subspace",
+                "No finalized state is available. Reading config from genesis"
+            );
+            best_block_id = BlockId::Hash(client.usage_info().chain.genesis_hash);
         }
+        let runtime_api = client.runtime_api();
+
+        let version = runtime_api.api_version::<dyn SubspaceApi<B>>(&best_block_id)?;
+
+        let slot_duration = if version == Some(2) {
+            runtime_api.configuration(&best_block_id)?
+        } else {
+            return Err(sp_blockchain::Error::VersionInvalid(
+                "Unsupported or invalid SubspaceApi version".to_string(),
+            ));
+        };
+
+        Ok(Self(sc_consensus_slots::SlotDuration::new(slot_duration)))
     }
 
     /// Get the inner slot duration

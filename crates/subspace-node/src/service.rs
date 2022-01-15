@@ -159,7 +159,7 @@ pub fn new_partial(
     );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
-        sc_consensus_subspace::Config::get_or_compute(&*client)?,
+        sc_consensus_subspace::Config::get(&*client)?,
         client.clone(),
         client.clone(),
     )?;

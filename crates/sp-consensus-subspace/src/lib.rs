@@ -103,8 +103,6 @@ impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
     fn slot_duration(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.slot_duration)
     }
-
-    const SLOT_KEY: &'static [u8] = b"subspace_configuration";
 }
 
 /// Verifies the equivocation proof by making sure that: both headers have
