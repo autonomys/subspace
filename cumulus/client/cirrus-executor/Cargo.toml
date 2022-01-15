@@ -7,14 +7,14 @@ edition = "2021"
 [dependencies]
 # Substrate dependencies
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-consensus-slots = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sc-transaction-pool-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sc-utils = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-consensus-slots = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 
 # Cumulus dependencies

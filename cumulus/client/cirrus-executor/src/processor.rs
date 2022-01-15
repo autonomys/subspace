@@ -75,7 +75,7 @@ where
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
-	) -> Option<ProcessorResult> {
+	) -> Result<Option<ProcessorResult>, sp_blockchain::Error> {
 		let mut extrinsics = bundles
 			.into_iter()
 			.flat_map(|bundle| {
@@ -127,7 +127,7 @@ where
 					error = ?e,
 					"Error at calling runtime api: extract_signer"
 				);
-				return None
+				return Err(e.into())
 			},
 		};
 
@@ -157,9 +157,9 @@ where
 			}
 
 			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() })
+			Ok(Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() }))
 		} else {
-			None
+			Ok(None)
 		}
 	}
 }

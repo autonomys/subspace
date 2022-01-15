@@ -795,6 +795,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-block-builder"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
+ "substrate-test-runtime-client",
+]
+
+[[package]]
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,27 @@
+[package]
+name = "cirrus-block-builder"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2021"
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+homepage = "https://substrate.io"
+repository = "https://github.com/paritytech/substrate/"
+description = "Substrate block builder"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "2.3.0", features = ["derive"] }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-state-machine = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+
+[dev-dependencies]
+substrate-test-runtime-client = { path = "../../../substrate/substrate-test-runtime-client" }

@@ -331,7 +331,11 @@ where
 		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
 	}
 
-	async fn produce_bundle(self, slot_info: ExecutorSlotInfo) -> Option<BundleResult> {
+	async fn produce_bundle(
+		self,
+		_primary_hash: PHash,
+		slot_info: ExecutorSlotInfo,
+	) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		// TODO: ready at the best number of primary block?
@@ -398,7 +402,10 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
-		self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await
+		self.process_bundles_impl(primary_hash, bundles, shuffling_seed)
+			.await
+			.ok()
+			.flatten()
 	}
 }
 
@@ -560,9 +567,12 @@ where
 			let executor = executor.clone();
 			let span = span.clone();
 
-			Box::new(move |slot_info| {
+			Box::new(move |primary_hash, slot_info| {
 				let executor = executor.clone();
-				executor.produce_bundle(slot_info).instrument(span.clone()).boxed()
+				executor
+					.produce_bundle(primary_hash, slot_info)
+					.instrument(span.clone())
+					.boxed()
 			})
 		},
 		processor: {

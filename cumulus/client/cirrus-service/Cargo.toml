@@ -18,16 +18,16 @@ sc-telemetry = { git = "https://github.com/paritytech/substrate", rev = "04c7c6a
 sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sc-transaction-pool-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sc-utils = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 
 # Other deps
-tracing = "0.1.22"
 codec = { package = "parity-scale-codec", version = "2.3.0" }
 parking_lot = "0.11.2"
+tracing = "0.1.22"
 
 # Cirrus
 cirrus-client-executor = { path = "../cirrus-executor" }
