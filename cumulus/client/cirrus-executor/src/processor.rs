@@ -60,7 +60,8 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, BS, RA, Client, TransactionPool> Executor<Block, BS, RA, Client, TransactionPool>
+impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,

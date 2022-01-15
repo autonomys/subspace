@@ -321,6 +321,11 @@ where
 			import_queue,
 			transaction_pool,
 			network,
+			backend,
+			create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move {
+				let time = sp_timestamp::InherentDataProvider::from_system_time();
+				Ok(time)
+			}),
 		};
 
 		cirrus_client_service::start_executor(params).await?;

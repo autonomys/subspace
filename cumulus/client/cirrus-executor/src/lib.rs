@@ -26,6 +26,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
 use sp_core::traits::SpawnNamed;
+use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero},
@@ -38,12 +39,13 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
+use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
 	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
 };
-use cirrus_primitives::{AccountId, SecondaryApi};
+use cirrus_primitives::{AccountId, Hash, SecondaryApi};
 use sp_executor::{
 	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof,
 	InvalidTransactionProof, OpaqueBundle,
@@ -60,7 +62,7 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
+pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> {
 	block_status: Arc<BS>,
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
@@ -70,10 +72,12 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool> {
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+	backend: Arc<Backend>,
+	create_inherent_data_providers: Arc<CIDP>,
 }
 
-impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
-	for Executor<Block, BS, RA, Client, TransactionPool>
+impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
+	for Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -86,18 +90,28 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool> Clone
 			transaction_pool: self.transaction_pool.clone(),
 			bundle_sender: self.bundle_sender.clone(),
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
+			backend: self.backend.clone(),
+			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
 		}
 	}
 }
 
-impl<Block, BS, RA, Client, TransactionPool> Executor<Block, BS, RA, Client, TransactionPool>
+impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block>,
+	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block>,
-	RA::Api: SecondaryApi<Block, AccountId>,
+	RA::Api: SecondaryApi<Block, AccountId>
+		+ sp_block_builder::BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+	CIDP: CreateInherentDataProviders<Block, Hash>,
 {
 	/// Create a new instance.
 	fn new(
@@ -110,6 +124,8 @@ where
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+		backend: Arc<Backend>,
+		create_inherent_data_providers: Arc<CIDP>,
 	) -> Self {
 		Self {
 			block_status,
@@ -121,6 +137,8 @@ where
 			transaction_pool,
 			bundle_sender,
 			execution_receipt_sender,
+			backend,
+			create_inherent_data_providers,
 		}
 	}
 
@@ -262,6 +280,37 @@ where
 		);
 	}
 
+	/// Get the inherent data.
+	async fn inherent_data(
+		&self,
+		parent: Block::Hash,
+		relay_parent: PHash,
+	) -> Option<InherentData> {
+		let inherent_data_providers = self
+			.create_inherent_data_providers
+			.create_inherent_data_providers(parent, relay_parent)
+			.await
+			.map_err(|e| {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					"Failed to create inherent data providers.",
+				)
+			})
+			.ok()?;
+
+		inherent_data_providers
+			.create_inherent_data()
+			.map_err(|e| {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					"Failed to create inherent data.",
+				)
+			})
+			.ok()
+	}
+
 	async fn produce_candidate(
 		mut self,
 		relay_parent: PHash,
@@ -338,10 +387,11 @@ where
 	) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
-		// TODO: ready at the best number of primary block?
-		let block_number = self.client.info().best_number;
+		let parent_hash = self.client.info().best_hash;
+		let parent_number =
+			self.client.expect_block_number_from_id(&BlockId::Hash(parent_hash)).ok()?;
 
-		let mut t1 = self.transaction_pool.ready_at(block_number).fuse();
+		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
 		// TODO: proper timeout
 		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
@@ -351,7 +401,7 @@ where
 				tracing::warn!(
 					target: LOG_TARGET,
 					"Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-					block_number,
+					parent_number,
 				);
 				self.transaction_pool.ready()
 			}
@@ -367,7 +417,23 @@ where
 		// Selection policy:
 		// - minimize the transaction equivocation.
 		// - maximize the executor computation power.
-		let mut extrinsics = Vec::new();
+		let mut extrinsics = {
+			let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
+
+			let mut block_builder = BlockBuilder::new(
+				&*self.runtime_api,
+				parent_hash,
+				parent_number,
+				RecordProof::No,
+				Default::default(),
+				&*self.backend,
+			)
+			.ok()?;
+
+			// TODO: is creating inherents fallible?
+			block_builder.create_inherents(inherent_data).ok().unwrap_or_default()
+		};
+
 		while let Some(pending_tx) = pending_iterator.next() {
 			if start.elapsed() >= pushing_duration {
 				break
@@ -382,7 +448,7 @@ where
 		);
 
 		let _state_root =
-			self.client.expect_header(BlockId::Number(block_number)).ok()?.state_root();
+			self.client.expect_header(BlockId::Number(parent_number)).ok()?.state_root();
 
 		let bundle = Bundle {
 			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
@@ -415,15 +481,22 @@ pub enum GossipMessageError {
 	BundleEquivocation,
 }
 
-impl<Block, BS, RA, Client, TransactionPool> GossipMessageHandler<Block>
-	for Executor<Block, BS, RA, Client, TransactionPool>
+impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
+	for Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
 	BS: BlockBackend<Block> + Send + Sync,
+	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync,
-	RA::Api: SecondaryApi<Block, AccountId>,
+	RA::Api: SecondaryApi<Block, AccountId>
+		+ sp_block_builder::BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+	CIDP: CreateInherentDataProviders<Block, Hash>,
 {
 	type Error = GossipMessageError;
 
@@ -496,7 +569,16 @@ where
 }
 
 /// Parameters for [`start_executor`].
-pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client, TransactionPool> {
+pub struct StartExecutorParams<
+	Block: BlockT,
+	RA,
+	BS,
+	Spawner,
+	Client,
+	TransactionPool,
+	Backend,
+	CIDP,
+> {
 	pub client: Arc<Client>,
 	pub runtime_api: Arc<RA>,
 	pub block_status: Arc<BS>,
@@ -508,10 +590,12 @@ pub struct StartExecutorParams<Block: BlockT, RA, BS, Spawner, Client, Transacti
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
+	pub backend: Arc<Backend>,
+	pub create_inherent_data_providers: Arc<CIDP>,
 }
 
 /// Start the executor.
-pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
+pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool, Backend, CIDP>(
 	StartExecutorParams {
 		client,
 		block_status,
@@ -524,17 +608,26 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool>(
 		transaction_pool,
 		bundle_sender,
 		execution_receipt_sender,
-	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool>,
-) -> Executor<Block, BS, RA, Client, TransactionPool>
+		backend,
+		create_inherent_data_providers,
+	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool, Backend, CIDP>,
+) -> Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	BS: BlockBackend<Block> + Send + Sync + 'static,
+	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-	RA::Api: SecondaryApi<Block, AccountId>,
+	RA::Api: SecondaryApi<Block, AccountId>
+		+ sp_block_builder::BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
+	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	let executor = Executor::new(
 		block_status,
@@ -546,6 +639,8 @@ where
 		transaction_pool,
 		Arc::new(bundle_sender),
 		Arc::new(execution_receipt_sender),
+		backend,
+		create_inherent_data_providers,
 	);
 
 	let span = tracing::Span::current();
