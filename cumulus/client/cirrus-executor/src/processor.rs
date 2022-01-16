@@ -6,6 +6,7 @@ use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 use std::{
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
+	sync::atomic::Ordering,
 };
 
 use cirrus_node_primitives::ProcessorResult;
@@ -134,6 +135,9 @@ where
 
 		let _final_extrinsics =
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+
+		// Reset the signal to include the inherent extrinsics on next `produce_bundle`.
+		self.to_include_inherents.store(true, Ordering::Relaxed);
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.

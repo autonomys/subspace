@@ -55,7 +55,13 @@ use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
-use std::{sync::Arc, time};
+use std::{
+	sync::{
+		atomic::{AtomicBool, Ordering},
+		Arc,
+	},
+	time,
+};
 use tracing::Instrument;
 
 /// The logging target.
@@ -74,6 +80,7 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CID
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
+	to_include_inherents: Arc<AtomicBool>,
 }
 
 impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
@@ -92,6 +99,7 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+			to_include_inherents: self.to_include_inherents.clone(),
 		}
 	}
 }
@@ -139,6 +147,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			to_include_inherents: Arc::new(AtomicBool::new(true)),
 		}
 	}
 
@@ -388,8 +397,7 @@ where
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let parent_hash = self.client.info().best_hash;
-		let parent_number =
-			self.client.expect_block_number_from_id(&BlockId::Hash(parent_hash)).ok()?;
+		let parent_number = self.client.info().best_number;
 
 		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
 		// TODO: proper timeout
@@ -417,9 +425,12 @@ where
 		// Selection policy:
 		// - minimize the transaction equivocation.
 		// - maximize the executor computation power.
-		let mut extrinsics = {
-			let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
-
+		let mut extrinsics = if self
+			.to_include_inherents
+			.compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed)
+			.unwrap_or(false)
+		{
+			// TODO: is creating inherents fallible?
 			let mut block_builder = BlockBuilder::new(
 				&*self.runtime_api,
 				parent_hash,
@@ -430,8 +441,11 @@ where
 			)
 			.ok()?;
 
-			// TODO: is creating inherents fallible?
+			let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
+
 			block_builder.create_inherents(inherent_data).ok().unwrap_or_default()
+		} else {
+			Vec::new()
 		};
 
 		while let Some(pending_tx) = pending_iterator.next() {
