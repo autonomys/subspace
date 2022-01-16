@@ -17,19 +17,19 @@
 //! Cirrus Executor implementation for Subspace.
 #![allow(clippy::all)]
 
+mod bundler;
 mod processor;
 
 use sc_client_api::BlockBackend;
-use sc_transaction_pool_api::InPoolTransaction;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
 use sp_core::traits::SpawnNamed;
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero},
+	traits::{Block as BlockT, Header as HeaderT, Zero},
 	SaturatedConversion,
 };
 use sp_trie::StorageProof;
@@ -39,7 +39,6 @@ use cumulus_client_consensus_common::ParachainConsensus;
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
-use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
 	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
@@ -47,20 +46,17 @@ use cirrus_node_primitives::{
 };
 use cirrus_primitives::{AccountId, Hash, SecondaryApi};
 use sp_executor::{
-	Bundle, BundleEquivocationProof, BundleHeader, ExecutionReceipt, FraudProof,
-	InvalidTransactionProof, OpaqueBundle,
+	Bundle, BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof,
+	OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
 use codec::{Decode, Encode};
-use futures::{select, FutureExt};
-use std::{
-	sync::{
-		atomic::{AtomicBool, Ordering},
-		Arc,
-	},
-	time,
+use futures::FutureExt;
+use std::sync::{
+	atomic::{AtomicBool, Ordering},
+	Arc,
 };
 use tracing::Instrument;
 
@@ -289,37 +285,6 @@ where
 		);
 	}
 
-	/// Get the inherent data.
-	async fn inherent_data(
-		&self,
-		parent: Block::Hash,
-		relay_parent: PHash,
-	) -> Option<InherentData> {
-		let inherent_data_providers = self
-			.create_inherent_data_providers
-			.create_inherent_data_providers(parent, relay_parent)
-			.await
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data providers.",
-				)
-			})
-			.ok()?;
-
-		inherent_data_providers
-			.create_inherent_data()
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data.",
-				)
-			})
-			.ok()
-	}
-
 	async fn produce_candidate(
 		mut self,
 		relay_parent: PHash,
@@ -391,89 +356,24 @@ where
 
 	async fn produce_bundle(
 		self,
-		_primary_hash: PHash,
+		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
 	) -> Option<BundleResult> {
-		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
-
-		let parent_hash = self.client.info().best_hash;
-		let parent_number = self.client.info().best_number;
-
-		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
-		// TODO: proper timeout
-		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
-
-		let mut pending_iterator = select! {
-			res = t1 => res,
-			_ = t2 => {
-				tracing::warn!(
-					target: LOG_TARGET,
-					"Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-					parent_number,
-				);
-				self.transaction_pool.ready()
-			}
-		};
-
-		// TODO: proper deadline
-		let pushing_duration = time::Duration::from_micros(500);
-
-		let start = time::Instant::now();
-
-		// TODO: Select transactions properly from the transaction pool
+		// Check if we should include the inherents in this bundle.
 		//
-		// Selection policy:
-		// - minimize the transaction equivocation.
-		// - maximize the executor computation power.
-		let mut extrinsics = if self
+		// We don't include the inherent extrinsics in each bundle because we use
+		// the block builder to import the block that contains all the extrinsics
+		// converted from a batch of bundles later. That being said, if we include
+		// the inherents per bundle, the final extrinsics fed into the block builder
+		// will contain multiple same kind of inherent extrinsic, e.g, timestamp,
+		// the block builder will panic when importing because the timestamp call
+		// should be executed once and only once per block.
+		let include_inherents = self
 			.to_include_inherents
 			.compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed)
-			.unwrap_or(false)
-		{
-			// TODO: is creating inherents fallible?
-			let mut block_builder = BlockBuilder::new(
-				&*self.runtime_api,
-				parent_hash,
-				parent_number,
-				RecordProof::No,
-				Default::default(),
-				&*self.backend,
-			)
-			.ok()?;
+			.unwrap_or(false);
 
-			let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
-
-			block_builder.create_inherents(inherent_data).ok().unwrap_or_default()
-		} else {
-			Vec::new()
-		};
-
-		while let Some(pending_tx) = pending_iterator.next() {
-			if start.elapsed() >= pushing_duration {
-				break
-			}
-			let pending_tx_data = pending_tx.data().clone();
-			extrinsics.push(pending_tx_data);
-		}
-
-		let extrinsics_root = BlakeTwo256::ordered_trie_root(
-			extrinsics.iter().map(|xt| xt.encode()).collect(),
-			sp_core::storage::StateVersion::V1,
-		);
-
-		let _state_root =
-			self.client.expect_header(BlockId::Number(parent_number)).ok()?.state_root();
-
-		let bundle = Bundle {
-			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
-			extrinsics,
-		};
-
-		if let Err(e) = self.bundle_sender.unbounded_send(bundle.clone()) {
-			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-		}
-
-		Some(BundleResult { opaque_bundle: bundle.into() })
+		self.produce_bundle_impl(primary_hash, slot_info, include_inherents).await
 	}
 
 	async fn process_bundles(
@@ -482,10 +382,22 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
-		self.process_bundles_impl(primary_hash, bundles, shuffling_seed)
-			.await
-			.ok()
-			.flatten()
+		match self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await {
+			Ok(res) => {
+				// Reset the signal to include the inherent extrinsics on next `produce_bundle`.
+				self.to_include_inherents.store(true, Ordering::Relaxed);
+				res
+			},
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					relay_parent = ?primary_hash,
+					error = ?err,
+					"Error at processing bundles.",
+				);
+				None
+			},
+		}
 	}
 }
 
