@@ -153,6 +153,7 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
         ),
         // Protocol ID
         Some("subspace"),
+        None,
         // Properties
         Some(properties),
         // Extensions
@@ -190,6 +191,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
         // Telemetry
         None,
         // Protocol ID
+        None,
         None,
         // Properties
         None,
@@ -235,6 +237,7 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
         // Telemetry
         None,
         // Protocol ID
+        None,
         None,
         // Properties
         None,

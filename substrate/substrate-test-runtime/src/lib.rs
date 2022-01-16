@@ -1,6 +1,6 @@
 // This file is part of Substrate.
 
-// Copyright (C) 2017-2021 Parity Technologies (UK) Ltd.
+// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,17 +29,17 @@ use sp_std::{marker::PhantomData, prelude::*};
 
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 use sp_core::{offchain::KeyTypeId, OpaqueMetadata, RuntimeDebug};
-use sp_trie::{
-    trie_types::{TrieDB, TrieDBMut},
-    PrefixedMemoryDB, StorageProof,
-};
+use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
 use trie_db::{Trie, TrieMut};
 
 use cfg_if::cfg_if;
-use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem};
-use frame_support::{parameter_types, weights::RuntimeDbWeight};
+use frame_support::{
+    parameter_types,
+    traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem},
+    weights::RuntimeDbWeight,
+};
 use frame_system::limits::{BlockLength, BlockWeights};
-use sp_api::{decl_runtime_apis, impl_runtime_apis, BlockT, HeaderT};
+use sp_api::{decl_runtime_apis, impl_runtime_apis};
 pub use sp_core::hash::H256;
 use sp_inherents::{CheckInherentsResult, InherentData};
 #[cfg(feature = "std")]
@@ -47,8 +47,8 @@ use sp_runtime::traits::NumberFor;
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
     traits::{
-        BlakeTwo256, BlindCheckable, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, IdentityLookup, Verify,
+        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+        GetRuntimeBlockType, Header as HeaderT, IdentityLookup, Verify,
     },
     transaction_validity::{
         InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -59,6 +59,8 @@ use sp_runtime::{
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+// bench on latest state.
+use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
 
 // Ensure Babe and Aura use the same crypto to simplify things a bit.
 pub use sp_consensus_babe::{AllowedSlots, AuthorityId, Slot};
@@ -102,6 +104,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_version: 2,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
+    state_version: 1,
 };
 
 fn version() -> RuntimeVersion {
@@ -280,6 +283,21 @@ pub type Digest = sp_runtime::generic::Digest;
 pub type Block = sp_runtime::generic::Block<Header, Extrinsic>;
 /// A test block's header.
 pub type Header = sp_runtime::generic::Header<BlockNumber, Hashing>;
+
+/// Run whatever tests we have.
+pub fn run_tests(mut input: &[u8]) -> Vec<u8> {
+    use sp_runtime::print;
+
+    print("run_tests...");
+    let block = Block::decode(&mut input).unwrap();
+    print("deserialized block.");
+    let stxs = block
+        .extrinsics
+        .iter()
+        .map(Encode::encode);
+    print("reserialized transactions.");
+    [stxs.count() as u8].encode()
+}
 
 /// A type that can not be decoded.
 #[derive(PartialEq)]
@@ -560,7 +578,6 @@ impl frame_support::traits::PalletInfo for Runtime {
 
 parameter_types! {
     pub const BlockHashCount: BlockNumber = 2400;
-    pub const MinimumPeriod: u64 = 5;
     pub const DbWeight: RuntimeDbWeight = RuntimeDbWeight {
         read: 100,
         write: 1000,
@@ -585,7 +602,7 @@ impl frame_system::Config for Runtime {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
-    type BlockHashCount = ConstU64<250>;
+    type BlockHashCount = BlockHashCount;
     type DbWeight = ();
     type Version = ();
     type PalletInfo = Self;
@@ -602,19 +619,17 @@ impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = u64;
     type OnTimestampSet = ();
-    type MinimumPeriod = MinimumPeriod;
+    type MinimumPeriod = ConstU64<5>;
     type WeightInfo = ();
 }
 
 parameter_types! {
     pub const EpochDuration: u64 = 6;
-    pub const ExpectedBlockTime: u64 = 10_000;
-    pub const MaxAuthorities: u32 = 10;
 }
 
 impl pallet_babe::Config for Runtime {
     type EpochDuration = EpochDuration;
-    type ExpectedBlockTime = ExpectedBlockTime;
+    type ExpectedBlockTime = ConstU64<10_000>;
     // there is no actual runtime in this test-runtime, so testing crates
     // are manually adding the digests. normally in this situation you'd use
     // pallet_babe::SameAuthoritiesForever.
@@ -632,14 +647,14 @@ impl pallet_babe::Config for Runtime {
     )>>::IdentificationTuple;
 
     type HandleEquivocation = ();
-
     type WeightInfo = ();
 
-    type MaxAuthorities = MaxAuthorities;
+    type MaxAuthorities = ConstU32<10>;
 }
 
 parameter_types! {
     pub const SlotProbability: (u64, u64) = (3, 10);
+    pub const ExpectedBlockTime: u64 = 10_000;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -697,11 +712,7 @@ fn code_using_trie() -> u64 {
 
     if let Ok(trie) = TrieDB::<Hashing>::new(&mdb, &root) {
         if let Ok(iter) = trie.iter() {
-            let mut iter_pairs = Vec::new();
-            for (key, value) in iter.flatten() {
-                iter_pairs.push((key, value.to_vec()));
-            }
-            iter_pairs.len() as u64
+            iter.flatten().count() as u64
         } else {
             102
         }
@@ -1418,9 +1429,9 @@ fn test_witness(proof: StorageProof, root: crate::Hash) {
         None,
     );
     assert!(ext.storage(b"value3").is_some());
-    assert!(ext.storage_root().as_slice() == &root[..]);
+    assert!(ext.storage_root(Default::default()).as_slice() == &root[..]);
     ext.place_storage(vec![0], Some(vec![1]));
-    assert!(ext.storage_root().as_slice() != &root[..]);
+    assert!(ext.storage_root(Default::default()).as_slice() != &root[..]);
 }
 
 #[cfg(test)]
@@ -1489,7 +1500,7 @@ mod tests {
         let mut root = crate::Hash::default();
         let mut mdb = sp_trie::MemoryDB::<crate::Hashing>::default();
         {
-            let mut trie = sp_trie::trie_types::TrieDBMut::new(&mut mdb, &mut root);
+            let mut trie = sp_trie::trie_types::TrieDBMutV1::new(&mut mdb, &mut root);
             trie.insert(b"value3", &[142]).expect("insert failed");
             trie.insert(b"value4", &[124]).expect("insert failed");
         };

@@ -23,7 +23,6 @@ use crate::{
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
-use frame_system::InitKind;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
@@ -202,7 +201,8 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         },
     );
 
-    System::initialize(&block, &parent_hash, &pre_digest, InitKind::Full);
+    System::reset_events();
+    System::initialize(&block, &parent_hash, &pre_digest);
 
     Subspace::on_initialize(block);
 }
@@ -256,7 +256,8 @@ pub fn generate_equivocation_proof(
                 tag,
             },
         );
-        System::initialize(&current_block, &parent_hash, &pre_digest, InitKind::Full);
+        System::reset_events();
+        System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
         Timestamp::set_timestamp(current_block);
         System::finalize()
