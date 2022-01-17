@@ -294,7 +294,7 @@ impl Config {
 
         let version = runtime_api.api_version::<dyn SubspaceApi<B>>(&best_block_id)?;
 
-        let slot_duration = if version == Some(2) {
+        let slot_duration = if version == Some(1) {
             runtime_api.configuration(&best_block_id)?
         } else {
             return Err(sp_blockchain::Error::VersionInvalid(
