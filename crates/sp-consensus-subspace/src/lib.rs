@@ -28,6 +28,7 @@ use crate::digests::{
     SolutionRangeDescriptor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::time::Duration;
 use scale_info::TypeInfo;
 use sp_api::{BlockT, HeaderT};
 use sp_core::crypto::KeyTypeId;
@@ -77,32 +78,6 @@ enum ConsensusLog {
     /// Salt for this block/eon.
     #[codec(index = 3)]
     Salt(SaltDescriptor),
-}
-
-// TODO: Can we kill this too?
-/// Configuration data used by the Subspace consensus engine.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
-pub struct SubspaceGenesisConfiguration {
-    /// The slot duration in milliseconds for Subspace. Currently, only
-    /// the value provided by this type at genesis will be used.
-    ///
-    /// Dynamic slot duration may be supported in the future.
-    pub slot_duration: u64,
-
-    /// A constant value that is used in the threshold calculation formula.
-    /// Expressed as a rational where the first member of the tuple is the
-    /// numerator and the second is the denominator. The rational should
-    /// represent a value between 0 and 1.
-    /// In the threshold formula calculation, `1 - c` represents the probability
-    /// of a slot being empty.
-    pub c: (u64, u64),
-}
-
-#[cfg(feature = "std")]
-impl sp_consensus::SlotData for SubspaceGenesisConfiguration {
-    fn slot_duration(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.slot_duration)
-    }
 }
 
 /// Verifies the equivocation proof by making sure that: both headers have
@@ -218,8 +193,8 @@ sp_api::decl_runtime_apis! {
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         fn recorded_history_segment_size() -> u32;
 
-        /// Return the genesis configuration for Subspace. The configuration is only read on genesis.
-        fn configuration() -> SubspaceGenesisConfiguration;
+        /// The slot duration in milliseconds for Subspace.
+        fn slot_duration() -> Duration;
 
         /// Global randomnesses used for deriving global challenges.
         fn global_randomnesses() -> GlobalRandomnesses;

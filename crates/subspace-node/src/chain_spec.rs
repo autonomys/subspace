@@ -170,7 +170,6 @@ pub fn development_config() -> Result<ChainSpec, String> {
         // ID
         "dev",
         ChainType::Development,
-        // TODO: Provide a way for farmer to start with these accounts
         || {
             create_genesis_config(
                 wasm_binary,

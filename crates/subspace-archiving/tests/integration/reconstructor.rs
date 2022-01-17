@@ -44,7 +44,7 @@ fn basic() {
         .chain(archiver.add_block(block_1.clone(), BlockObjectMapping::default()))
         .chain(archiver.add_block(block_2.clone(), BlockObjectMapping::default()))
         .chain(archiver.add_block(block_3.clone(), BlockObjectMapping::default()))
-        .chain(archiver.add_block(block_4.clone(), BlockObjectMapping::default()))
+        .chain(archiver.add_block(block_4, BlockObjectMapping::default()))
         .collect::<Vec<_>>();
 
     assert_eq!(archived_segments.len(), 5);
@@ -235,7 +235,7 @@ fn partial_data() {
     let archived_segments = archiver
         .add_block(block_0.clone(), BlockObjectMapping::default())
         .into_iter()
-        .chain(archiver.add_block(block_1.clone(), BlockObjectMapping::default()))
+        .chain(archiver.add_block(block_1, BlockObjectMapping::default()))
         .collect::<Vec<_>>();
 
     assert_eq!(archived_segments.len(), 1);
@@ -289,7 +289,7 @@ fn partial_data() {
             .add_segment(&pieces)
             .unwrap();
 
-        assert_eq!(contents.blocks, vec![(0, block_0.clone())]);
+        assert_eq!(contents.blocks, vec![(0, block_0)]);
     }
 }
 
@@ -318,7 +318,7 @@ fn invalid_usage() {
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE * 4]>().to_vec();
 
-    let archived_segments = archiver.add_block(block_0.clone(), BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block_0, BlockObjectMapping::default());
 
     assert_eq!(archived_segments.len(), 4);
 

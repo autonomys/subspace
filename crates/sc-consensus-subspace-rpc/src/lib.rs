@@ -33,7 +33,6 @@ use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNo
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::Solution;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
@@ -42,6 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::{BlockNumber, Solution};
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
@@ -65,7 +65,7 @@ pub trait SubspaceRpcApi {
     #[rpc(name = "subspace_getBlockByNumber")]
     fn get_block_by_number(
         &self,
-        block_number: u32,
+        block_number: BlockNumber,
     ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
     #[rpc(name = "subspace_submitSolutionResponse")]
@@ -230,12 +230,11 @@ where
 
             let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
                 FarmerMetadata {
-                    confirmation_depth_k: TryInto::<u32>::try_into(
+                    confirmation_depth_k: TryInto::<BlockNumber>::try_into(
                         runtime_api.confirmation_depth_k(&best_block_id)?,
                     )
                     .unwrap_or_else(|_| {
-                        // TODO: We might bump block number from `u32` to `u64` in the future
-                        panic!("Confirmation depth K can't be converted into u32");
+                        panic!("Confirmation depth K can't be converted into BlockNumber");
                     }),
                     record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
@@ -252,7 +251,7 @@ where
 
     fn get_block_by_number(
         &self,
-        block_number: u32,
+        block_number: BlockNumber,
     ) -> FutureResult<Option<EncodedBlockWithObjectMapping>> {
         let result = self
             .client

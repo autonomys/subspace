@@ -7,7 +7,8 @@ use core::mem;
 use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE, SHA256_HASH_SIZE,
+    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
+    SHA256_HASH_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -65,7 +66,7 @@ pub struct ReconstructedContents {
     /// Root block stored in a segment
     pub root_block: Option<RootBlock>,
     /// Reconstructed encoded blocks with their block numbers
-    pub blocks: Vec<(u32, Vec<u8>)>,
+    pub blocks: Vec<(BlockNumber, Vec<u8>)>,
 }
 
 /// Reconstructor helps to retrieve blocks from archived pieces.

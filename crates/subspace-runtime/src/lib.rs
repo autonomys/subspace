@@ -24,6 +24,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
+use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -40,7 +41,6 @@ use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
-    SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
@@ -155,6 +155,8 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
+
+const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -585,84 +587,76 @@ fn extract_object_store_block_object_mapping(
 }
 
 fn extract_utility_block_object_mapping(
-    base_offset: u32,
+    mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
+    mut recursion_depth_left: u16,
 ) {
-    // Add enum variant to the offset
-    let mut base_nested_call_offset = base_offset + 1;
+    if recursion_depth_left == 0 {
+        return;
+    }
+
+    recursion_depth_left -= 1;
+
+    // Add enum variant to the base offset.
+    base_offset += 1;
 
     match call {
         pallet_utility::Call::batch { calls } | pallet_utility::Call::batch_all { calls } => {
-            base_nested_call_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
+            base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                // TODO: De-duplicate this `match`, it is repeated 2 more times below and one more
-                //  time in slightly different form in `extract_block_object_mapping()`
-                match call {
-                    Call::Feeds(call) => {
-                        // `+1` for enum variant offset
-                        extract_feeds_block_object_mapping(
-                            base_nested_call_offset + 1,
-                            objects,
-                            call,
-                        );
-                    }
-                    Call::ObjectStore(call) => {
-                        // `+1` for enum variant offset
-                        extract_object_store_block_object_mapping(
-                            base_nested_call_offset + 1,
-                            objects,
-                            call,
-                        );
-                    }
-                    _ => {}
-                }
+                extract_call_block_object_mapping(base_offset, objects, call, recursion_depth_left);
 
-                base_nested_call_offset += call.encoded_size() as u32;
+                base_offset += call.encoded_size() as u32;
             }
         }
         pallet_utility::Call::as_derivative { index, call } => {
-            base_nested_call_offset += index.encoded_size() as u32;
+            base_offset += index.encoded_size() as u32;
 
-            match call.as_ref() {
-                Call::Feeds(call) => {
-                    // `+1` for enum variant offset
-                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
-                }
-                Call::ObjectStore(call) => {
-                    // `+1` for enum variant offset
-                    extract_object_store_block_object_mapping(
-                        base_nested_call_offset + 1,
-                        objects,
-                        call,
-                    );
-                }
-                _ => {}
-            }
+            extract_call_block_object_mapping(
+                base_offset,
+                objects,
+                call.as_ref(),
+                recursion_depth_left,
+            );
         }
         pallet_utility::Call::dispatch_as { as_origin, call } => {
-            base_nested_call_offset += as_origin.encoded_size() as u32;
+            base_offset += as_origin.encoded_size() as u32;
 
-            match call.as_ref() {
-                Call::Feeds(call) => {
-                    // `+1` for enum variant offset
-                    extract_feeds_block_object_mapping(base_nested_call_offset + 1, objects, call);
-                }
-                Call::ObjectStore(call) => {
-                    // `+1` for enum variant offset
-                    extract_object_store_block_object_mapping(
-                        base_nested_call_offset + 1,
-                        objects,
-                        call,
-                    );
-                }
-                _ => {}
-            }
+            extract_call_block_object_mapping(
+                base_offset,
+                objects,
+                call.as_ref(),
+                recursion_depth_left,
+            );
         }
         pallet_utility::Call::__Ignore(_, _) => {
             // Ignore.
         }
+    }
+}
+
+fn extract_call_block_object_mapping(
+    mut base_offset: u32,
+    objects: &mut Vec<BlockObject>,
+    call: &Call,
+    recursion_depth_left: u16,
+) {
+    // Add enum variant to the base offset.
+    base_offset += 1;
+
+    match call {
+        Call::Feeds(call) => {
+            extract_feeds_block_object_mapping(base_offset, objects, call);
+        }
+        Call::ObjectStore(call) => {
+            extract_object_store_block_object_mapping(base_offset, objects, call);
+        }
+        Call::Utility(call) => {
+            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left);
+        }
+        _ => {}
     }
 }
 
@@ -678,41 +672,19 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
             .unwrap_or_default();
         // Extrinsic starts with vector length and version byte, followed by optional signature and
         // `function` encoding.
-        // The last `+1` accounts for `Call::X()` enum variant encoding.
         let base_extrinsic_offset = base_offset
             + Compact::compact_len(
                 &((1 + signature_size + extrinsic.function.encoded_size()) as u32),
             )
             + 1
-            + signature_size
-            + 1;
+            + signature_size;
 
-        match &extrinsic.function {
-            Call::Feeds(call) => {
-                extract_feeds_block_object_mapping(
-                    base_extrinsic_offset as u32,
-                    &mut block_object_mapping.objects,
-                    call,
-                );
-            }
-            Call::ObjectStore(call) => {
-                extract_object_store_block_object_mapping(
-                    base_extrinsic_offset as u32,
-                    &mut block_object_mapping.objects,
-                    call,
-                );
-            }
-            Call::Utility(call) => {
-                extract_utility_block_object_mapping(
-                    base_extrinsic_offset as u32,
-                    &mut block_object_mapping.objects,
-                    call,
-                );
-            }
-            _ => {
-                // No other pallets store useful data yet.
-            }
-        }
+        extract_call_block_object_mapping(
+            base_extrinsic_offset as u32,
+            &mut block_object_mapping.objects,
+            &extrinsic.function,
+            MAX_OBJECT_MAPPING_RECURSION_DEPTH,
+        );
 
         base_offset += extrinsic.encoded_size();
     }
@@ -834,16 +806,8 @@ impl_runtime_apis! {
             <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
         }
 
-        fn configuration() -> SubspaceGenesisConfiguration {
-            // The choice of `c` parameter (where `1 - c` represents the
-            // probability of a slot being empty), is done in accordance to the
-            // slot duration and expected target block time, for safely
-            // resisting network delays of maximum two seconds.
-            // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
-            SubspaceGenesisConfiguration {
-                slot_duration: Subspace::slot_duration(),
-                c: SlotProbability::get(),
-            }
+        fn slot_duration() -> Duration {
+            Duration::from_millis(Subspace::slot_duration())
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {

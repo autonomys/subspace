@@ -51,7 +51,7 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
@@ -67,7 +67,7 @@ use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag};
+use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Solution, Tag};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -133,7 +133,7 @@ impl DummyProposer {
             .new_block_at(&BlockId::Hash(self.parent_hash), pre_digests, false)
             .unwrap();
 
-        let mut block = match block_builder.build().map_err(|e| e.into()) {
+        let mut block = match block_builder.build() {
             Ok(b) => b.block,
             Err(e) => return future::ready(Err(e)),
         };
@@ -208,7 +208,7 @@ where
         // TODO: Here we are hacking around lack of transaction support in test runtime and
         //  remove known root blocks for current block to make sure block import doesn't fail, this
         //  should be removed once runtime supports transactions
-        let block_number = block.header.number.into();
+        let block_number = block.header.number;
         let removed_root_blocks = self.link.root_blocks.lock().pop(&block_number);
 
         let import_result = self
@@ -322,7 +322,7 @@ impl TestNetFactory for SubspaceTestNet {
         let client = client.as_client();
 
         let config = Config::get(&*client).expect("config available");
-        let (block_import, link) = crate::block_import(config, client.clone(), client.clone())
+        let (block_import, link) = crate::block_import(config, client.clone(), client)
             .expect("can initialize block-import");
 
         let block_import = PanickingBlockImport {
@@ -362,7 +362,7 @@ impl TestNetFactory for SubspaceTestNet {
 
         TestVerifier {
             inner: SubspaceVerifier {
-                client: client.clone(),
+                client,
                 select_chain: longest_chain,
                 create_inherent_data_providers: Box::new(|_, _| async {
                     let timestamp = TimestampInherentDataProvider::from_system_time();
@@ -658,7 +658,7 @@ fn sig_is_not_pre_digest() {
 
 /// Claims the given slot number. always returning a dummy block.
 pub fn dummy_claim_slot(slot: Slot) -> Option<(PreDigest<FarmerPublicKey>, FarmerPublicKey)> {
-    return Some((
+    Some((
         PreDigest {
             solution: Solution {
                 public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
@@ -671,7 +671,7 @@ pub fn dummy_claim_slot(slot: Slot) -> Option<(PreDigest<FarmerPublicKey>, Farme
             slot,
         },
         FarmerPublicKey::unchecked_from([0u8; 32]),
-    ));
+    ))
 }
 
 #[test]
@@ -771,7 +771,7 @@ fn verify_slots_are_strictly_increasing() {
         .as_ref()
         .expect("Subspace link set up during initialization");
 
-    let client = peer.client().as_client().clone();
+    let client = peer.client().as_client();
     let mut block_import = data
         .block_import
         .lock()

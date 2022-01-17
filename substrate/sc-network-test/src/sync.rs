@@ -275,7 +275,7 @@ fn sync_justifications() {
 		.unwrap();
 	net.peer(0)
 		.client()
-		.finalize_block(BlockId::Number(20), Some(just.clone()), true)
+		.finalize_block(BlockId::Number(20), Some(just), true)
 		.unwrap();
 
 	let h1 = net.peer(1).client().header(&BlockId::Number(10)).unwrap().unwrap();
@@ -283,9 +283,9 @@ fn sync_justifications() {
 	let h3 = net.peer(1).client().header(&BlockId::Number(20)).unwrap().unwrap();
 
 	// peer 1 should get the justifications from the network
-	net.peer(1).request_justification(&h1.hash().into(), 10);
-	net.peer(1).request_justification(&h2.hash().into(), 15);
-	net.peer(1).request_justification(&h3.hash().into(), 20);
+	net.peer(1).request_justification(&h1.hash(), 10);
+	net.peer(1).request_justification(&h2.hash(), 15);
+	net.peer(1).request_justification(&h3.hash(), 20);
 
 	block_on(futures::future::poll_fn::<(), _>(|cx| {
 		net.poll(cx);
@@ -443,7 +443,7 @@ fn can_sync_small_non_best_forks() {
 	assert_eq!(net.peer(0).client().info().best_number, 40);
 
 	assert!(net.peer(0).client().header(&BlockId::Hash(small_hash)).unwrap().is_some());
-	assert!(!net.peer(1).client().header(&BlockId::Hash(small_hash)).unwrap().is_some());
+	assert!(net.peer(1).client().header(&BlockId::Hash(small_hash)).unwrap().is_none());
 
 	net.peer(0).announce_block(small_hash, None);
 
@@ -508,7 +508,7 @@ fn can_sync_explicit_forks() {
 	assert_eq!(net.peer(0).client().info().best_number, 40);
 
 	assert!(net.peer(0).client().header(&BlockId::Hash(small_hash)).unwrap().is_some());
-	assert!(!net.peer(1).client().header(&BlockId::Hash(small_hash)).unwrap().is_some());
+	assert!(net.peer(1).client().header(&BlockId::Hash(small_hash)).unwrap().is_none());
 
 	// request explicit sync
 	let first_peer_id = net.peer(0).id();
@@ -945,7 +945,7 @@ fn multiple_requests_are_accepted_as_long_as_they_are_not_fulfilled() {
 	let h1 = net.peer(1).client().header(&BlockId::Number(10)).unwrap().unwrap();
 
 	// Let's assume block 10 was finalized, but we still need the justification from the network.
-	net.peer(1).request_justification(&h1.hash().into(), 10);
+	net.peer(1).request_justification(&h1.hash(), 10);
 
 	// Let's build some more blocks and wait always for the network to have synced them
 	for _ in 0..5 {

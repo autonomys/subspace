@@ -93,7 +93,6 @@ mod pallet {
         ValueQuery,
     >;
 
-    // TODO: We probably don't need this in Subspace
     /// Events type.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]

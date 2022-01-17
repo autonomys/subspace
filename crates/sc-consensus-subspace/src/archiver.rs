@@ -26,7 +26,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::{BlockNumber, RootBlock};
 
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
 where
@@ -87,15 +87,14 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 {
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
-    let confirmation_depth_k = TryInto::<u32>::try_into(
+    let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
         client
             .runtime_api()
             .confirmation_depth_k(&best_block_id)
             .expect("Failed to get `confirmation_depth_k` from runtime API"),
     )
     .unwrap_or_else(|_| {
-        // TODO: We might bump block number from `u32` to `u64` in the future
-        panic!("Confirmation depth K can't be converted into u32");
+        panic!("Confirmation depth K can't be converted into BlockNumber");
     });
     let record_size = client
         .runtime_api()
@@ -151,11 +150,10 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .map(|n| n + 1)
             .unwrap_or_default();
         let best_number = client.info().best_number;
-        let blocks_to_archive_to = TryInto::<u32>::try_into(best_number)
+        let blocks_to_archive_to = TryInto::<BlockNumber>::try_into(best_number)
             .unwrap_or_else(|_| {
-                // TODO: We might bump block number from `u32` to `u64` in the future
                 panic!(
-                    "Best block number {} can't be converted into u32",
+                    "Best block number {} can't be converted into BlockNumber",
                     best_number,
                 );
             })

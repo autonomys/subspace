@@ -35,7 +35,7 @@ fn can_do_put() {
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),
             FEED_ID,
-            object.clone(),
+            object,
             object_metadata.clone()
         ));
 

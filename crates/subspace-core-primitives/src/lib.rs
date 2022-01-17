@@ -62,6 +62,12 @@ pub const SALT_SIZE: usize = 8;
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; SALT_SIZE];
 
+/// Block number in Subspace network.
+pub type BlockNumber = u32;
+
+/// Slot number in Subspace network.
+pub type SlotNumber = u64;
+
 const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
@@ -447,6 +453,38 @@ impl RootBlock {
                 last_archived_block,
                 ..
             } => *last_archived_block,
+        }
+    }
+}
+
+/// Farmer solution for slot challenge.
+#[derive(Clone, Debug, Encode, Decode)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Solution<AccountId> {
+    /// Public key of the farmer that created the solution
+    pub public_key: AccountId,
+    /// Index of encoded piece
+    pub piece_index: u64,
+    /// Encoding
+    pub encoding: Piece,
+    /// Signature of the tag
+    pub signature: Signature,
+    /// Local challenge derived from global challenge using farmer's identity.
+    pub local_challenge: LocalChallenge,
+    /// Tag (hmac of encoding and salt)
+    pub tag: Tag,
+}
+
+impl<AccountId> Solution<AccountId> {
+    /// Dummy solution for the genesis block
+    pub fn genesis_solution(public_key: AccountId) -> Self {
+        Self {
+            public_key,
+            piece_index: 0u64,
+            encoding: Piece::default(),
+            signature: Signature::default(),
+            local_challenge: LocalChallenge::default(),
+            tag: Tag::default(),
         }
     }
 }

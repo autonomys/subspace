@@ -21,10 +21,11 @@
 
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
+pub use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
 
 // TODO: Proper value here
-pub const CONFIRMATION_DEPTH_K: u32 = 100;
+pub const CONFIRMATION_DEPTH_K: BlockNumber = 100;
 /// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
 /// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
 ///
@@ -57,9 +58,6 @@ pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 100);
 /// (with remaining issued to farmer immediately).
 // TODO: Proper value here
 pub const STORAGE_FEES_ESCROW_BLOCK_TAX: (u64, u64) = (1, 2);
-
-/// An index to a block.
-pub type BlockNumber = u32;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
