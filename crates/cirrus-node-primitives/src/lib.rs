@@ -63,24 +63,6 @@ impl HeadData {
     }
 }
 
-pub struct Collation {
-    pub number: BlockNumber,
-    pub head_data: HeadData,
-}
-
-/// Result of the [`CollatorFn`] invocation.
-pub struct CollationResult {
-    /// The collation that was built.
-    pub collation: Collation,
-    // TODO: can be useful in the future?
-    /// An optional result sender that should be informed about a successfully seconded collation.
-    ///
-    /// There is no guarantee that this sender is informed ever about any result, it is completely okay to just drop it.
-    /// However, if it is called, it should be called with the signed statement of a parachain validator seconding the
-    /// collation.
-    pub result_sender: Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
-}
-
 /// Result of the [`BundlerFn`] invocation.
 pub struct BundleResult {
     /// The opaque bundle that was built.
@@ -123,34 +105,9 @@ pub struct PersistedValidationData<H = Hash, N = BlockNumber> {
     pub relay_parent_storage_root: H,
 }
 
-impl CollationResult {
-    /// Convert into the inner values.
-    pub fn into_inner(
-        self,
-    ) -> (
-        Collation,
-        Option<futures::channel::oneshot::Sender<CollationSecondedSignal>>,
-    ) {
-        (self.collation, self.result_sender)
-    }
-}
-
-/// Collation function.
-///
-/// Will be called with the hash of the relay chain block the parachain block should be build on and the
-/// [`ValidationData`] that provides information about the state of the parachain on the relay chain.
-///
-/// Returns an optional [`CollationResult`].
-pub type CollatorFn = Box<
-    dyn Fn(
-            Hash,
-            &PersistedValidationData,
-        ) -> Pin<Box<dyn Future<Output = Option<CollationResult>> + Send>>
-        + Send
-        + Sync,
->;
-
 /// Bundle function.
+///
+/// Will be called with each slot of the primary chain.
 ///
 /// Returns an optional [`BundleResult`].
 pub type BundlerFn = Box<
@@ -160,6 +117,8 @@ pub type BundlerFn = Box<
 >;
 
 /// Process function.
+///
+/// Will be called with the hash of the primary chain block.
 ///
 /// Returns an optional [`ProcessorResult`].
 pub type ProcessorFn = Box<
@@ -195,11 +154,9 @@ pub type CollatorSignature = collator_app::Signature;
 pub struct CollationGenerationConfig {
     /// Collator's authentication key, so it can sign things.
     pub key: CollatorPair,
-    /// Collation function. See [`CollatorFn`] for more details.
-    pub collator: CollatorFn,
-    /// Transaction bundle function.
+    /// Transaction bundle function. See [`BundlerFn`] for more details.
     pub bundler: BundlerFn,
-    /// State processor function.
+    /// State processor function. See [`ProcessorFn`] for more details.
     pub processor: ProcessorFn,
 }
 

@@ -184,7 +184,6 @@ macro_rules! specialize_requests {
 }
 
 specialize_requests! {
-	fn request_pending_head() -> Option<Hash>; PendingHead;
 	fn request_extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>; ExtractBundles;
 	fn request_extrinsics_shuffling_seed(header: Header) -> Randomness; ExtrinsicsShufflingSeed;
 }

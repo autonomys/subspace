@@ -110,7 +110,6 @@ where
 		use RequestResult::*;
 
 		match result {
-			SubmitCandidateReceipt(..) => {},
 			SubmitExecutionReceipt(..) => {},
 			SubmitTransactionBundle(..) => {},
 			SubmitFraudProof(..) => {},
@@ -118,7 +117,6 @@ where
 			SubmitInvalidTransactionProof(..) => {},
 			ExtractBundles(..) => {},
 			ExtrinsicsShufflingSeed(..) => {},
-			PendingHead(..) => {},
 		}
 	}
 
@@ -150,7 +148,6 @@ where
 		}
 
 		match request {
-			Request::SubmitCandidateReceipt(..) => None,
 			Request::SubmitExecutionReceipt(..) => None,
 			Request::SubmitTransactionBundle(..) => None,
 			Request::SubmitFraudProof(..) => None,
@@ -158,7 +155,6 @@ where
 			Request::SubmitInvalidTransactionProof(..) => None,
 			Request::ExtractBundles(..) => None,
 			Request::ExtrinsicsShufflingSeed(..) => None,
-			Request::PendingHead(..) => None,
 		}
 	}
 
@@ -261,20 +257,6 @@ where
 
 	// TODO: re-enable the marco to reduce the pattern duplication.
 	match request {
-		Request::SubmitCandidateReceipt(head_number, head_hash) => {
-			let api = client.runtime_api();
-			let res = api
-				.submit_candidate_receipt_unsigned(
-					&BlockId::Hash(relay_parent),
-					head_number,
-					head_hash,
-				)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
-			metrics.on_request(res.is_ok());
-			res.ok().map(|_res| {
-				RequestResult::SubmitCandidateReceipt(relay_parent, head_number, head_hash)
-			});
-		},
 		Request::SubmitExecutionReceipt(opaque_execution_receipt) => {
 			let api = client.runtime_api();
 			let res = api
@@ -347,17 +329,6 @@ where
 			let _ = sender.send(res.clone());
 
 			res.ok().map(|_res| RequestResult::ExtrinsicsShufflingSeed(relay_parent));
-		},
-		Request::PendingHead(sender) => {
-			let api = client.runtime_api();
-			let res = api
-				.pending_head(&BlockId::Hash(relay_parent))
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
-			metrics.on_request(res.is_ok());
-
-			let _ = sender.send(res.clone());
-
-			res.ok().map(|res| RequestResult::PendingHead(relay_parent, res));
 		},
 	}
 

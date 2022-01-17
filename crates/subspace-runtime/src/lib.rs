@@ -848,13 +848,6 @@ impl_runtime_apis! {
     }
 
     impl sp_executor::ExecutorApi<Block> for Runtime {
-        fn submit_candidate_receipt_unsigned(
-            head_number: <<Block as BlockT>::Header as HeaderT>::Number,
-            head_hash: <Block as BlockT>::Hash,
-        ) -> Option<()> {
-            Executor::submit_candidate_receipt_unsigned(head_number, head_hash).ok()
-        }
-
         fn submit_execution_receipt_unsigned(
             opaque_execution_receipt: sp_executor::OpaqueExecutionReceipt,
         ) -> Option<()> {
@@ -893,14 +886,6 @@ impl_runtime_apis! {
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             extrinsics_shuffling_seed::<Block>(header)
-        }
-
-        fn head_hash(number: <<Block as BlockT>::Header as HeaderT>::Number) -> Option<<Block as BlockT>::Hash> {
-            Executor::head_hash(number)
-        }
-
-        fn pending_head() -> Option<<Block as BlockT>::Hash> {
-            Executor::pending_head()
         }
     }
 

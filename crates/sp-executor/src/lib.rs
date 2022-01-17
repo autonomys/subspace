@@ -21,7 +21,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -177,12 +177,6 @@ pub struct InvalidTransactionProof;
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi {
-        /// Submits the candidate receipt via an unsigned extrinsic.
-        fn submit_candidate_receipt_unsigned(
-            head_number: <<Block as BlockT>::Header as HeaderT>::Number,
-            head_hash: <Block as BlockT>::Hash,
-        ) -> Option<()>;
-
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
             opaque_execution_receipt: OpaqueExecutionReceipt,
@@ -209,13 +203,5 @@ sp_api::decl_runtime_apis! {
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
-
-        /// Returns the block hash given the block number.
-        fn head_hash(
-            number: <<Block as BlockT>::Header as HeaderT>::Number,
-        ) -> Option<<Block as BlockT>::Hash>;
-
-        /// Returns the latest block hash of executor chain.
-        fn pending_head() -> Option<<Block as BlockT>::Hash>;
     }
 }
