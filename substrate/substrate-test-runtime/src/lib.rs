@@ -939,11 +939,10 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
-                fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
-                    sp_consensus_subspace::SubspaceGenesisConfiguration {
-                        slot_duration: 1000,
-                        c: (3, 10),
-                    }
+                fn slot_duration() -> core::time::Duration {
+                    core::time::Duration::from_millis(
+                        <pallet_subspace::Pallet<Runtime>>::slot_duration()
+                    )
                 }
 
                 fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
@@ -1254,11 +1253,10 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
 
-                fn configuration() -> sp_consensus_subspace::SubspaceGenesisConfiguration {
-                    sp_consensus_subspace::SubspaceGenesisConfiguration {
-                        slot_duration: 1000,
-                        c: (3, 10),
-                    }
+                fn slot_duration() -> core::time::Duration {
+                    core::time::Duration::from_millis(
+                        <pallet_subspace::Pallet<Runtime>>::slot_duration()
+                    )
                 }
 
                 fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {

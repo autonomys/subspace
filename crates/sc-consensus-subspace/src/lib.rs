@@ -76,7 +76,7 @@ use sc_consensus::import_queue::{
 use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SlotProportion,
+    SlotDuration, SlotProportion,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -94,9 +94,7 @@ use sp_consensus_subspace::digests::{
     SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
-use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceGenesisConfiguration,
-};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{ExecutionContext, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::BlockId;
@@ -252,14 +250,20 @@ fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
     error
 }
 
+#[derive(Debug, Copy, Clone)]
+struct SubspaceSlotData(Duration);
+
+impl sp_consensus::SlotData for SubspaceSlotData {
+    fn slot_duration(&self) -> Duration {
+        self.0
+    }
+}
+
 /// A slot duration.
 ///
 /// Create with [`Self::get`].
-// FIXME: Once Rust has higher-kinded types, the duplication between this
-// and `super::subspace::Config` can be eliminated.
-// https://github.com/paritytech/substrate/issues/2434
 #[derive(Clone)]
-pub struct Config(sc_consensus_slots::SlotDuration<SubspaceGenesisConfiguration>);
+pub struct Config(SlotDuration<SubspaceSlotData>);
 
 impl Config {
     /// Fetch the config from the runtime.
@@ -278,32 +282,14 @@ impl Config {
             );
             best_block_id = BlockId::Hash(client.usage_info().chain.genesis_hash);
         }
-        let runtime_api = client.runtime_api();
+        let slot_duration = client.runtime_api().slot_duration(&best_block_id)?;
 
-        let version = runtime_api.api_version::<dyn SubspaceApi<B>>(&best_block_id)?;
-
-        let slot_duration = if version == Some(1) {
-            runtime_api.configuration(&best_block_id)?
-        } else {
-            return Err(sp_blockchain::Error::VersionInvalid(
-                "Unsupported or invalid SubspaceApi version".to_string(),
-            ));
-        };
-
-        Ok(Self(sc_consensus_slots::SlotDuration::new(slot_duration)))
+        Ok(Self(SlotDuration::new(SubspaceSlotData(slot_duration))))
     }
 
     /// Get the inner slot duration
     pub fn slot_duration(&self) -> Duration {
         self.0.slot_duration()
-    }
-}
-
-impl std::ops::Deref for Config {
-    type Target = SubspaceGenesisConfiguration;
-
-    fn deref(&self) -> &SubspaceGenesisConfiguration {
-        &*self.0
     }
 }
 

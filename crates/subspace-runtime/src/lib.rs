@@ -24,6 +24,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
+use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -40,7 +41,6 @@ use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
-    SubspaceGenesisConfiguration,
 };
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
@@ -834,16 +834,8 @@ impl_runtime_apis! {
             <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
         }
 
-        fn configuration() -> SubspaceGenesisConfiguration {
-            // The choice of `c` parameter (where `1 - c` represents the
-            // probability of a slot being empty), is done in accordance to the
-            // slot duration and expected target block time, for safely
-            // resisting network delays of maximum two seconds.
-            // <https://research.web3.foundation/en/latest/polkadot/BABE/Babe/#6-practical-results>
-            SubspaceGenesisConfiguration {
-                slot_duration: Subspace::slot_duration(),
-                c: SlotProbability::get(),
-            }
+        fn slot_duration() -> Duration {
+            Duration::from_millis(Subspace::slot_duration())
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {
