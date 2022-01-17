@@ -30,7 +30,6 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT, Zero},
-	SaturatedConversion,
 };
 use sp_trie::StorageProof;
 
@@ -41,8 +40,7 @@ use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
-	BundleResult, Collation, CollationGenerationConfig, CollationResult, CollatorPair,
-	ExecutorSlotInfo, HeadData, PersistedValidationData, ProcessorResult,
+	BundleResult, CollationGenerationConfig, CollatorPair, ExecutorSlotInfo, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, Hash, SecondaryApi};
 use sp_executor::{
@@ -52,7 +50,6 @@ use sp_executor::{
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
-use codec::{Decode, Encode};
 use futures::FutureExt;
 use std::sync::{
 	atomic::{AtomicBool, Ordering},
@@ -66,6 +63,7 @@ const LOG_TARGET: &str = "cirrus::executor";
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> {
 	block_status: Arc<BS>,
+	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	runtime_api: Arc<RA>,
 	client: Arc<Client>,
@@ -105,6 +103,11 @@ impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	BS: BlockBackend<Block>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block>,
@@ -150,6 +153,7 @@ where
 	/// Checks the status of the given block hash in the Parachain.
 	///
 	/// Returns `true` if the block could be found and is good to be build on.
+	#[allow(unused)]
 	fn check_block_status(
 		&self,
 		hash: Block::Hash,
@@ -285,75 +289,6 @@ where
 		);
 	}
 
-	async fn produce_candidate(
-		mut self,
-		relay_parent: PHash,
-		validation_data: PersistedValidationData,
-	) -> Option<CollationResult> {
-		tracing::trace!(
-			target: LOG_TARGET,
-			relay_parent = ?relay_parent,
-			validation_data = ?validation_data,
-			"Producing candidate",
-		);
-
-		// Try retrieving the latest pending head from primary chain,otherwise fall
-		// back to the local best hash which should definitely be the genesis hash.
-		let maybe_pending_head = match <Option<<Block::Header as HeaderT>::Hash>>::decode(
-			&mut &validation_data.parent_head[..],
-		) {
-			Ok(h) => h,
-			Err(e) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Could not decode the pending head hash."
-				);
-				return None
-			},
-		};
-
-		let best_number = self.client.info().best_number;
-
-		let last_head_hash = if let Some(pending_head) = maybe_pending_head {
-			pending_head
-		} else {
-			assert_eq!(best_number.saturated_into::<u32>(), 0u32);
-			self.client.info().best_hash
-		};
-
-		if !self.check_block_status(last_head_hash, best_number) {
-			return None
-		}
-
-		tracing::info!(
-			target: LOG_TARGET,
-			relay_parent = ?relay_parent,
-			client_info = ?self.client.info(),
-			"Starting collation.",
-		);
-
-		let last_head = self
-			.client
-			.header(BlockId::Hash(last_head_hash))
-			.ok()?
-			.expect("Failed to fetch the best header");
-
-		// FIXME: handle PersistedValidationData
-		let validation_data = Default::default();
-		let candidate = self
-			.parachain_consensus
-			.produce_candidate(&last_head, relay_parent, &validation_data)
-			.await?;
-
-		let (header, _extrinsics) = candidate.block.deconstruct();
-
-		let head_data = HeadData(header.encode());
-		let number = best_number.saturated_into::<u32>() + 1u32;
-
-		Some(CollationResult { collation: Collation { head_data, number }, result_sender: None })
-	}
-
 	async fn produce_bundle(
 		self,
 		primary_hash: PHash,
@@ -412,6 +347,11 @@ impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP> GossipMessageHandler
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	BS: BlockBackend<Block> + Send + Sync,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync,
@@ -544,6 +484,11 @@ where
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
 	RA::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
@@ -572,18 +517,6 @@ where
 	let span = tracing::Span::current();
 	let config = CollationGenerationConfig {
 		key,
-		collator: {
-			let executor = executor.clone();
-			let span = span.clone();
-
-			Box::new(move |relay_parent, validation_data| {
-				let executor = executor.clone();
-				executor
-					.produce_candidate(relay_parent, validation_data.clone())
-					.instrument(span.clone())
-					.boxed()
-			})
-		},
 		bundler: {
 			let executor = executor.clone();
 			let span = span.clone();

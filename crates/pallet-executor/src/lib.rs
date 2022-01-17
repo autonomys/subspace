@@ -52,8 +52,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// The head has been already included.
-        HeadAlreadyExists,
         /// The head number was wrong against the latest head.
         UnexpectedHeadNumber,
     }
@@ -61,11 +59,6 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A new candidate receipt was backed.
-        CandidateReceiptStored {
-            head_number: T::BlockNumber,
-            head_hash: T::Hash,
-        },
         /// A new candidate receipt was backed.
         ExecutionReceiptStored { receipt_hash: H256 },
         /// A transaction bundle was included.
@@ -80,42 +73,6 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_candidate_receipt(
-            origin: OriginFor<T>,
-            head_number: T::BlockNumber,
-            head_hash: T::Hash,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting candidate receipt, head_number: {:?}, head_hash: {:?}",
-                head_number,
-                head_hash
-            );
-
-            ensure!(
-                head_number == Self::last_head_number() + 1u32.into(),
-                Error::<T>::UnexpectedHeadNumber
-            );
-
-            ensure!(
-                !Heads::<T>::contains_key(head_number),
-                Error::<T>::HeadAlreadyExists
-            );
-
-            LastHeadNumber::<T>::put(head_number);
-            Heads::<T>::insert(head_number, head_hash);
-
-            Self::deposit_event(Event::CandidateReceiptStored {
-                head_number,
-                head_hash,
-            });
-
-            Ok(())
-        }
-
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
@@ -216,18 +173,6 @@ mod pallet {
         }
     }
 
-    /// Latest block number of executor chain.
-    ///
-    /// This block is either waiting to be imported or already has been imported by the executor chain.
-    #[pallet::storage]
-    #[pallet::getter(fn last_head_number)]
-    pub(super) type LastHeadNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
-
-    /// Map of executor block number to the hash of that block.
-    #[pallet::storage]
-    #[pallet::getter(fn heads)]
-    pub(super) type Heads<T: Config> = StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash>;
-
     /// Constructs a `TransactionValidity` with pallet-executor specific defaults.
     fn unsigned_validity(prefix: &'static str, tag: impl Encode) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
@@ -244,7 +189,6 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_candidate_receipt { .. } => Ok(()),
                 Call::submit_execution_receipt { .. } => Ok(()),
                 Call::submit_transaction_bundle { .. } => Ok(()),
                 Call::submit_fraud_proof { .. } => Ok(()),
@@ -256,10 +200,6 @@ mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::submit_candidate_receipt {
-                    head_number,
-                    head_hash,
-                } => unsigned_validity("SubspaceSubmitCandidateReceipt", (head_number, head_hash)),
                 Call::submit_execution_receipt { execution_receipt } => {
                     // TODO: validate the Proof-of-Election
 
@@ -324,16 +264,6 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    /// Returns the block hash given the block number.
-    pub fn head_hash(number: T::BlockNumber) -> Option<T::Hash> {
-        <Heads<T>>::get(number)
-    }
-
-    /// Returns the latest block hash of executor chain.
-    pub fn pending_head() -> Option<T::Hash> {
-        <Heads<T>>::get(Self::last_head_number())
-    }
-
     // TODO: Checks if the fraud proof is valid.
     fn check_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
         Ok(())
@@ -358,30 +288,6 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    /// Submits an unsigned extrinsic [`Call::submit_candidate_receipt`].
-    pub fn submit_candidate_receipt_unsigned(
-        head_number: T::BlockNumber,
-        head_hash: T::Hash,
-    ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_candidate_receipt {
-            head_number,
-            head_hash,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted candidate receipt.")
-            }
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting candidate receipt: {:?}",
-                e
-            ),
-        }
-
-        Ok(())
-    }
-
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
         execution_receipt: ExecutionReceipt<T::Hash>,

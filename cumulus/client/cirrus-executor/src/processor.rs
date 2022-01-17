@@ -1,13 +1,18 @@
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::BlockBackend;
+use sc_consensus::{
+	BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction, StorageChanges,
+};
 use sp_api::ProvideRuntimeApi;
+use sp_consensus::BlockOrigin;
 use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 use std::{
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
 };
 
+use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_node_primitives::ProcessorResult;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{ExecutionReceipt, OpaqueBundle};
@@ -65,9 +70,20 @@ impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	BS: BlockBackend<Block>,
+	Backend: sc_client_api::Backend<Block>,
 	RA: ProvideRuntimeApi<Block>,
-	RA::Api: SecondaryApi<Block, AccountId>,
+	RA::Api: SecondaryApi<Block, AccountId>
+		+ sp_block_builder::BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
 	/// Actually implements `process_bundles`.
@@ -132,8 +148,30 @@ where
 			},
 		};
 
-		let _final_extrinsics =
+		let extrinsics =
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+
+		let block_builder = BlockBuilder::new(
+			&*self.runtime_api,
+			self.client.info().best_hash,
+			self.client.info().best_number,
+			RecordProof::No,
+			Default::default(),
+			&*self.backend,
+			extrinsics,
+		)?;
+		let BuiltBlock { block, storage_changes, proof: _ } = block_builder.build()?;
+		let (header, body) = block.deconstruct();
+		let block_import_params = {
+			let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+			import_block.body = Some(body);
+			import_block.state_action =
+				StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
+			// TODO: double check the fork choice is correct, see also ParachainBlockImport.
+			import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+			import_block
+		};
+		(&*self.client).import_block(block_import_params, Default::default()).await?;
 
 		// TODO: now we have the final transaction list:
 		// - apply each tx one by one.

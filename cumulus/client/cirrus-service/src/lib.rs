@@ -130,7 +130,11 @@ where
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
 	RClient: RelaychainClient + Clone + Send + Sync + 'static,
-	for<'b> &'b Client: BlockImport<Block>,
+	for<'b> &'b Client: BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 	IQ: ImportQueue<Block> + 'static,
