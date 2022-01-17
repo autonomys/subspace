@@ -164,7 +164,7 @@ fn can_update_salt_on_eon_change() {
         let revealed_salts = Subspace::salts();
         assert_eq!(revealed_salts.current, initial_salts.current);
         assert!(revealed_salts.next.is_some());
-        assert_eq!(revealed_salts.switch_next_block, false);
+        assert!(!revealed_salts.switch_next_block);
 
         // Almost eon edge
         progress_to_block(&keypair, 5);
@@ -209,7 +209,7 @@ fn report_equivocation_current_session_works() {
         // slot with different block hashes and signed by the given key
         let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
 
-        assert_eq!(Subspace::is_in_block_list(&farmer_public_key), false);
+        assert!(!Subspace::is_in_block_list(&farmer_public_key));
 
         // report the equivocation
         Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
@@ -217,7 +217,7 @@ fn report_equivocation_current_session_works() {
         progress_to_block(&keypair, 2);
 
         // check that farmer was added to block list
-        assert_eq!(Subspace::is_in_block_list(&farmer_public_key), true);
+        assert!(Subspace::is_in_block_list(&farmer_public_key));
     });
 }
 
@@ -237,7 +237,7 @@ fn report_equivocation_old_session_works() {
         // from the previous block
         progress_to_block(&keypair, 2);
 
-        assert_eq!(Subspace::is_in_block_list(&farmer_public_key), false);
+        assert!(!Subspace::is_in_block_list(&farmer_public_key));
 
         // report the equivocation
         Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
@@ -245,7 +245,7 @@ fn report_equivocation_old_session_works() {
         progress_to_block(&keypair, 3);
 
         // check that farmer was added to block list
-        assert_eq!(Subspace::is_in_block_list(&farmer_public_key), true);
+        assert!(Subspace::is_in_block_list(&farmer_public_key));
     })
 }
 
@@ -296,7 +296,7 @@ fn report_equivocation_invalid_equivocation_proof() {
         // at the previous slot
         equivocation_proof.first_header = h1.clone();
 
-        assert_invalid_equivocation(equivocation_proof.clone());
+        assert_invalid_equivocation(equivocation_proof);
 
         // invalid seal signature
         let mut equivocation_proof =

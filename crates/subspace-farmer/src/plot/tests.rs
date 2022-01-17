@@ -23,9 +23,9 @@ async fn read_write() {
     let index = 0;
 
     let plot = Plot::open_or_create(&base_directory).unwrap();
-    assert_eq!(true, plot.is_empty());
+    assert!(plot.is_empty());
     plot.write_many(Arc::clone(&pieces), index).unwrap();
-    assert_eq!(false, plot.is_empty());
+    assert!(!plot.is_empty());
     let extracted_piece = plot.read(index).unwrap();
 
     assert_eq!(pieces[..], extracted_piece[..]);
@@ -34,7 +34,7 @@ async fn read_write() {
 
     // Make sure it is still not empty on reopen
     let plot = Plot::open_or_create(&base_directory).unwrap();
-    assert_eq!(false, plot.is_empty());
+    assert!(!plot.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]

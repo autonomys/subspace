@@ -30,9 +30,7 @@ fn batch() {
         piece.copy_from_slice(&rand::random::<[u8; PIECE_SIZE]>());
     }
     let original_pieces = pieces.clone();
-    let piece_indexes: Vec<u64> = iter::repeat_with(|| rand::random())
-        .take(piece_count)
-        .collect();
+    let piece_indexes: Vec<u64> = iter::repeat_with(rand::random).take(piece_count).collect();
 
     subspace_codec
         .batch_encode(&mut pieces, &piece_indexes)

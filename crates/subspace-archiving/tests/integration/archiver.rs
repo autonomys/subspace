@@ -132,9 +132,7 @@ fn archiver() {
             .pieces
             .as_pieces()
             .zip(&first_archived_segment.object_mapping)
-            .flat_map(|(piece, object_mapping)| {
-                iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
-            });
+            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
@@ -191,9 +189,7 @@ fn archiver() {
             .pieces
             .as_pieces()
             .zip(&archived_segments[0].object_mapping)
-            .flat_map(|(piece, object_mapping)| {
-                iter::repeat(piece.as_ref()).zip(&object_mapping.objects)
-            });
+            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
@@ -252,13 +248,13 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             last_root_block,
-            block_2.clone(),
+            block_2,
             BlockObjectMapping::default(),
         )
         .unwrap();
 
         assert_eq!(
-            archiver_with_initial_state.add_block(block_3.clone(), BlockObjectMapping::default()),
+            archiver_with_initial_state.add_block(block_3, BlockObjectMapping::default()),
             archived_segments,
         );
     }

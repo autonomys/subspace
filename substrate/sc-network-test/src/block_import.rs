@@ -46,14 +46,14 @@ fn prepare_good_block() -> (TestClient, Hash, u64, PeerId, IncomingBlock<Block>)
 		client,
 		hash,
 		number,
-		peer_id.clone(),
+		peer_id,
 		IncomingBlock {
 			hash,
 			header,
 			body: Some(Vec::new()),
 			indexed_body: None,
 			justifications,
-			origin: Some(peer_id.clone()),
+			origin: Some(peer_id),
 			allow_missing_state: false,
 			import_existing: false,
 			state: None,
@@ -67,8 +67,10 @@ fn prepare_good_block() -> (TestClient, Hash, u64, PeerId, IncomingBlock<Block>)
 fn import_single_good_block_works() {
 	let (_, _hash, number, peer_id, block) = prepare_good_block();
 
-	let mut expected_aux = ImportedAux::default();
-	expected_aux.is_new_best = true;
+	let expected_aux = ImportedAux {
+		is_new_best: true,
+		..ImportedAux::default()
+	};
 
 	match block_on(import_single_block(
 		&mut substrate_test_runtime_client::new(),
@@ -78,7 +80,7 @@ fn import_single_good_block_works() {
 	)) {
 		Ok(BlockImportStatus::ImportedUnknown(ref num, ref aux, ref org))
 			if *num == number && *aux == expected_aux && *org == Some(peer_id) => {},
-		r @ _ => panic!("{:?}", r),
+		r => panic!("{:?}", r),
 	}
 }
 
