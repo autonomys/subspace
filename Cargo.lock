@@ -1340,7 +1340,6 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-executor",
  "sp-runtime",
  "sp-trie",
  "subspace-runtime-primitives",

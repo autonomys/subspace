@@ -26,7 +26,6 @@ use futures::{
 	sink::SinkExt,
 	stream::StreamExt,
 };
-use parity_scale_codec::Encode;
 use polkadot_node_subsystem::{
 	messages::{
 		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
@@ -37,13 +36,11 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_extract_bundles, request_extrinsics_shuffling_seed, request_pending_head,
+	request_extract_bundles, request_extrinsics_shuffling_seed,
 };
 use std::sync::Arc;
 
-use cirrus_node_primitives::{
-	CollationGenerationConfig, ExecutorSlotInfo, PersistedValidationData,
-};
+use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::Hash;
 

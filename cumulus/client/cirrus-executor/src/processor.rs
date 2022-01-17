@@ -167,7 +167,7 @@ where
 			import_block.body = Some(body);
 			import_block.state_action =
 				StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-			// TODO: double check the fork choice is correct.
+			// TODO: double check the fork choice is correct, see also ParachainBlockImport.
 			import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 			import_block
 		};

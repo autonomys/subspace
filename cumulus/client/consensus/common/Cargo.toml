@@ -23,5 +23,4 @@ futures = { version = "0.3.19", features = ["compat"] }
 tracing = "0.1.25"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
-sp-executor = { path = "../../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

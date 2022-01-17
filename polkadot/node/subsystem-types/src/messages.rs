@@ -105,9 +105,6 @@ pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeA
 /// A request to the Runtime API subsystem.
 #[derive(Debug)]
 pub enum RuntimeApiRequest {
-	/// Submit the candidate receipt to primary chain.
-	// TODO: remove later
-	SubmitCandidateReceipt(u32, Hash),
 	/// Submit the execution receipt to primary chain.
 	SubmitExecutionReceipt(OpaqueExecutionReceipt),
 	/// Submit the transaction bundle to primary chain.
@@ -122,8 +119,6 @@ pub enum RuntimeApiRequest {
 	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<OpaqueBundle>>),
 	/// Get the randomness seed for extrinsics shuffling.
 	ExtrinsicsShufflingSeed(BlockHeader, RuntimeApiSender<Randomness>),
-	/// Get the pending head of executor chain.
-	PendingHead(RuntimeApiSender<Option<Hash>>),
 }
 
 /// A message to the Runtime API subsystem.

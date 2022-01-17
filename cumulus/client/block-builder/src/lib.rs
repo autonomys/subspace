@@ -193,6 +193,7 @@ where
 		let block_id = &self.block_id;
 
 		for xt in &self.extrinsics {
+			// TODO: rethink what to do if an error occurs when executing the transaction.
 			self.api.execute_in_transaction(|api| {
 				match api.apply_extrinsic_with_context(
 					block_id,

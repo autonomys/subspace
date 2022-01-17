@@ -19,21 +19,19 @@ use sc_client_api::{
 };
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy};
 use sp_api::ProvideRuntimeApi;
-use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
+use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_consensus::{BlockOrigin, BlockStatus};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
-	SaturatedConversion,
 };
 
-use codec::{Decode, Encode};
+use codec::Decode;
 use futures::{future, select, FutureExt, Stream, StreamExt};
 
 use std::{pin::Pin, sync::Arc};
 
-use sp_executor::ExecutorApi;
-use subspace_runtime_primitives::{opaque::Block as PBlock, BlockNumber};
+use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Helper for the relay chain client. This is expected to be a lightweight handle like an `Arc`.
 pub trait RelaychainClient: Clone + 'static {
@@ -48,12 +46,6 @@ pub trait RelaychainClient: Clone + 'static {
 		&self,
 		client: Arc<SecondaryClient>,
 	) -> Self::HeadStream;
-
-	fn executor_head_at(
-		&self,
-		at: &BlockId<PBlock>,
-		number: BlockNumber,
-	) -> ClientResult<Option<Vec<u8>>>;
 }
 
 /// Run the parachain consensus.
@@ -338,7 +330,6 @@ where
 impl<T> RelaychainClient for Arc<T>
 where
 	T: sc_client_api::BlockchainEvents<PBlock> + ProvideRuntimeApi<PBlock> + 'static + Send + Sync,
-	<T as ProvideRuntimeApi<PBlock>>::Api: sp_executor::ExecutorApi<PBlock>,
 {
 	type Error = ClientError;
 
@@ -349,34 +340,17 @@ where
 		SecondaryClient: sp_blockchain::HeaderBackend<Block> + 'static,
 	>(
 		&self,
-		client: Arc<SecondaryClient>,
+		_client: Arc<SecondaryClient>,
 	) -> Self::HeadStream {
-		let relay_chain = self.clone();
-
 		self.import_notification_stream()
 			.filter_map(move |n| {
 				future::ready(if n.is_new_best {
-					let best_number = client.info().best_number;
-					let pending_number = best_number.saturated_into::<BlockNumber>() + 1;
-					relay_chain
-						.executor_head_at(&BlockId::hash(n.hash), pending_number)
-						.ok()
-						.flatten()
+					// Executor node no longer relays on the relay chain block import.
+					None
 				} else {
 					None
 				})
 			})
 			.boxed()
-	}
-
-	fn executor_head_at(
-		&self,
-		at: &BlockId<PBlock>,
-		number: BlockNumber,
-	) -> ClientResult<Option<Vec<u8>>> {
-		self.runtime_api()
-			.head_hash(at, number)
-			.map(|h| h.map(|h| h.encode()))
-			.map_err(Into::into)
 	}
 }
