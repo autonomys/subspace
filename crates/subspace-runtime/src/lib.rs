@@ -648,21 +648,13 @@ fn extract_call_block_object_mapping(
 
     match call {
         Call::Feeds(call) => {
-            // `+1` for enum variant offset
-            extract_feeds_block_object_mapping(base_offset + 1, objects, call);
+            extract_feeds_block_object_mapping(base_offset, objects, call);
         }
         Call::ObjectStore(call) => {
-            // `+1` for enum variant offset
-            extract_object_store_block_object_mapping(base_offset + 1, objects, call);
+            extract_object_store_block_object_mapping(base_offset, objects, call);
         }
         Call::Utility(call) => {
-            // `+1` for enum variant offset
-            extract_utility_block_object_mapping(
-                base_offset + 1,
-                objects,
-                call,
-                recursion_depth_left,
-            );
+            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left);
         }
         _ => {}
     }
