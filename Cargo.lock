@@ -828,6 +828,7 @@ dependencies = [
  "rand 0.8.4",
  "rand_chacha 0.3.1",
  "sc-client-api",
+ "sc-consensus",
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",

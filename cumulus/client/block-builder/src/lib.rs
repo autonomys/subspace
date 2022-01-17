@@ -163,6 +163,7 @@ where
 		record_proof: RecordProof,
 		inherent_digests: Digest,
 		backend: &'a B,
+		extrinsics: Vec<Block::Extrinsic>,
 	) -> Result<Self, Error> {
 		let header = <<Block as BlockT>::Header as HeaderT>::new(
 			parent_number + One::one(),
@@ -184,39 +185,30 @@ where
 
 		api.initialize_block_with_context(&block_id, ExecutionContext::BlockConstruction, &header)?;
 
-		Ok(Self {
-			parent_hash,
-			extrinsics: Vec::new(),
-			api,
-			block_id,
-			backend,
-			estimated_header_size,
-		})
+		Ok(Self { parent_hash, extrinsics, api, block_id, backend, estimated_header_size })
 	}
 
-	/// Push onto the block's list of extrinsics.
-	///
-	/// This will ensure the extrinsic can be validly executed (by executing it).
-	pub fn push(&mut self, xt: <Block as BlockT>::Extrinsic) -> Result<(), Error> {
+	/// Execute the block's list of extrinsics.
+	fn execute_extrinsics(&self) -> Result<(), Error> {
 		let block_id = &self.block_id;
-		let extrinsics = &mut self.extrinsics;
 
-		self.api.execute_in_transaction(|api| {
-			match api.apply_extrinsic_with_context(
-				block_id,
-				ExecutionContext::BlockConstruction,
-				xt.clone(),
-			) {
-				Ok(Ok(_)) => {
-					extrinsics.push(xt);
-					TransactionOutcome::Commit(Ok(()))
-				},
-				Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
-					ApplyExtrinsicFailed::Validity(tx_validity).into(),
-				)),
-				Err(e) => TransactionOutcome::Rollback(Err(Error::from(e))),
-			}
-		})
+		for xt in &self.extrinsics {
+			self.api.execute_in_transaction(|api| {
+				match api.apply_extrinsic_with_context(
+					block_id,
+					ExecutionContext::BlockConstruction,
+					xt.clone(),
+				) {
+					Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
+					Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
+						ApplyExtrinsicFailed::Validity(tx_validity).into(),
+					)),
+					Err(e) => TransactionOutcome::Rollback(Err(Error::from(e))),
+				}
+			})?;
+		}
+
+		Ok(())
 	}
 
 	/// Consume the builder to build a valid `Block` containing all pushed extrinsics.
@@ -225,6 +217,8 @@ where
 	/// supplied by `self.api`, combined as [`BuiltBlock`].
 	/// The storage proof will be `Some(_)` when proof recording was enabled.
 	pub fn build(mut self) -> Result<BuiltBlock<Block, backend::StateBackendFor<B, Block>>, Error> {
+		self.execute_extrinsics()?;
+
 		let header = self
 			.api
 			.finalize_block_with_context(&self.block_id, ExecutionContext::BlockConstruction)?;
@@ -311,6 +305,7 @@ mod tests {
 			RecordProof::Yes,
 			Default::default(),
 			&*backend,
+			Vec::new(),
 		)
 		.unwrap()
 		.build()

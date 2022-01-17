@@ -105,6 +105,11 @@ impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	BS: BlockBackend<Block>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block>,
@@ -412,6 +417,11 @@ impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP> GossipMessageHandler
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	BS: BlockBackend<Block> + Send + Sync,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	RA: ProvideRuntimeApi<Block> + Send + Sync,
@@ -544,6 +554,11 @@ where
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block> + Send + Sync + 'static,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<RA, Block>,
+		Error = sp_consensus::Error,
+	>,
 	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
 	RA::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
