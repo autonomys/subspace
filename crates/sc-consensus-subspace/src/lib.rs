@@ -141,7 +141,6 @@ pub struct BlockSigningNotification {
     pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }
 
-// TODO: Re-check errors that are still in use
 /// Errors encountered by the Subspace authorship task.
 #[derive(derive_more::Display, Debug)]
 pub enum Error<B: BlockT> {
@@ -151,9 +150,6 @@ pub enum Error<B: BlockT> {
     /// No Subspace pre-runtime digest found
     #[display(fmt = "No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
-    /// Multiple Subspace config change digests
-    #[display(fmt = "Multiple Subspace config change digests, rejecting!")]
-    MultipleConfigChangeDigests,
     /// Multiple Subspace global randomness digests
     #[display(fmt = "Multiple Subspace global randomness digests, rejecting!")]
     MultipleGlobalRandomnessDigests,
@@ -163,9 +159,6 @@ pub enum Error<B: BlockT> {
     /// Multiple Subspace salt digests
     #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
-    /// Could not extract timestamp and slot
-    #[display(fmt = "Could not extract timestamp and slot: {:?}", _0)]
-    Extraction(sp_consensus::Error),
     /// Header rejected: too far in the future
     #[display(fmt = "Header {:?} rejected: too far in the future", _0)]
     TooFarInFuture(B::Hash),
@@ -203,9 +196,6 @@ pub enum Error<B: BlockT> {
     /// Invalid tag for salt
     #[display(fmt = "Invalid tag for salt for slot {}", _0)]
     InvalidTag(Slot),
-    /// Could not fetch parent header
-    #[display(fmt = "Could not fetch parent header: {:?}", _0)]
-    FetchParentHeader(sp_blockchain::Error),
     /// Parent block has no associated weight
     #[display(fmt = "Parent block of {} has no associated weight", _0)]
     ParentBlockNoAssociatedWeight(B::Hash),
@@ -249,8 +239,6 @@ pub enum Error<B: BlockT> {
     Client(sp_blockchain::Error),
     /// Runtime Api error.
     RuntimeApi(sp_api::ApiError),
-    /// Fork tree error
-    ForkTree(Box<fork_tree::Error<sp_blockchain::Error>>),
 }
 
 impl<B: BlockT> std::convert::From<Error<B>> for String {
@@ -1095,8 +1083,6 @@ where
                 already been verified; qed",
             );
 
-        // TODO: There doesn't seem to be any protection from slots being too far in the future, at
-        //  least there isn't now
         // Make sure that slot number is strictly increasing
         if slot <= parent_slot {
             return Err(ConsensusError::ClientImport(
