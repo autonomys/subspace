@@ -11,10 +11,8 @@ use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
-use subspace_core_primitives::{LocalChallenge, Salt};
-use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, SlotInfo, Solution, SolutionResponse,
-};
+use subspace_core_primitives::{LocalChallenge, Salt, Solution};
+use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 

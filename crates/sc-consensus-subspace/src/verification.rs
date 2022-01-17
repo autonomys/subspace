@@ -21,13 +21,13 @@ use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::ByteArray;
 use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
-use subspace_core_primitives::{Randomness, Salt, Sha256Hash};
+use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
 use subspace_solving::{derive_global_challenge, is_local_challenge_valid, SubspaceCodec};
 
 /// Subspace verification parameters

@@ -19,44 +19,9 @@
 use crate::{ConsensusLog, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
-use sp_core::crypto::UncheckedFrom;
 use sp_runtime::generic::DigestItemRef;
 use sp_runtime::{DigestItem, RuntimeDebug};
-use subspace_core_primitives::{LocalChallenge, Piece, Randomness, Salt, Signature, Tag};
-
-/// Farmer solution for slot challenge.
-#[derive(Clone, RuntimeDebug, Encode, Decode)]
-pub struct Solution<AccountId> {
-    /// Public key of the farmer that created the solution
-    pub public_key: AccountId,
-    /// Index of encoded piece
-    pub piece_index: u64,
-    /// Encoding
-    pub encoding: Piece,
-    /// Signature of the tag
-    pub signature: Signature,
-    /// Local challenge derived from global challenge using farmer's identity.
-    pub local_challenge: LocalChallenge,
-    /// Tag (hmac of encoding and salt)
-    pub tag: Tag,
-}
-
-impl<AccountId> Solution<AccountId>
-where
-    AccountId: UncheckedFrom<[u8; 32]>,
-{
-    /// Dummy solution for the genesis block
-    pub fn genesis_solution() -> Self {
-        Self {
-            public_key: AccountId::unchecked_from([0u8; 32]),
-            piece_index: 0u64,
-            encoding: Piece::default(),
-            signature: Signature::default(),
-            local_challenge: LocalChallenge::default(),
-            tag: Tag::default(),
-        }
-    }
-}
+use subspace_core_primitives::{Randomness, Salt, Solution};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.

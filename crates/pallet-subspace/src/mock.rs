@@ -25,7 +25,7 @@ use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, Solution};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
@@ -35,7 +35,8 @@ use sp_runtime::{
     Perbill,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash,
+    Solution, Tag,
 };
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 

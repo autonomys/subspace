@@ -456,3 +456,35 @@ impl RootBlock {
         }
     }
 }
+
+/// Farmer solution for slot challenge.
+#[derive(Clone, Debug, Encode, Decode)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Solution<AccountId> {
+    /// Public key of the farmer that created the solution
+    pub public_key: AccountId,
+    /// Index of encoded piece
+    pub piece_index: u64,
+    /// Encoding
+    pub encoding: Piece,
+    /// Signature of the tag
+    pub signature: Signature,
+    /// Local challenge derived from global challenge using farmer's identity.
+    pub local_challenge: LocalChallenge,
+    /// Tag (hmac of encoding and salt)
+    pub tag: Tag,
+}
+
+impl<AccountId> Solution<AccountId> {
+    /// Dummy solution for the genesis block
+    pub fn genesis_solution(public_key: AccountId) -> Self {
+        Self {
+            public_key,
+            piece_index: 0u64,
+            encoding: Piece::default(),
+            signature: Signature::default(),
+            local_challenge: LocalChallenge::default(),
+            tag: Tag::default(),
+        }
+    }
+}

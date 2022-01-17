@@ -90,11 +90,12 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, Solution,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_core::crypto::UncheckedFrom;
 use sp_core::{ExecutionContext, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::generic::BlockId;
@@ -103,7 +104,7 @@ use std::cmp::Ordering;
 use std::future::Future;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Tag};
+use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 /// Information about new slot that just arrived
@@ -452,7 +453,7 @@ pub fn find_pre_digest<B: BlockT>(
     if header.number().is_zero() {
         return Ok(PreDigest {
             slot: Slot::from(0),
-            solution: Solution::genesis_solution(),
+            solution: Solution::genesis_solution(FarmerPublicKey::unchecked_from([0u8; 32])),
         });
     }
 

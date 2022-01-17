@@ -19,7 +19,7 @@ use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, LocalChallenge, Piece, PublicKey, Salt, Signature, SlotNumber, Tag,
+    BlockNumber, PublicKey, Salt, Signature, SlotNumber, Solution, Tag,
 };
 
 /// Encoded block with mapping of objects that it contains
@@ -72,7 +72,7 @@ pub struct SolutionResponse {
     /// Optional solution.
     ///
     /// Derived from the farmer's plot corresponding to `slot_number` above.
-    pub maybe_solution: Option<Solution>,
+    pub maybe_solution: Option<Solution<PublicKey>>,
 }
 
 /// Block header hash that needs to be signed.
@@ -93,26 +93,4 @@ pub struct BlockSignature {
     pub header_hash: [u8; 32],
     /// Block header hash signature.
     pub signature: Option<Signature>,
-}
-
-// TODO: Deduplicate this type
-/// Duplicate type of [sp_consensus_subspace::digests::Solution] as we'd like to
-/// not pull in the Substrate libraries when it only related to the Subspace functionalities.
-///
-/// [sp_consensus_subspace::digests::Solution]: ../sp_consensus_subspace/digests/struct.Solution.html
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Solution {
-    /// Public key of the farmer that created the solution
-    pub public_key: PublicKey,
-    /// Index of encoded piece
-    pub piece_index: u64,
-    /// Encoding
-    pub encoding: Piece,
-    /// Signature of the tag
-    pub signature: Signature,
-    /// Local challenge derived from global challenge using farmer's identity.
-    pub local_challenge: LocalChallenge,
-    /// Tag (hmac of encoding and salt)
-    pub tag: Tag,
 }

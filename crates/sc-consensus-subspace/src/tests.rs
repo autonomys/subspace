@@ -51,7 +51,7 @@ use sp_consensus::{
 };
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, SaltDescriptor, Solution, SolutionRangeDescriptor,
+    CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
@@ -67,7 +67,7 @@ use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Tag};
+use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Solution, Tag};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 

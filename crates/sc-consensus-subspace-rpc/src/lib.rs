@@ -33,7 +33,6 @@ use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNo
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::Solution;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
@@ -42,7 +41,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{BlockNumber, Solution};
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
