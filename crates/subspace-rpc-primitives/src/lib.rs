@@ -18,13 +18,9 @@
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{LocalChallenge, Piece, PublicKey, Salt, Signature, Tag};
-
-/// Type of a slot number.
-pub type SlotNumber = u64;
-
-/// An index to a block.
-pub type BlockNumber = u32;
+use subspace_core_primitives::{
+    BlockNumber, LocalChallenge, Piece, PublicKey, Salt, Signature, SlotNumber, Tag,
+};
 
 /// Encoded block with mapping of objects that it contains
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,7 +39,7 @@ pub struct EncodedBlockWithObjectMapping {
 pub struct FarmerMetadata {
     /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
     /// to the client-dependent transaction confirmation depth `k`).
-    pub confirmation_depth_k: u32,
+    pub confirmation_depth_k: BlockNumber,
     /// The size of data in one piece (in bytes).
     pub record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).

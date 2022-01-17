@@ -31,8 +31,8 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    crypto, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, RootBlock, Sha256Hash,
-    PIECE_SIZE, SHA256_HASH_SIZE,
+    crypto, ArchivedBlockProgress, BlockNumber, FlatPieces, LastArchivedBlock, RootBlock,
+    Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -157,7 +157,7 @@ pub enum ArchiverInstantiationError {
         feature = "thiserror",
         error("Invalid last archived block, its size {0} bytes is the same as encoded block")
     )]
-    InvalidLastArchivedBlock(u32),
+    InvalidLastArchivedBlock(BlockNumber),
     /// Invalid block, its size is smaller than already archived number of bytes
     #[cfg_attr(
         feature = "thiserror",
@@ -318,7 +318,7 @@ impl Archiver {
     }
 
     /// Get last archived block if there was any
-    pub fn last_archived_block_number(&self) -> Option<u32> {
+    pub fn last_archived_block_number(&self) -> Option<BlockNumber> {
         if self.last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
             Some(self.last_archived_block.number)
         } else {

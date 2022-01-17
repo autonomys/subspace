@@ -62,6 +62,12 @@ pub const SALT_SIZE: usize = 8;
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; SALT_SIZE];
 
+/// Block number in Subspace network.
+pub type BlockNumber = u32;
+
+/// Slot number in Subspace network.
+pub type SlotNumber = u64;
+
 const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.

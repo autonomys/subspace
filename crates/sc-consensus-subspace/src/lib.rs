@@ -105,7 +105,7 @@ use std::cmp::Ordering;
 use std::future::Future;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 pub use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RootBlock, Salt, Tag};
+use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 /// Information about new slot that just arrived
@@ -1264,15 +1264,14 @@ where
 
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
-    let confirmation_depth_k = TryInto::<u32>::try_into(
+    let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
         client
             .runtime_api()
             .confirmation_depth_k(&best_block_id)
             .expect("Failed to get `confirmation_depth_k` from runtime API"),
     )
     .unwrap_or_else(|_| {
-        // TODO: We might bump block number from `u32` to `u64` in the future
-        panic!("Confirmation depth K can't be converted into u32");
+        panic!("Confirmation depth K can't be converted into BlockNumber");
     });
 
     let link = SubspaceLink {
