@@ -37,6 +37,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_core::{traits::SpawnNamed, Pair};
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	traits::{Block as BlockT, NumberFor},
 	Justifications,
@@ -67,7 +68,18 @@ impl<C> Deref for PrimaryFullNode<C> {
 }
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, IQ, TP> {
+pub struct StartExecutorParams<
+	'a,
+	Block: BlockT,
+	BS,
+	Client,
+	Spawner,
+	RClient,
+	IQ,
+	TP,
+	Backend,
+	CIDP,
+> {
 	pub block_status: Arc<BS>,
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
@@ -78,10 +90,12 @@ pub struct StartExecutorParams<'a, Block: BlockT, BS, Client, Spawner, RClient, 
 	pub import_queue: IQ,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
+	pub backend: Arc<Backend>,
+	pub create_inherent_data_providers: Arc<CIDP>,
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ, TP>(
+pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
 	StartExecutorParams {
 		block_status,
 		client,
@@ -93,7 +107,9 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		import_queue: _,
 		transaction_pool,
 		network,
-	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP>,
+		backend,
+		create_inherent_data_providers,
+	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
 ) -> sc_service::error::Result<()>
 where
 	Block: BlockT,
@@ -107,13 +123,19 @@ where
 		+ BlockchainEvents<Block>
 		+ ProvideRuntimeApi<Block>
 		+ 'static,
-	Client::Api: cirrus_primitives::SecondaryApi<Block, cirrus_primitives::AccountId>,
+	Client::Api: cirrus_primitives::SecondaryApi<Block, cirrus_primitives::AccountId>
+		+ sp_block_builder::BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
 	RClient: RelaychainClient + Clone + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<Block>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 	IQ: ImportQueue<Block> + 'static,
 	TP: TransactionPool<Block = Block> + 'static,
+	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash> + 'static,
 {
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
 		client.clone(),
@@ -146,6 +168,8 @@ where
 			transaction_pool,
 			bundle_sender,
 			execution_receipt_sender,
+			backend,
+			create_inherent_data_providers,
 		})
 		.await;
 

@@ -7,21 +7,21 @@ edition = "2021"
 
 [dependencies]
 # Substrate deps
-sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
 
 # Other deps
-futures = { version = "0.3.19", features = ["compat"] }
-codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
-tracing = "0.1.25"
 async-trait = "0.1.52"
+codec = { package = "parity-scale-codec", version = "2.3.0", features = [ "derive" ] }
 dyn-clone = "1.0.4"
+futures = { version = "0.3.19", features = ["compat"] }
+tracing = "0.1.25"
 
-sp-executor = { path = "../../../../crates/sp-executor" }
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
+sp-executor = { path = "../../../../crates/sp-executor" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

@@ -60,7 +60,8 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, BS, RA, Client, TransactionPool> Executor<Block, BS, RA, Client, TransactionPool>
+impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>,
@@ -71,11 +72,11 @@ where
 {
 	/// Actually implements `process_bundles`.
 	pub(super) async fn process_bundles_impl(
-		self,
+		&self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
-	) -> Option<ProcessorResult> {
+	) -> Result<Option<ProcessorResult>, sp_blockchain::Error> {
 		let mut extrinsics = bundles
 			.into_iter()
 			.flat_map(|bundle| {
@@ -127,7 +128,7 @@ where
 					error = ?e,
 					"Error at calling runtime api: extract_signer"
 				);
-				return None
+				return Err(e.into())
 			},
 		};
 
@@ -157,9 +158,9 @@ where
 			}
 
 			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() })
+			Ok(Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() }))
 		} else {
-			None
+			Ok(None)
 		}
 	}
 }

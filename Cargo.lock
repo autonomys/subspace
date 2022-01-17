@@ -795,9 +795,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-block-builder"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
+ "substrate-test-runtime-client",
+]
+
+[[package]]
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
+ "cirrus-block-builder",
  "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
@@ -814,11 +831,13 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
+ "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",
  "sp-executor",
+ "sp-inherents",
  "sp-keyring",
  "sp-runtime",
  "sp-trie",
@@ -864,9 +883,11 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
+ "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
+ "sp-inherents",
  "sp-runtime",
  "subspace-node",
  "tracing",

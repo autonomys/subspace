@@ -154,7 +154,7 @@ pub type CollatorFn = Box<
 ///
 /// Returns an optional [`BundleResult`].
 pub type BundlerFn = Box<
-    dyn Fn(ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
+    dyn Fn(Hash, ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<BundleResult>> + Send>>
         + Send
         + Sync,
 >;

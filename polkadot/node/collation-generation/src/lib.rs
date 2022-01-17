@@ -420,15 +420,15 @@ async fn produce_bundle<Context: SubsystemContext>(
 	ctx: &mut Context,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()> {
-	let opaque_bundle = match (config.bundler)(slot_info).await {
+	let best_hash = request_best_primary_hash(ctx).await?;
+
+	let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
 		Some(bundle_result) => bundle_result.to_opaque_bundle(),
 		None => {
 			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
 			return Ok(())
 		},
 	};
-
-	let best_hash = request_best_primary_hash(ctx).await?;
 
 	let mut task_sender = sender.clone();
 	ctx.spawn(

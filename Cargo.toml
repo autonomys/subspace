@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/*",
+    "cumulus/client/block-builder",
     "cumulus/client/cli",
     "cumulus/client/cirrus-service",
     "cumulus/client/cirrus-executor",
