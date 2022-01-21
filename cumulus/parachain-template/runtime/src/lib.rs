@@ -73,6 +73,7 @@ pub type Executive = cirrus_pallet_executive::Executive<
 	frame_system::ChainContext<Runtime>,
 	Runtime,
 	AllPalletsWithSystem,
+	Runtime,
 	OnRuntimeUpgrade,
 >;
 
@@ -318,6 +319,8 @@ impl pallet_transaction_payment::Config for Runtime {
 	type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+impl cirrus_pallet_executive::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -327,6 +330,7 @@ construct_runtime!(
 	{
 		// System support stuff.
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
+		ExecutivePallet: cirrus_pallet_executive::{Pallet, Storage} = 1,
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 3,
 
 		// Monetary stuff.

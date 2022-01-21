@@ -120,11 +120,12 @@ use codec::{Codec, Encode};
 use frame_support::{
 	dispatch::PostDispatchInfo,
 	traits::{
-		EnsureInherentsAreFirst, ExecuteBlock, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
-		OnRuntimeUpgrade,
+		EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle,
+		OnInitialize, OnRuntimeUpgrade,
 	},
 	weights::{DispatchClass, DispatchInfo, GetDispatchInfo},
 };
+pub use pallet::*;
 use sp_runtime::{
 	generic::Digest,
 	traits::{
@@ -139,6 +140,40 @@ use sp_std::{marker::PhantomData, prelude::*};
 pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
 pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::Origin;
+
+#[frame_support::pallet]
+mod pallet {
+	use frame_support::pallet_prelude::*;
+	use frame_system::pallet_prelude::*;
+	use sp_std::vec::Vec;
+
+	#[pallet::config]
+	pub trait Config: frame_system::Config {}
+
+	#[pallet::pallet]
+	#[pallet::generate_store(pub(super) trait Store)]
+	pub struct Pallet<T>(_);
+
+	#[pallet::hooks]
+	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		fn on_initialize(_block_number: T::BlockNumber) -> Weight {
+			// Reset the intermediate storage roots from last block.
+			IntermediateRoots::<T>::kill();
+			1
+		}
+	}
+
+	/// Intermediate storage roots collected during the block execution.
+	#[pallet::storage]
+	#[pallet::getter(fn intermediate_roots)]
+	pub(super) type IntermediateRoots<T: Config> = StorageValue<_, Vec<Vec<u8>>, ValueQuery>;
+}
+
+impl<T: Config> Pallet<T> {
+	pub(crate) fn push_root(root: Vec<u8>) {
+		IntermediateRoots::<T>::append(root);
+	}
+}
 
 /// Main entry point for certain runtime actions as e.g. `execute_block`.
 ///
@@ -157,6 +192,7 @@ pub struct Executive<
 	Context,
 	UnsignedValidator,
 	AllPalletsWithSystem,
+	ExecutivePallet,
 	OnRuntimeUpgrade = (),
 >(
 	PhantomData<(
@@ -165,6 +201,7 @@ pub struct Executive<
 		Context,
 		UnsignedValidator,
 		AllPalletsWithSystem,
+		ExecutivePallet,
 		OnRuntimeUpgrade,
 	)>,
 );
@@ -179,10 +216,18 @@ impl<
 			+ OnIdle<System::BlockNumber>
 			+ OnFinalize<System::BlockNumber>
 			+ OffchainWorker<System::BlockNumber>,
+		ExecutivePallet,
 		COnRuntimeUpgrade: OnRuntimeUpgrade,
 	> ExecuteBlock<Block>
-	for Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
-where
+	for Executive<
+		System,
+		Block,
+		Context,
+		UnsignedValidator,
+		AllPalletsWithSystem,
+		ExecutivePallet,
+		COnRuntimeUpgrade,
+	> where
 	Block::Extrinsic: Checkable<Context> + Codec,
 	CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
 	CallOf<Block::Extrinsic, Context>:
@@ -212,9 +257,18 @@ impl<
 			+ OnIdle<System::BlockNumber>
 			+ OnFinalize<System::BlockNumber>
 			+ OffchainWorker<System::BlockNumber>,
+		ExecutivePallet: Config,
 		COnRuntimeUpgrade: OnRuntimeUpgrade,
-	> Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
-where
+	>
+	Executive<
+		System,
+		Block,
+		Context,
+		UnsignedValidator,
+		AllPalletsWithSystem,
+		ExecutivePallet,
+		COnRuntimeUpgrade,
+	> where
 	Block::Extrinsic: Checkable<Context> + Codec,
 	CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
 	CallOf<Block::Extrinsic, Context>:
@@ -222,6 +276,11 @@ where
 	OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
 	UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
 {
+	fn storage_root() -> Vec<u8> {
+		let version = System::Version::get().state_version();
+		sp_io::storage::root(version)
+	}
+
 	/// Execute all `OnRuntimeUpgrade` of this runtime, and return the aggregate weight.
 	pub fn execute_on_runtime_upgrade() -> frame_support::weights::Weight {
 		frame_executive::Executive::<
@@ -274,7 +333,7 @@ where
 			AllPalletsWithSystem,
 			COnRuntimeUpgrade,
 		>::initialize_block(header);
-		// TODO: collect the storage root.
+		Pallet::<ExecutivePallet>::push_root(Self::storage_root());
 	}
 
 	/// Actually execute all transitions for `block`.
@@ -372,7 +431,8 @@ where
 			AllPalletsWithSystem,
 			COnRuntimeUpgrade,
 		>::apply_extrinsic(uxt);
-		// TODO: collect the storage root.
+		// TODO: when the extrinsic fails, the storage root does not change, thus skip it?
+		Pallet::<ExecutivePallet>::push_root(Self::storage_root());
 		res
 	}
 
