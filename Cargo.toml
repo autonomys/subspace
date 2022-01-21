@@ -27,6 +27,73 @@ members = [
     "substrate/*",
 ]
 
+[patch."https://github.com/paritytech/substrate"]
+sc-block-builder = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-chain-spec = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-cli = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-client-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-client-db = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-consensus = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-consensus-slots = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-consensus-uncles = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-executor = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-informant = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-keystore = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-network = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-network-gossip = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-offchain = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-rpc = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-rpc-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-service = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-telemetry = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-tracing = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-transaction-pool = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sc-transaction-pool-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+
+sp-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-application-crypto = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-arithmetic = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-block-builder = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-blockchain = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-consensus = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-consensus-slots = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-core = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-externalities = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-inherents = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-io = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-keystore = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-keyring = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-offchain = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-rpc = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-runtime = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-runtime-interface = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-session = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-state-machine = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-std = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-storage = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-timestamp = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-tracing = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-transaction-pool = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-trie = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+sp-version = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+
+frame-benchmarking-cli = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+frame-executive = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+frame-support = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+frame-system = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+frame-system-rpc-runtime-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+
+substrate-frame-rpc-system = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+
+pallet-balances = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-session = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-sudo = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-timestamp = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-transaction-payment = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-transaction-payment-rpc = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+pallet-utility = { git = "https://github.com/subspace/substrate", branch = "cirrus-executive" }
+
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
 # that are suspected to be CPU-intensive, and that are unlikely to require debugging (as some of
 # their debug info might be missing) or to require to be frequently recompiled. We compile these
