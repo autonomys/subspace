@@ -17,6 +17,7 @@ codec = { package = "parity-scale-codec", version = "2.0.0", default-features = 
 	"derive",
 ] }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
+frame-executive = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
 frame-support = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
@@ -40,6 +41,7 @@ with-tracing = ["sp-tracing/with-tracing"]
 std = [
 	"codec/std",
 	"scale-info/std",
+	"frame-executive/std",
 	"frame-support/std",
 	"frame-system/std",
 	"sp-core/std",

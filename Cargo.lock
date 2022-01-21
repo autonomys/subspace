@@ -915,6 +915,7 @@ dependencies = [
 name = "cirrus-pallet-executive"
 version = "4.0.0-dev"
 dependencies = [
+ "frame-executive",
  "frame-support",
  "frame-system",
  "hex-literal",
