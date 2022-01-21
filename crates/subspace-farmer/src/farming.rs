@@ -243,7 +243,7 @@ fn update_commitments(
                         hex::encode(salt)
                     );
 
-                    if let Err(error) = commitments.create(salt, plot) {
+                    if let Err(error) = commitments.create(salt, plot, salt) {
                         error!(
                             "Failed to create commitment for {}: {}",
                             hex::encode(salt),
@@ -267,6 +267,7 @@ fn update_commitments(
     if let Some(new_next_salt) = slot_info.next_salt {
         if salts.next != Some(new_next_salt) {
             salts.next.replace(new_next_salt);
+            let current_salt = slot_info.salt;
 
             tokio::task::spawn_blocking({
                 let plot = plot.clone();
@@ -284,7 +285,7 @@ fn update_commitments(
                         "Salt will update to {} soon, recommitting in background",
                         hex::encode(new_next_salt)
                     );
-                    if let Err(error) = commitments.create(new_next_salt, plot) {
+                    if let Err(error) = commitments.create(new_next_salt, plot, current_salt) {
                         error!(
                             "Recommitting salt in background failed for {}: {}",
                             hex::encode(new_next_salt),

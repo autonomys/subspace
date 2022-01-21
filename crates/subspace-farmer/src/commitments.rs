@@ -6,7 +6,6 @@ use crate::plot::Plot;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult};
 use event_listener_primitives::{Bag, HandlerId};
 use log::{error, trace};
-use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::DB;
 use std::io;
@@ -45,14 +44,13 @@ struct Handlers {
         Bag<Arc<dyn Fn(&CommitmentStatusChange) + Send + Sync + 'static>, CommitmentStatusChange>,
 }
 
-#[derive(Debug)]
 struct Inner {
     base_directory: PathBuf,
     handlers: Handlers,
-    commitment_databases: Mutex<CommitmentDatabases>,
+    commitment_databases: Arc<CommitmentDatabases>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Commitments {
     inner: Arc<Inner>,
 }
@@ -64,7 +62,7 @@ impl Commitments {
         let inner = Inner {
             base_directory,
             handlers: Handlers::default(),
-            commitment_databases: Mutex::new(commitment_databases),
+            commitment_databases: Arc::new(commitment_databases),
         };
 
         Ok(Self {
@@ -73,10 +71,15 @@ impl Commitments {
     }
 
     /// Create commitments for all pieces for a given salt
-    pub(crate) fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
-        let mut commitment_databases = self.inner.commitment_databases.lock();
+    pub(crate) fn create(
+        &self,
+        salt: Salt,
+        plot: Plot,
+        current_salt: Salt,
+    ) -> Result<(), CommitmentError> {
+        let commitment_databases = self.inner.commitment_databases.clone();
 
-        let db_entry = match commitment_databases.create_db_entry(salt)? {
+        let db_entry = match commitment_databases.create_db_entry(salt, current_salt)? {
             Some(CreateDbEntryResult {
                 db_entry,
                 removed_entry_salt,
@@ -99,9 +102,6 @@ impl Commitments {
         };
 
         let mut db_guard = db_entry.lock();
-        // Release lock to allow working with other databases, but hold lock for `db_entry.db` such
-        // that nothing else can modify it.
-        drop(commitment_databases);
 
         let db_path = self.inner.base_directory.join(hex::encode(salt));
 
@@ -135,7 +135,7 @@ impl Commitments {
         // deadlock
         drop(db_guard);
 
-        let mut commitment_databases = self.inner.commitment_databases.lock();
+        let commitment_databases = self.inner.commitment_databases.clone();
 
         // Check if database was already been removed
         if commitment_databases
@@ -165,16 +165,10 @@ impl Commitments {
         pieces: &Arc<FlatPieces>,
         start_offset: u64,
     ) -> Result<(), CommitmentError> {
-        let salts = self.inner.commitment_databases.lock().get_salts();
+        let salts = self.inner.commitment_databases.clone().get_salts();
 
         for salt in salts {
-            let db_entry = match self
-                .inner
-                .commitment_databases
-                .lock()
-                .get_db_entry(&salt)
-                .cloned()
-            {
+            let db_entry = match self.inner.commitment_databases.clone().get_db_entry(&salt) {
                 Some(db_entry) => db_entry,
                 None => {
                     continue;
@@ -206,10 +200,11 @@ impl Commitments {
 
     /// Finds the commitment/s falling in the range of the challenge
     pub(crate) fn find_by_range(&self, target: Tag, range: u64, salt: Salt) -> Option<(Tag, u64)> {
-        let commitment_databases = self.inner.commitment_databases.try_lock()?;
-        let db_entry = Arc::clone(commitment_databases.get_db_entry(&salt)?);
+        let commitment_databases = self.inner.commitment_databases.clone();
+        let db_entry = commitment_databases.get_db_entry(&salt);
 
-        let db_guard = db_entry.try_lock()?;
+        let db_entry_guard = db_entry.unwrap();
+        let db_guard = db_entry_guard.lock();
         let db = db_guard.clone()?;
 
         let mut iter = db.raw_iterator();

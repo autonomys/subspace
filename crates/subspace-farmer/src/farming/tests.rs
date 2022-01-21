@@ -29,7 +29,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     plot.write_many(Arc::new(pieces), index).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.clone(), salt).unwrap();
 
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");

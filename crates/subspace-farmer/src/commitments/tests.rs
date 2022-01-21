@@ -24,7 +24,7 @@ async fn create() {
     let plot = Plot::open_or_create(&base_directory).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     plot.write_many(Arc::new(pieces), index).unwrap();
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot, salt).unwrap();
 
     let (tag, _) = commitments
         .find_by_range(correct_tag, solution_range, salt)
@@ -49,7 +49,7 @@ async fn find_by_tag() {
     rng.fill(pieces.as_mut());
     plot.write_many(Arc::new(pieces), 0).unwrap();
 
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot, salt).unwrap();
 
     {
         let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
