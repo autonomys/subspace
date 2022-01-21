@@ -912,6 +912,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-pallet-executive"
+version = "4.0.0-dev"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "pallet-balances",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-tracing",
+ "sp-version",
+]
+
+[[package]]
 name = "cirrus-primitives"
 version = "0.1.0"
 dependencies = [
@@ -4750,9 +4770,9 @@ dependencies = [
 name = "parachain-template-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-pallet-executive",
  "cirrus-primitives",
  "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
- "frame-executive",
  "frame-support",
  "frame-system",
  "frame-system-benchmarking",
