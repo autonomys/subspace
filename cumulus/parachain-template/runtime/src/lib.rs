@@ -438,6 +438,10 @@ impl_runtime_apis! {
 			let lookup = frame_system::ChainContext::<Runtime>::default();
 			extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
 		}
+
+		fn intermediate_roots() -> Vec<Vec<u8>> {
+			ExecutivePallet::intermediate_roots()
+		}
 	}
 
 	#[cfg(feature = "runtime-benchmarks")]
