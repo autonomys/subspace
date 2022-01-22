@@ -3,14 +3,12 @@ use futures::{select, FutureExt};
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::ProvideRuntimeApi;
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
 };
 use std::time;
 
-use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_node_primitives::{BundleResult, ExecutorSlotInfo};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{Bundle, BundleHeader};
@@ -34,17 +32,14 @@ where
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
 {
 	pub(super) async fn produce_bundle_impl(
 		self,
-		primary_hash: PHash,
+		_primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-		include_inherents: bool,
 	) -> Option<BundleResult> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
-		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
 		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -73,25 +68,7 @@ where
 		// Selection policy:
 		// - minimize the transaction equivocation.
 		// - maximize the executor computation power.
-		let mut extrinsics = if include_inherents {
-			// TODO: is creating inherents fallible?
-			let mut block_builder = BlockBuilder::new(
-				&*self.runtime_api,
-				parent_hash,
-				parent_number,
-				RecordProof::No,
-				Default::default(),
-				&*self.backend,
-				Vec::new(),
-			)
-			.ok()?;
-
-			let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
-
-			block_builder.create_inherents(inherent_data).ok().unwrap_or_default()
-		} else {
-			Vec::new()
-		};
+		let mut extrinsics = Vec::new();
 
 		while let Some(pending_tx) = pending_iterator.next() {
 			if start.elapsed() >= pushing_duration {
@@ -119,36 +96,5 @@ where
 		}
 
 		Some(BundleResult { opaque_bundle: bundle.into() })
-	}
-
-	/// Get the inherent data.
-	async fn inherent_data(
-		&self,
-		parent: Block::Hash,
-		relay_parent: PHash,
-	) -> Option<InherentData> {
-		let inherent_data_providers = self
-			.create_inherent_data_providers
-			.create_inherent_data_providers(parent, relay_parent)
-			.await
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data providers.",
-				)
-			})
-			.ok()?;
-
-		inherent_data_providers
-			.create_inherent_data()
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data.",
-				)
-			})
-			.ok()
 	}
 }

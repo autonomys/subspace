@@ -6,6 +6,7 @@ use sc_consensus::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
+use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 use std::{
 	collections::{BTreeMap, VecDeque},
@@ -85,6 +86,7 @@ where
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
 {
 	/// Actually implements `process_bundles`.
 	pub(super) async fn process_bundles_impl(
@@ -151,15 +153,25 @@ where
 		let extrinsics =
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
-		let block_builder = BlockBuilder::new(
+		let parent_hash = self.client.info().best_hash;
+		let parent_number = self.client.info().best_number;
+
+		let mut block_builder = BlockBuilder::new(
 			&*self.runtime_api,
-			self.client.info().best_hash,
-			self.client.info().best_number,
+			parent_hash,
+			parent_number,
 			RecordProof::No,
 			Default::default(),
 			&*self.backend,
-			extrinsics,
 		)?;
+
+		let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
+
+		let mut final_extrinsics = block_builder.create_inherents(inherent_data)?;
+		final_extrinsics.extend(extrinsics);
+
+		block_builder.set_extrinsics(final_extrinsics);
+
 		let BuiltBlock { block, storage_changes, proof: _ } = block_builder.build()?;
 		let (header, body) = block.deconstruct();
 		let block_import_params = {
@@ -200,6 +212,27 @@ where
 		} else {
 			Ok(None)
 		}
+	}
+
+	/// Get the inherent data.
+	async fn inherent_data(
+		&self,
+		parent: Block::Hash,
+		relay_parent: PHash,
+	) -> Result<InherentData, sp_blockchain::Error> {
+		let inherent_data_providers = self
+			.create_inherent_data_providers
+			.create_inherent_data_providers(parent, relay_parent)
+			.await?;
+
+		inherent_data_providers.create_inherent_data().map_err(|e| {
+			tracing::error!(
+				target: LOG_TARGET,
+				error = ?e,
+				"Failed to create inherent data.",
+			);
+			sp_blockchain::Error::Consensus(sp_consensus::Error::InherentData(e.into()))
+		})
 	}
 }
 

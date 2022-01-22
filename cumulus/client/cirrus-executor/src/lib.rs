@@ -51,10 +51,7 @@ use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
 use futures::FutureExt;
-use std::sync::{
-	atomic::{AtomicBool, Ordering},
-	Arc,
-};
+use std::sync::Arc;
 use tracing::Instrument;
 
 /// The logging target.
@@ -74,7 +71,6 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CID
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
-	to_include_inherents: Arc<AtomicBool>,
 }
 
 impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
@@ -93,7 +89,6 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-			to_include_inherents: self.to_include_inherents.clone(),
 		}
 	}
 }
@@ -146,7 +141,6 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
-			to_include_inherents: Arc::new(AtomicBool::new(true)),
 		}
 	}
 
@@ -294,21 +288,7 @@ where
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
 	) -> Option<BundleResult> {
-		// Check if we should include the inherents in this bundle.
-		//
-		// We don't include the inherent extrinsics in each bundle because we use
-		// the block builder to import the block that contains all the extrinsics
-		// converted from a batch of bundles later. That being said, if we include
-		// the inherents per bundle, the final extrinsics fed into the block builder
-		// will contain multiple same kind of inherent extrinsic, e.g, timestamp,
-		// the block builder will panic when importing because the timestamp call
-		// should be executed once and only once per block.
-		let include_inherents = self
-			.to_include_inherents
-			.compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed)
-			.unwrap_or(false);
-
-		self.produce_bundle_impl(primary_hash, slot_info, include_inherents).await
+		self.produce_bundle_impl(primary_hash, slot_info).await
 	}
 
 	async fn process_bundles(
@@ -318,11 +298,7 @@ where
 		shuffling_seed: Randomness,
 	) -> Option<ProcessorResult> {
 		match self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await {
-			Ok(res) => {
-				// Reset the signal to include the inherent extrinsics on next `produce_bundle`.
-				self.to_include_inherents.store(true, Ordering::Relaxed);
-				res
-			},
+			Ok(res) => res,
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
