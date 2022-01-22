@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "cirrus-pallet-executive"
-version = "4.0.0-dev"
+version = "0.1.0"
 dependencies = [
  "frame-executive",
  "frame-support",
