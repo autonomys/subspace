@@ -163,7 +163,6 @@ where
 		record_proof: RecordProof,
 		inherent_digests: Digest,
 		backend: &'a B,
-		extrinsics: Vec<Block::Extrinsic>,
 	) -> Result<Self, Error> {
 		let header = <<Block as BlockT>::Header as HeaderT>::new(
 			parent_number + One::one(),
@@ -185,7 +184,19 @@ where
 
 		api.initialize_block_with_context(&block_id, ExecutionContext::BlockConstruction, &header)?;
 
-		Ok(Self { parent_hash, extrinsics, api, block_id, backend, estimated_header_size })
+		Ok(Self {
+			parent_hash,
+			extrinsics: Vec::new(),
+			api,
+			block_id,
+			backend,
+			estimated_header_size,
+		})
+	}
+
+	/// Sets the extrinsics.
+	pub fn set_extrinsics(&mut self, extrinsics: Vec<Block::Extrinsic>) {
+		self.extrinsics = extrinsics;
 	}
 
 	/// Execute the block's list of extrinsics.
@@ -306,7 +317,6 @@ mod tests {
 			RecordProof::Yes,
 			Default::default(),
 			&*backend,
-			Vec::new(),
 		)
 		.unwrap()
 		.build()
