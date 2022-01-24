@@ -67,12 +67,13 @@ pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signatu
 pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
 
 /// Executive: handles dispatch to the various modules.
-pub type Executive = frame_executive::Executive<
+pub type Executive = cirrus_pallet_executive::Executive<
 	Runtime,
 	Block,
 	frame_system::ChainContext<Runtime>,
 	Runtime,
 	AllPalletsWithSystem,
+	Runtime,
 	OnRuntimeUpgrade,
 >;
 
@@ -318,6 +319,8 @@ impl pallet_transaction_payment::Config for Runtime {
 	type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+impl cirrus_pallet_executive::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -327,6 +330,7 @@ construct_runtime!(
 	{
 		// System support stuff.
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
+		ExecutivePallet: cirrus_pallet_executive::{Pallet, Storage} = 1,
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent} = 3,
 
 		// Monetary stuff.
@@ -433,6 +437,10 @@ impl_runtime_apis! {
 			use cirrus_primitives::Signer;
 			let lookup = frame_system::ChainContext::<Runtime>::default();
 			extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
+		}
+
+		fn intermediate_roots() -> Vec<Vec<u8>> {
+			ExecutivePallet::intermediate_roots()
 		}
 	}
 

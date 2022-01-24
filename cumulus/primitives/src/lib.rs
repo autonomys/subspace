@@ -76,5 +76,8 @@ sp_api::decl_runtime_apis! {
 		fn extract_signer(
 			extrinsics: Vec<<Block as BlockT>::Extrinsic>,
 		) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+
+		/// Returns the intermediate storage roots in an encoded form.
+		fn intermediate_roots() -> Vec<Vec<u8>>;
 	}
 }

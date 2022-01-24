@@ -239,7 +239,7 @@ where
 			header.extrinsics_root().clone(),
 			HashFor::<Block>::ordered_trie_root(
 				self.extrinsics.iter().map(Encode::encode).collect(),
-				sp_core::storage::StateVersion::V1
+				sp_core::storage::StateVersion::V0 // TODO: switch to V1 once the upstream substrate switches.
 			),
 		);
 

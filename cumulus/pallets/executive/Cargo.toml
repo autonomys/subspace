@@ -1,0 +1,50 @@
+[package]
+name = "cirrus-pallet-executive"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace/"
+description = "Cirrus executives engine"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "2.3.0", default-features = false, features = ["derive"] }
+frame-executive = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+frame-support = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+frame-system = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+scale-info = { version = "1.0", default-features = false, features = ["derive"] }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+sp-io = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+sp-std = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+sp-tracing = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333", default-features = false }
+
+[dev-dependencies]
+hex-literal = "0.3.4"
+pallet-balances = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+pallet-transaction-payment = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-io = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-version = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+
+[features]
+default = ["std"]
+with-tracing = ["sp-tracing/with-tracing"]
+std = [
+	"codec/std",
+	"frame-executive/std",
+	"frame-support/std",
+	"frame-system/std",
+	"scale-info/std",
+	"sp-core/std",
+	"sp-io/std",
+	"sp-runtime/std",
+	"sp-std/std",
+	"sp-tracing/std",
+]
+try-runtime = ["frame-support/try-runtime"]

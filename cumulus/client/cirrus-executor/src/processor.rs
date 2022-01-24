@@ -7,7 +7,10 @@ use sc_consensus::{
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
-use sp_runtime::{generic::BlockId, traits::Block as BlockT};
+use sp_runtime::{
+	generic::BlockId,
+	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
+};
 use std::{
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
@@ -133,11 +136,13 @@ where
 
 		tracing::trace!(target: LOG_TARGET, ?extrinsics, "Origin deduplicated extrinsics");
 
-		let block_number = self.client.info().best_number;
+		let parent_hash = self.client.info().best_hash;
+		let parent_number = self.client.info().best_number;
+
 		let extrinsics: Vec<_> = match self
 			.runtime_api
 			.runtime_api()
-			.extract_signer(&BlockId::Number(block_number), extrinsics)
+			.extract_signer(&BlockId::Hash(parent_hash), extrinsics)
 		{
 			Ok(res) => res,
 			Err(e) => {
@@ -152,9 +157,6 @@ where
 
 		let extrinsics =
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
-
-		let parent_hash = self.client.info().best_hash;
-		let parent_number = self.client.info().best_number;
 
 		let mut block_builder = BlockBuilder::new(
 			&*self.runtime_api,
@@ -173,7 +175,11 @@ where
 		block_builder.set_extrinsics(final_extrinsics);
 
 		let BuiltBlock { block, storage_changes, proof: _ } = block_builder.build()?;
+
 		let (header, body) = block.deconstruct();
+		let state_root = *header.state_root();
+		let header_hash = header.hash();
+
 		let block_import_params = {
 			let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
 			import_block.body = Some(body);
@@ -185,15 +191,31 @@ where
 		};
 		(&*self.client).import_block(block_import_params, Default::default()).await?;
 
-		// TODO: now we have the final transaction list:
-		// - apply each tx one by one.
-		// - compute the incremental state root and add to the execution trace
-		// - produce ExecutionReceipt
+		let mut roots =
+			self.runtime_api.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
+		roots.push(state_root.encode());
+
+		tracing::debug!(
+			target: LOG_TARGET,
+			intermediate_roots = ?roots
+				.iter()
+				.map(|r| {
+					Block::Hash::decode(&mut r.clone().as_slice())
+						.expect("Intermediate root uses the same Block hash type; qed")
+				})
+				.collect::<Vec<_>>(),
+			final_state_root = ?state_root,
+			"Calculating the state transition root for #{}", header_hash
+		);
+
+		let state_transition_root =
+			BlakeTwo256::ordered_trie_root(roots, sp_core::storage::StateVersion::V1);
+
 		let execution_receipt = ExecutionReceipt {
 			primary_hash,
-			secondary_hash: Block::Hash::default(),
-			state_root: Block::Hash::default(),
-			state_transition_root: Block::Hash::default(),
+			secondary_hash: header_hash,
+			state_root,
+			state_transition_root,
 		};
 
 		// The applied txs can be fully removed from the transaction pool
