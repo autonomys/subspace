@@ -30,11 +30,14 @@ use frame_support::{
 		EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle,
 		OnInitialize, OnRuntimeUpgrade,
 	},
-	weights::{DispatchInfo, GetDispatchInfo},
+	weights::{DispatchClass, DispatchInfo, GetDispatchInfo},
 };
 pub use pallet::*;
 use sp_runtime::{
-	traits::{self, Applyable, Checkable, Dispatchable, Header, NumberFor, ValidateUnsigned},
+	traits::{
+		self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One,
+		ValidateUnsigned, Zero,
+	},
 	transaction_validity::{TransactionSource, TransactionValidity},
 	ApplyExtrinsicResult,
 };
@@ -133,7 +136,7 @@ impl<
 	OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
 	UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
 {
-    #[allow(unconditional_recursion)]
+	#[allow(unconditional_recursion)]
 	fn execute_block(block: Block) {
 		Executive::<
 			System,
@@ -235,6 +238,25 @@ impl<
 		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 	}
 
+	// TODO: https://github.com/paritytech/substrate/issues/10711
+	fn initial_checks(block: &Block) {
+		sp_tracing::enter_span!(sp_tracing::Level::TRACE, "initial_checks");
+		let header = block.header();
+
+		// Check that `parent_hash` is correct.
+		let n = *header.number();
+		assert!(
+			n > System::BlockNumber::zero() &&
+				<frame_system::Pallet<System>>::block_hash(n - System::BlockNumber::one()) ==
+					*header.parent_hash(),
+			"Parent hash should be valid.",
+		);
+
+		if let Err(i) = System::ensure_inherents_are_first(block) {
+			panic!("Invalid inherent position for extrinsic at index {}", i);
+		}
+	}
+
 	/// Wrapped `frame_executive::Executive::execute_block`.
 	///
 	/// The purpose is to use our custom [`initialize_block`] and [`apply_extrinsic`].
@@ -245,14 +267,7 @@ impl<
 
 			Self::initialize_block(block.header());
 
-			frame_executive::Executive::<
-				System,
-				Block,
-				Context,
-				UnsignedValidator,
-				AllPalletsWithSystem,
-				COnRuntimeUpgrade
-			>::initial_checks(&block);
+			Self::initial_checks(&block);
 
 			let signature_batching = sp_runtime::SignatureBatching::start();
 
@@ -264,14 +279,7 @@ impl<
 				panic!("Signature verification failed.");
 			}
 
-			frame_executive::Executive::<
-				System,
-				Block,
-				Context,
-				UnsignedValidator,
-				AllPalletsWithSystem,
-				COnRuntimeUpgrade
-			>::final_checks(&header);
+			Self::final_checks(&header);
 		}
 	}
 
@@ -290,14 +298,7 @@ impl<
 		// post-extrinsics book-keeping
 		<frame_system::Pallet<System>>::note_finished_extrinsics();
 
-		frame_executive::Executive::<
-			System,
-			Block,
-			Context,
-			UnsignedValidator,
-			AllPalletsWithSystem,
-			COnRuntimeUpgrade,
-		>::idle_and_finalize_hook(block_number);
+		Self::idle_and_finalize_hook(block_number);
 	}
 
 	/// Wrapped `frame_executive::Executive::finalize_block`.
@@ -318,6 +319,26 @@ impl<
 		// Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 	}
 
+	// TODO: https://github.com/paritytech/substrate/issues/10711
+	fn idle_and_finalize_hook(block_number: NumberFor<Block>) {
+		let weight = <frame_system::Pallet<System>>::block_weight();
+		let max_weight = <System::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
+		let remaining_weight = max_weight.saturating_sub(weight.total());
+
+		if remaining_weight > 0 {
+			let used_weight = <AllPalletsWithSystem as OnIdle<System::BlockNumber>>::on_idle(
+				block_number,
+				remaining_weight,
+			);
+			<frame_system::Pallet<System>>::register_extra_weight_unchecked(
+				used_weight,
+				DispatchClass::Mandatory,
+			);
+		}
+
+		<AllPalletsWithSystem as OnFinalize<System::BlockNumber>>::on_finalize(block_number);
+	}
+
 	/// Wrapped `frame_executive::Executive::apply_extrinsic`.
 	///
 	/// Note the storage root in the end.
@@ -333,6 +354,35 @@ impl<
 		// TODO: when the extrinsic fails, the storage root does not change, thus skip it?
 		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 		res
+	}
+
+	// TODO: https://github.com/paritytech/substrate/issues/10711
+	fn final_checks(header: &System::Header) {
+		sp_tracing::enter_span!(sp_tracing::Level::TRACE, "final_checks");
+		// remove temporaries
+		let new_header = <frame_system::Pallet<System>>::finalize();
+
+		// check digest
+		assert_eq!(
+			header.digest().logs().len(),
+			new_header.digest().logs().len(),
+			"Number of digest items must match that calculated."
+		);
+		let items_zip = header.digest().logs().iter().zip(new_header.digest().logs().iter());
+		for (header_item, computed_item) in items_zip {
+			header_item.check_equal(computed_item);
+			assert!(header_item == computed_item, "Digest item must match that calculated.");
+		}
+
+		// check storage root.
+		let storage_root = new_header.state_root();
+		header.state_root().check_equal(storage_root);
+		assert!(header.state_root() == storage_root, "Storage root must match that calculated.");
+
+		assert!(
+			header.extrinsics_root() == new_header.extrinsics_root(),
+			"Transaction trie root must be valid.",
+		);
 	}
 
 	/// Wrapped `frame_executive::Executive::validate_transaction`.

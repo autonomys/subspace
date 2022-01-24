@@ -830,7 +830,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sc-utils",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -856,7 +856,7 @@ dependencies = [
  "parking_lot",
  "sc-network",
  "sc-network-gossip",
- "sc-utils 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sc-utils",
  "sp-core",
  "sp-executor",
  "sp-runtime",
@@ -882,7 +882,7 @@ dependencies = [
  "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sc-utils",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -1387,7 +1387,7 @@ dependencies = [
  "sp-runtime",
  "subspace-node",
  "subspace-runtime-primitives",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 
@@ -1801,14 +1801,6 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 [[package]]
 name = "fork-tree"
 version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "parity-scale-codec",
-]
-
-[[package]]
-name = "fork-tree"
-version = "3.0.0"
 source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
@@ -1822,27 +1814,6 @@ checksum = "5fc25a87fa4fd2094bffb06925852034d90a17f0d1e05197d4956d3555752191"
 dependencies = [
  "matches",
  "percent-encoding 2.1.0",
-]
-
-[[package]]
-name = "frame-benchmarking"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "frame-support",
- "frame-system",
- "linregress",
- "log",
- "parity-scale-codec",
- "paste",
- "scale-info",
- "sp-api",
- "sp-application-crypto",
- "sp-io",
- "sp-runtime",
- "sp-runtime-interface",
- "sp-std",
- "sp-storage",
 ]
 
 [[package]]
@@ -1869,11 +1840,11 @@ dependencies = [
 [[package]]
 name = "frame-benchmarking-cli"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "Inflector",
  "chrono",
- "frame-benchmarking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "frame-benchmarking",
  "frame-support",
  "handlebars",
  "linked-hash-map",
@@ -1895,7 +1866,7 @@ dependencies = [
 [[package]]
 name = "frame-executive"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -1923,7 +1894,7 @@ dependencies = [
 [[package]]
 name = "frame-support"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "bitflags",
  "frame-metadata",
@@ -1942,7 +1913,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-runtime",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sp-staking",
  "sp-state-machine",
  "sp-std",
  "sp-tracing",
@@ -1952,7 +1923,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "Inflector",
  "frame-support-procedural-tools",
@@ -1964,7 +1935,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support-procedural-tools-derive",
  "proc-macro-crate 1.1.0",
@@ -1976,7 +1947,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools-derive"
 version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1986,7 +1957,7 @@ dependencies = [
 [[package]]
 name = "frame-system"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support",
  "log",
@@ -2005,7 +1976,7 @@ name = "frame-system-benchmarking"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -2018,7 +1989,7 @@ dependencies = [
 [[package]]
 name = "frame-system-rpc-runtime-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -4445,7 +4416,7 @@ dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
  "scale-info",
- "sp-authorship 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-authorship",
  "sp-runtime",
  "sp-std",
 ]
@@ -4455,7 +4426,7 @@ name = "pallet-babe"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -4470,16 +4441,16 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-session",
- "sp-staking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-staking",
  "sp-std",
 ]
 
 [[package]]
 name = "pallet-balances"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -4567,7 +4538,7 @@ dependencies = [
 [[package]]
 name = "pallet-session"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -4580,7 +4551,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-session",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sp-staking",
  "sp-std",
  "sp-trie",
 ]
@@ -4612,7 +4583,7 @@ dependencies = [
 [[package]]
 name = "pallet-sudo"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -4626,9 +4597,9 @@ dependencies = [
 [[package]]
 name = "pallet-timestamp"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -4654,7 +4625,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -4671,7 +4642,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "jsonrpc-core",
  "jsonrpc-core-client",
@@ -4688,7 +4659,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc-runtime-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
@@ -4699,9 +4670,9 @@ dependencies = [
 [[package]]
 name = "pallet-utility"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -4724,7 +4695,7 @@ dependencies = [
  "cumulus-client-consensus-common",
  "cumulus-client-consensus-relay-chain",
  "derive_more",
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-benchmarking-cli",
  "hex-literal",
  "jsonrpc-core",
@@ -4764,7 +4735,7 @@ dependencies = [
  "subspace-node",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -4773,7 +4744,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-pallet-executive",
  "cirrus-primitives",
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "frame-system-benchmarking",
@@ -5162,7 +5133,7 @@ dependencies = [
  "polkadot-node-subsystem-util",
  "sp-core",
  "sp-executor",
- "sp-maybe-compressed-blob 4.1.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-maybe-compressed-blob",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -5221,7 +5192,7 @@ dependencies = [
  "futures 0.3.19",
  "futures-timer",
  "metered-channel",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -5248,7 +5219,7 @@ dependencies = [
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
@@ -6045,7 +6016,7 @@ dependencies = [
 [[package]]
 name = "sc-allocator"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "log",
  "sp-core",
@@ -6073,13 +6044,13 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
 name = "sc-block-builder"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "sc-client-api",
@@ -6095,7 +6066,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "impl-trait-for-tuples",
  "memmap2 0.5.0",
@@ -6112,7 +6083,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec-derive"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "proc-macro-crate 1.1.0",
  "proc-macro2",
@@ -6123,7 +6094,7 @@ dependencies = [
 [[package]]
 name = "sc-cli"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "chrono",
  "fdlimit",
@@ -6142,7 +6113,7 @@ dependencies = [
  "sc-service",
  "sc-telemetry",
  "sc-tracing",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde",
  "serde_json",
  "sp-blockchain",
@@ -6161,7 +6132,7 @@ dependencies = [
 [[package]]
 name = "sc-client-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "fnv",
  "futures 0.3.19",
@@ -6171,7 +6142,7 @@ dependencies = [
  "parking_lot",
  "sc-executor",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -6183,13 +6154,13 @@ dependencies = [
  "sp-state-machine",
  "sp-storage",
  "sp-trie",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
 name = "sc-client-db"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "hash-db",
  "kvdb",
@@ -6214,7 +6185,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "futures 0.3.19",
@@ -6223,7 +6194,7 @@ dependencies = [
  "log",
  "parking_lot",
  "sc-client-api",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde",
  "sp-api",
  "sp-blockchain",
@@ -6231,14 +6202,14 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-state-machine",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
 [[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "futures 0.3.19",
@@ -6266,7 +6237,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "derive_more",
- "fork-tree 3.0.0 (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "fork-tree",
  "futures 0.3.19",
  "log",
  "lru 0.7.0",
@@ -6282,7 +6253,7 @@ dependencies = [
  "sc-network-test",
  "sc-service",
  "sc-telemetry",
- "sc-utils 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sc-utils",
  "schnorrkel",
  "serde",
  "sp-api",
@@ -6301,7 +6272,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-solving",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
 ]
@@ -6336,10 +6307,10 @@ dependencies = [
 [[package]]
 name = "sc-consensus-uncles"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "sc-client-api",
- "sp-authorship 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sp-authorship",
  "sp-runtime",
  "thiserror",
 ]
@@ -6347,7 +6318,7 @@ dependencies = [
 [[package]]
 name = "sc-executor"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "lazy_static",
  "libsecp256k1",
@@ -6375,7 +6346,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-common"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "derive_more",
  "environmental",
@@ -6383,7 +6354,7 @@ dependencies = [
  "pwasm-utils",
  "sc-allocator",
  "sp-core",
- "sp-maybe-compressed-blob 4.1.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sp-maybe-compressed-blob",
  "sp-serializer",
  "sp-wasm-interface",
  "thiserror",
@@ -6393,7 +6364,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmi"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -6409,7 +6380,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmtime"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -6427,7 +6398,7 @@ dependencies = [
 [[package]]
 name = "sc-informant"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "ansi_term",
  "futures 0.3.19",
@@ -6444,7 +6415,7 @@ dependencies = [
 [[package]]
 name = "sc-keystore"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "derive_more",
@@ -6459,7 +6430,7 @@ dependencies = [
 [[package]]
 name = "sc-network"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-std",
  "async-trait",
@@ -6470,7 +6441,7 @@ dependencies = [
  "derive_more",
  "either",
  "fnv",
- "fork-tree 3.0.0 (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "fork-tree",
  "futures 0.3.19",
  "futures-timer",
  "hex",
@@ -6490,7 +6461,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-peerset",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde",
  "serde_json",
  "smallvec",
@@ -6498,9 +6469,9 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-finality-grandpa 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sp-finality-grandpa",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "unsigned-varint 0.6.0",
  "void",
@@ -6510,7 +6481,7 @@ dependencies = [
 [[package]]
 name = "sc-network-gossip"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "futures-timer",
@@ -6519,7 +6490,7 @@ dependencies = [
  "lru 0.7.0",
  "sc-network",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 
@@ -6553,7 +6524,7 @@ dependencies = [
 [[package]]
 name = "sc-offchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "bytes 1.1.0",
  "fnv",
@@ -6569,7 +6540,7 @@ dependencies = [
  "rand 0.7.3",
  "sc-client-api",
  "sc-network",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "sp-api",
  "sp-core",
  "sp-offchain",
@@ -6581,12 +6552,12 @@ dependencies = [
 [[package]]
 name = "sc-peerset"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "libp2p",
  "log",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde_json",
  "wasm-timer",
 ]
@@ -6597,13 +6568,13 @@ version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "log",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
 name = "sc-rpc"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "hash-db",
@@ -6618,7 +6589,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-tracing",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde_json",
  "sp-api",
  "sp-blockchain",
@@ -6634,7 +6605,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-api"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "jsonrpc-core",
@@ -6659,7 +6630,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-server"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "jsonrpc-core",
@@ -6669,14 +6640,14 @@ dependencies = [
  "jsonrpc-ws-server",
  "log",
  "serde_json",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "tokio",
 ]
 
 [[package]]
 name = "sc-service"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "directories",
@@ -6708,7 +6679,7 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde",
  "serde_json",
  "sp-api",
@@ -6729,7 +6700,7 @@ dependencies = [
  "sp-transaction-storage-proof",
  "sp-trie",
  "sp-version",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "tempfile",
  "thiserror",
  "tokio",
@@ -6740,7 +6711,7 @@ dependencies = [
 [[package]]
 name = "sc-state-db"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -6754,7 +6725,7 @@ dependencies = [
 [[package]]
 name = "sc-telemetry"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "chrono",
  "futures 0.3.19",
@@ -6772,7 +6743,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "ansi_term",
  "atty",
@@ -6803,7 +6774,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "proc-macro-crate 1.1.0",
  "proc-macro2",
@@ -6814,7 +6785,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "futures-timer",
@@ -6826,7 +6797,7 @@ dependencies = [
  "retain_mut",
  "sc-client-api",
  "sc-transaction-pool-api",
- "sc-utils 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "sc-utils",
  "serde",
  "sp-api",
  "sp-blockchain",
@@ -6834,14 +6805,14 @@ dependencies = [
  "sp-runtime",
  "sp-tracing",
  "sp-transaction-pool",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
 [[package]]
 name = "sc-transaction-pool-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "derive_more",
  "futures 0.3.19",
@@ -6850,18 +6821,6 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime",
  "thiserror",
-]
-
-[[package]]
-name = "sc-utils"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "futures 0.3.19",
- "futures-timer",
- "lazy_static",
- "parking_lot",
- "prometheus",
 ]
 
 [[package]]
@@ -7309,7 +7268,7 @@ dependencies = [
 [[package]]
 name = "sp-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "hash-db",
  "log",
@@ -7326,7 +7285,7 @@ dependencies = [
 [[package]]
 name = "sp-api-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "blake2-rfc",
  "proc-macro-crate 1.1.0",
@@ -7338,7 +7297,7 @@ dependencies = [
 [[package]]
 name = "sp-application-crypto"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -7351,7 +7310,7 @@ dependencies = [
 [[package]]
 name = "sp-arithmetic"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "integer-sqrt",
  "num-traits",
@@ -7361,18 +7320,6 @@ dependencies = [
  "sp-debug-derive",
  "sp-std",
  "static_assertions",
-]
-
-[[package]]
-name = "sp-authorship"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
@@ -7390,7 +7337,7 @@ dependencies = [
 [[package]]
 name = "sp-block-builder"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -7402,7 +7349,7 @@ dependencies = [
 [[package]]
 name = "sp-blockchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "log",
@@ -7420,7 +7367,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "futures 0.3.19",
@@ -7480,7 +7427,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-slots"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -7524,7 +7471,7 @@ dependencies = [
 [[package]]
 name = "sp-core"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "base58",
  "bitflags",
@@ -7572,7 +7519,7 @@ dependencies = [
 [[package]]
 name = "sp-core-hashing"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "blake2-rfc",
  "byteorder 1.4.3",
@@ -7585,7 +7532,7 @@ dependencies = [
 [[package]]
 name = "sp-core-hashing-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7596,7 +7543,7 @@ dependencies = [
 [[package]]
 name = "sp-database"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "kvdb",
  "parking_lot",
@@ -7605,7 +7552,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7631,30 +7578,12 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.10.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "environmental",
  "parity-scale-codec",
  "sp-std",
  "sp-storage",
-]
-
-[[package]]
-name = "sp-finality-grandpa"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "finality-grandpa",
- "log",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-api",
- "sp-application-crypto",
- "sp-core",
- "sp-keystore",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
@@ -7678,7 +7607,7 @@ dependencies = [
 [[package]]
 name = "sp-inherents"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "impl-trait-for-tuples",
@@ -7692,7 +7621,7 @@ dependencies = [
 [[package]]
 name = "sp-io"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "futures 0.3.19",
  "hash-db",
@@ -7716,7 +7645,7 @@ dependencies = [
 [[package]]
 name = "sp-keyring"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "lazy_static",
  "sp-core",
@@ -7727,7 +7656,7 @@ dependencies = [
 [[package]]
 name = "sp-keystore"
 version = "0.10.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "derive_more",
@@ -7744,14 +7673,6 @@ dependencies = [
 [[package]]
 name = "sp-maybe-compressed-blob"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "zstd",
-]
-
-[[package]]
-name = "sp-maybe-compressed-blob"
-version = "4.1.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "zstd",
@@ -7760,7 +7681,7 @@ dependencies = [
 [[package]]
 name = "sp-offchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "sp-api",
  "sp-core",
@@ -7770,7 +7691,7 @@ dependencies = [
 [[package]]
 name = "sp-panic-handler"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -7780,7 +7701,7 @@ dependencies = [
 [[package]]
 name = "sp-rpc"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "rustc-hash",
  "serde",
@@ -7790,7 +7711,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "either",
  "hash256-std-hasher",
@@ -7812,7 +7733,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
@@ -7829,7 +7750,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "Inflector",
  "proc-macro-crate 1.1.0",
@@ -7841,7 +7762,7 @@ dependencies = [
 [[package]]
 name = "sp-serializer"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "serde",
  "serde_json",
@@ -7850,25 +7771,14 @@ dependencies = [
 [[package]]
 name = "sp-session"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-api",
  "sp-core",
  "sp-runtime",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?branch=cirrus-executive)",
- "sp-std",
-]
-
-[[package]]
-name = "sp-staking"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-runtime",
+ "sp-staking",
  "sp-std",
 ]
 
@@ -7886,7 +7796,7 @@ dependencies = [
 [[package]]
 name = "sp-state-machine"
 version = "0.10.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "hash-db",
  "log",
@@ -7909,12 +7819,12 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 
 [[package]]
 name = "sp-storage"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -7927,7 +7837,7 @@ dependencies = [
 [[package]]
 name = "sp-tasks"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "log",
  "sp-core",
@@ -7940,7 +7850,7 @@ dependencies = [
 [[package]]
 name = "sp-timestamp"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "futures-timer",
@@ -7956,7 +7866,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "sp-std",
@@ -7968,7 +7878,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-pool"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "sp-api",
  "sp-runtime",
@@ -7977,7 +7887,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-storage-proof"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "async-trait",
  "log",
@@ -7993,7 +7903,7 @@ dependencies = [
 [[package]]
 name = "sp-trie"
 version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "hash-db",
  "memory-db 0.28.0",
@@ -8008,7 +7918,7 @@ dependencies = [
 [[package]]
 name = "sp-version"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -8025,7 +7935,7 @@ dependencies = [
 [[package]]
 name = "sp-version-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "parity-scale-codec",
  "proc-macro2",
@@ -8036,7 +7946,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "impl-trait-for-tuples",
  "log",
@@ -8225,7 +8135,7 @@ name = "subspace-node"
 version = "0.1.0"
 dependencies = [
  "cirrus-node-primitives",
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.19",
@@ -8255,7 +8165,7 @@ dependencies = [
  "sc-transaction-pool-api",
  "serde_json",
  "sp-api",
- "sp-authorship 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-authorship",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
@@ -8267,7 +8177,7 @@ dependencies = [
  "subspace-runtime",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
@@ -8284,7 +8194,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
- "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "frame-benchmarking",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -8376,7 +8286,7 @@ dependencies = [
 [[package]]
 name = "substrate-frame-rpc-system"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
+source = "git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333#04c7c6abef1e0c6b4126427159090a44f3221333"
 dependencies = [
  "frame-system-rpc-runtime-api",
  "futures 0.3.19",
@@ -8393,20 +8303,6 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
-]
-
-[[package]]
-name = "substrate-prometheus-endpoint"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?branch=cirrus-executive#6b3ec3b16390ce28f5c4176c80a5a00c6d4c8bc9"
-dependencies = [
- "async-std",
- "derive_more",
- "futures-util",
- "hyper",
- "log",
- "prometheus",
- "tokio",
 ]
 
 [[package]]
@@ -8479,7 +8375,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-externalities",
- "sp-finality-grandpa 4.0.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-finality-grandpa",
  "sp-inherents",
  "sp-io",
  "sp-keyring",
@@ -8539,7 +8435,7 @@ dependencies = [
  "ansi_term",
  "build-helper",
  "cargo_metadata",
- "sp-maybe-compressed-blob 4.1.0-dev (git+https://github.com/paritytech/substrate?rev=04c7c6abef1e0c6b4126427159090a44f3221333)",
+ "sp-maybe-compressed-blob",
  "tempfile",
  "toml",
  "walkdir",
