@@ -295,50 +295,43 @@ where
 		Arc::new(move |hash, data| network.announce_block(hash, data))
 	};
 
-	if validator {
-		let parachain_consensus = build_consensus(
-			client.clone(),
-			prometheus_registry.as_ref(),
-			telemetry.as_ref().map(|t| t.handle()),
-			&task_manager,
-			&relay_chain_full_node,
-			transaction_pool.clone(),
-			network.clone(),
-			params.keystore_container.sync_keystore(),
-			force_authoring,
-		)?;
+	// Basically, all the executor nodes run all the components, the
+	// difference is that only the authority node will try to win the
+	// election for producing bundle and execution receipt.
+	let parachain_consensus = build_consensus(
+		client.clone(),
+		prometheus_registry.as_ref(),
+		telemetry.as_ref().map(|t| t.handle()),
+		&task_manager,
+		&relay_chain_full_node,
+		transaction_pool.clone(),
+		network.clone(),
+		params.keystore_container.sync_keystore(),
+		force_authoring,
+	)?;
 
-		let spawner = task_manager.spawn_handle();
+	let spawner = task_manager.spawn_handle();
 
-		let params = cirrus_client_service::StartExecutorParams {
-			block_status: client.clone(),
-			announce_block,
-			client: client.clone(),
-			task_manager: &mut task_manager,
-			primary_chain_full_node: relay_chain_full_node,
-			spawner,
-			parachain_consensus,
-			import_queue,
-			transaction_pool,
-			network,
-			backend,
-			create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move {
-				let time = sp_timestamp::InherentDataProvider::from_system_time();
-				Ok(time)
-			}),
-		};
+	let params = cirrus_client_service::StartExecutorParams {
+		block_status: client.clone(),
+		announce_block,
+		client: client.clone(),
+		task_manager: &mut task_manager,
+		primary_chain_full_node: relay_chain_full_node,
+		spawner,
+		parachain_consensus,
+		import_queue,
+		transaction_pool,
+		network,
+		backend,
+		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move {
+			let time = sp_timestamp::InherentDataProvider::from_system_time();
+			Ok(time)
+		}),
+		is_authority: validator,
+	};
 
-		cirrus_client_service::start_executor(params).await?;
-	} else {
-		let params = cirrus_client_service::StartFullNodeParams {
-			client: client.clone(),
-			primary_chain_full_node: relay_chain_full_node,
-			task_manager: &mut task_manager,
-			announce_block,
-		};
-
-		cirrus_client_service::start_full_node(params)?;
-	}
+	cirrus_client_service::start_executor(params).await?;
 
 	start_network.start_network();
 

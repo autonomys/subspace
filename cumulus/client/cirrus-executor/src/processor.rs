@@ -219,8 +219,8 @@ where
 
 		// The applied txs can be fully removed from the transaction pool
 
-		// TODO: win the executor election to broadcast ER.
-		let is_elected = true;
+		// TODO: win the executor election to broadcast ER, authority node only.
+		let is_elected = self.is_authority;
 
 		if is_elected {
 			if let Err(e) = self.execution_receipt_sender.unbounded_send(execution_receipt.clone())

@@ -72,6 +72,7 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CID
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
+	is_authority: bool,
 }
 
 impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
@@ -90,6 +91,7 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+			is_authority: self.is_authority.clone(),
 		}
 	}
 }
@@ -129,6 +131,7 @@ where
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		create_inherent_data_providers: Arc<CIDP>,
+		is_authority: bool,
 	) -> Self {
 		Self {
 			block_status,
@@ -142,6 +145,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			is_authority,
 		}
 	}
 
@@ -435,6 +439,7 @@ pub struct StartExecutorParams<
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub is_authority: bool,
 }
 
 /// Start the executor.
@@ -453,6 +458,7 @@ pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool, Bac
 		execution_receipt_sender,
 		backend,
 		create_inherent_data_providers,
+		is_authority,
 	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool, Backend, CIDP>,
 ) -> Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
 where
@@ -489,6 +495,7 @@ where
 		Arc::new(execution_receipt_sender),
 		backend,
 		create_inherent_data_providers,
+		is_authority,
 	);
 
 	let span = tracing::Span::current();

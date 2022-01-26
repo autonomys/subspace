@@ -92,6 +92,7 @@ pub struct StartExecutorParams<
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub is_authority: bool,
 }
 
 /// Start an executor node.
@@ -109,6 +110,7 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		network,
 		backend,
 		create_inherent_data_providers,
+		is_authority,
 	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
 ) -> sc_service::error::Result<()>
 where
@@ -174,6 +176,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			is_authority,
 		})
 		.await;
 
@@ -202,7 +205,7 @@ pub struct StartFullNodeParams<'a, Block: BlockT, Client, PClient> {
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 }
 
-// TODO: verify the full node runs as expected.
+// TODO: maybe remove this later.
 /// Start a full node for a parachain.
 ///
 /// A full node will only sync the given parachain and will follow the
