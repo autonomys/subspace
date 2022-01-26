@@ -98,12 +98,12 @@ impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> 
 pub struct ExecutionReceipt<Hash> {
     /// Primary block hash.
     pub primary_hash: H256,
-    /// Secondary block hash?
+    /// Secondary block hash.
     pub secondary_hash: Hash,
-    /// State root after finishing the execution.
-    pub state_root: Hash,
-    /// Merkle root of the execution.
-    pub state_transition_root: H256,
+    /// List of storage roots collected during the block execution.
+    pub trace: Vec<Hash>,
+    /// The merkle root of `trace`.
+    pub trace_root: H256,
 }
 
 impl<Hash: Encode> ExecutionReceipt<Hash> {

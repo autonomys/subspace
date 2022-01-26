@@ -195,28 +195,27 @@ where
 			self.runtime_api.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
 		roots.push(state_root.encode());
 
+		let trace_root =
+			BlakeTwo256::ordered_trie_root(roots.clone(), sp_core::storage::StateVersion::V1);
+
+		let trace = roots
+			.into_iter()
+			.map(|r| {
+				Block::Hash::decode(&mut r.as_slice())
+					.expect("Storage root uses the same Block hash type; qed")
+			})
+			.collect();
+
 		tracing::debug!(
 			target: LOG_TARGET,
-			intermediate_roots = ?roots
-				.iter()
-				.map(|r| {
-					Block::Hash::decode(&mut r.clone().as_slice())
-						.expect("Intermediate root uses the same Block hash type; qed")
-				})
-				.collect::<Vec<_>>(),
-			final_state_root = ?state_root,
-			"Calculating the state transition root for #{}", header_hash
+			?trace,
+			?trace_root,
+			"Trace root calculated for #{}",
+			header_hash
 		);
 
-		let state_transition_root =
-			BlakeTwo256::ordered_trie_root(roots, sp_core::storage::StateVersion::V1);
-
-		let execution_receipt = ExecutionReceipt {
-			primary_hash,
-			secondary_hash: header_hash,
-			state_root,
-			state_transition_root,
-		};
+		let execution_receipt =
+			ExecutionReceipt { primary_hash, secondary_hash: header_hash, trace, trace_root };
 
 		// The applied txs can be fully removed from the transaction pool
 
