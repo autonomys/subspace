@@ -69,25 +69,24 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+impl<Block, BS, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, BS, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<RA, Block>,
-		Error = sp_consensus::Error,
-	>,
-	BS: BlockBackend<Block>,
-	Backend: sc_client_api::Backend<Block>,
-	RA: ProvideRuntimeApi<Block>,
-	RA::Api: SecondaryApi<Block, AccountId>
+	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
+	BS: BlockBackend<Block>,
+	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
 {
@@ -140,7 +139,7 @@ where
 		let parent_number = self.client.info().best_number;
 
 		let extrinsics: Vec<_> = match self
-			.runtime_api
+			.client
 			.runtime_api()
 			.extract_signer(&BlockId::Hash(parent_hash), extrinsics)
 		{
@@ -159,7 +158,7 @@ where
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
 		let mut block_builder = BlockBuilder::new(
-			&*self.runtime_api,
+			&*self.client,
 			parent_hash,
 			parent_number,
 			RecordProof::No,
@@ -192,7 +191,7 @@ where
 		(&*self.client).import_block(block_import_params, Default::default()).await?;
 
 		let mut roots =
-			self.runtime_api.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
+			self.client.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
 		roots.push(state_root.encode());
 
 		let trace_root =
