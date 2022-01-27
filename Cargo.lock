@@ -815,6 +815,7 @@ dependencies = [
  "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
+ "crossbeam",
  "cumulus-client-consensus-common",
  "futures 0.3.19",
  "futures-timer",
@@ -841,6 +842,8 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -1191,6 +1194,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ae5588f6b3c3cb05239e90bd110f257254aecd01e4635400391aeae07497845"
+dependencies = [
+ "cfg-if 1.0.0",
+ "crossbeam-channel",
+ "crossbeam-deque",
+ "crossbeam-epoch",
+ "crossbeam-queue",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1222,6 +1239,16 @@ dependencies = [
  "lazy_static",
  "memoffset",
  "scopeguard",
+]
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b979d76c9fcb84dffc80a73f7290da0f83e4c95773494674cb44b76d13a7a110"
+dependencies = [
+ "cfg-if 1.0.0",
+ "crossbeam-utils",
 ]
 
 [[package]]

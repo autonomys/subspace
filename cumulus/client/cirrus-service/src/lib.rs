@@ -23,7 +23,7 @@
 use cumulus_client_consensus_common::ParachainConsensus;
 
 use sc_client_api::{
-	Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
+	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
 use sc_consensus::{
 	import_queue::{ImportQueue, IncomingBlock, Link, Origin},
@@ -119,11 +119,12 @@ where
 	Client: Finalizer<Block, Backend>
 		+ UsageProvider<Block>
 		+ HeaderBackend<Block>
-		+ Send
-		+ Sync
 		+ BlockBackend<Block>
 		+ BlockchainEvents<Block>
 		+ ProvideRuntimeApi<Block>
+		+ AuxStore
+		+ Send
+		+ Sync
 		+ 'static,
 	Client::Api: cirrus_primitives::SecondaryApi<Block, cirrus_primitives::AccountId>
 		+ sp_block_builder::BlockBuilder<Block>

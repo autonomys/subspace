@@ -17,10 +17,11 @@
 //! Cirrus Executor implementation for Subspace.
 #![allow(clippy::all)]
 
+mod aux_schema;
 mod bundler;
 mod processor;
 
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -97,7 +98,7 @@ impl<Block, BS, Client, TransactionPool, Backend, CIDP>
 	Executor<Block, BS, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -312,16 +313,26 @@ where
 }
 
 // TODO: proper error type
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
+	#[error("Bundle equivocation error")]
 	BundleEquivocation,
+	#[error(transparent)]
+	Client(#[from] sp_blockchain::Error),
+	#[error(transparent)]
+	RecvError(#[from] crossbeam::channel::RecvError),
 }
 
 impl<Block, BS, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
 	for Executor<Block, BS, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
+	Client: sp_blockchain::HeaderBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ AuxStore
+		+ Send
+		+ Sync
+		+ 'static,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -388,22 +399,78 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		_execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
+		execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
-		// TODO: check if the received ER is same with the one produced locally.
-		let same_with_produced_locally = true;
-
-		if same_with_produced_locally {
-			Ok(Action::RebroadcastExecutionReceipt)
+		// TODO: more efficient execution receipt checking strategy?
+		let local_receipt = if let Some(local_receipt) =
+			crate::aux_schema::load_execution_receipt::<_, Block>(
+				&*self.client,
+				execution_receipt.secondary_hash,
+			)? {
+			local_receipt
 		} else {
+			// Wait for the local execution receipt until it's ready.
+			let (tx, rx) = crossbeam::channel::bounded::<
+				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
+			>(1);
+			let client = self.client.clone();
+			let block_hash = execution_receipt.secondary_hash;
+			self.spawner.spawn(
+				"wait-for-local-execution-receipt",
+				None,
+				async move {
+					loop {
+						match crate::aux_schema::load_execution_receipt::<_, Block>(
+							&*client, block_hash,
+						) {
+							Ok(Some(local_receipt)) => {
+								let _ = tx.send(Ok(local_receipt));
+								break
+							},
+							Ok(None) => {
+								tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+							},
+							Err(e) => {
+								let _ = tx.send(Err(e));
+								break
+							},
+						}
+					}
+				}
+				.boxed(),
+			);
+
+			rx.recv()??
+		};
+
+		// TODO: What happens for this obvious error?
+		if local_receipt.trace.len() != execution_receipt.trace.len() {}
+
+		let find_invalid_transition = || {
+			for ((local_idx, local_root), (_external_idx, external_root)) in local_receipt
+				.trace
+				.iter()
+				.enumerate()
+				.zip(execution_receipt.trace.iter().enumerate())
+			{
+				if local_root != external_root {
+					return Some(local_idx)
+				}
+			}
+			None
+		};
+
+		if let Some(_local_trace_idx) = find_invalid_transition() {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
 			self.submit_fraud_proof(fraud_proof);
 
 			Ok(Action::Empty)
+		} else {
+			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}
 }
@@ -448,7 +515,7 @@ where
 	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
-	Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+	Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + Send + Sync + 'static,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<

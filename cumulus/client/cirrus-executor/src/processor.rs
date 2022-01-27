@@ -1,6 +1,6 @@
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction, StorageChanges,
 };
@@ -73,7 +73,7 @@ impl<Block, BS, Client, TransactionPool, Backend, CIDP>
 	Executor<Block, BS, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -215,6 +215,12 @@ where
 
 		let execution_receipt =
 			ExecutionReceipt { primary_hash, secondary_hash: header_hash, trace, trace_root };
+
+		crate::aux_schema::write_execution_receipt::<_, Block>(
+			&*self.client,
+			header_hash,
+			&execution_receipt,
+		)?;
 
 		// The applied txs can be fully removed from the transaction pool
 
