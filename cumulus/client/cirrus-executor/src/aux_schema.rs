@@ -39,3 +39,12 @@ pub(super) fn load_execution_receipt<Backend: AuxStore, Block: BlockT>(
 ) -> ClientResult<Option<ExecutionReceipt<Block::Hash>>> {
 	load_decode(backend, (EXECUTION_RECEIPT_KEY, block_hash).encode().as_slice())
 }
+
+/// Remove the validated execution receipt.
+pub(super) fn delete_execution_receipt<Backend: AuxStore, Block: BlockT>(
+	backend: &Backend,
+	block_hash: Block::Hash,
+) -> Result<(), sp_blockchain::Error> {
+	let key = (EXECUTION_RECEIPT_KEY, block_hash).encode();
+	backend.insert_aux([], &[(key.as_slice())])
+}

@@ -403,6 +403,8 @@ where
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
+		let block_hash = execution_receipt.secondary_hash;
+
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
 			crate::aux_schema::load_execution_receipt::<_, Block>(
@@ -416,7 +418,6 @@ where
 				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
 			>(1);
 			let client = self.client.clone();
-			let block_hash = execution_receipt.secondary_hash;
 			self.spawner.spawn(
 				"wait-for-local-execution-receipt",
 				None,
@@ -470,6 +471,7 @@ where
 
 			Ok(Action::Empty)
 		} else {
+			crate::aux_schema::delete_execution_receipt::<_, Block>(&*self.client, block_hash)?;
 			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}
