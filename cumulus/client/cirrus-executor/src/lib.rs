@@ -58,6 +58,7 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
+// TODO: merge `runtime_api` into `client`.
 pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> {
 	block_status: Arc<BS>,
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.

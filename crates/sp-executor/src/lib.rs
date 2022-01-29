@@ -103,7 +103,7 @@ pub struct ExecutionReceipt<Hash> {
     /// State root after finishing the execution.
     pub state_root: Hash,
     /// Merkle root of the execution.
-    pub state_transition_root: Hash,
+    pub state_transition_root: H256,
 }
 
 impl<Hash: Encode> ExecutionReceipt<Hash> {
