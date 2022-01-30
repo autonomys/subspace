@@ -404,14 +404,20 @@ where
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
-		let block_hash = execution_receipt.secondary_hash;
+		let block_number = self
+			.client
+			.expect_block_number_from_id(&BlockId::Hash(execution_receipt.secondary_hash))?;
+		let best_number = self.client.info().best_number;
+
+		// Just ignore it if the receipt is too old and has been pruned.
+		if aux_schema::target_receipt_is_pruned::<Block>(best_number, block_number) {
+			return Ok(Action::Empty)
+		}
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
-			crate::aux_schema::load_execution_receipt::<_, Block>(
-				&*self.client,
-				execution_receipt.secondary_hash,
-			)? {
+			crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_number)?
+		{
 			local_receipt
 		} else {
 			// Wait for the local execution receipt until it's ready.
@@ -425,7 +431,8 @@ where
 				async move {
 					loop {
 						match crate::aux_schema::load_execution_receipt::<_, Block>(
-							&*client, block_hash,
+							&*client,
+							block_number,
 						) {
 							Ok(Some(local_receipt)) => {
 								let _ = tx.send(Ok(local_receipt));
@@ -471,7 +478,9 @@ where
 
 			Ok(Action::Empty)
 		} else {
-			crate::aux_schema::delete_execution_receipt::<_, Block>(&*self.client, block_hash)?;
+			// TODO: Problem comes if we somehow receive the same receipt again after deleting the local one
+			// from disk.
+			crate::aux_schema::delete_execution_receipt::<_, Block>(&*self.client, block_number)?;
 			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}

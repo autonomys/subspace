@@ -78,6 +78,6 @@ sp_api::decl_runtime_apis! {
 		) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
 		/// Returns the intermediate storage roots in an encoded form.
-		fn intermediate_roots() -> Vec<Vec<u8>>;
+		fn intermediate_roots() -> Vec<[u8; 32]>;
 	}
 }

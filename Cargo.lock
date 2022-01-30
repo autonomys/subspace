@@ -844,6 +844,8 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "substrate-test-runtime",
+ "substrate-test-runtime-client",
  "thiserror",
  "tokio",
  "tracing",

@@ -178,6 +178,7 @@ where
 		let (header, body) = block.deconstruct();
 		let state_root = *header.state_root();
 		let header_hash = header.hash();
+		let header_number = *header.number();
 
 		let block_import_params = {
 			let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
@@ -192,15 +193,15 @@ where
 
 		let mut roots =
 			self.client.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
-		roots.push(state_root.encode());
+		roots.push(
+			state_root.encode().try_into().expect(
+				"State root uses the same Block hash type which can fit into [u8; 32]; qed",
+			),
+		);
 
-		let trace_root = crate::merkle_tree::MerkleTree::new(
-			roots
-				.iter()
-				.map(|r| r.as_slice().try_into().expect("Storage root type is [u8; 32]; qed")),
-		)
-		.expect("Failed to construct merkle tree for execution trace")
-		.root();
+		let trace_root = crate::merkle_tree::MerkleTree::new(roots.clone())
+			.map_err(|e| sp_blockchain::Error::Application(e.into()))?
+			.root();
 
 		let trace = roots
 			.into_iter()
@@ -223,7 +224,7 @@ where
 
 		crate::aux_schema::write_execution_receipt::<_, Block>(
 			&*self.client,
-			header_hash,
+			header_number,
 			&execution_receipt,
 		)?;
 
