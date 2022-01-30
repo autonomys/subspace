@@ -9,7 +9,7 @@ use sp_consensus::BlockOrigin;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
 	generic::BlockId,
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
+	traits::{Block as BlockT, Header as HeaderT},
 };
 use std::{
 	collections::{BTreeMap, VecDeque},
@@ -194,8 +194,13 @@ where
 			self.client.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
 		roots.push(state_root.encode());
 
-		let trace_root =
-			BlakeTwo256::ordered_trie_root(roots.clone(), sp_core::storage::StateVersion::V1);
+		let trace_root = crate::merkle_tree::MerkleTree::new(
+			roots
+				.iter()
+				.map(|r| r.as_slice().try_into().expect("Storage root type is [u8; 32]; qed")),
+		)
+		.expect("Failed to construct merkle tree for execution trace")
+		.root();
 
 		let trace = roots
 			.into_iter()

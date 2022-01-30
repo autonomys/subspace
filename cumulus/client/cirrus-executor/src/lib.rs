@@ -19,6 +19,7 @@
 
 mod aux_schema;
 mod bundler;
+mod merkle_tree;
 mod processor;
 
 use sc_client_api::{AuxStore, BlockBackend};

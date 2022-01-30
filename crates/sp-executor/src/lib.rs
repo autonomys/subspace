@@ -25,7 +25,7 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::AccountId;
 
 /// Header of transaction bundle.
@@ -103,7 +103,7 @@ pub struct ExecutionReceipt<Hash> {
     /// List of storage roots collected during the block execution.
     pub trace: Vec<Hash>,
     /// The merkle root of `trace`.
-    pub trace_root: H256,
+    pub trace_root: Sha256Hash,
 }
 
 impl<Hash: Encode> ExecutionReceipt<Hash> {
