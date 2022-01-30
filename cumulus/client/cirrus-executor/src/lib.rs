@@ -89,7 +89,7 @@ impl<Block: BlockT, BS, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-			is_authority: self.is_authority.clone(),
+			is_authority: self.is_authority,
 		}
 	}
 }
@@ -449,21 +449,20 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		let find_invalid_transition = || {
-			for ((local_idx, local_root), (_external_idx, external_root)) in local_receipt
-				.trace
-				.iter()
-				.enumerate()
-				.zip(execution_receipt.trace.iter().enumerate())
-			{
-				if local_root != external_root {
-					return Some(local_idx)
-				}
-			}
-			None
-		};
-
-		if let Some(_local_trace_idx) = find_invalid_transition() {
+		if let Some(_local_trace_idx) = local_receipt
+			.trace
+			.iter()
+			.enumerate()
+			.zip(execution_receipt.trace.iter().enumerate())
+			.find_map(
+				|((local_idx, local_root), (_, external_root))| {
+					if local_root != external_root {
+						Some(local_idx)
+					} else {
+						None
+					}
+				},
+			) {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
