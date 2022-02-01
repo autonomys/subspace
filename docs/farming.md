@@ -62,17 +62,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2. Open your favourite terminal, and go to the folder where you download the executables
 3. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose):
 ```
-subspace-node-x86_64-*-snapshot \
-   --chain testnet \
-   --wasm-execution compiled \
-   --execution wasm \
-   --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
-   --rpc-cors all \
-   --rpc-methods unsafe \
-   --ws-external \
-   --validator \
-   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
-   --name INSERT_YOUR_ID
+subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
 ```
 4. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 5. This will start the farmer (do this in another terminal):
