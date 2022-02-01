@@ -1,7 +1,7 @@
 FROM ubuntu:20.04
 
-# TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
-ARG RUSTC_VERSION=nightly-2021-12-14
+# TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
+ARG RUSTC_VERSION=nightly-2022-01-19
 
 WORKDIR /code
 

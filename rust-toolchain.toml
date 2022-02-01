@@ -1,5 +1,5 @@
 [toolchain]
-# TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
-channel = "nightly-2021-12-14"
+# TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
+channel = "nightly-2022-01-19"
 targets = ["wasm32-unknown-unknown"]
 profile = "default"
