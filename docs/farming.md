@@ -31,7 +31,17 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 3. Make them executable  `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
 4. This will start the node (replace `INSERT_YOUR_ID` with a nickname you choose):
 ```
-./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+./subspace-node-x86_64-*-snapshot \
+  --chain testnet \
+  --wasm-execution compiled \
+  --execution wasm \
+  --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
+  --rpc-cors all \
+  --rpc-methods unsafe \
+  --ws-external \
+  --validator \
+  --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
+  --name INSERT_YOUR_ID
 ```
 > *Note for macOS (when prompted):* Click on `cancel` instead of moving it to trash.
 To allow execution, go to `System Preferences -> Security & Privacy -> General`, and click on `allow`.
