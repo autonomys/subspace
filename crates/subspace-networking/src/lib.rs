@@ -16,6 +16,7 @@
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
 
+use event_listener_primitives::{Bag, HandlerId};
 pub use libp2p;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::futures::channel::mpsc;
@@ -135,10 +136,18 @@ enum Command {
     // TODO
 }
 
+#[derive(Default, Debug)]
+struct Handlers {
+    new_listener: Bag<Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>, Multiaddr>,
+}
+
 #[derive(Debug)]
 struct Inner {
-    local_peer_id: PeerId,
-    local_peer_addresses: Mutex<Vec<Multiaddr>>,
+    handlers: Handlers,
+    id: PeerId,
+    /// Addresses on which node is listening for incoming requests.
+    listeners: Mutex<Vec<Multiaddr>>,
+    /// Sender end of the channel for sending commands to the swarm.
     command_sender: mpsc::Sender<Command>,
 }
 
@@ -172,19 +181,21 @@ impl NodeRunner {
         }
     }
 
-    async fn handle_swarm_event<E>(&mut self, swarm_event: SwarmEvent<ComposedEvent, E>) {
+    async fn handle_swarm_event<E: std::fmt::Debug>(
+        &mut self,
+        swarm_event: SwarmEvent<ComposedEvent, E>,
+    ) {
         match swarm_event {
             SwarmEvent::Behaviour(ComposedEvent::Kademlia(kademlia_event)) => {
                 println!("Kademlia event: {:?}", kademlia_event);
             }
-            SwarmEvent::NewListenAddr {
-                listener_id,
-                address,
-            } => {
-                println!("New listener {:?} with address {}", listener_id, address);
-                self.inner.local_peer_addresses.lock().push(address);
+            SwarmEvent::NewListenAddr { address, .. } => {
+                self.inner.listeners.lock().push(address.clone());
+                self.inner.handlers.new_listener.call_simple(&address);
             }
-            _ => {}
+            other => {
+                println!("Other swarm event: {:?}", other);
+            }
         }
     }
 
@@ -202,7 +213,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// Create a new network node/instance.
+    /// Create a new network node instance.
     pub async fn create(
         Config {
             keypair,
@@ -272,8 +283,9 @@ impl Node {
         let (command_sender, command_receiver) = mpsc::channel(1);
 
         let inner = Arc::new(Inner {
-            local_peer_id: *swarm.local_peer_id(),
-            local_peer_addresses: Mutex::default(),
+            handlers: Handlers::default(),
+            id: *swarm.local_peer_id(),
+            listeners: Mutex::default(),
             command_sender,
         });
 
@@ -289,11 +301,21 @@ impl Node {
         Ok((node, node_runner))
     }
 
+    /// Node's own local ID.
     pub fn id(&self) -> PeerId {
-        self.inner.local_peer_id
+        self.inner.id
     }
 
-    pub fn addresses(&self) -> Vec<Multiaddr> {
-        self.inner.local_peer_addresses.lock().clone()
+    /// Node's own addresses where it listens for incoming requests.
+    pub fn listeners(&self) -> Vec<Multiaddr> {
+        self.inner.listeners.lock().clone()
+    }
+
+    /// Callback is called when node starts listening on new address.
+    pub fn on_new_listener(
+        &self,
+        callback: Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>,
+    ) -> HandlerId {
+        self.inner.handlers.new_listener.add(callback)
     }
 }
