@@ -11,7 +11,7 @@ futures-timer = "3.0.2"
 
 metered-channel = { path = "../metered-channel" }
 
-substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 
 [features]
 default = []

@@ -21,8 +21,8 @@ jobs:
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-        # TODO: roll back to nightly on new wasmtime release, ref https://github.com/bytecodealliance/rustix/issues/142
-        toolchain: nightly-2021-12-14
+        # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
+        toolchain: nightly-2022-01-19
         target: wasm32-unknown-unknown
         profile: minimal
         override: true

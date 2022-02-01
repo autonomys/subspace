@@ -1,8 +1,8 @@
 use crate::rpc::{Error as RpcError, NewHead, RpcClient};
 use async_trait::async_trait;
+use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
+use jsonrpsee::core::Error as JsonError;
 use jsonrpsee::rpc_params;
-use jsonrpsee::types::traits::{Client, SubscriptionClient};
-use jsonrpsee::types::Error as JsonError;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
 use subspace_rpc_primitives::{
@@ -57,7 +57,7 @@ impl RpcClient for WsRpc {
         let (sender, receiver) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            while let Ok(Some(notification)) = subscription.next().await {
+            while let Some(Ok(notification)) = subscription.next().await {
                 let _ = sender.send(notification).await;
             }
         });
@@ -78,7 +78,7 @@ impl RpcClient for WsRpc {
         let (sender, receiver) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            while let Ok(Some(notification)) = subscription.next().await {
+            while let Some(Ok(notification)) = subscription.next().await {
                 let _ = sender.send(notification).await;
             }
         });
@@ -112,7 +112,7 @@ impl RpcClient for WsRpc {
         let (sender, receiver) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            while let Ok(Some(notification)) = subscription.next().await {
+            while let Some(Ok(notification)) = subscription.next().await {
                 let _ = sender.send(notification).await;
             }
         });

@@ -151,7 +151,6 @@ mod pallet {
     /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
-    #[pallet::generate_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -843,10 +842,7 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
     {
         digests
             .into_iter()
-            .find_map(|(id, data)| {
-                // TODO: Simplify once https://github.com/paritytech/substrate/pull/10536 is merged
-                DigestItemRef::PreRuntime(&id, &data.to_vec()).as_subspace_pre_digest()
-            })
+            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
             .map(|pre_digest| pre_digest.solution.public_key)
     }
 }

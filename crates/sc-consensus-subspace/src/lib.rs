@@ -141,102 +141,97 @@ pub struct BlockSigningNotification {
 }
 
 /// Errors encountered by the Subspace authorship task.
-#[derive(derive_more::Display, Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error<B: BlockT> {
     /// Multiple Subspace pre-runtime digests
-    #[display(fmt = "Multiple Subspace pre-runtime digests, rejecting!")]
+    #[error("Multiple Subspace pre-runtime digests, rejecting!")]
     MultiplePreRuntimeDigests,
     /// No Subspace pre-runtime digest found
-    #[display(fmt = "No Subspace pre-runtime digest found")]
+    #[error("No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
     /// Multiple Subspace global randomness digests
-    #[display(fmt = "Multiple Subspace global randomness digests, rejecting!")]
+    #[error("Multiple Subspace global randomness digests, rejecting!")]
     MultipleGlobalRandomnessDigests,
     /// Multiple Subspace solution range digests
-    #[display(fmt = "Multiple Subspace solution range digests, rejecting!")]
+    #[error("Multiple Subspace solution range digests, rejecting!")]
     MultipleSolutionRangeDigests,
     /// Multiple Subspace salt digests
-    #[display(fmt = "Multiple Subspace salt digests, rejecting!")]
+    #[error("Multiple Subspace salt digests, rejecting!")]
     MultipleSaltDigests,
     /// Header rejected: too far in the future
-    #[display(fmt = "Header {:?} rejected: too far in the future", _0)]
+    #[error("Header {0:?} rejected: too far in the future")]
     TooFarInFuture(B::Hash),
     /// Parent unavailable. Cannot import
-    #[display(fmt = "Parent ({}) of {} unavailable. Cannot import", _0, _1)]
+    #[error("Parent ({0}) of {1} unavailable. Cannot import")]
     ParentUnavailable(B::Hash, B::Hash),
     /// Slot number must increase
-    #[display(
-        fmt = "Slot number must increase: parent slot: {}, this slot: {}",
-        _0,
-        _1
-    )]
+    #[error("Slot number must increase: parent slot: {0}, this slot: {1}")]
     SlotMustIncrease(Slot, Slot),
     /// Header has a bad seal
-    #[display(fmt = "Header {:?} has a bad seal", _0)]
+    #[error("Header {0:?} has a bad seal")]
     HeaderBadSeal(B::Hash),
     /// Header is unsealed
-    #[display(fmt = "Header {:?} is unsealed", _0)]
+    #[error("Header {0:?} is unsealed")]
     HeaderUnsealed(B::Hash),
     /// Bad signature
-    #[display(fmt = "Bad signature on {:?}", _0)]
+    #[error("Bad signature on {0:?}")]
     BadSignature(B::Hash),
     /// Bad solution signature
-    #[display(fmt = "Bad solution signature on slot {:?}: {:?}", _0, _1)]
+    #[error("Bad solution signature on slot {0:?}: {1:?}")]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
     /// Bad local challenge
-    #[display(fmt = "Local challenge is invalid for slot {}: {}", _0, _1)]
+    #[error("Local challenge is invalid for slot {0}: {1}")]
     BadLocalChallenge(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
-    #[display(fmt = "Solution is outside of solution range for slot {}", _0)]
+    #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
     /// Invalid encoding of a piece
-    #[display(fmt = "Invalid encoding for slot {}", _0)]
+    #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
     /// Invalid tag for salt
-    #[display(fmt = "Invalid tag for salt for slot {}", _0)]
+    #[error("Invalid tag for salt for slot {0}")]
     InvalidTag(Slot),
     /// Parent block has no associated weight
-    #[display(fmt = "Parent block of {} has no associated weight", _0)]
+    #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(B::Hash),
     /// Block has no associated global randomness
-    #[display(fmt = "Missing global randomness for block {}", _0)]
+    #[error("Missing global randomness for block {0}")]
     MissingGlobalRandomness(B::Hash),
     /// Block has invalid associated global randomness
-    #[display(fmt = "Invalid global randomness for block {}", _0)]
+    #[error("Invalid global randomness for block {0}")]
     InvalidGlobalRandomness(B::Hash),
     /// Block has no associated solution range
-    #[display(fmt = "Missing solution range for block {}", _0)]
+    #[error("Missing solution range for block {0}")]
     MissingSolutionRange(B::Hash),
     /// Block has invalid associated solution range
-    #[display(fmt = "Invalid solution range for block {}", _0)]
+    #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(B::Hash),
     /// Block has no associated salt
-    #[display(fmt = "Missing salt for block {}", _0)]
+    #[error("Missing salt for block {0}")]
     MissingSalt(B::Hash),
     /// Block has invalid associated salt
-    #[display(fmt = "Invalid salt for block {}", _0)]
+    #[error("Invalid salt for block {0}")]
     InvalidSalt(B::Hash),
     /// Farmer in block list
-    #[display(fmt = "Farmer {} is in block list", _0)]
+    #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
-    #[display(fmt = "Records Root for segment index {} not found", _0)]
+    #[error("Records Root for segment index {0} not found")]
     RecordsRootNotFound(u64),
     /// Check inherents error
-    #[display(fmt = "Checking inherents failed: {}", _0)]
+    #[error("Checking inherents failed: {0}")]
     CheckInherents(sp_inherents::Error),
     /// Unhandled check inherents error
-    #[display(
-        fmt = "Checking inherents unhandled error: {}",
-        "String::from_utf8_lossy(_0)"
-    )]
+    #[error("Checking inherents unhandled error: {}", String::from_utf8_lossy(.0))]
     CheckInherentsUnhandled(sp_inherents::InherentIdentifier),
     /// Create inherents error.
-    #[display(fmt = "Creating inherents failed: {}", _0)]
+    #[error("Creating inherents failed: {0}")]
     CreateInherents(sp_inherents::Error),
     /// Client error
+    #[error(transparent)]
     Client(sp_blockchain::Error),
     /// Runtime Api error.
+    #[error(transparent)]
     RuntimeApi(sp_api::ApiError),
 }
 
