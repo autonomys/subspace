@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.44"
+anyhow = "1.0.51"
 async-oneshot = "0.5.0"
 async-trait = "0.1.52"
 clap = { version = "3.0.13", features = ["color", "derive"] }
@@ -22,11 +22,11 @@ event-listener-primitives = "2.0.1"
 futures = "0.3.19"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
-jsonrpsee = { version = "0.6.1", features = ["client", "macros", "server"] }
+jsonrpsee = { version = "0.8.0", features = ["client", "macros", "server"] }
 log = "0.4.14"
-lru = "0.7.0"
+lru = "0.7.2"
 parity-scale-codec = "2.3.0"
-parking_lot = "0.11.2"
+parking_lot = "0.12.0"
 rayon = "1.5.1"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.132", features = ["derive"] }
@@ -39,8 +39,8 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 thiserror = "1.0.30"
 tiny-bip39 = "0.8.2"
-tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread"] }
-zeroize = "1.4.3"
+tokio = { version = "1.16.1", features = ["macros", "rt-multi-thread"] }
+zeroize = "1.5.2"
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to
@@ -52,7 +52,7 @@ version = "0.17.0"
 
 [dev-dependencies]
 rand = "0.8.4"
-tempfile = "3.2.0"
+tempfile = "3.3.0"
 
 [features]
 default = []

@@ -25,7 +25,7 @@ frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/pari
 frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 futures = "0.3.19"
 jsonrpc-core = "18.0.0"
-lru = "0.7"
+lru = "0.7.2"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 polkadot-overseer = { path = "../../polkadot/node/overseer" }
 polkadot-node-collation-generation = { path = "../../polkadot/node/collation-generation" }

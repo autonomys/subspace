@@ -9,7 +9,7 @@ description = "Polkadot Jaeger primitives"
 async-std = "1.8.0"
 mick-jaeger = "0.1.6"
 lazy_static = "1.4"
-parking_lot = "0.11.2"
+parking_lot = "0.12.0"
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }

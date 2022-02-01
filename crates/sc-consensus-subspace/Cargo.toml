@@ -19,8 +19,8 @@ codec = { package = "parity-scale-codec", version = "2.3.0", features = ["derive
 fork-tree = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 futures = "0.3.19"
 log = "0.4.14"
-lru = "0.7.0"
-parking_lot = "0.11.2"
+lru = "0.7.2"
+parking_lot = "0.12.0"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6", version = "0.10.0-dev" }
 rand = "0.8.4"
 schnorrkel = "0.9.1"

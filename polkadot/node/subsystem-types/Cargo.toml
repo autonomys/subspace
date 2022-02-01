@@ -11,7 +11,7 @@ polkadot-node-jaeger = { path = "../jaeger" }
 polkadot-overseer-gen = { path = "../overseer/overseer-gen" }
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
-smallvec = "1.6.1"
+smallvec = "1.8.0"
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 thiserror = "1.0.30"
 

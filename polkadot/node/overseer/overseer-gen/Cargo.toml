@@ -15,7 +15,7 @@ polkadot-overseer-gen-proc-macro = { path = "./proc-macro" }
 # trait SpawnNamed
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 futures-timer = "3.0.2"
-pin-project = "1.0"
+pin-project = "1.0.10"
 
 [dev-dependencies]
 trybuild = "1.0.52"
