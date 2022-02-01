@@ -6,14 +6,13 @@ edition = "2021"
 description = "Subsystem traits and message definitions"
 
 [dependencies]
-derive_more = "0.99.17"
 futures = "0.3.19"
 polkadot-node-jaeger = { path = "../jaeger" }
 polkadot-overseer-gen = { path = "../overseer/overseer-gen" }
-sc-network = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sc-network = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 smallvec = "1.6.1"
-substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 thiserror = "1.0.30"
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }

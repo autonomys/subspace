@@ -18,7 +18,7 @@ parity-scale-codec = { version = "2.3.0", features = ["derive"], default-feature
 reed-solomon-erasure = { version = "5.0.1", default-features = true }
 serde = { version = "1.0.132", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.29", optional = true }
+thiserror = { version = "1.0.30", optional = true }
 typenum = "1.14.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197

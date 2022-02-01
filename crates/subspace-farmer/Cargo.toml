@@ -15,7 +15,7 @@ include = [
 anyhow = "1.0.44"
 async-oneshot = "0.5.0"
 async-trait = "0.1.52"
-clap = { version = "3.0.0-rc.7", features = ["color", "derive"] }
+clap = { version = "3.0.13", features = ["color", "derive"] }
 dirs = "4.0.0"
 env_logger = "0.9.0"
 event-listener-primitives = "2.0.1"
@@ -31,13 +31,13 @@ rayon = "1.5.1"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.132", features = ["derive"] }
 serde_json = "1.0.74"
-sp-core = { version = "4.1.0-dev", git = "https://github.com/paritytech/substrate", rev = "04c7c6abef1e0c6b4126427159090a44f3221333" }
+sp-core = { version = "4.1.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
 ss58-registry = "1.10.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-thiserror = "1.0.24"
+thiserror = "1.0.30"
 tiny-bip39 = "0.8.2"
 tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread"] }
 zeroize = "1.4.3"
