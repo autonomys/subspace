@@ -26,7 +26,7 @@ use libp2p::kad::record::store::MemoryStore;
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::noise::NoiseConfig;
 use libp2p::ping::{Ping, PingEvent};
-use libp2p::swarm::{Swarm, SwarmEvent};
+use libp2p::swarm::{Swarm, SwarmBuilder, SwarmEvent};
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
@@ -188,6 +188,25 @@ impl NodeRunner {
         match swarm_event {
             SwarmEvent::Behaviour(ComposedEvent::Kademlia(kademlia_event)) => {
                 println!("Kademlia event: {:?}", kademlia_event);
+
+                match kademlia_event {
+                    KademliaEvent::RoutingUpdated {
+                        peer,
+                        is_new_peer,
+                        addresses,
+                        bucket_range,
+                        old_peer,
+                    } => {
+                        if is_new_peer {
+                            if let Err(error) = self.swarm.dial(peer) {
+                                eprintln!("Dial error: {}", error);
+                            }
+                        }
+                    }
+                    _ => {
+                        // TODO
+                    }
+                }
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.inner.listeners.lock().push(address.clone());
@@ -269,7 +288,11 @@ impl Node {
                 ping: Ping::default(),
             };
 
-            let mut swarm = Swarm::new(transport, behaviour, local_peer_id);
+            let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
+                .executor(Box::new(|fut| {
+                    tokio::spawn(fut);
+                }))
+                .build();
 
             for addr in listen_on {
                 swarm.listen_on(addr)?;

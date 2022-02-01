@@ -13,6 +13,8 @@ async fn main() {
         .push("/ip4/0.0.0.0/tcp/0".parse().unwrap());
     let (node_1, mut node_runner_1) = Node::create(config_1).await.unwrap();
 
+    println!("Node 1 ID is {}", node_1.id());
+
     let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
     node_1
         .on_new_listener(Arc::new(move |address| {
@@ -35,6 +37,8 @@ async fn main() {
         .push((node_1.id(), node_1_addresses_receiver.next().await.unwrap()));
 
     let (node_2, mut node_runner_2) = Node::create(config_2).await.unwrap();
+
+    println!("Node 2 ID is {}", node_2.id());
 
     tokio::spawn(async move {
         node_runner_2.run().await;
