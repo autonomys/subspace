@@ -18,6 +18,7 @@
 
 pub use libp2p;
 use libp2p::dns::TokioDnsConfig;
+use libp2p::futures::channel::mpsc;
 use libp2p::futures::StreamExt;
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::record::store::MemoryStore;
@@ -29,12 +30,13 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{
-    core, identity, noise, Multiaddr, NetworkBehaviour, PeerId, Transport, TransportError,
+    core, futures, identity, noise, Multiaddr, NetworkBehaviour, PeerId, Transport, TransportError,
 };
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use thiserror::Error;
-use tokio::task::JoinHandle;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad";
 
@@ -122,39 +124,86 @@ impl Config {
 pub enum CreationError {
     /// I/O error.
     #[error("I/O error: {0}")]
-    Io(io::Error),
+    Io(#[from] io::Error),
     /// Transport error when attempting to listen on multiaddr.
     #[error("Transport error when attempting to listen on multiaddr: {0}")]
-    TransportError(TransportError<io::Error>),
+    TransportError(#[from] TransportError<io::Error>),
 }
 
-impl From<io::Error> for CreationError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-impl From<TransportError<io::Error>> for CreationError {
-    fn from(error: TransportError<io::Error>) -> Self {
-        Self::TransportError(error)
-    }
-}
-
-/// Implementation of a node (farmer, consensus node, etc.) on Subspace Network.
 #[derive(Debug)]
-pub struct Node {
-    background_task: JoinHandle<()>,
+enum Command {
+    // TODO
 }
 
-impl Drop for Node {
-    fn drop(&mut self) {
-        self.background_task.abort();
+#[derive(Debug)]
+struct Inner {
+    local_peer_id: PeerId,
+    local_peer_addresses: Mutex<Vec<Multiaddr>>,
+    command_sender: mpsc::Sender<Command>,
+}
+
+/// Runner for then Node
+#[must_use = "Node does not function properly unless its runner is driven forward"]
+pub struct NodeRunner {
+    command_receiver: mpsc::Receiver<Command>,
+    swarm: Swarm<ComposedBehaviour>,
+    inner: Arc<Inner>,
+}
+
+impl NodeRunner {
+    pub async fn run(&mut self) {
+        loop {
+            futures::select! {
+                swarm_event = self.swarm.next() => {
+                    if let Some(swarm_event) = swarm_event {
+                        self.handle_swarm_event(swarm_event).await;
+                    } else {
+                        break;
+                    }
+                },
+                command = self.command_receiver.next() => {
+                    if let Some(command) = command {
+                        self.handle_command(command).await;
+                    } else {
+                        break;
+                    }
+                },
+            }
+        }
     }
+
+    async fn handle_swarm_event<E>(&mut self, swarm_event: SwarmEvent<ComposedEvent, E>) {
+        match swarm_event {
+            SwarmEvent::Behaviour(ComposedEvent::Kademlia(kademlia_event)) => {
+                println!("Kademlia event: {:?}", kademlia_event);
+            }
+            SwarmEvent::NewListenAddr {
+                listener_id,
+                address,
+            } => {
+                println!("New listener {:?} with address {}", listener_id, address);
+                self.inner.local_peer_addresses.lock().push(address);
+            }
+            _ => {}
+        }
+    }
+
+    async fn handle_command(&mut self, command: Command) {
+        match command {
+            // TODO
+        }
+    }
+}
+
+/// Implementation of a network node on Subspace Network.
+#[derive(Debug, Clone)]
+pub struct Node {
+    inner: Arc<Inner>,
 }
 
 impl Node {
     /// Create a new network node/instance.
-    pub fn create(
+    pub async fn create(
         Config {
             keypair,
             listen_on,
@@ -163,73 +212,88 @@ impl Node {
             bootstrap_nodes,
             yamux_config,
         }: Config,
-    ) -> Result<Self, CreationError> {
-        let local_public_key = keypair.public();
-        let local_peer_id = local_public_key.to_peer_id();
+    ) -> Result<(Self, NodeRunner), CreationError> {
+        // libp2p uses blocking API, hence we need to create a blocking task.
+        let create_swarm_fut = tokio::task::spawn_blocking(move || {
+            let local_public_key = keypair.public();
+            let local_peer_id = local_public_key.to_peer_id();
 
-        let transport = {
             let transport = {
-                let tcp = TokioTcpConfig::new().nodelay(true);
-                let dns_tcp = TokioDnsConfig::system(tcp)?;
-                let ws = WsConfig::new(dns_tcp.clone());
-                dns_tcp.or_transport(ws)
+                let transport = {
+                    let tcp = TokioTcpConfig::new().nodelay(true);
+                    let dns_tcp = TokioDnsConfig::system(tcp)?;
+                    let ws = WsConfig::new(dns_tcp.clone());
+                    dns_tcp.or_transport(ws)
+                };
+
+                let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
+                    .into_authentic(&keypair)
+                    .expect("Signing libp2p-noise static DH keypair failed.");
+
+                transport
+                    .upgrade(core::upgrade::Version::V1Lazy)
+                    .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
+                    .multiplex(yamux_config)
+                    .timeout(timeout)
+                    .boxed()
             };
 
-            let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-                .into_authentic(&keypair)
-                .expect("Signing libp2p-noise static DH keypair failed.");
+            let kademlia = {
+                let store = MemoryStore::new(local_peer_id);
+                let mut kademlia = Kademlia::with_config(local_peer_id, store, kademlia_config);
 
-            transport
-                .upgrade(core::upgrade::Version::V1Lazy)
-                .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-                .multiplex(yamux_config)
-                .timeout(timeout)
-                .boxed()
-        };
-
-        let kademlia = {
-            let store = MemoryStore::new(local_peer_id);
-            let mut kademlia = Kademlia::with_config(local_peer_id, store, kademlia_config);
-
-            for (peer_id, address) in bootstrap_nodes {
-                kademlia.add_address(&peer_id, address);
-            }
-
-            kademlia
-        };
-
-        let behaviour = ComposedBehaviour {
-            kademlia,
-            identify: Identify::new(IdentifyConfig::new(
-                "/ipfs/0.1.0".to_string(),
-                local_public_key,
-            )),
-            ping: Ping::default(),
-        };
-
-        let mut swarm = Swarm::new(transport, behaviour, local_peer_id);
-
-        for addr in listen_on {
-            swarm.listen_on(addr)?;
-        }
-
-        let background_task = tokio::spawn(async move {
-            while let Some(event) = swarm.next().await {
-                match event {
-                    SwarmEvent::Behaviour(ComposedEvent::Kademlia(kademlia_event)) => {
-                        println!("Kademlia event: {:?}", kademlia_event);
-                    }
-                    SwarmEvent::NewListenAddr {
-                        listener_id,
-                        address,
-                    } => {
-                        println!("New listener {:?} with address {}", listener_id, address);
-                    }
-                    _ => {}
+                for (peer_id, address) in bootstrap_nodes {
+                    kademlia.add_address(&peer_id, address);
                 }
+
+                kademlia
+            };
+
+            let behaviour = ComposedBehaviour {
+                kademlia,
+                identify: Identify::new(IdentifyConfig::new(
+                    "/ipfs/0.1.0".to_string(),
+                    local_public_key,
+                )),
+                ping: Ping::default(),
+            };
+
+            let mut swarm = Swarm::new(transport, behaviour, local_peer_id);
+
+            for addr in listen_on {
+                swarm.listen_on(addr)?;
             }
+
+            Ok::<_, CreationError>(swarm)
         });
 
-        Ok(Self { background_task })
+        let swarm = create_swarm_fut.await.unwrap()?;
+
+        let (command_sender, command_receiver) = mpsc::channel(1);
+
+        let inner = Arc::new(Inner {
+            local_peer_id: *swarm.local_peer_id(),
+            local_peer_addresses: Mutex::default(),
+            command_sender,
+        });
+
+        let node = Self {
+            inner: Arc::clone(&inner),
+        };
+        let node_runner = NodeRunner {
+            command_receiver,
+            swarm,
+            inner,
+        };
+
+        Ok((node, node_runner))
+    }
+
+    pub fn id(&self) -> PeerId {
+        self.inner.local_peer_id
+    }
+
+    pub fn addresses(&self) -> Vec<Multiaddr> {
+        self.inner.local_peer_addresses.lock().clone()
     }
 }
