@@ -224,6 +224,7 @@ where
 
 		crate::aux_schema::write_execution_receipt::<_, Block>(
 			&*self.client,
+			header_hash,
 			header_number,
 			&execution_receipt,
 		)?;
