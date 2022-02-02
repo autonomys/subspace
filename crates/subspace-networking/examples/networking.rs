@@ -1,10 +1,10 @@
 use env_logger::Env;
-use libp2p::futures::channel::mpsc;
-use libp2p::futures::StreamExt;
+use futures::channel::mpsc;
+use futures::StreamExt;
 use libp2p::identity::ed25519::Keypair;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, Node};
+use subspace_networking::Config;
 
 #[tokio::main]
 async fn main() {
@@ -15,7 +15,7 @@ async fn main() {
         .listen_on
         .push("/ip4/0.0.0.0/tcp/0".parse().unwrap());
     config_1.allow_non_globals_in_dht = true;
-    let (node_1, mut node_runner_1) = Node::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -41,7 +41,7 @@ async fn main() {
         .push((node_1.id(), node_1_addresses_receiver.next().await.unwrap()));
     config_2.allow_non_globals_in_dht = true;
 
-    let (node_2, mut node_runner_2) = Node::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 
