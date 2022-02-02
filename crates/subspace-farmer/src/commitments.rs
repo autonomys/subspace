@@ -1,4 +1,5 @@
 mod commitment_databases;
+mod metadata;
 #[cfg(test)]
 mod tests;
 
