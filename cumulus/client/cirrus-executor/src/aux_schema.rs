@@ -105,8 +105,7 @@ pub(super) fn load_execution_receipt<Backend: AuxStore, Block: BlockT>(
 	backend: &Backend,
 	block_hash: Block::Hash,
 ) -> ClientResult<Option<ExecutionReceipt<Block::Hash>>> {
-	let key = (EXECUTION_RECEIPT_KEY, block_hash).encode();
-	load_decode(backend, key.as_slice())
+	load_decode(backend, execution_receipt_key(block_hash).as_slice())
 }
 
 pub(super) fn target_receipt_is_pruned<Block: BlockT>(

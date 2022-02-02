@@ -830,7 +830,7 @@ dependencies = [
  "sc-consensus",
  "sc-transaction-pool-api",
  "sc-utils",
- "sha2 0.10.0",
+ "sha2 0.10.1",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",

@@ -193,16 +193,21 @@ where
 
 		let mut roots =
 			self.client.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
-		roots.push(
-			state_root.encode().try_into().expect(
-				"State root uses the same Block hash type which can fit into [u8; 32]; qed",
-			),
-		);
 
-		let trace_root = crate::merkle_tree::MerkleTree::new(roots.clone())
-			.map_err(|e| sp_blockchain::Error::Application(e.into()))?
-			.root();
+		if roots.is_empty() {
+			panic!(
+				"FIXME: runtime intermediate_roots is empty, uncovered by running the sync node, related: https://github.com/paritytech/substrate/pull/8953"
+			);
+		}
 
+		let state_root = state_root
+			.encode()
+			.try_into()
+			.expect("State root uses the same Block hash type which can fit into [u8; 32]; qed");
+
+		roots.push(state_root);
+
+		let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
 		let trace = roots
 			.into_iter()
 			.map(|r| {
@@ -298,5 +303,18 @@ mod tests {
 		let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_seed);
 
 		assert_eq!(shuffled_extrinsics, vec![100, 30, 10, 1, 11, 101, 31, 12, 102, 2]);
+	}
+
+	#[test]
+	fn construct_trace_merkle_tree_should_work() {
+		let root1 = [1u8; 32];
+		let root2 = [2u8; 32];
+		let root3 = [3u8; 32];
+
+		let roots = vec![root1, root2];
+		crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
+
+		let roots = vec![root1, root2, root3];
+		crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
 	}
 }

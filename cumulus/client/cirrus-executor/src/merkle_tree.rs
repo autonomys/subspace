@@ -41,3 +41,26 @@ pub(super) type MerkleTree = merkletree::merkle::MerkleTree<
 	Sha256Algorithm,
 	merkletree::store::VecStore<Sha256Hash>,
 >;
+
+pub(super) fn construct_trace_merkle_tree(
+	roots: Vec<[u8; 32]>,
+) -> Result<MerkleTree, sp_blockchain::Error> {
+	let mut roots = roots;
+
+	let roots_len = roots.len();
+	assert!(roots_len >= 2, "Execution trace should at least contain 2 storage roots");
+
+	let ideal_len = merkletree::merkle::next_pow2(roots_len);
+
+	if ideal_len > roots_len {
+		// The last element of trace is state_root.
+		if let Some(state_root) = roots.last().copied() {
+			roots.resize(ideal_len, state_root);
+		}
+	}
+
+	MerkleTree::new(roots).map_err(|e| {
+		tracing::error!(target: crate::LOG_TARGET, error = ?e, "Failed to construct a trace Merkle tree");
+		sp_blockchain::Error::Application(e.into())
+	})
+}
