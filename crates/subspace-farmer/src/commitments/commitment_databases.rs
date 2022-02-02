@@ -5,6 +5,7 @@ use parking_lot::Mutex;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,11 +33,23 @@ pub(super) struct DbEntry {
     db: Mutex<Option<Arc<DB>>>,
 }
 
+impl fmt::Debug for DbEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DbEntry").field("salt", &self.salt).finish()
+    }
+}
+
 impl Deref for DbEntry {
     type Target = Mutex<Option<Arc<DB>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.db
+    }
+}
+
+impl DbEntry {
+    pub(super) fn salt(&self) -> &Salt {
+        &self.salt
     }
 }
 
@@ -118,6 +131,19 @@ impl CommitmentDatabases {
             .collect()
     }
 
+    /// Returns current and next `db_entry`.
+    pub(super) fn get_db_entries(&mut self) -> (Option<Arc<DbEntry>>, Option<Arc<DbEntry>>) {
+        let mut databases_iter = self.databases.iter().rev();
+
+        let current = databases_iter
+            .next()
+            .map(|(_salt, db_entry)| Arc::clone(db_entry));
+        let next = databases_iter
+            .next()
+            .map(|(_salt, db_entry)| Arc::clone(db_entry));
+
+        (current, next)
+    }
     pub(super) fn get_db_entry(&self, salt: &Salt) -> Option<&Arc<DbEntry>> {
         self.databases.peek(salt)
     }
