@@ -39,6 +39,8 @@ pub struct Config {
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
     pub allow_non_globals_in_dht: bool,
+    /// How frequently should random queries be done using Kademlia DHT to populate routing table.
+    pub initial_random_query_interval: Duration,
 }
 
 impl fmt::Debug for Config {
@@ -67,6 +69,7 @@ impl Config {
             kademlia_config,
             yamux_config,
             allow_non_globals_in_dht: false,
+            initial_random_query_interval: Duration::from_secs(1),
         }
     }
 }
@@ -92,6 +95,7 @@ pub async fn create(
         bootstrap_nodes,
         yamux_config,
         allow_non_globals_in_dht,
+        initial_random_query_interval,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let permanent_addresses = bootstrap_nodes.clone();
@@ -158,16 +162,15 @@ pub async fn create(
 
     let shared = Arc::new(Shared::new(local_peer_id, command_sender));
 
-    let node = Node {
-        shared: Arc::clone(&shared),
-    };
-    let node_runner = NodeRunner {
+    let node = Node::new(Arc::clone(&shared));
+    let node_runner = NodeRunner::new(
         permanent_addresses,
         allow_non_globals_in_dht,
         command_receiver,
         swarm,
         shared,
-    };
+        initial_random_query_interval,
+    );
 
     Ok((node, node_runner))
 }

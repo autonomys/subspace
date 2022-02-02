@@ -6,10 +6,14 @@ use std::sync::Arc;
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
 pub struct Node {
-    pub(crate) shared: Arc<Shared>,
+    shared: Arc<Shared>,
 }
 
 impl Node {
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
+        Self { shared }
+    }
+
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id

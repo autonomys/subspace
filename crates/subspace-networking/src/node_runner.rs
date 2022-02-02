@@ -2,30 +2,59 @@ use crate::behavior::{Behaviour, Event};
 use crate::shared::{Command, Shared};
 use crate::utils;
 use futures::channel::mpsc;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use libp2p::identify::IdentifyEvent;
-use libp2p::kad::KademliaEvent;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use log::{debug, trace};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner {
     /// Bootstrap or reserved nodes.
-    pub(crate) permanent_addresses: Vec<(PeerId, Multiaddr)>,
+    permanent_addresses: Vec<(PeerId, Multiaddr)>,
     /// Should non-global addresses be added to the DHT?
-    pub(crate) allow_non_globals_in_dht: bool,
-    pub(crate) command_receiver: mpsc::Receiver<Command>,
-    pub(crate) swarm: Swarm<Behaviour>,
-    pub(crate) shared: Arc<Shared>,
+    allow_non_globals_in_dht: bool,
+    command_receiver: mpsc::Receiver<Command>,
+    swarm: Swarm<Behaviour>,
+    shared: Arc<Shared>,
+    /// How frequently should random queries be done using Kademlia DHT to populate routing table.
+    next_random_query_interval: Duration,
 }
 
 impl NodeRunner {
+    pub(crate) fn new(
+        permanent_addresses: Vec<(PeerId, Multiaddr)>,
+        allow_non_globals_in_dht: bool,
+        command_receiver: mpsc::Receiver<Command>,
+        swarm: Swarm<Behaviour>,
+        shared: Arc<Shared>,
+        initial_random_query_interval: Duration,
+    ) -> Self {
+        Self {
+            permanent_addresses,
+            allow_non_globals_in_dht,
+            command_receiver,
+            swarm,
+            shared,
+            next_random_query_interval: initial_random_query_interval,
+        }
+    }
+
     pub async fn run(&mut self) {
+        // We'll make the first query right away and continue at the interval.
+        let mut random_query_timeout = Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse());
+
         loop {
             futures::select! {
+                _ = random_query_timeout => {
+                    self.handle_random_query_interval();
+                    // Increase interval 2x, but to at most 60 seconds.
+                    random_query_timeout = Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
+                    self.next_random_query_interval = (self.next_random_query_interval * 2).min(Duration::from_secs(60));
+                },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
                         self.handle_swarm_event(swarm_event).await;
@@ -42,6 +71,17 @@ impl NodeRunner {
                 },
             }
         }
+    }
+
+    fn handle_random_query_interval(&mut self) {
+        let random_peer_id = PeerId::random();
+
+        debug!("Starting random Kademlia query for {}", random_peer_id);
+
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .get_closest_peers(random_peer_id);
     }
 
     async fn handle_swarm_event<E: std::fmt::Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {
@@ -95,25 +135,6 @@ impl NodeRunner {
             }
             SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
                 println!("Kademlia event: {:?}", kademlia_event);
-
-                match kademlia_event {
-                    KademliaEvent::RoutingUpdated {
-                        peer,
-                        is_new_peer,
-                        addresses,
-                        bucket_range,
-                        old_peer,
-                    } => {
-                        if is_new_peer {
-                            if let Err(error) = self.swarm.dial(peer) {
-                                eprintln!("Dial error: {}", error);
-                            }
-                        }
-                    }
-                    _ => {
-                        // TODO
-                    }
-                }
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
