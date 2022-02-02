@@ -15,6 +15,9 @@
 
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
+#![feature(ip)]
+
+mod utils;
 
 use event_listener_primitives::{Bag, HandlerId};
 pub use libp2p;
@@ -23,7 +26,7 @@ use libp2p::futures::channel::mpsc;
 use libp2p::futures::StreamExt;
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::record::store::MemoryStore;
-use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::kad::{Kademlia, KademliaBucketInserts, KademliaConfig, KademliaEvent};
 use libp2p::noise::NoiseConfig;
 use libp2p::ping::{Ping, PingEvent};
 use libp2p::swarm::{Swarm, SwarmBuilder, SwarmEvent};
@@ -33,6 +36,7 @@ use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{
     core, futures, identity, noise, Multiaddr, NetworkBehaviour, PeerId, Transport, TransportError,
 };
+use log::{debug, trace};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -91,6 +95,8 @@ pub struct Config {
     pub kademlia_config: KademliaConfig,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
+    /// Should non-global addresses be added to the DHT?
+    pub allow_non_globals_in_dht: bool,
 }
 
 impl fmt::Debug for Config {
@@ -102,7 +108,9 @@ impl fmt::Debug for Config {
 impl Config {
     pub fn new(keypair: identity::ed25519::Keypair) -> Self {
         let mut kademlia_config = KademliaConfig::default();
-        kademlia_config.set_protocol_name(KADEMLIA_PROTOCOL);
+        kademlia_config
+            .set_protocol_name(KADEMLIA_PROTOCOL)
+            .set_kbucket_inserts(KademliaBucketInserts::Manual);
 
         let mut yamux_config = YamuxConfig::default();
         // Enable proper flow-control: window updates are only sent when buffered data has been
@@ -116,6 +124,7 @@ impl Config {
             timeout: Duration::from_secs(10),
             kademlia_config,
             yamux_config,
+            allow_non_globals_in_dht: false,
         }
     }
 }
@@ -154,6 +163,10 @@ struct Inner {
 /// Runner for then Node
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner {
+    /// Bootstrap or reserved nodes.
+    permanent_addresses: Vec<(PeerId, Multiaddr)>,
+    /// Should non-global addresses be added to the DHT?
+    allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<ComposedBehaviour>,
     inner: Arc<Inner>,
@@ -186,6 +199,53 @@ impl NodeRunner {
         swarm_event: SwarmEvent<ComposedEvent, E>,
     ) {
         match swarm_event {
+            SwarmEvent::Behaviour(ComposedEvent::Identify(IdentifyEvent::Received {
+                peer_id,
+                mut info,
+            })) => {
+                if info.listen_addrs.len() > 30 {
+                    debug!(
+                        "Node {} has reported more than 30 addresses; it is identified by {} and {}",
+                        peer_id, info.protocol_version, info.agent_version
+                    );
+                    info.listen_addrs.truncate(30);
+                }
+
+                let kademlia = &mut self.swarm.behaviour_mut().kademlia;
+
+                if info
+                    .protocols
+                    .iter()
+                    .any(|protocol| protocol.as_bytes() == kademlia.protocol_name())
+                {
+                    for address in info.listen_addrs {
+                        if !self.allow_non_globals_in_dht
+                            && !utils::is_global_address_or_dns(&address)
+                        {
+                            trace!(
+                                "Ignoring self-reported non-global address {} from {}.",
+                                address,
+                                peer_id
+                            );
+                            continue;
+                        }
+
+                        trace!(
+                            "Adding self-reported address {} from {} to Kademlia DHT {}.",
+                            address,
+                            peer_id,
+                            String::from_utf8_lossy(kademlia.protocol_name()),
+                        );
+                        kademlia.add_address(&peer_id, address);
+                    }
+                } else {
+                    trace!(
+                        "{} doesn't support our Kademlia DHT protocol {}",
+                        peer_id,
+                        String::from_utf8_lossy(kademlia.protocol_name())
+                    );
+                }
+            }
             SwarmEvent::Behaviour(ComposedEvent::Kademlia(kademlia_event)) => {
                 println!("Kademlia event: {:?}", kademlia_event);
 
@@ -241,8 +301,10 @@ impl Node {
             kademlia_config,
             bootstrap_nodes,
             yamux_config,
+            allow_non_globals_in_dht,
         }: Config,
     ) -> Result<(Self, NodeRunner), CreationError> {
+        let permanent_addresses = bootstrap_nodes.clone();
         // libp2p uses blocking API, hence we need to create a blocking task.
         let create_swarm_fut = tokio::task::spawn_blocking(move || {
             let local_public_key = keypair.public();
@@ -316,6 +378,8 @@ impl Node {
             inner: Arc::clone(&inner),
         };
         let node_runner = NodeRunner {
+            permanent_addresses,
+            allow_non_globals_in_dht,
             command_receiver,
             swarm,
             inner,

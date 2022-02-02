@@ -8441,8 +8441,10 @@ dependencies = [
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
+ "env_logger 0.9.0",
  "event-listener-primitives",
  "libp2p 0.42.0",
+ "log",
  "parking_lot 0.12.0",
  "thiserror",
  "tokio",
