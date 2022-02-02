@@ -4,9 +4,11 @@ use crate::utils;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
 use libp2p::identify::IdentifyEvent;
+use libp2p::kad::{GetClosestPeersError, GetClosestPeersOk, KademliaEvent, QueryResult};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use log::{debug, trace};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -135,10 +137,51 @@ impl NodeRunner {
             }
             SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
                 println!("Kademlia event: {:?}", kademlia_event);
+
+                match kademlia_event {
+                    KademliaEvent::OutboundQueryCompleted {
+                        result: QueryResult::GetClosestPeers(results),
+                        ..
+                    } => match results {
+                        Ok(GetClosestPeersOk { key, peers }) => {
+                            trace!(
+                                "Get closest peers query for {} yielded {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
+
+                            if peers.is_empty()
+                                && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
+                            {
+                                debug!("Random Kademlia query has yielded empty list of peers");
+                            }
+                        }
+                        Err(GetClosestPeersError::Timeout { key, peers }) => {
+                            debug!(
+                                "Get closest peers query for {} timed out with {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
+                        }
+                    },
+                    _ => {
+                        // TODO
+                    }
+                }
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
                 self.shared.handlers.new_listener.call_simple(&address);
+            }
+            SwarmEvent::ConnectionEstablished { .. } => {
+                self.shared
+                    .connected_peers_count
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            SwarmEvent::ConnectionClosed { .. } => {
+                self.shared
+                    .connected_peers_count
+                    .fetch_sub(1, Ordering::Relaxed);
             }
             other => {
                 println!("Other swarm event: {:?}", other);
