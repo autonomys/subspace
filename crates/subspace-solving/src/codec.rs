@@ -140,8 +140,12 @@ impl SubspaceCodec {
                 &piece_indexes[..pieces_to_process],
             );
 
-            // Leave the rest for CPU (update the remaining pieces if CUDA was successful)
-            if cuda_result.is_ok() {
+            // check if CUDA operation was successful
+            if let Err(e) = cuda_result {
+                println!("Error happened on the GPU: '{}'.", e);
+                self.cuda_available = false;
+            } else {
+                // Leave the remainder pieces for CPU (update the remaining pieces if CUDA was successful)
                 pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
                 piece_indexes = &piece_indexes[pieces_to_process..];
             }
