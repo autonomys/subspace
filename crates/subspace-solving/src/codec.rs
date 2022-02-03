@@ -133,16 +133,21 @@ impl SubspaceCodec {
 
         #[cfg(feature = "cuda")]
         if self.cuda_available {
-            let pieces_to_process = pieces.len() / PIECE_SIZE / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
+            let mut pieces_to_process = pieces.len() / PIECE_SIZE;
 
-            self.batch_encode_cuda(
-                &mut pieces[..pieces_to_process * PIECE_SIZE],
-                &piece_indexes[..pieces_to_process],
-            )?;
+            // GPU will accept multiples of 1024 pieces
+            if pieces_to_process >= 1024 {
+                pieces_to_process = pieces_to_process / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
+                // process the multiples of 1024 pieces in GPU
+                self.batch_encode_cuda(
+                    &mut pieces[..pieces_to_process * PIECE_SIZE],
+                    &piece_indexes[..pieces_to_process],
+                )?;
 
-            // Leave the rest for CPU
-            pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
-            piece_indexes = &piece_indexes[pieces_to_process..];
+                // Leave the rest for CPU
+                pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
+                piece_indexes = &piece_indexes[pieces_to_process..];
+            }
         }
 
         self.batch_encode_cpu(pieces, piece_indexes)?;
@@ -181,8 +186,7 @@ impl SubspaceCodec {
         piece_indexes: &[u64],
     ) -> Result<(), cuda::EncodeError> {
         use subspace_core_primitives::SHA256_HASH_SIZE;
-
-        let mut expanded_ivs = vec![0u8; pieces.len() * SHA256_HASH_SIZE];
+        let mut expanded_ivs = vec![0u8; pieces.len() / PIECE_SIZE * SHA256_HASH_SIZE];
         expanded_ivs
             .par_chunks_exact_mut(SHA256_HASH_SIZE)
             .zip_eq(piece_indexes)
