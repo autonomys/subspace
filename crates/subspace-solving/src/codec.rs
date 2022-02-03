@@ -135,14 +135,16 @@ impl SubspaceCodec {
         if self.cuda_available {
             let pieces_to_process = pieces.len() / PIECE_SIZE / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
 
-            self.batch_encode_cuda(
+            let cuda_result = self.batch_encode_cuda(
                 &mut pieces[..pieces_to_process * PIECE_SIZE],
                 &piece_indexes[..pieces_to_process],
-            )?;
+            );
 
-            // Leave the rest for CPU
-            pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
-            piece_indexes = &piece_indexes[pieces_to_process..];
+            // Leave the rest for CPU (update the remaining pieces if CUDA was successful)
+            if cuda_result.is_ok() {
+                pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
+                piece_indexes = &piece_indexes[pieces_to_process..];
+            }
         }
 
         self.batch_encode_cpu(pieces, piece_indexes)?;
