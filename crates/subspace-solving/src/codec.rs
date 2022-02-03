@@ -24,7 +24,6 @@ use sloth256_189::cuda;
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
 use thiserror::Error;
 
-
 /// Number of pieces for GPU should be multiples of 1024
 #[cfg(feature = "cuda")]
 const GPU_PIECE_BLOCK: usize = 1024;
