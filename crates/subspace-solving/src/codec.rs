@@ -16,12 +16,14 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+use log::error;
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
 use thiserror::Error;
+
 
 /// Number of pieces for GPU should be multiples of 1024
 #[cfg(feature = "cuda")]
@@ -123,7 +125,7 @@ impl SubspaceCodec {
     /// in inconsistent state!
     #[allow(unused_mut)]
     pub fn batch_encode(
-        &self,
+        &mut self,
         mut pieces: &mut [u8],
         mut piece_indexes: &[u64],
     ) -> Result<(), BatchEncodeError> {
@@ -142,7 +144,7 @@ impl SubspaceCodec {
 
             // check if CUDA operation was successful
             if let Err(e) = cuda_result {
-                println!("Error happened on the GPU: '{}'.", e);
+                error!("Error happened on the GPU: '{}'.", e);
                 self.cuda_available = false;
             } else {
                 // Leave the remainder pieces for CPU (update the remaining pieces if CUDA was successful)
