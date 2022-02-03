@@ -16,6 +16,7 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+use log::error;
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
@@ -123,7 +124,7 @@ impl SubspaceCodec {
     /// in inconsistent state!
     #[allow(unused_mut)]
     pub fn batch_encode(
-        &self,
+        &mut self,
         mut pieces: &mut [u8],
         mut piece_indexes: &[u64],
     ) -> Result<(), BatchEncodeError> {
@@ -139,14 +140,23 @@ impl SubspaceCodec {
             if pieces_to_process >= 1024 {
                 pieces_to_process = pieces_to_process / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
                 // process the multiples of 1024 pieces in GPU
-                self.batch_encode_cuda(
+                let cuda_result = self.batch_encode_cuda(
                     &mut pieces[..pieces_to_process * PIECE_SIZE],
                     &piece_indexes[..pieces_to_process],
-                )?;
+                );
 
-                // Leave the rest for CPU
-                pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
-                piece_indexes = &piece_indexes[pieces_to_process..];
+                if let Err(e) = cuda_result {
+                    error!("An error happened on the GPU: '{}'", e);
+                    self.cuda_available = false;
+                    // TODO: maybe also return from the GPU last successful encoding,
+                    // so that CPU can continue from there
+                    // because this implementation does not cover the case when GPU creates a problem
+                    // after some pieces are successfully encoded
+                } else {
+                    // Leave the rest for CPU
+                    pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
+                    piece_indexes = &piece_indexes[pieces_to_process..];
+                }
             }
         }
 

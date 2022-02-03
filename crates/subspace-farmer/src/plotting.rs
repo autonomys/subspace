@@ -100,7 +100,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     commitments: Commitments,
     object_mappings: ObjectMappings,
     farmer_metadata: FarmerMetadata,
-    subspace_codec: SubspaceCodec,
+    mut subspace_codec: SubspaceCodec,
     mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = plot.downgrade();

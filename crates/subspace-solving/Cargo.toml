@@ -12,6 +12,7 @@ include = [
 ]
 
 [dependencies]
+log = "0.4.14"
 num_cpus = "1.13.0"
 rayon = "1.5.1"
 schnorrkel = "0.9.1"
