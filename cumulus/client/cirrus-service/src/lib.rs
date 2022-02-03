@@ -68,19 +68,7 @@ impl<C> Deref for PrimaryFullNode<C> {
 }
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<
-	'a,
-	Block: BlockT,
-	BS,
-	Client,
-	Spawner,
-	RClient,
-	IQ,
-	TP,
-	Backend,
-	CIDP,
-> {
-	pub block_status: Arc<BS>,
+pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, IQ, TP, Backend, CIDP> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub spawner: Spawner,
@@ -96,9 +84,8 @@ pub struct StartExecutorParams<
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
+pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
 	StartExecutorParams {
-		block_status,
 		client,
 		announce_block,
 		spawner,
@@ -111,11 +98,10 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		backend,
 		create_inherent_data_providers,
 		is_authority,
-	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
+	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
 ) -> sc_service::error::Result<()>
 where
 	Block: BlockT,
-	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Client: Finalizer<Block, Backend>
 		+ UsageProvider<Block>
 		+ HeaderBackend<Block>
@@ -165,7 +151,6 @@ where
 	let executor =
 		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
 			client,
-			block_status,
 			announce_block,
 			overseer_handle,
 			spawner,

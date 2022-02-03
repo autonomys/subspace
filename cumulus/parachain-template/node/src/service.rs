@@ -313,7 +313,6 @@ where
 	let spawner = task_manager.spawn_handle();
 
 	let params = cirrus_client_service::StartExecutorParams {
-		block_status: client.clone(),
 		announce_block,
 		client: client.clone(),
 		task_manager: &mut task_manager,

@@ -69,11 +69,14 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, BS, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, BS, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore,
+	Client: sp_blockchain::HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ AuxStore
+		+ ProvideRuntimeApi<Block>,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -85,7 +88,6 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
-	BS: BlockBackend<Block>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
