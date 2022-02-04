@@ -194,13 +194,7 @@ where
 		(&*self.client).import_block(block_import_params, Default::default()).await?;
 
 		let mut roots =
-			self.client.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
-
-		if roots.is_empty() {
-			panic!(
-				"FIXME: runtime intermediate_roots is empty, uncovered by running the sync node, related: https://github.com/paritytech/substrate/pull/8953"
-			);
-		}
+			self.client.runtime_api().intermediate_roots(&BlockId::Hash(header_hash))?;
 
 		let state_root = state_root
 			.encode()

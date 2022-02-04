@@ -48,12 +48,13 @@ pub(super) fn construct_trace_merkle_tree(
 	let mut roots = roots;
 
 	let roots_len = roots.len();
+	// roots contains at least [storage_root_after_initializing_block, state_root].
 	assert!(roots_len >= 2, "Execution trace should at least contain 2 storage roots");
 
 	let ideal_len = merkletree::merkle::next_pow2(roots_len);
 
 	if ideal_len > roots_len {
-		// The last element of trace is state_root.
+		// Fill in a full tree by replicating the last element.
 		if let Some(state_root) = roots.last().copied() {
 			roots.resize(ideal_len, state_root);
 		}
