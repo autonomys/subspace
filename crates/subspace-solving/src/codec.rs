@@ -16,6 +16,7 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+use log::error;
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
@@ -123,7 +124,7 @@ impl SubspaceCodec {
     /// in inconsistent state!
     #[allow(unused_mut)]
     pub fn batch_encode(
-        &self,
+        &mut self,
         mut pieces: &mut [u8],
         mut piece_indexes: &[u64],
     ) -> Result<(), BatchEncodeError> {
@@ -133,16 +134,29 @@ impl SubspaceCodec {
 
         #[cfg(feature = "cuda")]
         if self.cuda_available {
-            let pieces_to_process = pieces.len() / PIECE_SIZE / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
+            let mut pieces_to_process = pieces.len() / PIECE_SIZE;
 
-            self.batch_encode_cuda(
-                &mut pieces[..pieces_to_process * PIECE_SIZE],
-                &piece_indexes[..pieces_to_process],
-            )?;
+            if pieces_to_process >= GPU_PIECE_BLOCK {
+                pieces_to_process = pieces_to_process / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
 
-            // Leave the rest for CPU
-            pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
-            piece_indexes = &piece_indexes[pieces_to_process..];
+                let cuda_result = self.batch_encode_cuda(
+                    &mut pieces[..pieces_to_process * PIECE_SIZE],
+                    &piece_indexes[..pieces_to_process],
+                );
+
+                if let Err(e) = cuda_result {
+                    error!("An error happened on the GPU: '{}'", e);
+                    self.cuda_available = false;
+                    // TODO: maybe also return from the GPU last successful encoding,
+                    // so that CPU can continue from there
+                    // because this implementation does not cover the case when GPU creates a problem
+                    // after some pieces are successfully encoded
+                } else {
+                    // Leave the rest for CPU
+                    pieces = &mut pieces[pieces_to_process * PIECE_SIZE..];
+                    piece_indexes = &piece_indexes[pieces_to_process..];
+                }
+            }
         }
 
         self.batch_encode_cpu(pieces, piece_indexes)?;
@@ -181,8 +195,7 @@ impl SubspaceCodec {
         piece_indexes: &[u64],
     ) -> Result<(), cuda::EncodeError> {
         use subspace_core_primitives::SHA256_HASH_SIZE;
-
-        let mut expanded_ivs = vec![0u8; pieces.len() * SHA256_HASH_SIZE];
+        let mut expanded_ivs = vec![0u8; pieces.len() / PIECE_SIZE * SHA256_HASH_SIZE];
         expanded_ivs
             .par_chunks_exact_mut(SHA256_HASH_SIZE)
             .zip_eq(piece_indexes)
