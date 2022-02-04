@@ -136,10 +136,9 @@ impl SubspaceCodec {
         if self.cuda_available {
             let mut pieces_to_process = pieces.len() / PIECE_SIZE;
 
-            // GPU will accept multiples of 1024 pieces
-            if pieces_to_process >= 1024 {
+            if pieces_to_process >= GPU_PIECE_BLOCK {
                 pieces_to_process = pieces_to_process / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
-                // process the multiples of 1024 pieces in GPU
+
                 let cuda_result = self.batch_encode_cuda(
                     &mut pieces[..pieces_to_process * PIECE_SIZE],
                     &piece_indexes[..pieces_to_process],
