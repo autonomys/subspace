@@ -25,7 +25,9 @@ enum QueryResultSender {
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner {
+    // TODO: This might be useful later
     /// Bootstrap or reserved nodes.
+    #[allow(dead_code)]
     permanent_addresses: Vec<(PeerId, Multiaddr)>,
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
