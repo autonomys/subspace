@@ -1,16 +1,26 @@
 use crate::behavior::{Behaviour, Event};
 use crate::shared::{Command, Shared};
 use crate::utils;
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, StreamExt};
 use libp2p::identify::IdentifyEvent;
-use libp2p::kad::{GetClosestPeersError, GetClosestPeersOk, KademliaEvent, QueryResult};
+use libp2p::kad::{
+    GetClosestPeersError, GetClosestPeersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId,
+    QueryResult, Quorum,
+};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use log::{debug, trace};
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+
+enum QueryResultSender {
+    GetValue {
+        sender: oneshot::Sender<Option<Vec<u8>>>,
+    },
+}
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
@@ -24,6 +34,7 @@ pub struct NodeRunner {
     shared: Arc<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
+    query_id_receivers: HashMap<QueryId, QueryResultSender>,
 }
 
 impl NodeRunner {
@@ -42,6 +53,7 @@ impl NodeRunner {
             swarm,
             shared,
             next_random_query_interval: initial_random_query_interval,
+            query_id_receivers: HashMap::default(),
         }
     }
 
@@ -164,6 +176,62 @@ impl NodeRunner {
                             );
                         }
                     },
+                    KademliaEvent::OutboundQueryCompleted {
+                        id,
+                        result: QueryResult::GetRecord(results),
+                        ..
+                    } => {
+                        if let Some(QueryResultSender::GetValue { sender }) =
+                            self.query_id_receivers.remove(&id)
+                        {
+                            match results {
+                                Ok(GetRecordOk { records, .. }) => {
+                                    let records_len = records.len();
+                                    let record = records
+                                        .into_iter()
+                                        .next()
+                                        .expect("Success means we have at least one record")
+                                        .record;
+
+                                    trace!(
+                                        "Get record query for {} yielded {} results",
+                                        hex::encode(&record.key),
+                                        records_len,
+                                    );
+
+                                    // We don't care if receiver still waits for response.
+                                    let _ = sender.send(Some(record.value));
+                                }
+                                Err(error) => {
+                                    // We don't care if receiver still waits for response.
+                                    let _ = sender.send(None);
+
+                                    match error {
+                                        GetRecordError::NotFound { key, .. } => {
+                                            debug!(
+                                                "Get record query for {} failed with no results",
+                                                hex::encode(&key),
+                                            );
+                                        }
+                                        GetRecordError::QuorumFailed { key, records, .. } => {
+                                            debug!(
+                                                "Get record query quorum for {} failed with {} results",
+                                                hex::encode(&key),
+                                                records.len(),
+                                            );
+                                        }
+                                        GetRecordError::Timeout { key, records, .. } => {
+                                            debug!(
+                                                "Get record query for {} timed out with {} results",
+                                                hex::encode(&key),
+                                                records.len(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     _ => {
                         // TODO
                     }
@@ -191,7 +259,21 @@ impl NodeRunner {
 
     async fn handle_command(&mut self, command: Command) {
         match command {
-            // TODO
+            Command::GetValue { key, result_sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    // TODO: Will probably want something different and validate data instead.
+                    .get_record(&key, Quorum::One);
+
+                self.query_id_receivers.insert(
+                    query_id,
+                    QueryResultSender::GetValue {
+                        sender: result_sender,
+                    },
+                );
+            }
         }
     }
 }

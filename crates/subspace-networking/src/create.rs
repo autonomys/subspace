@@ -1,12 +1,13 @@
 use crate::behavior::Behaviour;
+use crate::kad::custom_record_store::CustomRecordStore;
+pub use crate::kad::custom_record_store::ValueGetter;
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::identify::{Identify, IdentifyConfig};
-use libp2p::kad::record::store::MemoryStore;
-use libp2p::kad::{Kademlia, KademliaBucketInserts, KademliaConfig};
+use libp2p::kad::{Kademlia, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::noise::NoiseConfig;
 use libp2p::ping::Ping;
 use libp2p::swarm::SwarmBuilder;
@@ -35,6 +36,8 @@ pub struct Config {
     pub timeout: Duration,
     /// The configuration for the [`Kademlia`] behaviour.
     pub kademlia_config: KademliaConfig,
+    /// Externally provided implementation of value getter for Kademlia DHT,
+    pub value_getter: ValueGetter,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -54,6 +57,8 @@ impl Config {
         let mut kademlia_config = KademliaConfig::default();
         kademlia_config
             .set_protocol_name(KADEMLIA_PROTOCOL)
+            // Ignore any puts
+            .set_record_filtering(KademliaStoreInserts::FilterBoth)
             .set_kbucket_inserts(KademliaBucketInserts::Manual);
 
         let mut yamux_config = YamuxConfig::default();
@@ -67,6 +72,7 @@ impl Config {
             listen_on: vec![],
             timeout: Duration::from_secs(10),
             kademlia_config,
+            value_getter: Arc::new(|_key| None),
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
@@ -93,6 +99,7 @@ pub async fn create(
         timeout,
         kademlia_config,
         bootstrap_nodes,
+        value_getter,
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
@@ -124,7 +131,7 @@ pub async fn create(
         };
 
         let kademlia = {
-            let store = MemoryStore::new(local_peer_id);
+            let store = CustomRecordStore::new(value_getter);
             let mut kademlia = Kademlia::with_config(local_peer_id, store, kademlia_config);
 
             for (peer_id, address) in bootstrap_nodes {

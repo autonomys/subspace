@@ -1,7 +1,18 @@
-use crate::shared::Shared;
+use crate::shared::{Command, Shared};
 use event_listener_primitives::HandlerId;
+use futures::channel::oneshot;
+use futures::SinkExt;
+use libp2p::kad::record::Key;
 use libp2p::{Multiaddr, PeerId};
 use std::sync::Arc;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum GetValueError {
+    /// Node runner was dropped, impossible to get value.
+    #[error("Node runner was dropped, impossible to get value")]
+    NodeRunnerDropped,
+}
 
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
@@ -17,6 +28,21 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
+    }
+
+    pub async fn get_value(&self, key: Key) -> Result<Option<Vec<u8>>, GetValueError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::GetValue { key, result_sender })
+            .await
+            .map_err(|_error| GetValueError::NodeRunnerDropped)?;
+
+        result_receiver
+            .await
+            .map_err(|_error| GetValueError::NodeRunnerDropped)
     }
 
     /// Node's own addresses where it listens for incoming requests.

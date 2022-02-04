@@ -14,6 +14,10 @@ async fn main() {
     config_1
         .listen_on
         .push("/ip4/0.0.0.0/tcp/0".parse().unwrap());
+    config_1.value_getter = Arc::new(|key| {
+        // Return the reversed key as a value
+        Some(key.to_vec().into_iter().rev().collect())
+    });
     config_1.allow_non_globals_in_dht = true;
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
@@ -48,6 +52,11 @@ async fn main() {
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let result = node_2.get_value(vec![1, 2, 3].into()).await;
+    println!("Get value result: {result:?}");
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }

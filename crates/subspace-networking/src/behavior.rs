@@ -1,5 +1,5 @@
+use crate::kad::custom_record_store::CustomRecordStore;
 use libp2p::identify::{Identify, IdentifyEvent};
-use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{Kademlia, KademliaEvent};
 use libp2p::ping::{Ping, PingEvent};
 use libp2p::NetworkBehaviour;
@@ -8,7 +8,7 @@ use libp2p::NetworkBehaviour;
 #[behaviour(out_event = "Event")]
 #[behaviour(event_process = false)]
 pub(crate) struct Behaviour {
-    pub(crate) kademlia: Kademlia<MemoryStore>,
+    pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) identify: Identify,
     pub(crate) ping: Ping,
 }
