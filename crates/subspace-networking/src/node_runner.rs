@@ -246,12 +246,12 @@ impl NodeRunner {
             SwarmEvent::ConnectionEstablished { .. } => {
                 self.shared
                     .connected_peers_count
-                    .fetch_add(1, Ordering::Relaxed);
+                    .fetch_add(1, Ordering::SeqCst);
             }
             SwarmEvent::ConnectionClosed { .. } => {
                 self.shared
                     .connected_peers_count
-                    .fetch_sub(1, Ordering::Relaxed);
+                    .fetch_sub(1, Ordering::SeqCst);
             }
             other => {
                 debug!("Other swarm event: {:?}", other);
