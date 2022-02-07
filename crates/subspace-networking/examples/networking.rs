@@ -16,7 +16,7 @@ async fn main() {
             Some(key.to_vec().into_iter().rev().collect())
         }),
         allow_non_globals_in_dht: true,
-        ..Config::default()
+        ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
@@ -39,7 +39,7 @@ async fn main() {
         bootstrap_nodes: vec![(node_1.id(), node_1_addresses_receiver.next().await.unwrap())],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        ..Config::default()
+        ..Config::with_generated_keypair()
     };
 
     let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
