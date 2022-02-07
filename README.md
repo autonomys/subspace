@@ -20,3 +20,5 @@ The structure of this repository is the following:
 ## How to run
 
 Please refer to [farming.md](/docs/farming.md) on how to run farmer. 
+
+If you are looking to build from the source refer to [development.md](/docs/development.md).
