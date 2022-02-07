@@ -155,3 +155,17 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
+
+### Glossary For Farm Commands
+
+Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
+
+- `farm` : starts background plotting and farming together
+- `erase-plot` : erases the plot (including plot, commitments and object mappings)
+- `wipe` : erases the plot and identity (including plot, commitment, object mappings and identity files)
+- `identity import-from-mnemonic "spell out your seed phrase here"` : imports your existing identity from your seed phrase
+- `identity view` : displays SS58 address (this is the same as `identity view --address`)
+- `identity view --public-key` : displays the hex encoded public key
+- `identity view --mnemonic` : displays your mnemonic (sensitive information, keep this private)
+
+An example command: `subspace-farmer-x86_64-*-snapshot identity view --public-key`
