@@ -150,7 +150,7 @@ impl NodeRunner {
                 }
             }
             SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
-                println!("Kademlia event: {:?}", kademlia_event);
+                debug!("Kademlia event: {:?}", kademlia_event);
 
                 match kademlia_event {
                     KademliaEvent::OutboundQueryCompleted {
@@ -254,7 +254,7 @@ impl NodeRunner {
                     .fetch_sub(1, Ordering::Relaxed);
             }
             other => {
-                println!("Other swarm event: {:?}", other);
+                debug!("Other swarm event: {:?}", other);
             }
         }
     }
