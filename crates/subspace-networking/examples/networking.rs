@@ -1,7 +1,6 @@
 use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use libp2p::identity::ed25519::Keypair;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::Config;
@@ -10,15 +9,15 @@ use subspace_networking::Config;
 async fn main() {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
 
-    let mut config_1 = Config::new(Keypair::generate());
-    config_1
-        .listen_on
-        .push("/ip4/0.0.0.0/tcp/0".parse().unwrap());
-    config_1.value_getter = Arc::new(|key| {
-        // Return the reversed key as a value
-        Some(key.to_vec().into_iter().rev().collect())
-    });
-    config_1.allow_non_globals_in_dht = true;
+    let config_1 = Config {
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        value_getter: Arc::new(|key| {
+            // Return the reversed key as a value
+            Some(key.to_vec().into_iter().rev().collect())
+        }),
+        allow_non_globals_in_dht: true,
+        ..Config::default()
+    };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     println!("Node 1 ID is {}", node_1.id());
@@ -36,14 +35,12 @@ async fn main() {
         node_runner_1.run().await;
     });
 
-    let mut config_2 = Config::new(Keypair::generate());
-    config_2
-        .listen_on
-        .push("/ip4/0.0.0.0/tcp/0".parse().unwrap());
-    config_2
-        .bootstrap_nodes
-        .push((node_1.id(), node_1_addresses_receiver.next().await.unwrap()));
-    config_2.allow_non_globals_in_dht = true;
+    let config_2 = Config {
+        bootstrap_nodes: vec![(node_1.id(), node_1_addresses_receiver.next().await.unwrap())],
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        ..Config::default()
+    };
 
     let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
 

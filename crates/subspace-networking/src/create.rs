@@ -52,6 +52,12 @@ impl fmt::Debug for Config {
     }
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Config::new(identity::ed25519::Keypair::generate())
+    }
+}
+
 impl Config {
     pub fn new(keypair: identity::ed25519::Keypair) -> Self {
         let mut kademlia_config = KademliaConfig::default();
