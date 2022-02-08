@@ -1,8 +1,6 @@
 
 # 👨‍🌾 Getting Started Farming
 
->This documentation will only cover connecting to the Farmnet, though you may run an independant chain if you would like. Please refer to the [Substrate Guide](https://docs.substrate.io/) for more information on how to develop on substrate based nodes.
-
 This is the documentation/guideline on how to run the farmer. You may also refer to the [glossary](#glossary-for-farm-commands) for 
 various farm commands. 
 
@@ -20,18 +18,29 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 
 > This is a ***non-incentivized*** testnet. Meaning there are no rewards in place at this time, and has absolutely no financial benefit to being run at this time.
 
-<details><summary> 🖼️ Windows Instructions (Click to Expand)</summary>
-<p>
+## 🖼️ Windows Instructions
+
+<details>
 
 ### 📝 Windows Installation
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
-2. open a terminal, on Windows this is `Command Prompt` or `Powershell`
+2. Open `Powershell`, we do not recoomend using Command Prompt as it's syntax is slightly different.
 3. In the terminal we will change to the Downloads directory using this command `cd Downloads`
 4. We will then start the node using the following command
 >(replace `INSERT_YOUR_ID` with a nickname you choose)
 ```
-./subspace-node-x86_64-*-snapshot --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+./subspace-node-x86_64-*-snapshot `
+--chain testnet `
+--wasm-execution compiled `
+--execution wasm `
+--bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" `
+--rpc-cors all `
+--rpc-methods unsafe `
+--ws-external `
+--validator `
+--telemetry-url "wss://telemetry.polkadot.io/submit/ 1" `
+--name INSERT_YOUR_ID
 ```
 5. You should see something similar as the output in the terminal.
 ```
@@ -42,11 +51,12 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 ```
 ./subspace-farmer-x86_64-*-snapshot farm
 ```
-</p>
+
 </details>
 
-<details><summary> 🐧 Linux Instructions (Click to Expand)</summary>
-<p>
+## 🐧 Linux Instructions
+
+<details>
 
 ### 📝 Linux Installation
 
@@ -85,8 +95,9 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 </p>
 </details>
 
-<details><summary> 🍎 macOS Instructions (Click to Expand)</summary>
-<p>
+## 🍎 macOS Instructions
+
+<details>
 
 ### 📝 macOS Installation
 
@@ -125,10 +136,13 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 </p>
 </details>
 
-## 🤔Notes
+# 🤔Notes
 
-### Identity Management: 
+## Identity Management: 
 If you would like to import your polkadot.js wallet so, you can interact with the network, you may do so via
+
+> Running multiple farmers with the same identity **will** result in the farmer being blacklisted from the network.
+
 ```
 subspace-farmer-x86_64-*-snapshot identity import-from-mnemonic "spell out your seed phrase here"
 ```
@@ -138,7 +152,7 @@ then start your farmer as normal.
 
 You may visit the [Polkadot.js](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ffarm-rpc.subspace.network#/explorer), from here you may interact with the Subspace Farmnet as any substrate based blockchain.
 
-### Invalid Solution: 
+## Invalid Solution: 
 If you are getting `invalid solution` errors (visible on the terminal that Node runs), please perform this step and then follow the guideline again:
 ```
 ./subspace-farmer-x86_64-*-snapshot erase-plot
@@ -146,7 +160,7 @@ If you are getting `invalid solution` errors (visible on the terminal that Node 
 This will basically erase your plot and commitments, so that the farmer can make a fresh start.
 
 ---
-### Switching to a new snapshot:
+## Switching to a new snapshot:
 If you were running a node previously, and want to switch to a new snapshot, please perform these steps and then follow the guideline again:
 ```
 ./subspace-node-x86_64-*-snapshot purge-chain --chain testnet
@@ -156,7 +170,7 @@ Does not matter if the node/farmer executable is the previous one or from the ne
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
 
-### Glossary For Farm Commands
+## Glossary For Farm Commands
 
 Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
 
