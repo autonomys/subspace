@@ -152,7 +152,7 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace"),
+        Some("subspace-substrate"),
         None,
         // Properties
         Some(properties),
