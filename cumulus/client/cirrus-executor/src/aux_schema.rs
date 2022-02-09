@@ -55,14 +55,14 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 
 	let mut new_first_saved_receipt = first_saved_receipt;
 
-	if block_number - first_saved_receipt >= PRUNING_DEPTH.saturated_into() {
+	let keys_to_delete = if block_number - first_saved_receipt >= PRUNING_DEPTH.saturated_into() {
 		new_first_saved_receipt = block_number.saturating_sub((PRUNING_DEPTH - 1).saturated_into());
 
 		let mut keys_to_delete = vec![];
-		let mut to_delete_block_number = first_saved_receipt;
-		while to_delete_block_number < new_first_saved_receipt {
+		let mut to_delete_start = first_saved_receipt;
+		while to_delete_start < new_first_saved_receipt {
 			let delete_block_number_key =
-				(EXECUTION_RECEIPT_BLOCK_NUMBER, to_delete_block_number).encode();
+				(EXECUTION_RECEIPT_BLOCK_NUMBER, to_delete_start).encode();
 			if let Some(hashes_to_delete) =
 				load_decode::<_, Vec<Block::Hash>>(backend, delete_block_number_key.as_slice())?
 			{
@@ -71,33 +71,22 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 				);
 				keys_to_delete.push(delete_block_number_key);
 			}
-			to_delete_block_number = to_delete_block_number.saturating_add(One::one());
+			to_delete_start = to_delete_start.saturating_add(One::one());
 		}
 
-		backend.insert_aux(
-			&[
-				(
-					execution_receipt_key(block_hash).as_slice(),
-					execution_receipt.encode().as_slice(),
-				),
-				(block_number_key.as_slice(), hashes_at_block_number.encode().as_slice()),
-				((EXECUTION_RECEIPT_START, new_first_saved_receipt.encode().as_slice())),
-			],
-			&keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<&[u8]>>()[..],
-		)
+		keys_to_delete
 	} else {
-		backend.insert_aux(
-			&[
-				(
-					execution_receipt_key(block_hash).as_slice(),
-					execution_receipt.encode().as_slice(),
-				),
-				(block_number_key.as_slice(), hashes_at_block_number.encode().as_slice()),
-				((EXECUTION_RECEIPT_START, new_first_saved_receipt.encode().as_slice())),
-			],
-			[],
-		)
-	}
+		vec![]
+	};
+
+	backend.insert_aux(
+		&[
+			(execution_receipt_key(block_hash).as_slice(), execution_receipt.encode().as_slice()),
+			(block_number_key.as_slice(), hashes_at_block_number.encode().as_slice()),
+			((EXECUTION_RECEIPT_START, new_first_saved_receipt.encode().as_slice())),
+		],
+		&keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<&[u8]>>()[..],
+	)
 }
 
 /// Load the execution receipt associated with a block.

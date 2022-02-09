@@ -199,7 +199,7 @@ where
 		let state_root = state_root
 			.encode()
 			.try_into()
-			.expect("State root uses the same Block hash type which can fit into [u8; 32]; qed");
+			.expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
 
 		roots.push(state_root);
 

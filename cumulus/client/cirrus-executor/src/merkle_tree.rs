@@ -49,7 +49,7 @@ pub(super) fn construct_trace_merkle_tree(
 
 	let roots_len = roots.len();
 	// roots contains at least [storage_root_after_initializing_block, state_root].
-	assert!(roots_len >= 2, "Execution trace should at least contain 2 storage roots");
+	assert!(roots_len >= 2, "Execution trace must at least contain 2 storage roots");
 
 	let ideal_len = merkletree::merkle::next_pow2(roots_len);
 
