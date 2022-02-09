@@ -30,7 +30,7 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 4. We will then start the node using the following command
 
 ```
-#replace `INSERT_YOUR_ID` with a nickname you choose
+# Replace `INSERT_YOUR_ID` with a nickname you choose
 ./subspace-node-x86_64-*-snapshot `
 --chain testnet `
 --wasm-execution compiled `
@@ -71,7 +71,7 @@ To allow execution, go to `System Preferences -> Security & Privacy -> General`,
 After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
 
 ```
-#replace `INSERT_YOUR_ID` with a nickname you choose
+# Replace `INSERT_YOUR_ID` with a nickname you choose
 ./subspace-node-x86_64-*-snapshot \
   --chain testnet \
   --wasm-execution compiled \
@@ -112,7 +112,7 @@ To allow execution, go to `System Preferences -> Security & Privacy -> General`,
 After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
 
 ```
-#replace `INSERT_YOUR_ID` with a nickname you choose
+# Replace `INSERT_YOUR_ID` with a nickname you choose
 ./subspace-node-x86_64-*-snapshot \
   --chain testnet \
   --wasm-execution compiled \
