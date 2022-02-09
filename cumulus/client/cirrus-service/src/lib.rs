@@ -23,7 +23,7 @@
 use cumulus_client_consensus_common::ParachainConsensus;
 
 use sc_client_api::{
-	Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
+	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
 use sc_consensus::{
 	import_queue::{ImportQueue, IncomingBlock, Link, Origin},
@@ -68,19 +68,7 @@ impl<C> Deref for PrimaryFullNode<C> {
 }
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<
-	'a,
-	Block: BlockT,
-	BS,
-	Client,
-	Spawner,
-	RClient,
-	IQ,
-	TP,
-	Backend,
-	CIDP,
-> {
-	pub block_status: Arc<BS>,
+pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, IQ, TP, Backend, CIDP> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub spawner: Spawner,
@@ -92,12 +80,12 @@ pub struct StartExecutorParams<
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub is_authority: bool,
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
+pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
 	StartExecutorParams {
-		block_status,
 		client,
 		announce_block,
 		spawner,
@@ -109,19 +97,20 @@ pub async fn start_executor<'a, Block, BS, Client, Backend, Spawner, RClient, IQ
 		network,
 		backend,
 		create_inherent_data_providers,
-	}: StartExecutorParams<'a, Block, BS, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
+		is_authority,
+	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
 ) -> sc_service::error::Result<()>
 where
 	Block: BlockT,
-	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Client: Finalizer<Block, Backend>
 		+ UsageProvider<Block>
 		+ HeaderBackend<Block>
-		+ Send
-		+ Sync
 		+ BlockBackend<Block>
 		+ BlockchainEvents<Block>
 		+ ProvideRuntimeApi<Block>
+		+ AuxStore
+		+ Send
+		+ Sync
 		+ 'static,
 	Client::Api: cirrus_primitives::SecondaryApi<Block, cirrus_primitives::AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
@@ -161,9 +150,7 @@ where
 
 	let executor =
 		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
-			runtime_api: client.clone(),
 			client,
-			block_status,
 			announce_block,
 			overseer_handle,
 			spawner,
@@ -174,6 +161,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			is_authority,
 		})
 		.await;
 
@@ -202,7 +190,7 @@ pub struct StartFullNodeParams<'a, Block: BlockT, Client, PClient> {
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 }
 
-// TODO: verify the full node runs as expected.
+// TODO: maybe remove this later.
 /// Start a full node for a parachain.
 ///
 /// A full node will only sync the given parachain and will follow the

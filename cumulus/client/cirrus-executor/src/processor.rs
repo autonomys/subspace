@@ -1,6 +1,6 @@
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction, StorageChanges,
 };
@@ -9,7 +9,7 @@ use sp_consensus::BlockOrigin;
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
 	generic::BlockId,
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
+	traits::{Block as BlockT, Header as HeaderT},
 };
 use std::{
 	collections::{BTreeMap, VecDeque},
@@ -69,25 +69,26 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<RA, Block>,
-		Error = sp_consensus::Error,
-	>,
-	BS: BlockBackend<Block>,
-	Backend: sc_client_api::Backend<Block>,
-	RA: ProvideRuntimeApi<Block>,
-	RA::Api: SecondaryApi<Block, AccountId>
+	Client: sp_blockchain::HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ AuxStore
+		+ ProvideRuntimeApi<Block>,
+	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
+	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
 {
@@ -140,7 +141,7 @@ where
 		let parent_number = self.client.info().best_number;
 
 		let extrinsics: Vec<_> = match self
-			.runtime_api
+			.client
 			.runtime_api()
 			.extract_signer(&BlockId::Hash(parent_hash), extrinsics)
 		{
@@ -159,7 +160,7 @@ where
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
 		let mut block_builder = BlockBuilder::new(
-			&*self.runtime_api,
+			&*self.client,
 			parent_hash,
 			parent_number,
 			RecordProof::No,
@@ -179,6 +180,7 @@ where
 		let (header, body) = block.deconstruct();
 		let state_root = *header.state_root();
 		let header_hash = header.hash();
+		let header_number = *header.number();
 
 		let block_import_params = {
 			let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
@@ -192,36 +194,46 @@ where
 		(&*self.client).import_block(block_import_params, Default::default()).await?;
 
 		let mut roots =
-			self.runtime_api.runtime_api().intermediate_roots(&BlockId::Hash(parent_hash))?;
-		roots.push(state_root.encode());
+			self.client.runtime_api().intermediate_roots(&BlockId::Hash(header_hash))?;
+
+		let state_root = state_root
+			.encode()
+			.try_into()
+			.expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
+
+		roots.push(state_root);
+
+		let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
+		let trace = roots
+			.into_iter()
+			.map(|r| {
+				Block::Hash::decode(&mut r.as_slice())
+					.expect("Storage root uses the same Block hash type; qed")
+			})
+			.collect();
 
 		tracing::debug!(
 			target: LOG_TARGET,
-			intermediate_roots = ?roots
-				.iter()
-				.map(|r| {
-					Block::Hash::decode(&mut r.clone().as_slice())
-						.expect("Intermediate root uses the same Block hash type; qed")
-				})
-				.collect::<Vec<_>>(),
-			final_state_root = ?state_root,
-			"Calculating the state transition root for #{}", header_hash
+			?trace,
+			?trace_root,
+			"Trace root calculated for #{}",
+			header_hash
 		);
 
-		let state_transition_root =
-			BlakeTwo256::ordered_trie_root(roots, sp_core::storage::StateVersion::V1);
+		let execution_receipt =
+			ExecutionReceipt { primary_hash, secondary_hash: header_hash, trace, trace_root };
 
-		let execution_receipt = ExecutionReceipt {
-			primary_hash,
-			secondary_hash: header_hash,
-			state_root,
-			state_transition_root,
-		};
+		crate::aux_schema::write_execution_receipt::<_, Block>(
+			&*self.client,
+			header_hash,
+			header_number,
+			&execution_receipt,
+		)?;
 
 		// The applied txs can be fully removed from the transaction pool
 
-		// TODO: win the executor election to broadcast ER.
-		let is_elected = true;
+		// TODO: win the executor election to broadcast ER, authority node only.
+		let is_elected = self.is_authority;
 
 		if is_elected {
 			if let Err(e) = self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
@@ -287,5 +299,18 @@ mod tests {
 		let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_seed);
 
 		assert_eq!(shuffled_extrinsics, vec![100, 30, 10, 1, 11, 101, 31, 12, 102, 2]);
+	}
+
+	#[test]
+	fn construct_trace_merkle_tree_should_work() {
+		let root1 = [1u8; 32];
+		let root2 = [2u8; 32];
+		let root3 = [3u8; 32];
+
+		let roots = vec![root1, root2];
+		crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
+
+		let roots = vec![root1, root2, root3];
+		crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
 	}
 }

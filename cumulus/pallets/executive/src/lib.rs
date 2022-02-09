@@ -75,12 +75,15 @@ mod pallet {
 	/// Intermediate storage roots collected during the block execution.
 	#[pallet::storage]
 	#[pallet::getter(fn intermediate_roots)]
-	pub(super) type IntermediateRoots<T: Config> = StorageValue<_, Vec<Vec<u8>>, ValueQuery>;
+	pub(super) type IntermediateRoots<T: Config> = StorageValue<_, Vec<[u8; 32]>, ValueQuery>;
 }
 
 impl<T: Config> Pallet<T> {
 	pub(crate) fn push_root(root: Vec<u8>) {
-		IntermediateRoots::<T>::append(root);
+		IntermediateRoots::<T>::append(
+			TryInto::<[u8; 32]>::try_into(root)
+				.expect("root is a SCALE encoded hash which uses H256; qed"),
+		);
 	}
 }
 
