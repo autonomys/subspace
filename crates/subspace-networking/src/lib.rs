@@ -19,7 +19,6 @@
 
 mod behavior;
 mod create;
-mod kad;
 mod node;
 mod node_runner;
 mod shared;

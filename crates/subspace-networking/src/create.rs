@@ -1,15 +1,13 @@
-use crate::behavior::Behaviour;
-use crate::kad::custom_record_store::CustomRecordStore;
-pub use crate::kad::custom_record_store::ValueGetter;
+pub use crate::behavior::custom_record_store::ValueGetter;
+use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
-use libp2p::identify::{Identify, IdentifyConfig};
-use libp2p::kad::{Kademlia, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
+use libp2p::identify::IdentifyConfig;
+use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::noise::NoiseConfig;
-use libp2p::ping::Ping;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
@@ -23,7 +21,8 @@ use thiserror::Error;
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad";
 
 /// [`Node`] configuration.
-#[derive(Clone)]
+// TODO: Restore derive after https://github.com/libp2p/rust-libp2p/pull/2495 is released
+// #[derive(Clone)]
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -34,8 +33,10 @@ pub struct Config {
     /// Adds a timeout to the setup and protocol upgrade process for all inbound and outbound
     /// connections established through the transport.
     pub timeout: Duration,
-    /// The configuration for the [`Kademlia`] behaviour.
-    pub kademlia_config: KademliaConfig,
+    /// The configuration for the Identify behaviour.
+    pub identify: IdentifyConfig,
+    /// The configuration for the Kademlia behaviour.
+    pub kademlia: KademliaConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub value_getter: ValueGetter,
     /// Yamux multiplexing configuration.
@@ -48,7 +49,7 @@ pub struct Config {
 
 impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NetworkConfig").finish()
+        f.debug_struct("Config").finish()
     }
 }
 
@@ -58,8 +59,8 @@ impl Config {
     }
 
     pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
-        let mut kademlia_config = KademliaConfig::default();
-        kademlia_config
+        let mut kademlia = KademliaConfig::default();
+        kademlia
             .set_protocol_name(KADEMLIA_PROTOCOL)
             // Ignore any puts
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
@@ -70,12 +71,17 @@ impl Config {
         // consumed.
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
+        let keypair = identity::Keypair::Ed25519(keypair);
+
+        let identify = IdentifyConfig::new("/ipfs/0.1.0".to_string(), keypair.public());
+
         Self {
-            keypair: identity::Keypair::Ed25519(keypair),
+            keypair,
             bootstrap_nodes: vec![],
             listen_on: vec![],
             timeout: Duration::from_secs(10),
-            kademlia_config,
+            identify,
+            kademlia,
             value_getter: Arc::new(|_key| None),
             yamux_config,
             allow_non_globals_in_dht: false,
@@ -101,7 +107,8 @@ pub async fn create(
         keypair,
         listen_on,
         timeout,
-        kademlia_config,
+        identify,
+        kademlia,
         bootstrap_nodes,
         value_getter,
         yamux_config,
@@ -134,25 +141,13 @@ pub async fn create(
                 .boxed()
         };
 
-        let kademlia = {
-            let store = CustomRecordStore::new(value_getter);
-            let mut kademlia = Kademlia::with_config(local_peer_id, store, kademlia_config);
-
-            for (peer_id, address) in bootstrap_nodes {
-                kademlia.add_address(&peer_id, address);
-            }
-
-            kademlia
-        };
-
-        let behaviour = Behaviour {
+        let behaviour = Behavior::new(BehaviorConfig {
+            peer_id: local_peer_id,
+            bootstrap_nodes,
+            identify,
             kademlia,
-            identify: Identify::new(IdentifyConfig::new(
-                "/ipfs/0.1.0".to_string(),
-                keypair.public(),
-            )),
-            ping: Ping::default(),
-        };
+            value_getter,
+        });
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             .executor(Box::new(|fut| {

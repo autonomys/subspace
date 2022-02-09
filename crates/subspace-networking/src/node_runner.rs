@@ -1,4 +1,4 @@
-use crate::behavior::{Behaviour, Event};
+use crate::behavior::{Behavior, Event};
 use crate::shared::{Command, Shared};
 use crate::utils;
 use futures::channel::{mpsc, oneshot};
@@ -32,7 +32,7 @@ pub struct NodeRunner {
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behaviour>,
+    swarm: Swarm<Behavior>,
     shared: Arc<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -44,7 +44,7 @@ impl NodeRunner {
         permanent_addresses: Vec<(PeerId, Multiaddr)>,
         allow_non_globals_in_dht: bool,
         command_receiver: mpsc::Receiver<Command>,
-        swarm: Swarm<Behaviour>,
+        swarm: Swarm<Behavior>,
         shared: Arc<Shared>,
         initial_random_query_interval: Duration,
     ) -> Self {

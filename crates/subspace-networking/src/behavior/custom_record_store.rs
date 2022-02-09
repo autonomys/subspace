@@ -17,7 +17,7 @@ pub(crate) struct CustomRecordStore {
 }
 
 impl CustomRecordStore {
-    pub(crate) fn new(value_getter: ValueGetter) -> Self {
+    pub(super) fn new(value_getter: ValueGetter) -> Self {
         Self { value_getter }
     }
 }
