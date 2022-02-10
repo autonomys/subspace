@@ -290,7 +290,27 @@ where
 				Ok(Some(local_receipt)) =>
 					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
 				Ok(None) => {
-					tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+					// The local client has moved to the next block, that means the receipt
+					// of `block_hash` received from the network does not match the local one,
+					// we should just send back the local receipt at the same height.
+					if self.client.info().best_number >= block_number {
+						let local_block_hash = self
+							.client
+							.expect_block_hash_from_id(&BlockId::Number(block_number))?;
+						let local_receipt_result = aux_schema::load_execution_receipt::<_, Block>(
+							&*self.client,
+							local_block_hash,
+						)?
+						.ok_or(sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for {:?}",
+							local_block_hash
+						)));
+						return tx
+							.send(local_receipt_result)
+							.map_err(|_| GossipMessageError::SendError)
+					} else {
+						tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+					}
 				},
 				Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
 			}
@@ -326,6 +346,7 @@ where
 	}
 }
 
+/// Error type for cirrus gossip handling.
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
