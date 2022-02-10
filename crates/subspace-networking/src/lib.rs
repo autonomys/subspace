@@ -19,6 +19,7 @@
 
 mod behavior;
 mod create;
+pub mod multimess;
 mod node;
 mod node_runner;
 mod shared;

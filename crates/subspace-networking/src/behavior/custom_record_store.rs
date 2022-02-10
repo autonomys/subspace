@@ -2,12 +2,13 @@ use libp2p::kad::record::Key;
 use libp2p::kad::store;
 use libp2p::kad::store::{Error, RecordStore};
 use libp2p::kad::{ProviderRecord, Record};
+use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::vec;
 
-pub type ValueGetter = Arc<dyn (Fn(&Key) -> Option<Vec<u8>>) + Send + Sync + 'static>;
+pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync + 'static>;
 
 /// Hacky replacement for Kademlia's record store that doesn't store anything and instead proxies
 /// gets to externally provided implementation.
@@ -27,7 +28,8 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
     type ProvidedIter = vec::IntoIter<Cow<'a, ProviderRecord>>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
-        (self.value_getter)(key)
+        let multihash_key = Multihash::from_bytes(key.as_ref()).ok()?;
+        (self.value_getter)(&multihash_key)
             .map(|value| Record {
                 key: key.clone(),
                 value,

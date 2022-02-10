@@ -4,6 +4,7 @@ use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::Sha256Hash;
 use subspace_networking::Config;
 
 #[tokio::main]
@@ -13,8 +14,8 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         value_getter: Arc::new(|key| {
-            // Return the reversed key as a value
-            Some(key.to_vec().into_iter().rev().collect())
+            // Return the reversed digest as a value
+            Some(key.digest().iter().copied().rev().collect())
         }),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
@@ -57,8 +58,11 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let result = node_2.get_value(vec![1, 2, 3].into()).await;
-    println!("Get value result: {result:?}");
+    let key = subspace_networking::multimess::create_piece_multihash(&Sha256Hash::default(), 1);
+    println!("Get value result for:");
+    println!("Key: {key:?}");
+    let result = node_2.get_value(key).await;
+    println!("Value: {result:?}");
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }

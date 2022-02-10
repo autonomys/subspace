@@ -1,6 +1,6 @@
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
-use libp2p::kad::record::Key;
+use libp2p::core::multihash::Multihash;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub(crate) enum Command {
     // TODO: We might want to have more specific gets eventually
     GetValue {
-        key: Key,
+        key: Multihash,
         result_sender: oneshot::Sender<Option<Vec<u8>>>,
     },
 }

@@ -18,11 +18,13 @@ futures = "0.3.19"
 hex = "0.4.3"
 log = "0.4.14"
 parking_lot = "0.12.0"
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.30"
 tokio = { version = "1.14.0", features = ["macros", "rt-multi-thread", "time"] }
 
 [dependencies.libp2p]
-version = "0.42.0"
+version = "0.43.0"
+git = "https://github.com/libp2p/rust-libp2p"
 default-features = false
 features = [
     "dns-tokio",

@@ -261,7 +261,7 @@ impl NodeRunner {
                     .behaviour_mut()
                     .kademlia
                     // TODO: Will probably want something different and validate data instead.
-                    .get_record(&key, Quorum::One);
+                    .get_record(key.to_bytes().into(), Quorum::One);
 
                 self.query_id_receivers.insert(
                     query_id,
