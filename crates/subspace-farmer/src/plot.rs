@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use event_listener_primitives::{Bag, HandlerId};
 use log::error;
 use rocksdb::DB;
 use std::fs::OpenOptions;
@@ -21,6 +22,16 @@ pub enum PlotError {
     PlotOpen(io::Error),
     #[error("Metadata DB open error: {0}")]
     MetadataDbOpen(rocksdb::Error),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct PlottedPieces {
+    pub plotted_piece_count: usize,
+}
+
+#[derive(Default, Debug)]
+struct Handlers {
+    progress_change: Bag<Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>, PlottedPieces>,
 }
 
 #[derive(Debug)]
@@ -48,6 +59,7 @@ enum WriteRequests {
 
 struct Inner {
     any_requests_sender: Option<mpsc::SyncSender<()>>,
+    handlers: Handlers,
     read_requests_sender: Option<mpsc::SyncSender<ReadRequests>>,
     write_requests_sender: Option<mpsc::SyncSender<WriteRequests>>,
     plot_metadata_db: Option<Arc<DB>>,
@@ -179,6 +191,7 @@ impl Plot {
 
         let inner = Inner {
             any_requests_sender: Some(any_requests_sender),
+            handlers: Handlers::default(),
             read_requests_sender: Some(read_requests_sender),
             write_requests_sender: Some(write_requests_sender),
             plot_metadata_db: Some(Arc::new(plot_metadata_db)),
@@ -239,6 +252,13 @@ impl Plot {
         if encodings.is_empty() {
             return Ok(());
         }
+        self.inner
+            .handlers
+            .progress_change
+            .call_simple(&PlottedPieces {
+                plotted_piece_count: encodings.len(),
+            });
+
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
@@ -332,6 +352,13 @@ impl Plot {
                 format!("Read encodings result sender was dropped: {}", error),
             )
         })?
+    }
+
+    pub fn on_progress_change(
+        &self,
+        callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
+    ) -> HandlerId {
+        self.inner.handlers.progress_change.add(callback)
     }
 }
 
