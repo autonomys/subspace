@@ -302,6 +302,10 @@ impl Plot {
         }
     }
 
+    pub fn read_piece(&self, piece_index: u64) -> io::Result<Vec<u8>> {
+        self.read_pieces(piece_index, 1)
+    }
+
     // TODO: Replace index with offset
     /// Returns pieces packed one after another in contiguous `Vec<u8>`
     pub(crate) fn read_pieces(&self, first_index: u64, count: u64) -> io::Result<Vec<u8>> {

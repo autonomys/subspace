@@ -8549,6 +8549,7 @@ dependencies = [
  "ss58-registry",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-solving",
  "tempfile",
