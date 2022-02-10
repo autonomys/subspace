@@ -440,7 +440,7 @@ impl_runtime_apis! {
 			extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
 		}
 
-		fn intermediate_roots() -> Vec<Vec<u8>> {
+		fn intermediate_roots() -> Vec<[u8; 32]> {
 			ExecutivePallet::intermediate_roots()
 		}
 	}

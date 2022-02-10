@@ -1,6 +1,14 @@
 name: Rust
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - '*.md'
+      - '.github/CODEOWNERS'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '.github/CODEOWNERS'
 
 env:
   # Not needed in CI, should make things a bit faster

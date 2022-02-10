@@ -27,7 +27,10 @@ use futures::channel::oneshot;
 pub use sc_network::IfDisconnected;
 
 use cirrus_node_primitives::{BlockWeight, CollationGenerationConfig};
-use sp_executor::{BundleEquivocationProof, FraudProof, OpaqueBundle, OpaqueExecutionReceipt, InvalidTransactionProof};
+use sp_executor::{
+	BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
+	OpaqueExecutionReceipt,
+};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, BlockNumber, Hash};

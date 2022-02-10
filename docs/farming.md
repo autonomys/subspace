@@ -1,8 +1,8 @@
 
 # 👨‍🌾 Getting Started Farming
 
-This is the documentation/guideline on how to run the farmer. You may also refer to the [glossary](#glossary-for-farm-commands) for 
-various farm commands. 
+This is the documentation/guideline on how to run the farmer. You may also refer to the [glossary](#glossary-for-farm-commands) for
+various farm commands.
 
 We are regularly releasing stable snapshots. Our CI builds container images and executables for 3 major platforms (Windows, macOS, Linux).
 
@@ -45,7 +45,25 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 ```
 5. You should see something similar as the output in the terminal.
 ```
-
+2022-02-03 10:52:23 Subspace
+2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
+2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
+2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
+2022-02-03 10:52:23 👤 Role: AUTHORITY
+2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
+2022-02-03 10:52:23 ⛓  Native runtime: subspace-100 (subspace-1.tx1.au1)
+2022-02-03 10:52:23 🔨 Initializing Genesis block/state (state: 0x22a5…17ea, header-hash: 0x6ada…0d38)
+2022-02-03 10:52:24 ⏱  Loaded block-time = 1s from block 0x6ada0792ea62bf3501abc87d92e1ce0e78ddefba66f02973de54144d12ed0d38
+2022-02-03 10:52:24 Starting archiving from genesis
+2022-02-03 10:52:24 Archiving already produced blocks 0..=0
+2022-02-03 10:52:24 🏷  Local node identity is: 12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:24 🧑‍🌾 Starting Subspace Authorship worker
+2022-02-03 10:52:24 📦 Highest known block at #0
+2022-02-03 10:52:24 〽️ Prometheus exporter started at 127.0.0.1:9615
+2022-02-03 10:52:24 Listening for new connections on 0.0.0.0:9944.
+2022-02-03 10:52:26 🔍 Discovered new external address for our node: /ip4/176.233.17.199/tcp/30333/p2p/12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:29 ⚙️  Syncing, target=#215883 (2 peers), best: #55 (0xafc7…bccf), finalized #0 (0x6ada…0d38), ⬇ 850.1kiB/s ⬆ 1.5kiB/s
 ```
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
@@ -86,7 +104,25 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 5. You should see something similar as the output in the terminal.
 ```
-
+2022-02-03 10:52:23 Subspace
+2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
+2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
+2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
+2022-02-03 10:52:23 👤 Role: AUTHORITY
+2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
+2022-02-03 10:52:23 ⛓  Native runtime: subspace-100 (subspace-1.tx1.au1)
+2022-02-03 10:52:23 🔨 Initializing Genesis block/state (state: 0x22a5…17ea, header-hash: 0x6ada…0d38)
+2022-02-03 10:52:24 ⏱  Loaded block-time = 1s from block 0x6ada0792ea62bf3501abc87d92e1ce0e78ddefba66f02973de54144d12ed0d38
+2022-02-03 10:52:24 Starting archiving from genesis
+2022-02-03 10:52:24 Archiving already produced blocks 0..=0
+2022-02-03 10:52:24 🏷  Local node identity is: 12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:24 🧑‍🌾 Starting Subspace Authorship worker
+2022-02-03 10:52:24 📦 Highest known block at #0
+2022-02-03 10:52:24 〽️ Prometheus exporter started at 127.0.0.1:9615
+2022-02-03 10:52:24 Listening for new connections on 0.0.0.0:9944.
+2022-02-03 10:52:26 🔍 Discovered new external address for our node: /ip4/176.233.17.199/tcp/30333/p2p/12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:29 ⚙️  Syncing, target=#215883 (2 peers), best: #55 (0xafc7…bccf), finalized #0 (0x6ada…0d38), ⬇ 850.1kiB/s ⬆ 1.5kiB/s
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
@@ -127,7 +163,25 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 5. You should see something similar as the output in the terminal.
 ```
-
+2022-02-03 10:52:23 Subspace
+2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
+2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
+2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
+2022-02-03 10:52:23 👤 Role: AUTHORITY
+2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
+2022-02-03 10:52:23 ⛓  Native runtime: subspace-100 (subspace-1.tx1.au1)
+2022-02-03 10:52:23 🔨 Initializing Genesis block/state (state: 0x22a5…17ea, header-hash: 0x6ada…0d38)
+2022-02-03 10:52:24 ⏱  Loaded block-time = 1s from block 0x6ada0792ea62bf3501abc87d92e1ce0e78ddefba66f02973de54144d12ed0d38
+2022-02-03 10:52:24 Starting archiving from genesis
+2022-02-03 10:52:24 Archiving already produced blocks 0..=0
+2022-02-03 10:52:24 🏷  Local node identity is: 12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:24 🧑‍🌾 Starting Subspace Authorship worker
+2022-02-03 10:52:24 📦 Highest known block at #0
+2022-02-03 10:52:24 〽️ Prometheus exporter started at 127.0.0.1:9615
+2022-02-03 10:52:24 Listening for new connections on 0.0.0.0:9944.
+2022-02-03 10:52:26 🔍 Discovered new external address for our node: /ip4/176.233.17.199/tcp/30333/p2p/12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
+2022-02-03 10:52:29 ⚙️  Syncing, target=#215883 (2 peers), best: #55 (0xafc7…bccf), finalized #0 (0x6ada…0d38), ⬇ 850.1kiB/s ⬆ 1.5kiB/s
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
@@ -139,7 +193,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 # 🤔Notes
 
-## Identity Management: 
+## Identity Management:
 If you would like to import your polkadot.js wallet so, you can interact with the network, you may do so via
 
 > Running multiple farmers with the same identity **will** result in the farmer being blacklisted from the network.
@@ -153,7 +207,7 @@ then start your farmer as normal.
 
 You may visit the [Polkadot.js](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ffarm-rpc.subspace.network#/explorer), from here you may interact with the Subspace Farmnet as any substrate based blockchain.
 
-## Invalid Solution: 
+## Invalid Solution:
 If you are getting `invalid solution` errors (visible on the terminal that Node runs), please perform this step and then follow the guideline again:
 ```
 ./subspace-farmer-x86_64-*-snapshot erase-plot
