@@ -110,8 +110,8 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, Hash>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	/// Create a new instance.
 	fn new(
@@ -279,6 +279,24 @@ where
 		);
 	}
 
+	async fn wait_for_local_receipt(
+		&self,
+		block_hash: Block::Hash,
+		block_number: <Block::Header as HeaderT>::Number,
+		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
+	) -> Result<(), GossipMessageError> {
+		loop {
+			match crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_hash) {
+				Ok(Some(local_receipt)) =>
+					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
+				Ok(None) => {
+					tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+				},
+				Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
+			}
+		}
+	}
+
 	async fn produce_bundle(
 		self,
 		primary_hash: PHash,
@@ -308,7 +326,6 @@ where
 	}
 }
 
-// TODO: proper error type
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
@@ -317,6 +334,8 @@ pub enum GossipMessageError {
 	Client(#[from] sp_blockchain::Error),
 	#[error(transparent)]
 	RecvError(#[from] crossbeam::channel::RecvError),
+	#[error("Failed to send local receipt result because the channel is disconnected")]
+	SendError,
 }
 
 impl<Block, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
@@ -342,8 +361,8 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, Hash>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	type Error = GossipMessageError;
 
@@ -426,32 +445,23 @@ where
 			let (tx, rx) = crossbeam::channel::bounded::<
 				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
 			>(1);
-			let client = self.client.clone();
+			let executor = self.clone();
 			self.spawner.spawn(
 				"wait-for-local-execution-receipt",
 				None,
 				async move {
-					loop {
-						match crate::aux_schema::load_execution_receipt::<_, Block>(
-							&*client, block_hash,
-						) {
-							Ok(Some(local_receipt)) => {
-								let _ = tx.send(Ok(local_receipt));
-								break
-							},
-							Ok(None) => {
-								tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-							},
-							Err(e) => {
-								let _ = tx.send(Err(e));
-								break
-							},
-						}
+					if let Err(err) =
+						executor.wait_for_local_receipt(block_hash, block_number, tx).await
+					{
+						tracing::error!(
+							target: LOG_TARGET,
+							?err,
+							"Error occurred while waiting for the local receipt"
+						);
 					}
 				}
 				.boxed(),
 			);
-
 			rx.recv()??
 		};
 
