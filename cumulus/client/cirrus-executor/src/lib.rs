@@ -504,7 +504,11 @@ where
 				},
 			) {
 			// TODO: generate a fraud proof
-			let fraud_proof = FraudProof { proof: StorageProof::empty() };
+			let fraud_proof = FraudProof {
+				pre_state_root: sp_core::H256::random(),
+				post_state_root: sp_core::H256::random(),
+				proof: StorageProof::empty(),
+			};
 
 			self.submit_fraud_proof(fraud_proof);
 
