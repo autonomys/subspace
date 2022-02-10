@@ -17,10 +17,12 @@
 //! Cirrus Executor implementation for Subspace.
 #![allow(clippy::all)]
 
+mod aux_schema;
 mod bundler;
+mod merkle_tree;
 mod processor;
 
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -58,12 +60,9 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
-// TODO: merge `runtime_api` into `client`.
-pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> {
-	block_status: Arc<BS>,
+pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
-	runtime_api: Arc<RA>,
 	client: Arc<Client>,
 	spawner: Arc<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
@@ -72,16 +71,15 @@ pub struct Executor<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CID
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
+	is_authority: bool,
 }
 
-impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
-	for Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+impl<Block: BlockT, Client, TransactionPool, Backend, CIDP> Clone
+	for Executor<Block, Client, TransactionPool, Backend, CIDP>
 {
 	fn clone(&self) -> Self {
 		Self {
-			block_status: self.block_status.clone(),
 			parachain_consensus: self.parachain_consensus.clone(),
-			runtime_api: self.runtime_api.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
@@ -90,36 +88,33 @@ impl<Block: BlockT, BS, RA, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+			is_authority: self.is_authority,
 		}
 	}
 }
 
-impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP>
+	Executor<Block, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<RA, Block>,
-		Error = sp_consensus::Error,
-	>,
-	BS: BlockBackend<Block>,
-	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	RA: ProvideRuntimeApi<Block>,
-	RA::Api: SecondaryApi<Block, AccountId>
+	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
+	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 	CIDP: CreateInherentDataProviders<Block, Hash>,
 {
 	/// Create a new instance.
 	fn new(
-		block_status: Arc<BS>,
-		runtime_api: Arc<RA>,
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
 		spawner: Arc<dyn SpawnNamed + Send + Sync>,
@@ -129,10 +124,9 @@ where
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		create_inherent_data_providers: Arc<CIDP>,
+		is_authority: bool,
 	) -> Self {
 		Self {
-			block_status,
-			runtime_api,
 			parachain_consensus,
 			client,
 			spawner,
@@ -142,6 +136,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			is_authority,
 		}
 	}
 
@@ -154,7 +149,7 @@ where
 		hash: Block::Hash,
 		number: <Block::Header as HeaderT>::Number,
 	) -> bool {
-		match self.block_status.block_status(&BlockId::Hash(hash)) {
+		match self.client.block_status(&BlockId::Hash(hash)) {
 			Ok(BlockStatus::Queued) => {
 				tracing::debug!(
 					target: LOG_TARGET,
@@ -314,30 +309,39 @@ where
 }
 
 // TODO: proper error type
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
+	#[error("Bundle equivocation error")]
 	BundleEquivocation,
+	#[error(transparent)]
+	Client(#[from] sp_blockchain::Error),
+	#[error(transparent)]
+	RecvError(#[from] crossbeam::channel::RecvError),
 }
 
-impl<Block, BS, RA, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
-	for Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
+	for Executor<Block, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<RA, Block>,
-		Error = sp_consensus::Error,
-	>,
-	BS: BlockBackend<Block> + Send + Sync,
-	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	RA: ProvideRuntimeApi<Block> + Send + Sync,
-	RA::Api: SecondaryApi<Block, AccountId>
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ AuxStore
+		+ Send
+		+ Sync
+		+ 'static,
+	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
+	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 	CIDP: CreateInherentDataProviders<Block, Hash>,
 {
@@ -391,40 +395,90 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		_execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
+		execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
-		// TODO: check if the received ER is same with the one produced locally.
-		let same_with_produced_locally = true;
+		let block_hash = execution_receipt.secondary_hash;
+		let block_number = self.client.expect_block_number_from_id(&BlockId::Hash(block_hash))?;
+		let best_number = self.client.info().best_number;
 
-		if same_with_produced_locally {
-			Ok(Action::RebroadcastExecutionReceipt)
+		// Just ignore it if the receipt is too old and has been pruned.
+		if aux_schema::target_receipt_is_pruned::<Block>(best_number, block_number) {
+			return Ok(Action::Empty)
+		}
+
+		// TODO: more efficient execution receipt checking strategy?
+		let local_receipt = if let Some(local_receipt) =
+			crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_hash)?
+		{
+			local_receipt
 		} else {
+			// Wait for the local execution receipt until it's ready.
+			let (tx, rx) = crossbeam::channel::bounded::<
+				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
+			>(1);
+			let client = self.client.clone();
+			self.spawner.spawn(
+				"wait-for-local-execution-receipt",
+				None,
+				async move {
+					loop {
+						match crate::aux_schema::load_execution_receipt::<_, Block>(
+							&*client, block_hash,
+						) {
+							Ok(Some(local_receipt)) => {
+								let _ = tx.send(Ok(local_receipt));
+								break
+							},
+							Ok(None) => {
+								tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+							},
+							Err(e) => {
+								let _ = tx.send(Err(e));
+								break
+							},
+						}
+					}
+				}
+				.boxed(),
+			);
+
+			rx.recv()??
+		};
+
+		// TODO: What happens for this obvious error?
+		if local_receipt.trace.len() != execution_receipt.trace.len() {}
+
+		if let Some(_local_trace_idx) = local_receipt
+			.trace
+			.iter()
+			.enumerate()
+			.zip(execution_receipt.trace.iter().enumerate())
+			.find_map(
+				|((local_idx, local_root), (_, external_root))| {
+					if local_root != external_root {
+						Some(local_idx)
+					} else {
+						None
+					}
+				},
+			) {
 			// TODO: generate a fraud proof
 			let fraud_proof = FraudProof { proof: StorageProof::empty() };
 
 			self.submit_fraud_proof(fraud_proof);
 
 			Ok(Action::Empty)
+		} else {
+			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}
 }
 
 /// Parameters for [`start_executor`].
-pub struct StartExecutorParams<
-	Block: BlockT,
-	RA,
-	BS,
-	Spawner,
-	Client,
-	TransactionPool,
-	Backend,
-	CIDP,
-> {
+pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, CIDP> {
 	pub client: Arc<Client>,
-	pub runtime_api: Arc<RA>,
-	pub block_status: Arc<BS>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Spawner,
@@ -435,51 +489,53 @@ pub struct StartExecutorParams<
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub is_authority: bool,
 }
 
 /// Start the executor.
-pub async fn start_executor<Block, RA, BS, Spawner, Client, TransactionPool, Backend, CIDP>(
+pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CIDP>(
 	StartExecutorParams {
 		client,
-		block_status,
 		announce_block: _,
 		mut overseer_handle,
 		spawner,
 		key,
 		parachain_consensus,
-		runtime_api,
 		transaction_pool,
 		bundle_sender,
 		execution_receipt_sender,
 		backend,
 		create_inherent_data_providers,
-	}: StartExecutorParams<Block, RA, BS, Spawner, Client, TransactionPool, Backend, CIDP>,
-) -> Executor<Block, BS, RA, Client, TransactionPool, Backend, CIDP>
+		is_authority,
+	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, CIDP>,
+) -> Executor<Block, Client, TransactionPool, Backend, CIDP>
 where
 	Block: BlockT,
-	BS: BlockBackend<Block> + Send + Sync + 'static,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
-	Client: HeaderBackend<Block> + Send + Sync + 'static,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<RA, Block>,
-		Error = sp_consensus::Error,
-	>,
-	RA: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-	RA::Api: SecondaryApi<Block, AccountId>
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ AuxStore
+		+ ProvideRuntimeApi<Block>
+		+ Send
+		+ Sync
+		+ 'static,
+	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	for<'b> &'b Client: sc_consensus::BlockImport<
+		Block,
+		Transaction = sp_api::TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	let executor = Executor::new(
-		block_status,
-		runtime_api,
 		parachain_consensus,
 		client,
 		Arc::new(spawner),
@@ -489,6 +545,7 @@ where
 		Arc::new(execution_receipt_sender),
 		backend,
 		create_inherent_data_providers,
+		is_authority,
 	);
 
 	let span = tracing::Span::current();
