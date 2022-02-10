@@ -9,7 +9,7 @@ use libp2p::kad::{
     QueryResult, Quorum,
 };
 use libp2p::swarm::SwarmEvent;
-use libp2p::{futures, Multiaddr, PeerId, Swarm};
+use libp2p::{futures, PeerId, Swarm};
 use log::{debug, trace};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -25,10 +25,6 @@ enum QueryResultSender {
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner {
-    // TODO: This might be useful later
-    /// Bootstrap or reserved nodes.
-    #[allow(dead_code)]
-    permanent_addresses: Vec<(PeerId, Multiaddr)>,
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
@@ -41,7 +37,6 @@ pub struct NodeRunner {
 
 impl NodeRunner {
     pub(crate) fn new(
-        permanent_addresses: Vec<(PeerId, Multiaddr)>,
         allow_non_globals_in_dht: bool,
         command_receiver: mpsc::Receiver<Command>,
         swarm: Swarm<Behavior>,
@@ -49,7 +44,6 @@ impl NodeRunner {
         initial_random_query_interval: Duration,
     ) -> Self {
         Self {
-            permanent_addresses,
             allow_non_globals_in_dht,
             command_receiver,
             swarm,

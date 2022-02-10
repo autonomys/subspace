@@ -7,6 +7,7 @@ use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::identify::IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
+use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::TokioTcpConfig;
@@ -26,8 +27,8 @@ const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad";
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
-    /// Nodes to connect to on creation.
-    pub bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
+    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
+    pub bootstrap_nodes: Vec<Multiaddr>,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
     pub listen_on: Vec<Multiaddr>,
     /// Adds a timeout to the setup and protocol upgrade process for all inbound and outbound
@@ -93,6 +94,9 @@ impl Config {
 /// Errors that might happen during network creation.
 #[derive(Debug, Error)]
 pub enum CreationError {
+    /// Bad bootstrap address.
+    #[error("Bad bootstrap address")]
+    BadBootstrapAddress,
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -116,7 +120,6 @@ pub async fn create(
         initial_random_query_interval,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
-    let permanent_addresses = bootstrap_nodes.clone();
     let local_peer_id = keypair.public().to_peer_id();
 
     // libp2p uses blocking API, hence we need to create a blocking task.
@@ -140,6 +143,25 @@ pub async fn create(
                 .timeout(timeout)
                 .boxed()
         };
+
+        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
+        let bootstrap_nodes = bootstrap_nodes
+            .into_iter()
+            .map(|mut multiaddr| {
+                let peer_id: PeerId = multiaddr
+                    .pop()
+                    .and_then(|protocol| {
+                        if let Protocol::P2p(peer_id) = protocol {
+                            Some(peer_id.try_into().ok()?)
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(CreationError::BadBootstrapAddress)?;
+
+                Ok((peer_id, multiaddr))
+            })
+            .collect::<Result<_, CreationError>>()?;
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
@@ -170,7 +192,6 @@ pub async fn create(
 
     let node = Node::new(Arc::clone(&shared));
     let node_runner = NodeRunner::new(
-        permanent_addresses,
         allow_non_globals_in_dht,
         command_receiver,
         swarm,
