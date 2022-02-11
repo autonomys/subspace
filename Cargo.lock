@@ -8595,6 +8595,7 @@ name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes 1.1.0",
  "clap 3.0.13",
  "env_logger 0.9.0",
  "event-listener-primitives",
@@ -8602,6 +8603,7 @@ dependencies = [
  "hex",
  "libp2p 0.43.0",
  "log",
+ "nohash-hasher",
  "parking_lot 0.12.0",
  "subspace-core-primitives",
  "thiserror",

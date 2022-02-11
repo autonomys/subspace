@@ -1,8 +1,10 @@
 use crate::behavior::{Behavior, Event};
-use crate::shared::{Command, Shared};
+use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
+use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, StreamExt};
+use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
 use libp2p::kad::{
     GetClosestPeersError, GetClosestPeersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId,
@@ -10,7 +12,9 @@ use libp2p::kad::{
 };
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, PeerId, Swarm};
-use log::{debug, trace};
+use log::{debug, error, trace, warn};
+use nohash_hasher::IntMap;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -33,6 +37,12 @@ pub struct NodeRunner {
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
     query_id_receivers: HashMap<QueryId, QueryResultSender>,
+    /// Global subscription counter, is assigned to every (logical) subscription and is used for
+    /// unsubscribing.
+    next_subscription_id: usize,
+    /// Topic subscription senders for logical subscriptions (multiple logical subscriptions can be
+    /// present for the same physical subscription).
+    topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
 }
 
 impl NodeRunner {
@@ -50,6 +60,8 @@ impl NodeRunner {
             shared,
             next_random_query_interval: initial_random_query_interval,
             query_id_receivers: HashMap::default(),
+            next_subscription_id: 0,
+            topic_subscription_senders: HashMap::default(),
         }
     }
 
@@ -102,6 +114,9 @@ impl NodeRunner {
             SwarmEvent::Behaviour(Event::Kademlia(event)) => {
                 self.handle_kademlia_event(event).await;
             }
+            SwarmEvent::Behaviour(Event::Gossipsub(event)) => {
+                self.handle_gossipsub_event(event).await;
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
                 self.shared.handlers.new_listener.call_simple(&address);
@@ -111,7 +126,7 @@ impl NodeRunner {
                 num_established,
                 ..
             } => {
-                debug!("Connection established with peer {peer_id} [{num_established} total]");
+                debug!("Connection established with peer {peer_id} [{num_established} from peer]");
                 self.shared
                     .connected_peers_count
                     .fetch_add(1, Ordering::SeqCst);
@@ -121,7 +136,7 @@ impl NodeRunner {
                 num_established,
                 ..
             } => {
-                debug!("Connection closed with peer {peer_id} [{num_established} total]");
+                debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
                 self.shared
                     .connected_peers_count
@@ -231,11 +246,11 @@ impl NodeRunner {
                                 records_len,
                             );
 
-                            // We don't care if receiver still waits for response.
+                            // Doesn't matter if receiver still waits for response.
                             let _ = sender.send(Some(record.value));
                         }
                         Err(error) => {
-                            // We don't care if receiver still waits for response.
+                            // Doesn't matter if receiver still waits for response.
                             let _ = sender.send(None);
 
                             match error {
@@ -270,6 +285,19 @@ impl NodeRunner {
         }
     }
 
+    async fn handle_gossipsub_event(&mut self, event: GossipsubEvent) {
+        if let GossipsubEvent::Message { message, .. } = event {
+            if let Some(senders) = self.topic_subscription_senders.get(&message.topic) {
+                let bytes = Bytes::from(message.data);
+
+                for sender in senders.values() {
+                    // Doesn't matter if receiver is still listening for messages or not.
+                    let _ = sender.unbounded_send(bytes.clone());
+                }
+            }
+        }
+    }
+
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::GetValue { key, result_sender } => {
@@ -285,6 +313,93 @@ impl NodeRunner {
                     QueryResultSender::GetValue {
                         sender: result_sender,
                     },
+                );
+            }
+            Command::Subscribe {
+                topic,
+                result_sender,
+            } => {
+                let topic_hash = topic.hash();
+                let (sender, receiver) = mpsc::unbounded();
+
+                // Unconditionally create subscription ID, code is simpler this way.
+                let subscription_id = self.next_subscription_id;
+                self.next_subscription_id += 1;
+
+                let created_subscription = CreatedSubscription {
+                    subscription_id,
+                    receiver,
+                };
+
+                match self.topic_subscription_senders.entry(topic_hash) {
+                    Entry::Occupied(mut entry) => {
+                        // In case subscription already exists, just add one more sender to it.
+                        if result_sender.send(Ok(created_subscription)).is_ok() {
+                            entry.get_mut().insert(subscription_id, sender);
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        // Otherwise subscription needs to be created.
+
+                        match self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+                            Ok(true) => {
+                                if result_sender.send(Ok(created_subscription)).is_ok() {
+                                    entry.insert_entry(IntMap::from_iter([(
+                                        subscription_id,
+                                        sender,
+                                    )]));
+                                }
+                            }
+                            Ok(false) => {
+                                panic!(
+                                    "Logic error, topic subscription wasn't created, this must never \
+                            happen"
+                                );
+                            }
+                            Err(error) => {
+                                let _ = result_sender.send(Err(error));
+                            }
+                        }
+                    }
+                }
+            }
+            Command::Unsubscribe {
+                topic,
+                subscription_id,
+            } => {
+                if let Entry::Occupied(mut entry) =
+                    self.topic_subscription_senders.entry(topic.hash())
+                {
+                    entry.get_mut().remove(&subscription_id);
+
+                    // If last sender was removed - unsubscribe.
+                    if entry.get().is_empty() {
+                        entry.remove_entry();
+
+                        if let Err(error) = self.swarm.behaviour_mut().gossipsub.unsubscribe(&topic)
+                        {
+                            warn!("Failed to unsubscribe from topic {topic}: {error}");
+                        }
+                    }
+                } else {
+                    error!(
+                        "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
+                        this is a logic error in the library"
+                    );
+                }
+            }
+            Command::Publish {
+                topic,
+                message,
+                result_sender,
+            } => {
+                // Doesn't matter if receiver still waits for response.
+                let _ = result_sender.send(
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .publish(topic, message)
+                        .map(|_message_id| ()),
                 );
             }
         }
