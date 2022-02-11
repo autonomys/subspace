@@ -2,6 +2,8 @@
 use libp2p::multihash::Multihash;
 use subspace_core_primitives::Sha256Hash;
 
+/// Start of Subspace Network multicodec namespace:
+/// https://github.com/multiformats/multicodec/blob/master/table.csv
 const SUBSPACE_MULTICODEC_NAMESPACE_START: usize = 0xb39910;
 
 #[repr(usize)]
