@@ -400,7 +400,15 @@ where
 		// TODO: validate the Proof-of-Election
 
 		let block_hash = execution_receipt.secondary_hash;
-		let block_number = self.client.expect_block_number_from_id(&BlockId::Hash(block_hash))?;
+		let block_number = self
+			.parachain_consensus
+			.block_number_from_id(&BlockId::Hash(execution_receipt.primary_hash))?
+			.ok_or(sp_blockchain::Error::Backend(format!(
+				"Primary block number not found for {:?}",
+				execution_receipt.primary_hash
+			)))?
+			.into();
+
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.

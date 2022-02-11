@@ -40,14 +40,17 @@ use cumulus_client_consensus_common::{
 	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
 };
 use parking_lot::Mutex;
-use sc_client_api::Backend;
+use sc_client_api::{Backend, HeaderBackend};
 use sc_consensus::{BlockImport, BlockImportParams};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::{
 	BlockOrigin, EnableProofRecording, Environment, ProofRecording, Proposal, Proposer,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::{
+	generic::BlockId,
+	traits::{Block as BlockT, Header as HeaderT, NumberFor},
+};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
@@ -84,7 +87,7 @@ impl<B, PF, BI, RClient, RBackend, CIDP> Clone
 impl<B, PF, BI, RClient, RBackend, CIDP> PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
 where
 	B: BlockT,
-	RClient: ProvideRuntimeApi<PBlock>,
+	RClient: ProvideRuntimeApi<PBlock> + HeaderBackend<PBlock>,
 	RBackend: Backend<PBlock>,
 	CIDP: CreateInherentDataProviders<B, (PHash, PersistedValidationData)>,
 {
@@ -146,7 +149,7 @@ impl<B, PF, BI, RClient, RBackend, CIDP> ParachainConsensus<B>
 	for PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
 where
 	B: BlockT,
-	RClient: ProvideRuntimeApi<PBlock> + Send + Sync,
+	RClient: ProvideRuntimeApi<PBlock> + HeaderBackend<PBlock> + Send + Sync,
 	RBackend: Backend<PBlock>,
 	BI: BlockImport<B> + Send + Sync,
 	PF: Environment<B> + Send + Sync,
@@ -221,6 +224,13 @@ where
 		}
 
 		Some(ParachainCandidate { block, proof })
+	}
+
+	fn block_number_from_id(
+		&self,
+		id: &BlockId<PBlock>,
+	) -> sp_blockchain::Result<Option<NumberFor<PBlock>>> {
+		self.relay_chain_client.block_number_from_id(id)
 	}
 }
 
