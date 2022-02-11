@@ -86,7 +86,7 @@ impl NodeRunner {
     fn handle_random_query_interval(&mut self) {
         let random_peer_id = PeerId::random();
 
-        debug!("Starting random Kademlia query for {}", random_peer_id);
+        trace!("Starting random Kademlia query for {}", random_peer_id);
 
         self.swarm
             .behaviour_mut()
@@ -144,7 +144,7 @@ impl NodeRunner {
                 }
             }
             SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
-                debug!("Kademlia event: {:?}", kademlia_event);
+                trace!("Kademlia event: {:?}", kademlia_event);
 
                 match kademlia_event {
                     KademliaEvent::OutboundQueryCompleted {
@@ -237,18 +237,29 @@ impl NodeRunner {
                 self.shared.listeners.lock().push(address.clone());
                 self.shared.handlers.new_listener.call_simple(&address);
             }
-            SwarmEvent::ConnectionEstablished { .. } => {
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                debug!("Connection established with peer {peer_id} [{num_established} total]");
                 self.shared
                     .connected_peers_count
                     .fetch_add(1, Ordering::SeqCst);
             }
-            SwarmEvent::ConnectionClosed { .. } => {
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                debug!("Connection closed with peer {peer_id} [{num_established} total]");
+
                 self.shared
                     .connected_peers_count
                     .fetch_sub(1, Ordering::SeqCst);
             }
             other => {
-                debug!("Other swarm event: {:?}", other);
+                trace!("Other swarm event: {:?}", other);
             }
         }
     }

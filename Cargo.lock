@@ -8563,6 +8563,8 @@ dependencies = [
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap 3.0.13",
  "env_logger 0.9.0",
  "event-listener-primitives",
  "futures 0.3.19",

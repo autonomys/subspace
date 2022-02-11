@@ -58,7 +58,7 @@ enum Command {
     Farm {
         /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
         #[clap(long)]
-        bootstrap_nodes: Vec<Multiaddr>,
+        bootstrap_node: Vec<Multiaddr>,
         /// Custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]
         custom_path: Option<PathBuf>,
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
             info!("Done");
         }
         Command::Farm {
-            bootstrap_nodes,
+            bootstrap_node,
             custom_path,
             listen_on,
             node_rpc_url,
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
             let path = utils::get_path(custom_path);
             commands::farm(
                 path,
-                bootstrap_nodes,
+                bootstrap_node,
                 listen_on,
                 &node_rpc_url,
                 ws_server_listen_addr,
