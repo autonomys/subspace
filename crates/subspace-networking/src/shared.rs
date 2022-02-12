@@ -1,10 +1,24 @@
+//! Data structures shared between node and node runner, facilitating exchange and creation of
+//! queries, subscriptions, various events and shared information.
+
+use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
+use libp2p::gossipsub::error::{PublishError, SubscriptionError};
+use libp2p::gossipsub::Sha256Topic;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+
+#[derive(Debug)]
+pub(crate) struct CreatedSubscription {
+    /// Subscription ID to be used for unsubscribing.
+    pub(crate) subscription_id: usize,
+    /// Receiver side of the channel with new messages.
+    pub(crate) receiver: mpsc::UnboundedReceiver<Bytes>,
+}
 
 #[derive(Debug)]
 pub(crate) enum Command {
@@ -12,6 +26,19 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: oneshot::Sender<Option<Vec<u8>>>,
+    },
+    Subscribe {
+        topic: Sha256Topic,
+        result_sender: oneshot::Sender<Result<CreatedSubscription, SubscriptionError>>,
+    },
+    Unsubscribe {
+        topic: Sha256Topic,
+        subscription_id: usize,
+    },
+    Publish {
+        topic: Sha256Topic,
+        message: Vec<u8>,
+        result_sender: oneshot::Sender<Result<(), PublishError>>,
     },
 }
 

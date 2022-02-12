@@ -5,6 +5,9 @@ use crate::node_runner::NodeRunner;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
+use libp2p::gossipsub::{
+    GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
+};
 use libp2p::identify::IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::multiaddr::Protocol;
@@ -17,9 +20,11 @@ use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
+use subspace_core_primitives::crypto;
 use thiserror::Error;
 
-const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad";
+const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
+const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
 /// [`Node`] configuration.
 // TODO: Restore derive after https://github.com/libp2p/rust-libp2p/pull/2495 is released
@@ -38,6 +43,8 @@ pub struct Config {
     pub identify: IdentifyConfig,
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
+    /// The configuration for the Kademlia behaviour.
+    pub gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub value_getter: ValueGetter,
     /// Yamux multiplexing configuration.
@@ -72,9 +79,20 @@ impl Config {
         // consumed.
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
+        let gossipsub = GossipsubConfigBuilder::default()
+            .protocol_id_prefix(GOSSIPSUB_PROTOCOL)
+            // TODO: Do we want message signing?
+            .validation_mode(ValidationMode::None)
+            // To content-address message, we can take the hash of message and use it as an ID.
+            .message_id_fn(|message: &GossipsubMessage| {
+                MessageId::from(crypto::sha256_hash(&message.data))
+            })
+            .build()
+            .expect("Default config for gossipsub is always correct; qed");
+
         let keypair = identity::Keypair::Ed25519(keypair);
 
-        let identify = IdentifyConfig::new("/ipfs/0.1.0".to_string(), keypair.public());
+        let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
         Self {
             keypair,
@@ -83,6 +101,7 @@ impl Config {
             timeout: Duration::from_secs(10),
             identify,
             kademlia,
+            gossipsub,
             value_getter: Arc::new(|_key| None),
             yamux_config,
             allow_non_globals_in_dht: false,
@@ -114,6 +133,7 @@ pub async fn create(
         identify,
         kademlia,
         bootstrap_nodes,
+        gossipsub,
         value_getter,
         yamux_config,
         allow_non_globals_in_dht,
@@ -168,6 +188,7 @@ pub async fn create(
             bootstrap_nodes,
             identify,
             kademlia,
+            gossipsub,
             value_getter,
         });
 

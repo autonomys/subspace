@@ -1,11 +1,14 @@
 use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
+use libp2p::gossipsub::Sha256Topic;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::Sha256Hash;
 use subspace_networking::Config;
+
+const TOPIC: &str = "Foo";
 
 #[tokio::main]
 async fn main() {
@@ -37,6 +40,8 @@ async fn main() {
         node_runner_1.run().await;
     });
 
+    let mut subscription = node_1.subscribe(Sha256Topic::new(TOPIC)).await.unwrap();
+
     let config_2 = Config {
         bootstrap_nodes: vec![node_1_addresses_receiver
             .next()
@@ -63,6 +68,16 @@ async fn main() {
     println!("Key: {key:?}");
     let result = node_2.get_value(key).await;
     println!("Value: {result:?}");
+
+    tokio::spawn(async move {
+        node_2
+            .publish(Sha256Topic::new(TOPIC), "hello".to_string().into_bytes())
+            .await
+            .unwrap();
+    });
+
+    let message = subscription.next().await.unwrap();
+    println!("Got message: {}", String::from_utf8_lossy(&message));
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }
