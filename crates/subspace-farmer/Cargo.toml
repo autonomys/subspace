@@ -37,11 +37,12 @@ ss58-registry = "1.10.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 thiserror = "1.0.30"
 tiny-bip39 = "0.8.2"
 tokio = { version = "1.16.1", features = ["macros", "rt-multi-thread"] }
-zeroize = "1.5.2"
+zeroize = "1.4.3"
 
 [dependencies.rocksdb]
 # This disables compression algorithms that cause issues during linking due to

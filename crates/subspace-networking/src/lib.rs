@@ -19,7 +19,7 @@
 
 mod behavior;
 mod create;
-mod kad;
+pub mod multimess;
 mod node;
 mod node_runner;
 mod shared;

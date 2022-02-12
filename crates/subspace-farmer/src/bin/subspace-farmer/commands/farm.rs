@@ -1,18 +1,26 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
+use std::mem;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
+use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::multimess::MultihashCode;
+use subspace_networking::Config;
 use subspace_solving::SubspaceCodec;
 
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(
     base_directory: PathBuf,
+    bootstrap_nodes: Vec<Multiaddr>,
+    listen_on: Vec<Multiaddr>,
     node_rpc_url: &str,
     ws_server_listen_addr: SocketAddr,
 ) -> Result<(), anyhow::Error> {
@@ -69,6 +77,47 @@ pub(crate) async fn farm(
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
     info!("WS RPC server listening on {}", ws_server_addr);
+
+    let (node, mut node_runner) = subspace_networking::create(Config {
+        bootstrap_nodes,
+        listen_on,
+        value_getter: Arc::new({
+            let plot = plot.clone();
+
+            move |key| {
+                if key.code() != MultihashCode::Piece as u64 {
+                    return None;
+                }
+
+                let piece_index =
+                    u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
+
+                plot.read_piece(piece_index).ok()
+            }
+        }),
+        allow_non_globals_in_dht: true,
+        // TODO: Persistent identity
+        ..Config::with_generated_keypair()
+    })
+    .await?;
+
+    node.on_new_listener(Arc::new({
+        let node_id = node.id();
+
+        move |multiaddr| {
+            info!(
+                "Listening on {}",
+                multiaddr.clone().with(Protocol::P2p(node_id.into()))
+            );
+        }
+    }))
+    .detach();
+
+    tokio::spawn(async move {
+        info!("Starting subspace network node instance");
+
+        node_runner.run().await;
+    });
 
     // start the farming task
     let farming_instance =

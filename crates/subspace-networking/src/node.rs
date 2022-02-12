@@ -2,7 +2,7 @@ use crate::shared::{Command, Shared};
 use event_listener_primitives::HandlerId;
 use futures::channel::oneshot;
 use futures::SinkExt;
-use libp2p::kad::record::Key;
+use libp2p::core::multihash::Multihash;
 use libp2p::{Multiaddr, PeerId};
 use std::sync::Arc;
 use thiserror::Error;
@@ -30,7 +30,7 @@ impl Node {
         self.shared.id
     }
 
-    pub async fn get_value(&self, key: Key) -> Result<Option<Vec<u8>>, GetValueError> {
+    pub async fn get_value(&self, key: Multihash) -> Result<Option<Vec<u8>>, GetValueError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared

@@ -1,16 +1,53 @@
-use crate::kad::custom_record_store::CustomRecordStore;
-use libp2p::identify::{Identify, IdentifyEvent};
-use libp2p::kad::{Kademlia, KademliaEvent};
+pub(crate) mod custom_record_store;
+
+use crate::create::ValueGetter;
+use custom_record_store::CustomRecordStore;
+use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
+use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping::{Ping, PingEvent};
-use libp2p::NetworkBehaviour;
+use libp2p::{Multiaddr, NetworkBehaviour, PeerId};
+
+pub(crate) struct BehaviorConfig {
+    /// Identity keypair of a node used for authenticated connections.
+    pub(crate) peer_id: PeerId,
+    /// Nodes to connect to on creation.
+    pub(crate) bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
+    /// The configuration for the [`Identify`] behaviour.
+    pub(crate) identify: IdentifyConfig,
+    /// The configuration for the [`Kademlia`] behaviour.
+    pub(crate) kademlia: KademliaConfig,
+    /// Externally provided implementation of value getter for Kademlia DHT,
+    pub(crate) value_getter: ValueGetter,
+}
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event")]
 #[behaviour(event_process = false)]
-pub(crate) struct Behaviour {
+pub(crate) struct Behavior {
     pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) identify: Identify,
     pub(crate) ping: Ping,
+}
+
+impl Behavior {
+    pub(crate) fn new(config: BehaviorConfig) -> Self {
+        let kademlia = {
+            let store = CustomRecordStore::new(config.value_getter);
+            let mut kademlia = Kademlia::with_config(config.peer_id, store, config.kademlia);
+
+            for (peer_id, address) in config.bootstrap_nodes {
+                kademlia.add_address(&peer_id, address);
+            }
+
+            kademlia
+        };
+
+        Self {
+            kademlia,
+            identify: Identify::new(config.identify),
+            ping: Ping::default(),
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use crate::behavior::{Behaviour, Event};
+use crate::behavior::{Behavior, Event};
 use crate::shared::{Command, Shared};
 use crate::utils;
 use futures::channel::{mpsc, oneshot};
@@ -9,7 +9,7 @@ use libp2p::kad::{
     QueryResult, Quorum,
 };
 use libp2p::swarm::SwarmEvent;
-use libp2p::{futures, Multiaddr, PeerId, Swarm};
+use libp2p::{futures, PeerId, Swarm};
 use log::{debug, trace};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -25,14 +25,10 @@ enum QueryResultSender {
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner {
-    // TODO: This might be useful later
-    /// Bootstrap or reserved nodes.
-    #[allow(dead_code)]
-    permanent_addresses: Vec<(PeerId, Multiaddr)>,
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behaviour>,
+    swarm: Swarm<Behavior>,
     shared: Arc<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -41,15 +37,13 @@ pub struct NodeRunner {
 
 impl NodeRunner {
     pub(crate) fn new(
-        permanent_addresses: Vec<(PeerId, Multiaddr)>,
         allow_non_globals_in_dht: bool,
         command_receiver: mpsc::Receiver<Command>,
-        swarm: Swarm<Behaviour>,
+        swarm: Swarm<Behavior>,
         shared: Arc<Shared>,
         initial_random_query_interval: Duration,
     ) -> Self {
         Self {
-            permanent_addresses,
             allow_non_globals_in_dht,
             command_receiver,
             swarm,
@@ -92,7 +86,7 @@ impl NodeRunner {
     fn handle_random_query_interval(&mut self) {
         let random_peer_id = PeerId::random();
 
-        debug!("Starting random Kademlia query for {}", random_peer_id);
+        trace!("Starting random Kademlia query for {}", random_peer_id);
 
         self.swarm
             .behaviour_mut()
@@ -150,7 +144,7 @@ impl NodeRunner {
                 }
             }
             SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
-                debug!("Kademlia event: {:?}", kademlia_event);
+                trace!("Kademlia event: {:?}", kademlia_event);
 
                 match kademlia_event {
                     KademliaEvent::OutboundQueryCompleted {
@@ -243,18 +237,29 @@ impl NodeRunner {
                 self.shared.listeners.lock().push(address.clone());
                 self.shared.handlers.new_listener.call_simple(&address);
             }
-            SwarmEvent::ConnectionEstablished { .. } => {
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                debug!("Connection established with peer {peer_id} [{num_established} total]");
                 self.shared
                     .connected_peers_count
                     .fetch_add(1, Ordering::SeqCst);
             }
-            SwarmEvent::ConnectionClosed { .. } => {
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                debug!("Connection closed with peer {peer_id} [{num_established} total]");
+
                 self.shared
                     .connected_peers_count
                     .fetch_sub(1, Ordering::SeqCst);
             }
             other => {
-                debug!("Other swarm event: {:?}", other);
+                trace!("Other swarm event: {:?}", other);
             }
         }
     }
@@ -267,7 +272,7 @@ impl NodeRunner {
                     .behaviour_mut()
                     .kademlia
                     // TODO: Will probably want something different and validate data instead.
-                    .get_record(&key, Quorum::One);
+                    .get_record(key.to_bytes().into(), Quorum::One);
 
                 self.query_id_receivers.insert(
                     query_id,
