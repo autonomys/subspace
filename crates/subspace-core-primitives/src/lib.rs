@@ -460,6 +460,7 @@ impl RootBlock {
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct Solution<AccountId> {
     /// Public key of the farmer that created the solution
     pub public_key: AccountId,
