@@ -127,6 +127,10 @@ impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct FraudProof {
+    /// State root before the fraudulent transaction.
+    pub pre_state_root: H256,
+    /// State root after the fraudulent transaction.
+    pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
 }

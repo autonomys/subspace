@@ -101,7 +101,7 @@ pub(super) fn target_receipt_is_pruned<Block: BlockT>(
 	current_block: <<Block as BlockT>::Header as HeaderT>::Number,
 	target_block: <<Block as BlockT>::Header as HeaderT>::Number,
 ) -> bool {
-	current_block - target_block >= PRUNING_DEPTH.saturated_into()
+	current_block > target_block && current_block - target_block >= PRUNING_DEPTH.saturated_into()
 }
 
 #[cfg(test)]

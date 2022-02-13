@@ -110,8 +110,8 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, Hash>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	/// Create a new instance.
 	fn new(
@@ -279,6 +279,47 @@ where
 		);
 	}
 
+	async fn wait_for_local_receipt(
+		&self,
+		block_hash: Block::Hash,
+		block_number: <Block::Header as HeaderT>::Number,
+		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
+	) -> Result<(), GossipMessageError> {
+		loop {
+			match crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_hash) {
+				Ok(Some(local_receipt)) =>
+					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
+				Ok(None) => {
+					// TODO: test how this works under the primary forks.
+					//       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
+					//
+					// The local client has moved to the next block, that means the receipt
+					// of `block_hash` received from the network does not match the local one,
+					// we should just send back the local receipt at the same height.
+					if self.client.info().best_number >= block_number {
+						let local_block_hash = self
+							.client
+							.expect_block_hash_from_id(&BlockId::Number(block_number))?;
+						let local_receipt_result = aux_schema::load_execution_receipt::<_, Block>(
+							&*self.client,
+							local_block_hash,
+						)?
+						.ok_or(sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for {:?}",
+							local_block_hash
+						)));
+						return tx
+							.send(local_receipt_result)
+							.map_err(|_| GossipMessageError::SendError)
+					} else {
+						tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+					}
+				},
+				Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
+			}
+		}
+	}
+
 	async fn produce_bundle(
 		self,
 		primary_hash: PHash,
@@ -308,7 +349,7 @@ where
 	}
 }
 
-// TODO: proper error type
+/// Error type for cirrus gossip handling.
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
@@ -317,6 +358,8 @@ pub enum GossipMessageError {
 	Client(#[from] sp_blockchain::Error),
 	#[error(transparent)]
 	RecvError(#[from] crossbeam::channel::RecvError),
+	#[error("Failed to send local receipt result because the channel is disconnected")]
+	SendError,
 }
 
 impl<Block, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
@@ -342,8 +385,8 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, Hash>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 {
 	type Error = GossipMessageError;
 
@@ -400,7 +443,15 @@ where
 		// TODO: validate the Proof-of-Election
 
 		let block_hash = execution_receipt.secondary_hash;
-		let block_number = self.client.expect_block_number_from_id(&BlockId::Hash(block_hash))?;
+		let block_number = self
+			.parachain_consensus
+			.block_number_from_id(&BlockId::Hash(execution_receipt.primary_hash))?
+			.ok_or(sp_blockchain::Error::Backend(format!(
+				"Primary block number not found for {:?}",
+				execution_receipt.primary_hash
+			)))?
+			.into();
+
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
@@ -418,32 +469,23 @@ where
 			let (tx, rx) = crossbeam::channel::bounded::<
 				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
 			>(1);
-			let client = self.client.clone();
+			let executor = self.clone();
 			self.spawner.spawn(
 				"wait-for-local-execution-receipt",
 				None,
 				async move {
-					loop {
-						match crate::aux_schema::load_execution_receipt::<_, Block>(
-							&*client, block_hash,
-						) {
-							Ok(Some(local_receipt)) => {
-								let _ = tx.send(Ok(local_receipt));
-								break
-							},
-							Ok(None) => {
-								tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-							},
-							Err(e) => {
-								let _ = tx.send(Err(e));
-								break
-							},
-						}
+					if let Err(err) =
+						executor.wait_for_local_receipt(block_hash, block_number, tx).await
+					{
+						tracing::error!(
+							target: LOG_TARGET,
+							?err,
+							"Error occurred while waiting for the local receipt"
+						);
 					}
 				}
 				.boxed(),
 			);
-
 			rx.recv()??
 		};
 
@@ -465,7 +507,11 @@ where
 				},
 			) {
 			// TODO: generate a fraud proof
-			let fraud_proof = FraudProof { proof: StorageProof::empty() };
+			let fraud_proof = FraudProof {
+				pre_state_root: sp_core::H256::random(),
+				post_state_root: sp_core::H256::random(),
+				proof: StorageProof::empty(),
+			};
 
 			self.submit_fraud_proof(fraud_proof);
 

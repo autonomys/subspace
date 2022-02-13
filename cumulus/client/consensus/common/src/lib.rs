@@ -18,8 +18,11 @@
 
 use cirrus_node_primitives::PersistedValidationData;
 use sc_consensus::BlockImport;
-use sp_runtime::traits::Block as BlockT;
-use subspace_runtime_primitives::Hash as PHash;
+use sp_runtime::{
+	generic::BlockId,
+	traits::{Block as BlockT, NumberFor},
+};
+use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 mod parachain_consensus;
 pub use parachain_consensus::{run_parachain_consensus, RelaychainClient};
@@ -32,6 +35,10 @@ pub struct ParachainCandidate<B> {
 	pub proof: sp_trie::StorageProof,
 }
 
+// TODO: this is no longer _parachain consensus related_, it might evolve as a
+// `PrimaryChainInterface` in the future. But we don't have to refactor it right now,
+// particularlly we'll have a major upgrade once https://github.com/paritytech/cumulus/issues/545
+// is resolved.
 /// A specific parachain consensus implementation that can be used by a collator to produce candidates.
 ///
 /// The collator will call [`Self::produce_candidate`] every time there is a free core for the parachain
@@ -54,21 +61,15 @@ pub trait ParachainConsensus<B: BlockT>: Send + Sync + dyn_clone::DynClone {
 		relay_parent: PHash,
 		validation_data: &PersistedValidationData,
 	) -> Option<ParachainCandidate<B>>;
+
+	/// Convert an arbitrary block ID into a block number.
+	fn block_number_from_id(
+		&self,
+		id: &BlockId<PBlock>,
+	) -> sp_blockchain::Result<Option<NumberFor<PBlock>>>;
 }
 
 dyn_clone::clone_trait_object!(<B> ParachainConsensus<B> where B: BlockT);
-
-#[async_trait::async_trait]
-impl<B: BlockT> ParachainConsensus<B> for Box<dyn ParachainConsensus<B> + Send + Sync> {
-	async fn produce_candidate(
-		&mut self,
-		parent: &B::Header,
-		relay_parent: PHash,
-		validation_data: &PersistedValidationData,
-	) -> Option<ParachainCandidate<B>> {
-		(*self).produce_candidate(parent, relay_parent, validation_data).await
-	}
-}
 
 /// Parachain specific block import.
 ///
