@@ -82,12 +82,11 @@ impl<B: BlockT> ParachainConsensus<B> for Box<dyn ParachainConsensus<B> + Send +
 		(*self).produce_candidate(parent, relay_parent, validation_data).await
 	}
 
-	#[allow(unconditional_recursion)]
 	fn block_number_from_id(
 		&self,
 		id: &BlockId<PBlock>,
 	) -> sp_blockchain::Result<Option<NumberFor<PBlock>>> {
-		self.block_number_from_id(id)
+		(**self).block_number_from_id(id)
 	}
 }
 
@@ -132,5 +131,46 @@ where
 			block_import_params.origin == sp_consensus::BlockOrigin::NetworkInitialSync,
 		));
 		self.0.import_block(block_import_params, cache).await
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	use substrate_test_runtime::{Block, Header};
+
+	#[derive(Clone)]
+	struct DummyConsensus;
+
+	#[async_trait::async_trait]
+	impl ParachainConsensus<Block> for DummyConsensus {
+		async fn produce_candidate(
+			&mut self,
+			_parent: &Header,
+			_relay_parent: PHash,
+			_validation_data: &PersistedValidationData,
+		) -> Option<ParachainCandidate<Block>> {
+			None
+		}
+
+		/// Convert an arbitrary block ID into a block number.
+		fn block_number_from_id(
+			&self,
+			_id: &BlockId<PBlock>,
+		) -> sp_blockchain::Result<Option<NumberFor<PBlock>>> {
+			Ok(None)
+		}
+	}
+
+	fn boxed_call<B: BlockT>(
+		c: Box<dyn ParachainConsensus<B> + Send + Sync>,
+	) -> Option<NumberFor<PBlock>> {
+		c.block_number_from_id(&BlockId::Number(0)).unwrap()
+	}
+
+	#[test]
+	fn stack_overflow_wont_happen_for_boxed_call() {
+		assert_eq!(boxed_call(Box::new(DummyConsensus)), None);
 	}
 }

@@ -290,6 +290,9 @@ where
 				Ok(Some(local_receipt)) =>
 					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
 				Ok(None) => {
+					// TODO: test how this works under the primary forks.
+					//       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
+					//
 					// The local client has moved to the next block, that means the receipt
 					// of `block_hash` received from the network does not match the local one,
 					// we should just send back the local receipt at the same height.

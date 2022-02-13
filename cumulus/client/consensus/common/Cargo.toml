@@ -24,3 +24,6 @@ tracing = "0.1.25"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
+
+[dev-dependencies]
+substrate-test-runtime = { path = "../../../../substrate/substrate-test-runtime" }
