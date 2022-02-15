@@ -31,7 +31,7 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 
 ```
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot `
+.\subspace-node-x86_64-windows-2019-snapshot-2022-jan-05.exe `
 --chain testnet `
 --wasm-execution compiled `
 --execution wasm `
@@ -68,7 +68,7 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+.\subspace-farmer-x86_64-windows-2019-snapshot-2022-jan-05.exe farm
 ```
 
 </details>
@@ -90,7 +90,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 ```
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot \
+./subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05.04-SNAPSHOT-2022-JAN-05 \
   --chain testnet \
   --wasm-execution compiled \
   --execution wasm \
@@ -126,7 +126,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+./subspace-farmer-x86_64-ubuntu-20.04-snapshot-2022-jan-05.04-SNAPSHOT-2022-JAN-05 farm
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 </p>
@@ -149,7 +149,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 ```
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot \
+./subspace-node-x86_64-macos-11-snapshot-2022-jan-05 \
   --chain testnet \
   --wasm-execution compiled \
   --execution wasm \
@@ -185,7 +185,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+./subspace-farmer-x86_64-macos-11-snapshot-2022-jan-05 farm
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 </p>
