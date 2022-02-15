@@ -135,7 +135,31 @@ jobs:
           command: build
           args: --release --bins --features=subspace-node/json-chain-spec
         if: runner.os == 'macOS'
-
+      # macOS Code Signing
+      - name: Sign Application (macOS)
+        run: |
+          echo ${{ secrets.MACOS_CERTIFICATE }} | base64 —decode > certificate.p12
+          security create-keychain -p ${{ secrets.MACOS_CERTIFICATE_PWD }} build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ${{ secrets.MACOS_CERTIFICATE_PWD }} build.keychain
+          security import certificate.p12 -k build.keychain -P ${{ secrets.MACOS_CERTIFICATE_PWD }} -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${{ secrets.MACOS_CERTIFICATE_PWD }} build.keychain
+          /usr/bin/codesign --force --options=runtime -s ${{ secrets.MACOS_IDENTITY }} --timestamp target/release/subspace-node
+          /usr/bin/codesign --force --optoins=runtime -s ${{ secrets.MACOS_IDENTITY }} --timestamp target/release/subspace-farmer
+          /usr/bin/xcrun altool --notarize-app --primary-bundle-id node-${{ github.ref_name }} --username ${{ secrets.MACOS_APPLE_ID}} --password ${{ secrets.MACOS_APP_PW }} --file target/release/subspace-node
+          /usr/bin/xcrun altool --notarize-app --primary-bundle-id farmer-${{ github.ref_name }} --username ${{ secrets.MACOS_APPLE_ID}} --password ${{ secrets.MACOS_APP_PW }} --file target/release/subspace-farmer
+        if: runner.os == 'macOS'
+      # Windows Code Signing
+      - name: Sign Application (Windows) 
+        uses: Dana-Prajea/code-sign-action@v4
+          with:
+            certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
+            password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
+            certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
+            folder: 'target/release'
+            recursive: false
+            timestampUrl: http://timestamp.comodoca.com
+        if: runner.os == 'Windows'
       - name: Prepare executables for uploading (Linux or macOS)
         run: |
           mkdir executables
