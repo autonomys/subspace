@@ -144,10 +144,6 @@ jobs:
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
 
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.5
-        if: runner.os == 'Linux'
-
       - name: Configure cache
         uses: actions/cache@v2
         with:
@@ -156,15 +152,7 @@ jobs:
             ~/.cargo/git
           key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: cargo test (Linux with CUDA)
+      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=subspace-farmer/cuda
-        if: runner.os == 'Linux'
-
-      - name: cargo test (macOS or Windows)
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-        if: runner.os == 'macOS' || runner.os == 'Windows'
