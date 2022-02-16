@@ -291,10 +291,7 @@ pub fn run_tests(mut input: &[u8]) -> Vec<u8> {
     print("run_tests...");
     let block = Block::decode(&mut input).unwrap();
     print("deserialized block.");
-    let stxs = block
-        .extrinsics
-        .iter()
-        .map(Encode::encode);
+    let stxs = block.extrinsics.iter().map(Encode::encode);
     print("reserialized transactions.");
     [stxs.count() as u8].encode()
 }
@@ -441,7 +438,7 @@ impl GetRuntimeBlockType for Runtime {
     type RuntimeBlock = Block;
 }
 
-#[derive(Clone, RuntimeDebug)]
+#[derive(Clone, RuntimeDebug, Encode, Decode, PartialEq, Eq, TypeInfo)]
 pub struct Origin;
 
 impl From<frame_system::Origin<Runtime>> for Origin {

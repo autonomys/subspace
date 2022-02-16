@@ -18,8 +18,8 @@ polkadot-node-metrics = { path = "../metrics" }
 polkadot-overseer = { path = "../overseer" }
 metered-channel = { path = "../metered-channel" }
 
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 sp-executor = { path = "../../../crates/sp-executor" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }

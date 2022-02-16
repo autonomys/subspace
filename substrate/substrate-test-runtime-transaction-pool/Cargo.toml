@@ -15,9 +15,9 @@ targets = ["x86_64-unknown-linux-gnu"]
 substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
 parking_lot = "0.12.0"
 codec = { package = "parity-scale-codec", version = "2.0.0" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
-sp-runtime = { version = "4.1.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
-sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
-sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-runtime = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 futures = "0.3.19"
 thiserror = "1.0.30"
