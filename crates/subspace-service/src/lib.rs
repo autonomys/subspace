@@ -30,6 +30,9 @@ use polkadot_overseer::{
 };
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::{
+    notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
+};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
@@ -338,6 +341,10 @@ pub struct NewFull<C> {
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Full client backend.
     pub backend: Arc<FullBackend>,
+    /// New slot stream.
+    pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    /// Block signing stream.
+    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
 }
 
 /// Builds a new service for a full client.
@@ -553,6 +560,8 @@ where
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
+        let new_slot_notification_stream = new_slot_notification_stream.clone();
+        let block_signing_notification_stream = block_signing_notification_stream.clone();
 
         Box::new(move |deny_unsafe, subscription_executor| {
             let deps = crate::rpc::FullDeps {
@@ -591,10 +600,13 @@ where
         network,
         rpc_handlers,
         backend,
+        new_slot_notification_stream,
+        block_signing_notification_stream,
     })
 }
 
 /// Builds a new object suitable for chain operations.
+#[allow(clippy::type_complexity)]
 pub fn new_chain_ops(
     mut config: &mut Configuration,
 ) -> Result<
