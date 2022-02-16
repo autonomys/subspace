@@ -19,16 +19,14 @@ RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 
-# Just enough files for `git rev-parse --short HEAD` to work (used in Substrate node build)
-COPY .git /code/.git
-# Just an empty directory for Git to recognize it is indeed a Git repository
-RUN mkdir /code/.git/objects
 COPY crates /code/crates
 COPY cumulus /code/cumulus
 COPY polkadot /code/polkadot
 COPY substrate /code/substrate
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
+
+ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
 
 RUN \
     /root/.cargo/bin/cargo build --release --bin subspace-node && \
