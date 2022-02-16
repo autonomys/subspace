@@ -49,7 +49,6 @@ use cumulus_client_consensus_common::RelaychainClient;
 pub mod genesis;
 
 use cirrus_node_primitives::CollatorPair;
-use subspace_node::service as subspace_service;
 
 /// The primary chain full node handle.
 pub struct PrimaryFullNode<C> {
@@ -245,7 +244,7 @@ pub fn prepare_node_config(mut parachain_config: Configuration) -> Configuration
 #[sc_tracing::logging::prefix_logs_with("Primarychain")]
 pub async fn build_subspace_full_node(
 	config: Configuration,
-) -> Result<PrimaryFullNode<Arc<subspace_service::FullClient>>, sc_service::Error> {
+) -> Result<PrimaryFullNode<Arc<subspace_service::SubspaceClient>>, sc_service::Error> {
 	let is_light = matches!(config.role, Role::Light);
 	if is_light {
 		Err(sc_service::Error::Other("Light client not supported.".into()))

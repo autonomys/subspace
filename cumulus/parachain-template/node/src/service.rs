@@ -25,7 +25,6 @@ use substrate_prometheus_endpoint::Registry;
 use cumulus_client_consensus_relay_chain::{
 	build_primary_chain_consensus, BuildPrimaryChainConsensusParams,
 };
-use subspace_node::service as subspace_service;
 
 /// Native executor instance.
 pub struct TemplateRuntimeExecutor;
@@ -211,7 +210,7 @@ where
 		Option<&Registry>,
 		Option<TelemetryHandle>,
 		&TaskManager,
-		&subspace_service::NewFull<Arc<subspace_service::FullClient>>,
+		&subspace_service::NewFull<Arc<subspace_service::SubspaceClient>>,
 		Arc<
 			sc_transaction_pool::FullPool<
 				Block,

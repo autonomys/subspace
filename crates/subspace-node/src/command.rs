@@ -15,18 +15,17 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::cli::{Cli, Subcommand};
-use crate::{chain_spec, service};
+use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
-use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_runtime::Block;
+use subspace_service::{chain_spec, subspace_runtime, SubspaceExecutorDispatch};
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Subspace service error.
     #[error(transparent)]
-    SubspaceService(#[from] service::Error),
+    SubspaceService(#[from] subspace_service::Error),
 
     /// CLI error.
     #[error(transparent)]
@@ -74,10 +73,10 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         Ok(match id {
-            "testnet" => Box::new(chain_spec::testnet_config()?),
-            "dev" => Box::new(chain_spec::development_config()?),
-            "" | "local" => Box::new(chain_spec::local_testnet_config()?),
-            path => Box::new(chain_spec::ChainSpec::from_json_file(
+            "testnet" => Box::new(chain_spec::subspace_testnet_config()?),
+            "dev" => Box::new(chain_spec::subspace_development_config()?),
+            "" | "local" => Box::new(chain_spec::subspace_local_testnet_config()?),
+            path => Box::new(chain_spec::SubspaceChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
             )?),
         })
@@ -121,51 +120,49 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
+            runner.async_run(|mut config| {
+                let (client, _, import_queue, task_manager) =
+                    subspace_service::new_chain_ops(&mut config)?;
+                Ok((
+                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
-                    import_queue,
-                    ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, import_queue), task_manager))
+                ))
             })?;
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
+            runner.async_run(|mut config| {
+                let (client, _, _, task_manager) = subspace_service::new_chain_ops(&mut config)?;
+                Ok((
+                    cmd.run(client, config.database)
+                        .map_err(Error::SubstrateCli),
                     task_manager,
-                    ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, config.database), task_manager))
+                ))
             })?;
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
+            runner.async_run(|mut config| {
+                let (client, _, _, task_manager) = subspace_service::new_chain_ops(&mut config)?;
+                Ok((
+                    cmd.run(client, config.chain_spec)
+                        .map_err(Error::SubstrateCli),
                     task_manager,
-                    ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, config.chain_spec), task_manager))
+                ))
             })?;
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
+            runner.async_run(|mut config| {
+                let (client, _, import_queue, task_manager) =
+                    subspace_service::new_chain_ops(&mut config)?;
+                Ok((
+                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
-                    import_queue,
-                    ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, import_queue), task_manager))
+                ))
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
@@ -175,21 +172,22 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
+            runner.async_run(|mut config| {
+                let (client, backend, _, task_manager) =
+                    subspace_service::new_chain_ops(&mut config)?;
+                Ok((
+                    cmd.run(client, backend).map_err(Error::SubstrateCli),
                     task_manager,
-                    backend,
-                    ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, backend), task_manager))
+                ))
             })?;
         }
         Some(Subcommand::Benchmark(cmd)) => {
             if cfg!(feature = "runtime-benchmarks") {
                 let runner = cli.create_runner(cmd)?;
                 set_default_ss58_version(&runner.config().chain_spec);
-                runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))?;
+                runner.sync_run(|config| {
+                    cmd.run::<subspace_runtime::Block, SubspaceExecutorDispatch>(config)
+                })?;
             } else {
                 return Err(Error::Other(
                     "Benchmarking wasn't enabled when building the node. You can enable it with \
@@ -202,9 +200,9 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config)
-                    .await
-                    .map(|full| full.task_manager)
+                subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(config)
+                .await
+                .map(|full| full.task_manager)
             })?;
         }
     }

@@ -239,7 +239,7 @@ pub struct BuildPrimaryChainConsensusParams<PF, BI, RBackend, CIDP> {
 	pub proposer_factory: PF,
 	pub create_inherent_data_providers: CIDP,
 	pub block_import: BI,
-	pub relay_chain_client: Arc<subspace_node::service::FullClient>,
+	pub relay_chain_client: Arc<subspace_service::SubspaceClient>,
 	pub relay_chain_backend: Arc<RBackend>,
 }
 
