@@ -61,7 +61,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
       - name: Add MSVC compiler
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -72,8 +72,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-          toolchain: nightly-2022-01-19
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -124,7 +123,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
       - name: Add MSVC compiler
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -135,8 +134,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-          toolchain: nightly-2022-01-19
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy

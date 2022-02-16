@@ -1,7 +1,6 @@
 FROM ubuntu:20.04
 
-# TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-ARG RUSTC_VERSION=nightly-2022-01-19
+ARG RUSTC_VERSION=nightly
 
 WORKDIR /code
 
