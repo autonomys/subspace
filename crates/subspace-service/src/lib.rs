@@ -16,7 +16,6 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-pub mod chain_spec;
 pub mod rpc;
 
 use lru::LruCache;
@@ -41,7 +40,6 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
-pub use subspace_runtime;
 use subspace_runtime_primitives::{
     opaque::{Block, BlockId},
     AccountId, Balance, Index as Nonce,
@@ -116,32 +114,9 @@ pub enum Error {
     Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
 }
 
-/// Subspace native executor instance.
-pub struct SubspaceExecutorDispatch;
-
-impl sc_executor::NativeExecutionDispatch for SubspaceExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_runtime::native_version()
-    }
-}
-
 /// Subspace-like full client.
 pub type FullClient<RuntimeApi, ExecutorDispatch> =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
-
-/// Full client using subspace-runtime.
-pub type SubspaceClient = FullClient<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>;
 
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
@@ -604,28 +579,4 @@ where
         new_slot_notification_stream,
         block_signing_notification_stream,
     })
-}
-
-/// Builds a new object suitable for chain operations.
-#[allow(clippy::type_complexity)]
-pub fn new_chain_ops(
-    mut config: &mut Configuration,
-) -> Result<
-    (
-        Arc<FullClient<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>>,
-        Arc<FullBackend>,
-        sc_consensus::BasicQueue<Block, sp_trie::PrefixedMemoryDB<BlakeTwo256>>,
-        TaskManager,
-    ),
-    Error,
-> {
-    let sc_service::PartialComponents {
-        client,
-        backend,
-        import_queue,
-        task_manager,
-        ..
-    } = new_partial::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(config)?;
-
-    Ok((client, backend, import_queue, task_manager))
 }

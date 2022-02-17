@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
+mod chain_spec;
 pub mod cli;
 mod command;
 

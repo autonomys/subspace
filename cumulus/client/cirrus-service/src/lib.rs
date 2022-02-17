@@ -30,48 +30,30 @@ use sc_consensus::{
 	BlockImport,
 };
 use sc_network::NetworkService;
-use sc_service::{Configuration, Role, TaskManager};
+use sc_service::{Configuration, TaskManager};
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_core::{traits::SpawnNamed, Pair};
+use sp_core::traits::SpawnNamed;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	traits::{Block as BlockT, NumberFor},
 	Justifications,
 };
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use cumulus_client_consensus_common::RelaychainClient;
 
 pub mod genesis;
-
-use cirrus_node_primitives::CollatorPair;
-
-/// The primary chain full node handle.
-pub struct PrimaryFullNode<C> {
-	/// The relay chain full node handles.
-	pub primary_chain_full_node: subspace_service::NewFull<C>,
-	/// The collator key used by the node.
-	pub collator_key: CollatorPair,
-}
-
-impl<C> Deref for PrimaryFullNode<C> {
-	type Target = subspace_service::NewFull<C>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.primary_chain_full_node
-	}
-}
 
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, IQ, TP, Backend, CIDP> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub spawner: Spawner,
-	pub primary_chain_full_node: PrimaryFullNode<RClient>,
+	pub primary_chain_full_node: subspace_service::NewFull<RClient>,
 	pub task_manager: &'a mut TaskManager,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub import_queue: IQ,
@@ -153,7 +135,6 @@ where
 			announce_block,
 			overseer_handle,
 			spawner,
-			key: primary_chain_full_node.collator_key.clone(),
 			parachain_consensus,
 			transaction_pool,
 			bundle_sender,
@@ -176,7 +157,7 @@ where
 		.spawn_essential_handle()
 		.spawn_blocking("cirrus-gossip", None, executor_gossip);
 
-	task_manager.add_child(primary_chain_full_node.primary_chain_full_node.task_manager);
+	task_manager.add_child(primary_chain_full_node.task_manager);
 
 	Ok(())
 }
@@ -184,7 +165,7 @@ where
 /// Parameters given to [`start_full_node`].
 pub struct StartFullNodeParams<'a, Block: BlockT, Client, PClient> {
 	pub client: Arc<Client>,
-	pub primary_chain_full_node: PrimaryFullNode<PClient>,
+	pub primary_chain_full_node: subspace_service::NewFull<PClient>,
 	pub task_manager: &'a mut TaskManager,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 }
@@ -225,7 +206,7 @@ where
 		.spawn_essential_handle()
 		.spawn("cumulus-consensus", None, consensus);
 
-	task_manager.add_child(primary_chain_full_node.primary_chain_full_node.task_manager);
+	task_manager.add_child(primary_chain_full_node.task_manager);
 
 	Ok(())
 }
@@ -238,23 +219,6 @@ pub fn prepare_node_config(mut parachain_config: Configuration) -> Configuration
 	parachain_config.announce_block = false;
 
 	parachain_config
-}
-
-/// Build the Subspace full node using the given `config`.
-#[sc_tracing::logging::prefix_logs_with("Primarychain")]
-pub async fn build_subspace_full_node(
-	config: Configuration,
-) -> Result<PrimaryFullNode<Arc<subspace_service::SubspaceClient>>, sc_service::Error> {
-	let is_light = matches!(config.role, Role::Light);
-	if is_light {
-		Err(sc_service::Error::Other("Light client not supported.".into()))
-	} else {
-		let collator_key = CollatorPair::generate().0;
-		let primary_chain_full_node = subspace_service::new_full(config, false)
-			.await
-			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
-		Ok(PrimaryFullNode { primary_chain_full_node, collator_key })
-	}
 }
 
 /// A shared import queue

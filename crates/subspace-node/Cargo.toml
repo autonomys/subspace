@@ -21,10 +21,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 clap = { version = "3.0.13", features = ["derive"] }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 futures = "0.3.19"
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
+sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sp-core = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-runtime = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
+subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 thiserror = "1.0.30"
 
@@ -32,8 +38,11 @@ thiserror = "1.0.30"
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 [features]
-default = []
+default = ["do-not-enforce-cost-of-storage"]
+do-not-enforce-cost-of-storage = [
+	"subspace-runtime/do-not-enforce-cost-of-storage"
+]
 runtime-benchmarks = [
-	"subspace-service/runtime-benchmarks",
+	"subspace-runtime/runtime-benchmarks",
 ]
 json-chain-spec = ["subspace-service/json-chain-spec"]

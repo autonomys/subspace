@@ -52,7 +52,6 @@ sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "e6def6
 sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-executor = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-sc-keystore = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-rpc-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-service = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
@@ -86,4 +85,5 @@ cirrus-primitives = { path = "../../primitives" }
 
 # Subspace dependencies
 subspace-node = { path = "../../../crates/subspace-node" }
+subspace-runtime = { path = "../../../crates/subspace-runtime" }
 subspace-service = { path = "../../../crates/subspace-service" }
