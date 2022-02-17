@@ -1177,16 +1177,12 @@ where
         }
 
         let import_result = self.inner.import_block(block, new_cache).await?;
-        let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
+        let (root_block_sender, root_block_receiver) = mpsc::channel(0);
 
         self.imported_block_notification_sender
             .notify(move || (block_number, root_block_sender));
 
-        let mut root_blocks = Vec::new();
-
-        while let Some(root_block) = root_block_receiver.next().await {
-            root_blocks.push(root_block);
-        }
+        let root_blocks = root_block_receiver.collect().await;
 
         self.root_blocks
             .lock()
