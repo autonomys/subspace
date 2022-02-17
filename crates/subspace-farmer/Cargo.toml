@@ -30,9 +30,9 @@ parity-scale-codec = "2.3.0"
 parking_lot = "0.12.0"
 rayon = "1.5.1"
 schnorrkel = "0.9.1"
-serde = { version = "1.0.132", features = ["derive"] }
+serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.74"
-sp-core = { version = "4.1.0-dev", git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
+sp-core = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 ss58-registry = "1.10.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
@@ -41,7 +41,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 thiserror = "1.0.30"
 tiny-bip39 = "0.8.2"
-tokio = { version = "1.16.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.16.1", features = ["macros", "parking_lot", "rt-multi-thread"] }
 zeroize = "1.4.3"
 
 [dependencies.rocksdb]

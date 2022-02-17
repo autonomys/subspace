@@ -14,6 +14,8 @@ env:
   # Not needed in CI, should make things a bit faster
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
+  # Build smaller artifacts to avoid running out of space in CI
+  RUSTFLAGS: -C strip=debuginfo
 
 jobs:
   cargo-fmt:
@@ -61,7 +63,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
       - name: Add MSVC compiler
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -72,8 +74,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-          toolchain: nightly-2022-01-19
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -124,7 +125,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaroud for Windows 11/Windows Server 2022.
+      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
       - name: Add MSVC compiler
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -135,8 +136,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-          toolchain: nightly-2022-01-19
+          toolchain: nightly
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -146,10 +146,6 @@ jobs:
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
 
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.5
-        if: runner.os == 'Linux'
-
       - name: Configure cache
         uses: actions/cache@v2
         with:
@@ -158,15 +154,7 @@ jobs:
             ~/.cargo/git
           key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: cargo test (Linux with CUDA)
+      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=subspace-farmer/cuda
-        if: runner.os == 'Linux'
-
-      - name: cargo test (macOS or Windows)
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-        if: runner.os == 'macOS' || runner.os == 'Windows'
