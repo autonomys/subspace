@@ -619,8 +619,6 @@ pub fn new_chain_ops(
     ),
     Error,
 > {
-    config.keystore = sc_service::config::KeystoreConfig::InMemory;
-
     let sc_service::PartialComponents {
         client,
         backend,
