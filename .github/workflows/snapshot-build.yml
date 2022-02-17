@@ -123,28 +123,28 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --bins --features=subspace-node/json-chain-spec,subspace-farmer/cuda
+          args: --profile production --bins --features=subspace-node/json-chain-spec,subspace-farmer/cuda
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: Build (macOS without CUDA)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --bins --features=subspace-node/json-chain-spec
+          args: --profile production --bins --features=subspace-node/json-chain-spec
         if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Linux or macOS)
         run: |
           mkdir executables
-          mv target/release/subspace-node executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}
-          mv target/release/subspace-farmer executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}
+          mv target/production/subspace-node executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}
+          mv target/production/subspace-farmer executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}
         if: runner.os == 'Linux' || runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move target/release/subspace-node.exe executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
-          move target/release/subspace-farmer.exe executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
+          move target/production/subspace-node.exe executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
+          move target/production/subspace-farmer.exe executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to assets

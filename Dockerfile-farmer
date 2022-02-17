@@ -27,8 +27,8 @@ COPY substrate /code/substrate
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
-    /root/.cargo/bin/cargo build --release --bin subspace-farmer && \
-    mv target/release/subspace-farmer subspace-farmer && \
+    /root/.cargo/bin/cargo build --profile production --bin subspace-farmer && \
+    mv target/production/subspace-farmer subspace-farmer && \
     rm -rf target
 
 FROM ubuntu:20.04

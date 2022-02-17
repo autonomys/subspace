@@ -86,3 +86,8 @@ zeroize = { opt-level = 3 }
 [profile.release]
 # Substrate runtime requires unwinding.
 panic = "unwind"
+
+[profile.production]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
