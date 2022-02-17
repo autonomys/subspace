@@ -880,7 +880,7 @@ where
                 {
                     warn!(
                         target: "subspace",
-                        "Error checking/reporting Subspace equivocation: {:?}",
+                        "Error checking/reporting Subspace equivocation: {}",
                         err
                     );
                 }
@@ -1106,7 +1106,7 @@ where
                 parent_weight
             } else {
                 aux_schema::load_block_weight(&*self.client, last_best)
-                    .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
+                    .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
                     .ok_or_else(|| {
                         ConsensusError::ChainLookup(
                             "No block weight for parent header.".to_string(),

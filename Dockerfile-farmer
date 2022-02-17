@@ -1,7 +1,6 @@
 FROM ubuntu:20.04
 
-# TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-ARG RUSTC_VERSION=nightly-2022-01-19
+ARG RUSTC_VERSION=nightly
 
 WORKDIR /code
 
@@ -20,10 +19,6 @@ RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 
-# Just enough files for `git rev-parse --short HEAD` to work (used in Substrate node build)
-COPY .git /code/.git
-# Just an empty directory for Git to recognize it is indeed a Git repository
-RUN mkdir /code/.git/objects
 COPY crates /code/crates
 COPY cumulus /code/cumulus
 COPY polkadot /code/polkadot
