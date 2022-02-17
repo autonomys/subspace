@@ -92,7 +92,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./NODE_FILE_NAME.NODE_FILE_EXTENSION \
+./NODE_FILE_NAME \
   --chain testnet \
   --wasm-execution compiled \
   --execution wasm \
@@ -129,7 +129,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases.
-./FARMER_FILE_NAME.FARMER_FILE_EXTENSION farm
+./FARMER_FILE_NAME farm
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 </p>
