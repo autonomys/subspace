@@ -568,7 +568,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
     pub fn root_blocks_for_block(&self, block_number: NumberFor<Block>) -> Vec<RootBlock> {
         self.root_blocks
             .lock()
-            .get(&block_number)
+            .peek(&block_number)
             .cloned()
             .unwrap_or_default()
     }
@@ -1182,17 +1182,15 @@ where
         self.imported_block_notification_sender
             .notify(move || (block_number, root_block_sender));
 
-        let next_block_number = block_number + One::one();
+        let mut root_blocks = Vec::new();
+
         while let Some(root_block) = root_block_receiver.next().await {
-            {
-                let mut root_blocks = self.root_blocks.lock();
-                if let Some(list) = root_blocks.get_mut(&next_block_number) {
-                    list.push(root_block);
-                } else {
-                    root_blocks.put(next_block_number, vec![root_block]);
-                }
-            }
+            root_blocks.push(root_block);
         }
+
+        self.root_blocks
+            .lock()
+            .put(block_number + One::one(), root_blocks);
 
         Ok(import_result)
     }
