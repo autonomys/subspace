@@ -350,6 +350,7 @@ pub struct NewFull<C> {
 /// Builds a new service for a full client.
 pub async fn new_full<RuntimeApi, ExecutorDispatch>(
     config: Configuration,
+    enable_rpc_extensions: bool,
 ) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -557,34 +558,34 @@ where
         );
     }
 
-    let rpc_extensions_builder = {
-        let client = client.clone();
-        let pool = transaction_pool.clone();
-        let new_slot_notification_stream = new_slot_notification_stream.clone();
-        let block_signing_notification_stream = block_signing_notification_stream.clone();
-
-        Box::new(move |deny_unsafe, subscription_executor| {
-            let deps = crate::rpc::FullDeps {
-                client: client.clone(),
-                pool: pool.clone(),
-                deny_unsafe,
-                subscription_executor,
-                new_slot_notification_stream: new_slot_notification_stream.clone(),
-                block_signing_notification_stream: block_signing_notification_stream.clone(),
-                archived_segment_notification_stream: archived_segment_notification_stream.clone(),
-            };
-
-            Ok(crate::rpc::create_full(deps))
-        })
-    };
-
     let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
         network: network.clone(),
         client: client.clone(),
         keystore: keystore_container.sync_keystore(),
         task_manager: &mut task_manager,
-        transaction_pool,
-        rpc_extensions_builder,
+        transaction_pool: transaction_pool.clone(),
+        rpc_extensions_builder: if enable_rpc_extensions {
+            let client = client.clone();
+            let new_slot_notification_stream = new_slot_notification_stream.clone();
+            let block_signing_notification_stream = block_signing_notification_stream.clone();
+
+            Box::new(move |deny_unsafe, subscription_executor| {
+                let deps = crate::rpc::FullDeps {
+                    client: client.clone(),
+                    pool: transaction_pool.clone(),
+                    deny_unsafe,
+                    subscription_executor,
+                    new_slot_notification_stream: new_slot_notification_stream.clone(),
+                    block_signing_notification_stream: block_signing_notification_stream.clone(),
+                    archived_segment_notification_stream: archived_segment_notification_stream
+                        .clone(),
+                };
+
+                Ok(crate::rpc::create_full(deps))
+            })
+        } else {
+            Box::new(|_, _| Ok(Default::default()))
+        },
         backend: backend.clone(),
         system_rpc_tx,
         config,

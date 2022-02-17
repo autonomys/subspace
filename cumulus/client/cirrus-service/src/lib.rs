@@ -250,7 +250,7 @@ pub async fn build_subspace_full_node(
 		Err(sc_service::Error::Other("Light client not supported.".into()))
 	} else {
 		let collator_key = CollatorPair::generate().0;
-		let primary_chain_full_node = subspace_service::new_full(config)
+		let primary_chain_full_node = subspace_service::new_full(config, false)
 			.await
 			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
 		Ok(PrimaryFullNode { primary_chain_full_node, collator_key })

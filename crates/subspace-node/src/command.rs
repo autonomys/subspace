@@ -200,7 +200,7 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
-                subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(config)
+                subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(config, true)
                 .await
                 .map(|full| full.task_manager)
             })?;
