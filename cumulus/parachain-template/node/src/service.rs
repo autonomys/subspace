@@ -17,6 +17,7 @@ use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClient, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
+use sc_tracing::tracing;
 use sp_api::ConstructRuntimeApi;
 use sp_runtime::traits::BlakeTwo256;
 
@@ -228,15 +229,20 @@ where
 
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
-	// TODO: Add PrimaryChain prefix to logs, was previously done with
-	// `#[sc_tracing::logging::prefix_logs_with("Primarychain")]`
-	let primary_chain_full_node =
+	let primary_chain_full_node = {
+		let span = tracing::info_span!(
+			sc_tracing::logging::PREFIX_LOG_SPAN,
+			name = "Primarychain"
+		);
+		let _enter = span.enter();
+
 		subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(
 			polkadot_config,
 			false,
 		)
 			.await
-			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
+			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
+	};
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
