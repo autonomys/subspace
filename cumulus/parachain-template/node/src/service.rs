@@ -2,6 +2,7 @@
 
 // std
 use std::sync::Arc;
+use sc_basic_authorship::ProposerFactory;
 
 // Local Runtime Types
 use parachain_template_runtime::{
@@ -10,7 +11,6 @@ use parachain_template_runtime::{
 
 // Cumulus Imports
 use cirrus_client_service::prepare_node_config;
-use cumulus_client_consensus_common::ParachainConsensus;
 use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 // Substrate Imports
@@ -19,7 +19,6 @@ use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClie
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
 use sp_api::ConstructRuntimeApi;
 use sp_runtime::traits::BlakeTwo256;
-use substrate_prometheus_endpoint::Registry;
 
 /// Native executor instance.
 pub struct TemplateRuntimeExecutor;
@@ -169,12 +168,11 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with("Secondarychain")]
-async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, BIC>(
+async fn start_node_impl<RuntimeApi, Executor, RB, BIQ>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
 	_rpc_ext_builder: RB,
 	build_import_queue: BIQ,
-	build_consensus: BIC,
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
@@ -214,19 +212,6 @@ where
 			>,
 			sc_service::Error,
 		> + 'static,
-	BIC: FnOnce(
-		Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
-		Option<&Registry>,
-		Option<TelemetryHandle>,
-		&TaskManager,
-		&subspace_service::NewFull<Arc<subspace_service::FullClient<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>>>,
-		Arc<
-			sc_transaction_pool::FullPool<
-				Block,
-				TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-			>,
-		>,
-	) -> Result<Box<dyn ParachainConsensus<Block>>, sc_service::Error>,
 {
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
@@ -246,7 +231,10 @@ where
 	// TODO: Add PrimaryChain prefix to logs, was previously done with
 	// `#[sc_tracing::logging::prefix_logs_with("Primarychain")]`
 	let primary_chain_full_node =
-		subspace_service::new_full(polkadot_config, false)
+		subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(
+			polkadot_config,
+			false,
+		)
 			.await
 			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?;
 
@@ -306,14 +294,26 @@ where
 	// Basically, all the executor nodes run all the components, the
 	// difference is that only the authority node will try to win the
 	// election for producing bundle and execution receipt.
-	let parachain_consensus = build_consensus(
-		client.clone(),
-		prometheus_registry.as_ref(),
-		telemetry.as_ref().map(|t| t.handle()),
-		&task_manager,
-		&primary_chain_full_node,
-		transaction_pool.clone(),
-	)?;
+	let parachain_consensus = {
+		let proposer_factory = ProposerFactory::with_proof_recording(
+			task_manager.spawn_handle(),
+			client.clone(),
+			transaction_pool.clone(),
+			prometheus_registry.as_ref(),
+			telemetry.as_ref().map(|t| t.handle()),
+		);
+
+		Box::new(PrimaryChainConsensus::new(
+			proposer_factory,
+			move |_, (_relay_parent, _validation_data)| async move {
+				let time = sp_timestamp::InherentDataProvider::from_system_time();
+				Ok(time)
+			},
+			client.clone(),
+			primary_chain_full_node.client.clone(),
+			primary_chain_full_node.backend.clone(),
+		))
+	};
 
 	let spawner = task_manager.spawn_handle();
 
@@ -379,39 +379,11 @@ pub async fn start_parachain_node(
 	TaskManager,
 	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
 )> {
-	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _, _>(
+	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _>(
 		parachain_config,
 		polkadot_config,
 		|_| Ok(Default::default()),
 		parachain_build_import_queue,
-		|client,
-		 prometheus_registry,
-		 telemetry,
-		 task_manager,
-		 relay_chain_node,
-		 transaction_pool| {
-			let proposer_factory = sc_basic_authorship::ProposerFactory::with_proof_recording(
-				task_manager.spawn_handle(),
-				client.clone(),
-				transaction_pool,
-				prometheus_registry,
-				telemetry,
-			);
-
-			let relay_chain_backend = relay_chain_node.backend.clone();
-			let relay_chain_client = relay_chain_node.client.clone();
-
-			Ok(Box::new(PrimaryChainConsensus::new(
-				proposer_factory,
-				move |_, (_relay_parent, _validation_data)| async move {
-					let time = sp_timestamp::InherentDataProvider::from_system_time();
-					Ok(time)
-				},
-				client,
-				relay_chain_client,
-				relay_chain_backend,
-			)))
-		},
 	)
 	.await
 }

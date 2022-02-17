@@ -5132,7 +5132,6 @@ dependencies = [
  "cirrus-primitives",
  "clap 3.0.13",
  "cumulus-client-cli",
- "cumulus-client-consensus-common",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -5174,7 +5173,6 @@ dependencies = [
  "subspace-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint",
 ]
 
 [[package]]

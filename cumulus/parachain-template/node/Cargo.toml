@@ -42,7 +42,6 @@ frame-benchmarking-cli = { git = "https://github.com/paritytech/substrate", rev 
 pallet-transaction-payment-rpc = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 substrate-frame-rpc-system = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 ## Substrate Client Dependencies
 sc-basic-authorship = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
@@ -76,7 +75,6 @@ sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "
 
 # Cumulus dependencies
 cumulus-client-cli = { path = "../../client/cli" }
-cumulus-client-consensus-common = { path = "../../client/consensus/common" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
