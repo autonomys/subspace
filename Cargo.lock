@@ -8822,6 +8822,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-service"
+version = "0.1.0"
+dependencies = [
+ "frame-system",
+ "futures 0.3.19",
+ "pallet-balances",
+ "pallet-transaction-payment",
+ "polkadot-overseer",
+ "rand 0.8.4",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus-subspace",
+ "sc-executor",
+ "sc-network",
+ "sc-service",
+ "sc-tracing",
+ "schnorrkel",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-blockchain",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-keyring",
+ "sp-runtime",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "subspace-solving",
+ "subspace-test-runtime",
+ "substrate-test-client",
+ "substrate-test-utils",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "substrate-bip39"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8984,6 +9022,27 @@ dependencies = [
  "sp-runtime",
  "substrate-test-runtime-client",
  "thiserror",
+]
+
+[[package]]
+name = "substrate-test-utils"
+version = "4.0.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=e6def65920d30029e42d498cb07cec5dd433b927#e6def65920d30029e42d498cb07cec5dd433b927"
+dependencies = [
+ "futures 0.3.19",
+ "substrate-test-utils-derive",
+ "tokio",
+]
+
+[[package]]
+name = "substrate-test-utils-derive"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=e6def65920d30029e42d498cb07cec5dd433b927#e6def65920d30029e42d498cb07cec5dd433b927"
+dependencies = [
+ "proc-macro-crate 1.1.0",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -9478,7 +9537,7 @@ checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
  "cfg-if 1.0.0",
  "digest 0.10.3",
- "rand 0.4.6",
+ "rand 0.8.4",
  "static_assertions",
 ]
 
