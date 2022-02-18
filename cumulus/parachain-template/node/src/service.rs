@@ -1,13 +1,11 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
 // std
-use std::sync::Arc;
 use sc_basic_authorship::ProposerFactory;
+use std::sync::Arc;
 
 // Local Runtime Types
-use parachain_template_runtime::{
-	opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi,
-};
+use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
 
 // Cumulus Imports
 use cirrus_client_service::prepare_node_config;
@@ -230,18 +228,15 @@ where
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
 	let primary_chain_full_node = {
-		let span = tracing::info_span!(
-			sc_tracing::logging::PREFIX_LOG_SPAN,
-			name = "Primarychain"
-		);
+		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
 		let _enter = span.enter();
 
 		subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(
 			polkadot_config,
 			false,
 		)
-			.await
-			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
+		.await
+		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
 
 	let client = params.client.clone();
