@@ -55,7 +55,6 @@ sp-runtime = { version = "5.0.0", git = "https://github.com/paritytech/substrate
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sp-trie = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-subspace-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
@@ -67,9 +66,6 @@ pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", git = "htt
 
 [features]
 default = []
-runtime-benchmarks = [
-	"subspace-runtime/runtime-benchmarks",
-]
 # This feature makes `testnet` chain spec to use `chain-spec.json` file in the root of the repo instead of compiled
 # version
 json-chain-spec = []

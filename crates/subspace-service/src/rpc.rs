@@ -31,7 +31,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
-use subspace_runtime::{opaque::Block, AccountId, Balance, Index};
+use subspace_runtime_primitives::opaque::Block;
+use subspace_runtime_primitives::{AccountId, Balance, Index};
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {

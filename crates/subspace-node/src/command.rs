@@ -14,11 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::chain_spec;
 use crate::cli::{Cli, Subcommand};
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
+use sc_executor::NativeExecutionDispatch;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_service::{chain_spec, subspace_runtime, SubspaceExecutorDispatch};
+use subspace_runtime::RuntimeApi;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -43,6 +45,25 @@ pub enum Error {
 impl From<String> for Error {
     fn from(s: String) -> Self {
         Self::Other(s)
+    }
+}
+
+struct ExecutorDispatch;
+
+impl NativeExecutionDispatch for ExecutorDispatch {
+    /// Only enable the benchmarking host functions when we actually want to benchmark.
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    /// Otherwise we only use the default Substrate host functions.
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        subspace_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        subspace_runtime::native_version()
     }
 }
 
@@ -120,9 +141,13 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|mut config| {
-                let (client, _, import_queue, task_manager) =
-                    subspace_service::new_chain_ops(&mut config)?;
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    import_queue,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -132,8 +157,12 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|mut config| {
-                let (client, _, _, task_manager) = subspace_service::new_chain_ops(&mut config)?;
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, config.database)
                         .map_err(Error::SubstrateCli),
@@ -144,8 +173,12 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|mut config| {
-                let (client, _, _, task_manager) = subspace_service::new_chain_ops(&mut config)?;
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, config.chain_spec)
                         .map_err(Error::SubstrateCli),
@@ -156,9 +189,13 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|mut config| {
-                let (client, _, import_queue, task_manager) =
-                    subspace_service::new_chain_ops(&mut config)?;
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    import_queue,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -172,9 +209,13 @@ pub fn run() -> std::result::Result<(), Error> {
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|mut config| {
-                let (client, backend, _, task_manager) =
-                    subspace_service::new_chain_ops(&mut config)?;
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    backend,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, backend).map_err(Error::SubstrateCli),
                     task_manager,
@@ -186,7 +227,7 @@ pub fn run() -> std::result::Result<(), Error> {
                 let runner = cli.create_runner(cmd)?;
                 set_default_ss58_version(&runner.config().chain_spec);
                 runner.sync_run(|config| {
-                    cmd.run::<subspace_runtime::Block, SubspaceExecutorDispatch>(config)
+                    cmd.run::<subspace_runtime::Block, ExecutorDispatch>(config)
                 })?;
             } else {
                 return Err(Error::Other(
@@ -200,7 +241,9 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
-                subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(config, true)
+                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                    config, true,
+                )
                 .await
                 .map(|full| full.task_manager)
             })?;
