@@ -205,7 +205,7 @@ where
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,
         client.clone(),
-        &task_manager.spawn_handle(),
+        &task_manager.spawn_essential_handle(),
     );
 
     let slot_duration = subspace_link.config().slot_duration();
