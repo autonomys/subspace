@@ -2,35 +2,29 @@
 
 // std
 use std::sync::Arc;
+use sc_basic_authorship::ProposerFactory;
 
 // Local Runtime Types
 use parachain_template_runtime::{
-	opaque::Block, AccountId, Balance, Hash, Index as Nonce, RuntimeApi,
+	opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi,
 };
 
 // Cumulus Imports
 use cirrus_client_service::prepare_node_config;
-use cumulus_client_consensus_common::ParachainConsensus;
+use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 // Substrate Imports
-use sc_executor::NativeElseWasmExecutor;
-use sc_network::NetworkService;
+use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClient, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
+use sc_tracing::tracing;
 use sp_api::ConstructRuntimeApi;
-use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::BlakeTwo256;
-use substrate_prometheus_endpoint::Registry;
-
-use cumulus_client_consensus_relay_chain::{
-	build_primary_chain_consensus, BuildPrimaryChainConsensusParams,
-};
-use subspace_node::service as subspace_service;
 
 /// Native executor instance.
 pub struct TemplateRuntimeExecutor;
 
-impl sc_executor::NativeExecutionDispatch for TemplateRuntimeExecutor {
+impl NativeExecutionDispatch for TemplateRuntimeExecutor {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -39,6 +33,20 @@ impl sc_executor::NativeExecutionDispatch for TemplateRuntimeExecutor {
 
 	fn native_version() -> sc_executor::NativeVersion {
 		parachain_template_runtime::native_version()
+	}
+}
+
+struct SubspaceExecutorDispatch;
+
+impl NativeExecutionDispatch for SubspaceExecutorDispatch {
+	type ExtendHostFunctions = ();
+
+	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+		subspace_runtime::api::dispatch(method, data)
+	}
+
+	fn native_version() -> sc_executor::NativeVersion {
+		subspace_runtime::native_version()
 	}
 }
 
@@ -161,12 +169,11 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with("Secondarychain")]
-async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, BIC>(
+async fn start_node_impl<RuntimeApi, Executor, RB, BIQ>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
 	_rpc_ext_builder: RB,
 	build_import_queue: BIQ,
-	build_consensus: BIC,
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
@@ -206,22 +213,6 @@ where
 			>,
 			sc_service::Error,
 		> + 'static,
-	BIC: FnOnce(
-		Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
-		Option<&Registry>,
-		Option<TelemetryHandle>,
-		&TaskManager,
-		&subspace_service::NewFull<Arc<subspace_service::FullClient>>,
-		Arc<
-			sc_transaction_pool::FullPool<
-				Block,
-				TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-			>,
-		>,
-		Arc<NetworkService<Block, Hash>>,
-		SyncCryptoStorePtr,
-		bool,
-	) -> Result<Box<dyn ParachainConsensus<Block>>, sc_service::Error>,
 {
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
@@ -238,13 +229,24 @@ where
 
 	let (mut telemetry, _telemetry_worker_handle) = params.other;
 
-	let relay_chain_full_node =
-		cirrus_client_service::build_subspace_full_node(polkadot_config).await?;
+	let primary_chain_full_node = {
+		let span = tracing::info_span!(
+			sc_tracing::logging::PREFIX_LOG_SPAN,
+			name = "Primarychain"
+		);
+		let _enter = span.enter();
+
+		subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(
+			polkadot_config,
+			false,
+		)
+			.await
+			.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
+	};
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	let force_authoring = parachain_config.force_authoring;
 	let validator = parachain_config.role.is_authority();
 	let prometheus_registry = parachain_config.prometheus_registry().cloned();
 	let transaction_pool = params.transaction_pool.clone();
@@ -298,17 +300,26 @@ where
 	// Basically, all the executor nodes run all the components, the
 	// difference is that only the authority node will try to win the
 	// election for producing bundle and execution receipt.
-	let parachain_consensus = build_consensus(
-		client.clone(),
-		prometheus_registry.as_ref(),
-		telemetry.as_ref().map(|t| t.handle()),
-		&task_manager,
-		&relay_chain_full_node,
-		transaction_pool.clone(),
-		network.clone(),
-		params.keystore_container.sync_keystore(),
-		force_authoring,
-	)?;
+	let parachain_consensus = {
+		let proposer_factory = ProposerFactory::with_proof_recording(
+			task_manager.spawn_handle(),
+			client.clone(),
+			transaction_pool.clone(),
+			prometheus_registry.as_ref(),
+			telemetry.as_ref().map(|t| t.handle()),
+		);
+
+		Box::new(PrimaryChainConsensus::new(
+			proposer_factory,
+			move |_, (_relay_parent, _validation_data)| async move {
+				let time = sp_timestamp::InherentDataProvider::from_system_time();
+				Ok(time)
+			},
+			client.clone(),
+			primary_chain_full_node.client.clone(),
+			primary_chain_full_node.backend.clone(),
+		))
+	};
 
 	let spawner = task_manager.spawn_handle();
 
@@ -316,7 +327,7 @@ where
 		announce_block,
 		client: client.clone(),
 		task_manager: &mut task_manager,
-		primary_chain_full_node: relay_chain_full_node,
+		primary_chain_full_node,
 		spawner,
 		parachain_consensus,
 		import_queue,
@@ -374,42 +385,11 @@ pub async fn start_parachain_node(
 	TaskManager,
 	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
 )> {
-	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _, _>(
+	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _>(
 		parachain_config,
 		polkadot_config,
 		|_| Ok(Default::default()),
 		parachain_build_import_queue,
-		|client,
-		 prometheus_registry,
-		 telemetry,
-		 task_manager,
-		 relay_chain_node,
-		 transaction_pool,
-		 _sync_oracle,
-		 _keystore,
-		 _force_authoring| {
-			let proposer_factory = sc_basic_authorship::ProposerFactory::with_proof_recording(
-				task_manager.spawn_handle(),
-				client.clone(),
-				transaction_pool,
-				prometheus_registry,
-				telemetry,
-			);
-
-			let relay_chain_backend = relay_chain_node.backend.clone();
-			let relay_chain_client = relay_chain_node.client.clone();
-
-			Ok(build_primary_chain_consensus(BuildPrimaryChainConsensusParams {
-				proposer_factory,
-				create_inherent_data_providers: move |_, (_relay_parent, _validation_data)| async move {
-					let time = sp_timestamp::InherentDataProvider::from_system_time();
-					Ok(time)
-				},
-				block_import: client,
-				relay_chain_client,
-				relay_chain_backend,
-			}))
-		},
 	)
 	.await
 }

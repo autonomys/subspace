@@ -42,7 +42,6 @@ frame-benchmarking-cli = { git = "https://github.com/paritytech/substrate", rev 
 pallet-transaction-payment-rpc = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 substrate-frame-rpc-system = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 
 ## Substrate Client Dependencies
 sc-basic-authorship = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
@@ -52,7 +51,6 @@ sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "e6def6
 sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-executor = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-sc-keystore = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-rpc-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 sc-service = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
@@ -77,7 +75,6 @@ sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "
 
 # Cumulus dependencies
 cumulus-client-cli = { path = "../../client/cli" }
-cumulus-client-consensus-common = { path = "../../client/consensus/common" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
@@ -86,3 +83,5 @@ cirrus-primitives = { path = "../../primitives" }
 
 # Subspace dependencies
 subspace-node = { path = "../../../crates/subspace-node" }
+subspace-runtime = { path = "../../../crates/subspace-runtime" }
+subspace-service = { path = "../../../crates/subspace-service" }

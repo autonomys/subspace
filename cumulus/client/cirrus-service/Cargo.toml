@@ -38,4 +38,4 @@ cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
 
 # Subspace
-subspace-node = { path = "../../../crates/subspace-node" }
+subspace-service = { path = "../../../crates/subspace-service" }

@@ -28,5 +28,5 @@ parking_lot = "0.12.0"
 tracing = "0.1.22"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
-subspace-node = { path = "../../../../crates/subspace-node" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }
+subspace-service = { path = "../../../../crates/subspace-service" }

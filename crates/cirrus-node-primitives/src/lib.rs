@@ -152,8 +152,6 @@ pub type CollatorSignature = collator_app::Signature;
 
 /// Configuration for the collation generator
 pub struct CollationGenerationConfig {
-    /// Collator's authentication key, so it can sign things.
-    pub key: CollatorPair,
     /// Transaction bundle function. See [`BundlerFn`] for more details.
     pub bundler: BundlerFn,
     /// State processor function. See [`ProcessorFn`] for more details.
