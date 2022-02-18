@@ -29,8 +29,8 @@ COPY substrate /code/substrate
 ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
 
 RUN \
-    /root/.cargo/bin/cargo build --release --bin subspace-node && \
-    mv target/release/subspace-node subspace-node && \
+    /root/.cargo/bin/cargo build --profile production --bin subspace-node && \
+    mv target/production/subspace-node subspace-node && \
     rm -rf target
 
 FROM ubuntu:20.04
