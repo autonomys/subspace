@@ -19,6 +19,7 @@
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
+use clap::Parser;
 use sc_service::{
 	config::{PrometheusConfig, TelemetryEndpoints},
 	BasePath, TransactionPoolOptions,
@@ -28,7 +29,6 @@ use std::{
 	io::{self, Write},
 	net::SocketAddr,
 };
-use clap::Parser;
 
 /// The `purge-chain` command used to remove the whole chain: the parachain and the relaychain.
 #[derive(Debug, Parser)]
