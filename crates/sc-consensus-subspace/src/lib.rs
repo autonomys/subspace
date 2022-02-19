@@ -1182,11 +1182,13 @@ where
         self.imported_block_notification_sender
             .notify(move || (block_number, root_block_sender));
 
-        let root_blocks = root_block_receiver.collect().await;
+        let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 
-        self.root_blocks
-            .lock()
-            .put(block_number + One::one(), root_blocks);
+        if !root_blocks.is_empty() {
+            self.root_blocks
+                .lock()
+                .put(block_number + One::one(), root_blocks);
+        }
 
         Ok(import_result)
     }
