@@ -344,10 +344,7 @@ impl NodeRunner {
                         match self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
                             Ok(true) => {
                                 if result_sender.send(Ok(created_subscription)).is_ok() {
-                                    entry.insert_entry(IntMap::from_iter([(
-                                        subscription_id,
-                                        sender,
-                                    )]));
+                                    entry.insert(IntMap::from_iter([(subscription_id, sender)]));
                                 }
                             }
                             Ok(false) => {
