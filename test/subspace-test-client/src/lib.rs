@@ -1,6 +1,25 @@
-//! Farmer specific service required to produce blocks.
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::Client;
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! Subspace test client only.
+
+#![warn(missing_docs, unused_crate_dependencies)]
+
+pub mod chain_spec;
+
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use sc_client_api::BlockBackend;
@@ -15,11 +34,31 @@ use std::sync::Arc;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
 use subspace_runtime_primitives::opaque::{Block, BlockId};
-use subspace_service::NewFull;
+use subspace_service::{FullClient, NewFull};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use zeroize::Zeroizing;
 
-pub(super) fn start_farmer(new_full: &NewFull<Arc<Client>>) {
+/// Subspace native executor instance.
+pub struct TestExecutorDispatch;
+
+impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
+    /// Otherwise we only use the default Substrate host functions.
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        subspace_test_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        subspace_test_runtime::native_version()
+    }
+}
+
+/// The client type being used by the test service.
+pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
+
+/// Run a farmer.
+pub fn start_farmer(new_full: &NewFull<Arc<Client>>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let block_signing_notification_stream = new_full.block_signing_notification_stream.clone();

@@ -26,6 +26,7 @@ members = [
     "polkadot/node/subsystem-types",
     "polkadot/node/subsystem-util",
     "substrate/*",
+    "test/subspace-test-client",
     "test/subspace-test-runtime",
     "test/subspace-test-service",
 ]

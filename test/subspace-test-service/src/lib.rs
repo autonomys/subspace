@@ -18,9 +18,6 @@
 
 #![warn(missing_docs, unused_crate_dependencies)]
 
-pub mod chain_spec;
-mod farmer_service;
-
 use futures::future::Future;
 use polkadot_overseer::Handle;
 use sc_client_api::execution_extensions::ExecutionStrategies;
@@ -38,32 +35,14 @@ use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::IdentifyAccount, MultiSigner};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
-use subspace_service::{FullClient, NewFull};
+use subspace_service::NewFull;
+use subspace_test_client::{chain_spec, start_farmer, Client, TestExecutorDispatch};
 use subspace_test_runtime::{
     BlockHashCount, Runtime, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
-
-/// Subspace native executor instance.
-pub struct TestExecutorDispatch;
-
-impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
-    /// Otherwise we only use the default Substrate host functions.
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_test_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_test_runtime::native_version()
-    }
-}
-
-/// The client type being used by the test service.
-pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 /// Create a new full node.
 #[sc_tracing::logging::prefix_logs_with(config.network.node_name.as_str())]
@@ -78,7 +57,7 @@ pub fn new_full(
     >(config, enable_rpc_extensions))
     .expect("Failed to create Subspace full client");
     if run_farmer {
-        farmer_service::start_farmer(&new_full);
+        start_farmer(&new_full);
     }
     new_full
 }

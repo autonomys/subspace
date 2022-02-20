@@ -8777,6 +8777,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-client"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.19",
+ "rand 0.8.4",
+ "sc-chain-spec",
+ "sc-client-api",
+ "sc-consensus-subspace",
+ "sc-executor",
+ "sc-service",
+ "schnorrkel",
+ "sp-api",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-runtime",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "subspace-solving",
+ "subspace-test-runtime",
+ "zeroize",
+]
+
+[[package]]
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
@@ -8831,32 +8856,22 @@ dependencies = [
  "pallet-transaction-payment",
  "polkadot-overseer",
  "rand 0.8.4",
- "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
- "sc-consensus-subspace",
- "sc-executor",
  "sc-network",
  "sc-service",
  "sc-tracing",
- "schnorrkel",
- "sp-api",
  "sp-arithmetic",
  "sp-blockchain",
- "sp-consensus-subspace",
- "sp-core",
  "sp-keyring",
  "sp-runtime",
- "subspace-archiving",
- "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-service",
- "subspace-solving",
+ "subspace-test-client",
  "subspace-test-runtime",
  "substrate-test-client",
  "substrate-test-utils",
  "tokio",
- "zeroize",
 ]
 
 [[package]]

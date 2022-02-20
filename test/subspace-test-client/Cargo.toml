@@ -1,0 +1,36 @@
+[package]
+name = "subspace-test-client"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+include = [
+	"/src",
+	"/Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+futures = "0.3.19"
+rand = "0.8.3"
+schnorrkel = "0.9.1"
+sc-chain-spec = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
+sc-executor = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
+sc-service = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927", features = ["wasmtime"] }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+subspace-archiving = { path = "../../crates/subspace-archiving" }
+subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
+subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
+subspace-service = { path = "../../crates/subspace-service" }
+subspace-solving = { path = "../../crates/subspace-solving" }
+subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
+zeroize = "1.4.3"
