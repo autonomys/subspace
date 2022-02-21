@@ -8777,6 +8777,102 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-client"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.19",
+ "rand 0.8.4",
+ "sc-chain-spec",
+ "sc-client-api",
+ "sc-consensus-subspace",
+ "sc-executor",
+ "sc-service",
+ "schnorrkel",
+ "sp-api",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-runtime",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "subspace-solving",
+ "subspace-test-runtime",
+ "zeroize",
+]
+
+[[package]]
+name = "subspace-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "orml-vesting",
+ "pallet-balances",
+ "pallet-executor",
+ "pallet-feeds",
+ "pallet-object-store",
+ "pallet-offences-subspace",
+ "pallet-rewards",
+ "pallet-subspace",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-fees",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-utility",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-slots",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-executor",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "substrate-wasm-builder",
+]
+
+[[package]]
+name = "subspace-test-service"
+version = "0.1.0"
+dependencies = [
+ "frame-system",
+ "futures 0.3.19",
+ "pallet-balances",
+ "pallet-transaction-payment",
+ "polkadot-overseer",
+ "rand 0.8.4",
+ "sc-cli",
+ "sc-client-api",
+ "sc-network",
+ "sc-service",
+ "sc-tracing",
+ "sp-arithmetic",
+ "sp-blockchain",
+ "sp-keyring",
+ "sp-runtime",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "subspace-test-client",
+ "subspace-test-runtime",
+ "substrate-test-client",
+ "substrate-test-utils",
+ "tokio",
+]
+
+[[package]]
 name = "substrate-bip39"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8939,6 +9035,27 @@ dependencies = [
  "sp-runtime",
  "substrate-test-runtime-client",
  "thiserror",
+]
+
+[[package]]
+name = "substrate-test-utils"
+version = "4.0.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=e6def65920d30029e42d498cb07cec5dd433b927#e6def65920d30029e42d498cb07cec5dd433b927"
+dependencies = [
+ "futures 0.3.19",
+ "substrate-test-utils-derive",
+ "tokio",
+]
+
+[[package]]
+name = "substrate-test-utils-derive"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?rev=e6def65920d30029e42d498cb07cec5dd433b927#e6def65920d30029e42d498cb07cec5dd433b927"
+dependencies = [
+ "proc-macro-crate 1.1.0",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -9433,7 +9550,7 @@ checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
  "cfg-if 1.0.0",
  "digest 0.10.3",
- "rand 0.4.6",
+ "rand 0.8.4",
  "static_assertions",
 ]
 
