@@ -21,6 +21,8 @@ mod aux_schema;
 mod bundler;
 mod merkle_tree;
 mod processor;
+#[cfg(test)]
+mod tests;
 
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
