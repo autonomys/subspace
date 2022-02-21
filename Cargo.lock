@@ -8777,6 +8777,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "orml-vesting",
+ "pallet-balances",
+ "pallet-executor",
+ "pallet-feeds",
+ "pallet-object-store",
+ "pallet-offences-subspace",
+ "pallet-rewards",
+ "pallet-subspace",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-fees",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-utility",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-slots",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-executor",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "substrate-bip39"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

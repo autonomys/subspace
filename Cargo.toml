@@ -26,6 +26,7 @@ members = [
     "polkadot/node/subsystem-types",
     "polkadot/node/subsystem-util",
     "substrate/*",
+    "test/subspace-test-runtime",
 ]
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
