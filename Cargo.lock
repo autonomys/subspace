@@ -1017,6 +1017,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-test-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cirrus-client-service",
+ "cirrus-node-primitives",
+ "cirrus-test-runtime",
+ "cumulus-client-consensus-relay-chain",
+ "frame-system",
+ "futures 0.3.19",
+ "jsonrpc-core",
+ "pallet-transaction-payment",
+ "rand 0.7.3",
+ "sc-basic-authorship",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-executor",
+ "sc-network",
+ "sc-rpc",
+ "sc-service",
+ "sc-tracing",
+ "sc-transaction-pool",
+ "sp-arithmetic",
+ "sp-blockchain",
+ "sp-core",
+ "sp-keyring",
+ "sp-runtime",
+ "sp-timestamp",
+ "sp-trie",
+ "subspace-service",
+ "subspace-test-client",
+ "subspace-test-runtime",
+ "subspace-test-service",
+ "substrate-test-client",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

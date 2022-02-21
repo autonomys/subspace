@@ -78,6 +78,9 @@ pub type Executive = cirrus_pallet_executive::Executive<
 	OnRuntimeUpgrade,
 >;
 
+/// The payload being signed in transactions.
+pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
+
 pub struct OnRuntimeUpgrade;
 impl frame_support::traits::OnRuntimeUpgrade for OnRuntimeUpgrade {
 	fn on_runtime_upgrade() -> u64 {

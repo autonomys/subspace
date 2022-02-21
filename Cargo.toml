@@ -14,6 +14,7 @@ members = [
     "cumulus/parachain-template/runtime",
     "cumulus/primitives",
     "cumulus/test/runtime",
+    "cumulus/test/service",
     "polkadot/node/collation-generation",
     "polkadot/node/core/chain-api",
     "polkadot/node/core/runtime-api",
