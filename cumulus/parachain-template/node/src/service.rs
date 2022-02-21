@@ -306,10 +306,7 @@ where
 
 		Box::new(PrimaryChainConsensus::new(
 			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move {
-				let time = sp_timestamp::InherentDataProvider::from_system_time();
-				Ok(time)
-			},
+			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
 			client.clone(),
 			primary_chain_full_node.client.clone(),
 			primary_chain_full_node.backend.clone(),
@@ -329,10 +326,7 @@ where
 		transaction_pool,
 		network,
 		backend,
-		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move {
-			let time = sp_timestamp::InherentDataProvider::from_system_time();
-			Ok(time)
-		}),
+		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
 		is_authority: validator,
 	};
 
@@ -358,10 +352,7 @@ pub fn parachain_build_import_queue(
 	sc_service::Error,
 > {
 	let block_import = client.clone();
-	let create_inherent_data_providers = |_, _| async move {
-		let time = sp_timestamp::InherentDataProvider::from_system_time();
-		Ok(time)
-	};
+	let create_inherent_data_providers = |_, _| async move { Ok(()) };
 	cumulus_client_consensus_relay_chain::import_queue(
 		client,
 		block_import,
