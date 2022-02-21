@@ -52,7 +52,7 @@ pub use cirrus_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 
 /// The signature of the announce block fn.
-pub type AnnounceBlockFn = Arc<dyn Fn(Hash, Option<Vec<u8>>) + Send + Sync>;
+pub type WrapAnnounceBlockFn = Arc<dyn Fn(Hash, Option<Vec<u8>>) + Send + Sync>;
 
 /// Native executor instance.
 pub struct RuntimeExecutor;
@@ -142,7 +142,7 @@ async fn start_node_impl<RB>(
 	parachain_config: Configuration,
 	_collator_key: Option<CollatorPair>,
 	relay_chain_config: Configuration,
-	wrap_announce_block: Option<Box<dyn FnOnce(AnnounceBlockFn) -> AnnounceBlockFn>>,
+	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	rpc_ext_builder: RB,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -289,7 +289,7 @@ pub struct TestNodeBuilder {
 	parachain_nodes: Vec<MultiaddrWithPeerId>,
 	parachain_nodes_exclusive: bool,
 	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
-	wrap_announce_block: Option<Box<dyn FnOnce(AnnounceBlockFn) -> AnnounceBlockFn>>,
+	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	storage_update_func_parachain: Option<Box<dyn Fn()>>,
 	storage_update_func_relay_chain: Option<Box<dyn Fn()>>,
 }
@@ -378,7 +378,7 @@ impl TestNodeBuilder {
 	/// Wrap the announce block function of this node.
 	pub fn wrap_announce_block(
 		mut self,
-		wrap: impl FnOnce(AnnounceBlockFn) -> AnnounceBlockFn + 'static,
+		wrap: impl FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn + 'static,
 	) -> Self {
 		self.wrap_announce_block = Some(Box::new(wrap));
 		self
