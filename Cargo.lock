@@ -982,6 +982,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "cirrus-pallet-executive",
+ "cirrus-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "smallvec",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -74,6 +74,7 @@ std = [
 	"sp-version/std",
 	"frame-support/std",
 	"frame-system/std",
+	"frame-system-rpc-runtime-api/std",
 	"pallet-balances/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
