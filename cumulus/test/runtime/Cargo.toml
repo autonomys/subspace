@@ -1,5 +1,5 @@
 [package]
-name = "parachain-template-runtime"
+name = "cirrus-test-runtime"
 version = "0.1.0"
 authors = ["Anonymous"]
 description = "A new Cumulus FRAME-based Substrate Runtime, ready for hacking together a parachain."
@@ -79,13 +79,4 @@ std = [
 	"pallet-transaction-payment/std",
 	"cirrus-pallet-executive/std",
 	"cirrus-primitives/std",
-]
-runtime-benchmarks = [
-	'hex-literal',
-	"sp-runtime/runtime-benchmarks",
-	"frame-benchmarking",
-	"frame-system-benchmarking",
-	"frame-support/runtime-benchmarks",
-	"frame-system/runtime-benchmarks",
-	"pallet-balances/runtime-benchmarks",
 ]

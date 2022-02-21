@@ -2,7 +2,7 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
-	BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction, StorageChanges,
+	BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
@@ -191,7 +191,32 @@ where
 			import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 			import_block
 		};
-		(&*self.client).import_block(block_import_params, Default::default()).await?;
+
+		let import_result =
+			(&*self.client).import_block(block_import_params, Default::default()).await?;
+
+		// TODO: handle the import result properly.
+		match import_result {
+			ImportResult::Imported(..) => {},
+			ImportResult::AlreadyInChain => {
+				panic!("Block already in chain {}: {:?}", header_number, header_hash);
+			},
+			ImportResult::KnownBad => {
+				panic!("Bad block {}: {:?}", header_number, header_hash);
+			},
+			ImportResult::UnknownParent => {
+				panic!(
+					"Block with unknown parent {}: {:?}, parent: {:?}",
+					header_number, header_hash, parent_hash
+				);
+			},
+			ImportResult::MissingState => {
+				panic!(
+					"Parent state is missing for {}: {:?}, parent: {:?}",
+					header_number, header_hash, parent_hash
+				);
+			},
+		}
 
 		let mut roots =
 			self.client.runtime_api().intermediate_roots(&BlockId::Hash(header_hash))?;
