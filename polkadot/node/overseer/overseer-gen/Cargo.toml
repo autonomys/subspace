@@ -13,7 +13,7 @@ thiserror = "1.0.30"
 metered = { package = "metered-channel", path = "../../metered-channel" }
 polkadot-overseer-gen-proc-macro = { path = "./proc-macro" }
 # trait SpawnNamed
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "2c4549689dbb86c23725dac2f82af35faa07c9f6" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
 futures-timer = "3.0.2"
 pin-project = "1.0.10"
 

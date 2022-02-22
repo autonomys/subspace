@@ -19,10 +19,7 @@
 #![warn(missing_docs)]
 
 mod chain_spec;
-#[macro_use]
-pub mod service;
 pub mod cli;
 mod command;
-mod rpc;
 
 pub use self::command::{run, Error};

@@ -16,6 +16,8 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+pub mod rpc;
+
 use lru::LruCache;
 use polkadot_node_collation_generation::CollationGenerationSubsystem;
 use polkadot_node_core_chain_api::ChainApiSubsystem;
@@ -27,16 +29,54 @@ use polkadot_overseer::{
 };
 use sc_client_api::ExecutorProvider;
 use sc_consensus_slots::SlotProportion;
-use sc_executor::NativeElseWasmExecutor;
+use sc_consensus_subspace::{
+    notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
+};
+use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::ConstructRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
-use subspace_runtime::opaque::BlockId;
-use subspace_runtime::{self, opaque::Block, RuntimeApi};
+use subspace_runtime_primitives::{
+    opaque::{Block, BlockId},
+    AccountId, Balance, Index as Nonce,
+};
+
+/// A set of APIs that subspace-like runtimes must implement.
+pub trait RuntimeApiCollection:
+    sp_api::ApiExt<Block>
+    + sp_api::Metadata<Block>
+    + sp_block_builder::BlockBuilder<Block>
+    + sp_executor::ExecutorApi<Block>
+    + sp_offchain::OffchainWorkerApi<Block>
+    + sp_session::SessionKeys<Block>
+    + sp_consensus_subspace::SubspaceApi<Block>
+    + sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
+    + frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce>
+    + pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance>
+where
+    <Self as sp_api::ApiExt<Block>>::StateBackend: sp_api::StateBackend<BlakeTwo256>,
+{
+}
+
+impl<Api> RuntimeApiCollection for Api
+where
+    Api: sp_api::ApiExt<Block>
+        + sp_api::Metadata<Block>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_executor::ExecutorApi<Block>
+        + sp_offchain::OffchainWorkerApi<Block>
+        + sp_session::SessionKeys<Block>
+        + sp_consensus_subspace::SubspaceApi<Block>
+        + sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
+        + frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce>
+        + pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance>,
+    <Self as sp_api::ApiExt<Block>>::StateBackend: sp_api::StateBackend<BlakeTwo256>,
+{
+}
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -61,6 +101,10 @@ pub enum Error {
     #[error(transparent)]
     Consensus(#[from] sp_consensus::Error),
 
+    /// Telemetry error.
+    #[error(transparent)]
+    Telemetry(#[from] sc_telemetry::Error),
+
     /// Polkadot overseer error.
     #[error("Failed to create an overseer")]
     Overseer(#[from] polkadot_overseer::SubsystemError),
@@ -70,51 +114,45 @@ pub enum Error {
     Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
 }
 
-/// Subspace native executor instance.
-pub struct ExecutorDispatch;
-
-impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_runtime::native_version()
-    }
-}
-
-/// Subspace full client.
-pub type FullClient =
+/// Subspace-like full client.
+pub type FullClient<RuntimeApi, ExecutorDispatch> =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
+
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
-pub fn new_partial(
+pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
 ) -> Result<
     sc_service::PartialComponents<
-        FullClient,
+        FullClient<RuntimeApi, ExecutorDispatch>,
         FullBackend,
         FullSelectChain,
-        sc_consensus::DefaultImportQueue<Block, FullClient>,
-        sc_transaction_pool::FullPool<Block, FullClient>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         (
-            sc_consensus_subspace::SubspaceBlockImport<Block, FullClient, Arc<FullClient>>,
+            sc_consensus_subspace::SubspaceBlockImport<
+                Block,
+                FullClient<RuntimeApi, ExecutorDispatch>,
+                Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+            >,
             sc_consensus_subspace::SubspaceLink<Block>,
             Option<Telemetry>,
         ),
     >,
     ServiceError,
-> {
+>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    RuntimeApi::RuntimeApi:
+        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+{
     let telemetry = config
         .telemetry_endpoints
         .clone()
@@ -167,7 +205,7 @@ pub fn new_partial(
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,
         client.clone(),
-        &task_manager.spawn_handle(),
+        &task_manager.spawn_essential_handle(),
     );
 
     let slot_duration = subspace_link.config().slot_duration();
@@ -211,12 +249,18 @@ pub fn new_partial(
 }
 
 /// Returns the active leaves the overseer should start with.
-async fn active_leaves(
+async fn active_leaves<RuntimeApi, ExecutorDispatch>(
     select_chain: &impl SelectChain<Block>,
-    client: &FullClient,
+    client: &FullClient<RuntimeApi, ExecutorDispatch>,
 ) -> Result<Vec<BlockInfo>, Error>
 where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient> + Send + Sync + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    RuntimeApi::RuntimeApi:
+        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let best_block = select_chain.best_chain().await?;
 
@@ -272,10 +316,26 @@ pub struct NewFull<C> {
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Full client backend.
     pub backend: Arc<FullBackend>,
+    /// New slot stream.
+    pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    /// Block signing stream.
+    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
 }
 
 /// Builds a new service for a full client.
-pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>, Error> {
+pub async fn new_full<RuntimeApi, ExecutorDispatch>(
+    config: Configuration,
+    enable_rpc_extensions: bool,
+) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    RuntimeApi::RuntimeApi:
+        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+{
     let sc_service::PartialComponents {
         client,
         backend,
@@ -285,7 +345,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
-    } = new_partial(&config)?;
+    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -473,32 +533,34 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         );
     }
 
-    let rpc_extensions_builder = {
-        let client = client.clone();
-        let pool = transaction_pool.clone();
-
-        Box::new(move |deny_unsafe, subscription_executor| {
-            let deps = crate::rpc::FullDeps {
-                client: client.clone(),
-                pool: pool.clone(),
-                deny_unsafe,
-                subscription_executor,
-                new_slot_notification_stream: new_slot_notification_stream.clone(),
-                block_signing_notification_stream: block_signing_notification_stream.clone(),
-                archived_segment_notification_stream: archived_segment_notification_stream.clone(),
-            };
-
-            Ok(crate::rpc::create_full(deps))
-        })
-    };
-
     let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
         network: network.clone(),
         client: client.clone(),
         keystore: keystore_container.sync_keystore(),
         task_manager: &mut task_manager,
-        transaction_pool,
-        rpc_extensions_builder,
+        transaction_pool: transaction_pool.clone(),
+        rpc_extensions_builder: if enable_rpc_extensions {
+            let client = client.clone();
+            let new_slot_notification_stream = new_slot_notification_stream.clone();
+            let block_signing_notification_stream = block_signing_notification_stream.clone();
+
+            Box::new(move |deny_unsafe, subscription_executor| {
+                let deps = crate::rpc::FullDeps {
+                    client: client.clone(),
+                    pool: transaction_pool.clone(),
+                    deny_unsafe,
+                    subscription_executor,
+                    new_slot_notification_stream: new_slot_notification_stream.clone(),
+                    block_signing_notification_stream: block_signing_notification_stream.clone(),
+                    archived_segment_notification_stream: archived_segment_notification_stream
+                        .clone(),
+                };
+
+                Ok(crate::rpc::create_full(deps))
+            })
+        } else {
+            Box::new(|_, _| Ok(Default::default()))
+        },
         backend: backend.clone(),
         system_rpc_tx,
         config,
@@ -514,5 +576,7 @@ pub async fn new_full(config: Configuration) -> Result<NewFull<Arc<FullClient>>,
         network,
         rpc_handlers,
         backend,
+        new_slot_notification_stream,
+        block_signing_notification_stream,
     })
 }

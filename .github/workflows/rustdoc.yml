@@ -21,8 +21,7 @@ jobs:
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-        # TODO: roll back to nightly once https://github.com/paritytech/substrate/issues/10767 is resolved
-        toolchain: nightly-2022-01-19
+        toolchain: nightly
         target: wasm32-unknown-unknown
         profile: minimal
         override: true

@@ -21,6 +21,8 @@ mod aux_schema;
 mod bundler;
 mod merkle_tree;
 mod processor;
+#[cfg(test)]
+mod tests;
 
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -42,7 +44,7 @@ use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
-	BundleResult, CollationGenerationConfig, CollatorPair, ExecutorSlotInfo, ProcessorResult,
+	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, Hash, SecondaryApi};
 use sp_executor::{
@@ -528,7 +530,6 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Spawner,
-	pub key: CollatorPair,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
@@ -545,7 +546,6 @@ pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CI
 		announce_block: _,
 		mut overseer_handle,
 		spawner,
-		key,
 		parachain_consensus,
 		transaction_pool,
 		bundle_sender,
@@ -596,7 +596,6 @@ where
 
 	let span = tracing::Span::current();
 	let config = CollationGenerationConfig {
-		key,
 		bundler: {
 			let executor = executor.clone();
 			let span = span.clone();

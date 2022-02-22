@@ -13,6 +13,8 @@ members = [
     "cumulus/parachain-template/node",
     "cumulus/parachain-template/runtime",
     "cumulus/primitives",
+    "cumulus/test/runtime",
+    "cumulus/test/service",
     "polkadot/node/collation-generation",
     "polkadot/node/core/chain-api",
     "polkadot/node/core/runtime-api",
@@ -26,6 +28,9 @@ members = [
     "polkadot/node/subsystem-types",
     "polkadot/node/subsystem-util",
     "substrate/*",
+    "test/subspace-test-client",
+    "test/subspace-test-runtime",
+    "test/subspace-test-service",
 ]
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
@@ -86,3 +91,8 @@ zeroize = { opt-level = 3 }
 [profile.release]
 # Substrate runtime requires unwinding.
 panic = "unwind"
+
+[profile.production]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

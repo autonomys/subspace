@@ -14,19 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::chain_spec;
 use crate::cli::{Cli, Subcommand};
-use crate::{chain_spec, service};
+use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
-use sc_service::PartialComponents;
+use sc_executor::NativeExecutionDispatch;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_runtime::Block;
+use subspace_runtime::RuntimeApi;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Subspace service error.
     #[error(transparent)]
-    SubspaceService(#[from] service::Error),
+    SubspaceService(#[from] subspace_service::Error),
 
     /// CLI error.
     #[error(transparent)]
@@ -44,6 +45,25 @@ pub enum Error {
 impl From<String> for Error {
     fn from(s: String) -> Self {
         Self::Other(s)
+    }
+}
+
+struct ExecutorDispatch;
+
+impl NativeExecutionDispatch for ExecutorDispatch {
+    /// Only enable the benchmarking host functions when we actually want to benchmark.
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    /// Otherwise we only use the default Substrate host functions.
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        subspace_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        subspace_runtime::native_version()
     }
 }
 
@@ -74,10 +94,10 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         Ok(match id {
-            "testnet" => Box::new(chain_spec::testnet_config()?),
-            "dev" => Box::new(chain_spec::development_config()?),
-            "" | "local" => Box::new(chain_spec::local_testnet_config()?),
-            path => Box::new(chain_spec::ChainSpec::from_json_file(
+            "testnet" => Box::new(chain_spec::subspace_testnet_config()?),
+            "dev" => Box::new(chain_spec::subspace_development_config()?),
+            "" | "local" => Box::new(chain_spec::subspace_local_testnet_config()?),
+            path => Box::new(chain_spec::SubspaceChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
             )?),
         })
@@ -122,50 +142,64 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let PartialComponents {
+                let sc_service::PartialComponents {
                     client,
-                    task_manager,
                     import_queue,
+                    task_manager,
                     ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, import_queue), task_manager))
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
             })?;
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let PartialComponents {
+                let sc_service::PartialComponents {
                     client,
                     task_manager,
                     ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, config.database), task_manager))
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, config.database)
+                        .map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
             })?;
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let PartialComponents {
+                let sc_service::PartialComponents {
                     client,
                     task_manager,
                     ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, config.chain_spec), task_manager))
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, config.chain_spec)
+                        .map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
             })?;
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let PartialComponents {
+                let sc_service::PartialComponents {
                     client,
-                    task_manager,
                     import_queue,
+                    task_manager,
                     ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, import_queue), task_manager))
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
@@ -176,20 +210,25 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let PartialComponents {
+                let sc_service::PartialComponents {
                     client,
-                    task_manager,
                     backend,
+                    task_manager,
                     ..
-                } = service::new_partial(&config)?;
-                Ok((cmd.run(client, backend), task_manager))
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, backend).map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
             })?;
         }
         Some(Subcommand::Benchmark(cmd)) => {
             if cfg!(feature = "runtime-benchmarks") {
                 let runner = cli.create_runner(cmd)?;
                 set_default_ss58_version(&runner.config().chain_spec);
-                runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))?;
+                runner.sync_run(|config| {
+                    cmd.run::<subspace_runtime::Block, ExecutorDispatch>(config)
+                })?;
             } else {
                 return Err(Error::Other(
                     "Benchmarking wasn't enabled when building the node. You can enable it with \
@@ -202,9 +241,11 @@ pub fn run() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config)
-                    .await
-                    .map(|full| full.task_manager)
+                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                    config, true,
+                )
+                .await
+                .map(|full| full.task_manager)
             })?;
         }
     }

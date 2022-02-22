@@ -64,7 +64,7 @@ where
 				.map_err(|e| e.to_string())?;
 
 			let inherent_data =
-				inherent_data_providers.create_inherent_data().map_err(|e| format!("{:?}", e))?;
+				inherent_data_providers.create_inherent_data().map_err(|e| e.to_string())?;
 
 			let block = Block::new(block_params.header.clone(), inner_body);
 
@@ -76,12 +76,12 @@ where
 					block.clone(),
 					inherent_data,
 				)
-				.map_err(|e| format!("{:?}", e))?;
+				.map_err(|e| e.to_string())?;
 
 			if !inherent_res.ok() {
 				for (i, e) in inherent_res.into_errors() {
 					match inherent_data_providers.try_handle_error(&i, &e).await {
-						Some(r) => r.map_err(|e| format!("{:?}", e))?,
+						Some(r) => r.map_err(|e| e.to_string())?,
 						None => Err(format!(
 							"Unhandled inherent error from `{}`.",
 							String::from_utf8_lossy(&i)

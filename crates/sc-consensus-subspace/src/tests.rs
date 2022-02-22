@@ -485,7 +485,11 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
 
         let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
 
-        super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_handle());
+        super::start_subspace_archiver(
+            &data.link,
+            client.clone(),
+            &task_manager.spawn_essential_handle(),
+        );
 
         let (archived_pieces_sender, archived_pieces_receiver) = oneshot::channel();
 
@@ -838,7 +842,7 @@ fn verify_slots_are_strictly_increasing() {
 //     let tokio_runtime = sc_cli::build_runtime().unwrap();
 //     let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
 //
-//     super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_handle());
+//     super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_essential_handle());
 //
 //     let mut archived_segment_notification_stream =
 //         data.link.archived_segment_notification_stream.subscribe();

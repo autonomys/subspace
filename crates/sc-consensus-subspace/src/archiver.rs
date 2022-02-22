@@ -75,7 +75,7 @@ where
 pub fn start_subspace_archiver<Block: BlockT, Client>(
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
-    spawner: &impl sp_core::traits::SpawnNamed,
+    spawner: &impl sp_core::traits::SpawnEssentialNamed,
 ) where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -222,7 +222,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         }
     }
 
-    spawner.spawn_blocking(
+    spawner.spawn_essential_blocking(
         "subspace-archiver",
         None,
         Box::pin({

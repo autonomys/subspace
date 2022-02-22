@@ -14,16 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Subspace chain configurations.
+
 use frame_support::traits::Get;
 use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
-use subspace_runtime::{
-    AccountId, Balance, BalancesConfig, BlockNumber, GenesisConfig, SS58Prefix, Signature,
-    SudoConfig, SystemConfig, VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
-};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 
 // The URL for the telemetry server.
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
@@ -55,8 +54,8 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
-/// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
-pub type ChainSpec = sc_service::GenericChainSpec<GenesisConfig>;
+/// The `ChainSpec` parameterized for the subspace runtime.
+pub type SubspaceChainSpec = sc_service::GenericChainSpec<subspace_runtime::GenesisConfig>;
 
 /// Generate a crypto pair from seed.
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -73,17 +72,22 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 }
 
 #[cfg(feature = "json-chain-spec")]
-pub fn testnet_config() -> Result<ChainSpec, String> {
-    ChainSpec::from_json_bytes(&include_bytes!("../../../chain-spec.json")[..])
+pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
+    SubspaceChainSpec::from_json_bytes(&include_bytes!("../../../chain-spec.json")[..])
 }
 #[cfg(not(feature = "json-chain-spec"))]
-pub fn testnet_config() -> Result<ChainSpec, String> {
+pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
+    use subspace_runtime::{SS58Prefix, SSC};
+
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
-    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
+    properties.insert(
+        "tokenDecimals".into(),
+        subspace_runtime::DECIMAL_PLACES.into(),
+    );
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
-    Ok(ChainSpec::from_genesis(
+    Ok(SubspaceChainSpec::from_genesis(
         // Name
         "Subspace testnet",
         // ID
@@ -110,9 +114,10 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
 
                     // TODO: Adjust start block to real value before mainnet launch
                     let start_block = 100_000_000;
-                    let one_month_in_blocks =
-                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
-                            .expect("One month of blocks always fits in u32; qed");
+                    let one_month_in_blocks = u32::try_from(
+                        3600 * 24 * 30 * subspace_runtime::MILLISECS_PER_BLOCK / 1000,
+                    )
+                    .expect("One month of blocks always fits in u32; qed");
 
                     // Add balance so it can be locked
                     balances.push((account_id.clone(), amount));
@@ -137,8 +142,8 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
                     ]
                 })
                 .collect::<Vec<_>>();
-            create_genesis_config(
-                WASM_BINARY.expect("Wasm binary must be built for testnet"),
+            subspace_genesis_config(
+                subspace_runtime::WASM_BINARY.expect("Wasm binary must be built for testnet"),
                 sudo_account,
                 balances,
                 vesting_schedules,
@@ -161,17 +166,20 @@ pub fn testnet_config() -> Result<ChainSpec, String> {
     ))
 }
 
-pub fn development_config() -> Result<ChainSpec, String> {
-    let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
+pub fn subspace_development_config() -> Result<SubspaceChainSpec, String> {
+    use subspace_runtime::SSC;
 
-    Ok(ChainSpec::from_genesis(
+    let wasm_binary = subspace_runtime::WASM_BINARY
+        .ok_or_else(|| "Development wasm not available".to_string())?;
+
+    Ok(SubspaceChainSpec::from_genesis(
         // Name
         "Development",
         // ID
         "dev",
         ChainType::Development,
         || {
-            create_genesis_config(
+            subspace_genesis_config(
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -199,17 +207,20 @@ pub fn development_config() -> Result<ChainSpec, String> {
     ))
 }
 
-pub fn local_testnet_config() -> Result<ChainSpec, String> {
-    let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
+pub fn subspace_local_testnet_config() -> Result<SubspaceChainSpec, String> {
+    use subspace_runtime::SSC;
 
-    Ok(ChainSpec::from_genesis(
+    let wasm_binary = subspace_runtime::WASM_BINARY
+        .ok_or_else(|| "Development wasm not available".to_string())?;
+
+    Ok(SubspaceChainSpec::from_genesis(
         // Name
         "Local Testnet",
         // ID
         "local_testnet",
         ChainType::Local,
         || {
-            create_genesis_config(
+            subspace_genesis_config(
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -246,24 +257,24 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 }
 
 /// Configure initial storage state for FRAME modules.
-fn create_genesis_config(
+fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-) -> GenesisConfig {
-    GenesisConfig {
-        system: SystemConfig {
+) -> subspace_runtime::GenesisConfig {
+    subspace_runtime::GenesisConfig {
+        system: subspace_runtime::SystemConfig {
             // Add Wasm runtime to storage.
             code: wasm_binary.to_vec(),
         },
-        balances: BalancesConfig { balances },
+        balances: subspace_runtime::BalancesConfig { balances },
         transaction_payment: Default::default(),
-        sudo: SudoConfig {
+        sudo: subspace_runtime::SudoConfig {
             // Assign network admin rights.
             key: Some(sudo_account),
         },
-        vesting: VestingConfig { vesting },
+        vesting: subspace_runtime::VestingConfig { vesting },
     }
 }

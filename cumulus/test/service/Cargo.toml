@@ -1,0 +1,55 @@
+[package]
+name = "cirrus-test-service"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+include = [
+	"/src",
+	"/Cargo.toml",
+]
+
+[dependencies]
+rand = "0.7.3"
+async-trait = "0.1.42"
+tokio = { version = "1.10", features = ["macros"] }
+tracing = "0.1"
+
+# Substrate
+frame-system = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+pallet-transaction-payment = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-basic-authorship = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-executor = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-network = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-service = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-arithmetic = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-timestamp = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-trie = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+substrate-test-client = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+
+# RPC related dependencies
+jsonrpc-core = "18.0.0"
+
+cirrus-client-service = { path = "../../client/cirrus-service" }
+cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+cirrus-test-runtime = { path = "../runtime" }
+cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
+
+subspace-service = { path = "../../../crates/subspace-service" }
+subspace-test-client = { path = "../../../test/subspace-test-client" }
+subspace-test-runtime = { path = "../../../test/subspace-test-runtime" }
+subspace-test-service = { path = "../../../test/subspace-test-service" }
+
+[dev-dependencies]
+futures = "0.3.5"

@@ -30,8 +30,9 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 4. We will then start the node using the following command
 
 ```
+# Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot `
+.\NODE_FILE_NAME.exe `
 --chain testnet `
 --wasm-execution compiled `
 --execution wasm `
@@ -68,7 +69,7 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+.\FARMER_FILE_NAME.exe farm
 ```
 
 </details>
@@ -89,8 +90,9 @@ To allow execution, go to `System Preferences -> Security & Privacy -> General`,
 After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
 
 ```
+# Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot \
+./NODE_FILE_NAME \
   --chain testnet \
   --wasm-execution compiled \
   --execution wasm \
@@ -126,7 +128,8 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+# Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases.
+./FARMER_FILE_NAME farm
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 </p>
@@ -148,8 +151,9 @@ To allow execution, go to `System Preferences -> Security & Privacy -> General`,
 After this, simply repeat the step you prompted for (step 4 or 6). This time, click the `Open` button when prompted.
 
 ```
+# Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
-./subspace-node-x86_64-*-snapshot \
+./NODE_FILE_NAME \
   --chain testnet \
   --wasm-execution compiled \
   --execution wasm \
@@ -185,7 +189,8 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```
-./subspace-farmer-x86_64-*-snapshot farm
+# Replace `FARMERS_FILE_NAME` with the name of the node file you downloaded from releases.
+./FARMER_FILE_NAME farm
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 </p>

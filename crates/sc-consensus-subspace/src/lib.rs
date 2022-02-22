@@ -568,7 +568,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
     pub fn root_blocks_for_block(&self, block_number: NumberFor<Block>) -> Vec<RootBlock> {
         self.root_blocks
             .lock()
-            .get(&block_number)
+            .peek(&block_number)
             .cloned()
             .unwrap_or_default()
     }
@@ -880,7 +880,7 @@ where
                 {
                     warn!(
                         target: "subspace",
-                        "Error checking/reporting Subspace equivocation: {:?}",
+                        "Error checking/reporting Subspace equivocation: {}",
                         err
                     );
                 }
@@ -1106,7 +1106,7 @@ where
                 parent_weight
             } else {
                 aux_schema::load_block_weight(&*self.client, last_best)
-                    .map_err(|e| ConsensusError::ChainLookup(format!("{:?}", e)))?
+                    .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
                     .ok_or_else(|| {
                         ConsensusError::ChainLookup(
                             "No block weight for parent header.".to_string(),
@@ -1177,21 +1177,17 @@ where
         }
 
         let import_result = self.inner.import_block(block, new_cache).await?;
-        let (root_block_sender, mut root_block_receiver) = mpsc::channel(0);
+        let (root_block_sender, root_block_receiver) = mpsc::channel(0);
 
         self.imported_block_notification_sender
             .notify(move || (block_number, root_block_sender));
 
-        let next_block_number = block_number + One::one();
-        while let Some(root_block) = root_block_receiver.next().await {
-            {
-                let mut root_blocks = self.root_blocks.lock();
-                if let Some(list) = root_blocks.get_mut(&next_block_number) {
-                    list.push(root_block);
-                } else {
-                    root_blocks.put(next_block_number, vec![root_block]);
-                }
-            }
+        let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
+
+        if !root_blocks.is_empty() {
+            self.root_blocks
+                .lock()
+                .put(block_number + One::one(), root_blocks);
         }
 
         Ok(import_result)

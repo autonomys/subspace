@@ -264,7 +264,7 @@ where
 					&BlockId::Hash(relay_parent),
 					opaque_execution_receipt,
 				)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitExecutionReceipt(relay_parent));
 		},
@@ -273,7 +273,7 @@ where
 			let bundle_hash = opaque_bundle.hash();
 			let res = api
 				.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), opaque_bundle)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 			res.ok()
 				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
@@ -282,7 +282,7 @@ where
 			let api = client.runtime_api();
 			let res = api
 				.submit_fraud_proof_unsigned(&BlockId::Hash(relay_parent), fraud_proof)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitFraudProof(relay_parent));
 		},
@@ -293,7 +293,7 @@ where
 					&BlockId::Hash(relay_parent),
 					bundle_equivocation_proof,
 				)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitBundleEquivocationProof(relay_parent));
 		},
@@ -304,7 +304,7 @@ where
 					&BlockId::Hash(relay_parent),
 					invalid_transaction_proof,
 				)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitInvalidTransactionProof(relay_parent));
 		},
@@ -312,7 +312,7 @@ where
 			let api = client.runtime_api();
 			let res = api
 				.extract_bundles(&BlockId::Hash(relay_parent), extrinsics)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
@@ -323,7 +323,7 @@ where
 			let api = client.runtime_api();
 			let res = api
 				.extrinsics_shuffling_seed(&BlockId::Hash(relay_parent), header)
-				.map_err(|e| RuntimeApiError::from(format!("{:?}", e)));
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
