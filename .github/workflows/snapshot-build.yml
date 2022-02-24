@@ -149,13 +149,13 @@ jobs:
       # Windows Code Signing
       - name: Sign Application (Windows) 
         uses: Dana-Prajea/code-sign-action@v4
-          with:
-            certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
-            password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
-            certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
-            folder: 'target/release'
-            recursive: false
-            timestampUrl: http://timestamp.comodoca.com
+        with:
+          certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
+          password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
+          certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
+          folder: 'target/release'
+          recursive: false
+          timestampUrl: http://timestamp.comodoca.com
         if: runner.os == 'Windows'
       - name: Prepare executables for uploading (Linux or macOS)
         run: |
