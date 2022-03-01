@@ -23,6 +23,7 @@ COPY crates /code/crates
 COPY cumulus /code/cumulus
 COPY polkadot /code/polkadot
 COPY substrate /code/substrate
+COPY test /code/test
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
