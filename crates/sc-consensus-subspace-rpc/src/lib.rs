@@ -349,8 +349,21 @@ where
                                             return;
                                         }
                                     };
+                                let reward_address =
+                                    match FarmerPublicKey::from_slice(&solution.reward_address) {
+                                        Ok(public_key) => public_key,
+                                        Err(_) => {
+                                            warn!(
+                                                "Failed to convert reward address: {:?}",
+                                                solution.reward_address,
+                                            );
+                                            return;
+                                        }
+                                    };
+
                                 let solution = Solution {
                                     public_key,
+                                    reward_address,
                                     piece_index: solution.piece_index,
                                     encoding: solution.encoding,
                                     signature: solution.signature,

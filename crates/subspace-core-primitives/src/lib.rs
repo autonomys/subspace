@@ -28,6 +28,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
+use core::str::FromStr;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -76,6 +77,29 @@ const PUBLIC_KEY_LENGTH: usize = 32;
 )]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PublicKey([u8; PUBLIC_KEY_LENGTH]);
+
+// TODO: add std::error::Error implementation
+/// Unexpected length for public key
+#[derive(Debug, Clone, Copy)]
+pub struct UnexpectedLengthError;
+
+impl PublicKey {
+    /// Converts slice to public key
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, UnexpectedLengthError> {
+        bytes
+            .to_vec()
+            .try_into()
+            .map(From::<[u8; PUBLIC_KEY_LENGTH]>::from)
+            .map_err(|_| UnexpectedLengthError)
+    }
+}
+
+impl FromStr for PublicKey {
+    type Err = sp_core::crypto::PublicError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        sp_core::sr25519::Public::from_str(s).map(|key| Self(key.0))
+    }
+}
 
 impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
@@ -464,6 +488,8 @@ impl RootBlock {
 pub struct Solution<AccountId> {
     /// Public key of the farmer that created the solution
     pub public_key: AccountId,
+    /// Address for receiving block reward
+    pub reward_address: AccountId,
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
@@ -476,11 +502,13 @@ pub struct Solution<AccountId> {
     pub tag: Tag,
 }
 
-impl<AccountId> Solution<AccountId> {
+impl<AccountId: Clone> Solution<AccountId> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: AccountId) -> Self {
+        let reward_address = public_key.clone();
         Self {
             public_key,
+            reward_address,
             piece_index: 0u64,
             encoding: Piece::default(),
             signature: Signature::default(),

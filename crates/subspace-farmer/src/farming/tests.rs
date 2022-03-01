@@ -6,7 +6,7 @@ use crate::plot::Plot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
+use subspace_core_primitives::{FlatPieces, PublicKey, Salt, Tag, TAG_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -42,6 +42,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         commitments.clone(),
         client.clone(),
         identity.clone(),
+        PublicKey::from_slice(identity.public_key().as_ref()).unwrap(),
     );
 
     let mut counter = 0;

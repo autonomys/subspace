@@ -8633,6 +8633,7 @@ dependencies = [
  "serde",
  "serde_arrays",
  "sha2 0.10.1",
+ "sp-core",
 ]
 
 [[package]]

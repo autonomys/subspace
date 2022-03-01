@@ -72,13 +72,16 @@ enum Command {
         /// Host and port where built-in WebSocket RPC server should listen for incoming connections
         #[clap(long, short, default_value = "127.0.0.1:9955")]
         ws_server_listen_addr: SocketAddr,
+        /// Address for farming rewards
+        #[clap(long)]
+        reward_address: Option<subspace_core_primitives::PublicKey>,
     },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
-    let command: Command = Command::parse();
+    let command = Command::parse();
     match command {
         Command::Identity(identity_command) => {
             commands::identity(identity_command)?;
@@ -99,6 +102,7 @@ async fn main() -> Result<()> {
             listen_on,
             node_rpc_url,
             ws_server_listen_addr,
+            reward_address,
         } => {
             let path = utils::get_path(custom_path);
             commands::farm(
@@ -107,6 +111,7 @@ async fn main() -> Result<()> {
                 listen_on,
                 &node_rpc_url,
                 ws_server_listen_addr,
+                reward_address,
             )
             .await?;
         }
