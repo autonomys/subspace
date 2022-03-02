@@ -843,7 +843,7 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
         digests
             .into_iter()
             .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.public_key)
+            .map(|pre_digest| pre_digest.solution.reward_address)
     }
 }
 

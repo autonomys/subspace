@@ -5,8 +5,11 @@ use anyhow::Result;
 use clap::{Parser, ValueHint};
 use env_logger::Env;
 use log::info;
+use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 
 #[derive(Debug, Parser)]
@@ -73,9 +76,13 @@ enum Command {
         #[clap(long, short, default_value = "127.0.0.1:9955")]
         ws_server_listen_addr: SocketAddr,
         /// Address for farming rewards
-        #[clap(long)]
-        reward_address: Option<subspace_core_primitives::PublicKey>,
+        #[clap(long, parse(try_from_str = parse_reward_address))]
+        reward_address: Option<PublicKey>,
     },
+}
+
+fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
+    sp_core::sr25519::Public::from_str(s).map(|key| PublicKey::from(key.0))
 }
 
 #[tokio::main]
