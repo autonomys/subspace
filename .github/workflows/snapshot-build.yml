@@ -135,7 +135,7 @@ jobs:
       # macOS Code Signing
       - name: Sign Application (macOS)
         run: |
-          echo ${{ secrets.MACOS_CERTIFICATE }} | base64 —decode > certificate.p12
+          echo ${{ secrets.MACOS_CERTIFICATE }} | base64 --decode > certificate.p12
           security create-keychain -p ${{ secrets.MACOS_CERTIFICATE_PWD }} build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p ${{ secrets.MACOS_CERTIFICATE_PWD }} build.keychain
