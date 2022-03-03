@@ -123,14 +123,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bins --features=subspace-node/json-chain-spec,subspace-farmer/cuda
+          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-node/json-chain-spec,subspace-farmer/cuda
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: Build (macOS without CUDA)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bins --features=subspace-node/json-chain-spec
+          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-node/json-chain-spec
         if: runner.os == 'macOS'
       # macOS Code Signing
       - name: Sign Application (macOS)
@@ -147,7 +147,7 @@ jobs:
           /usr/bin/xcrun altool --notarize-app --primary-bundle-id farmer-${{ github.ref_name }} --username ${{ secrets.MACOS_APPLE_ID}} --password ${{ secrets.MACOS_APP_PW }} --file target/release/subspace-farmer
         if: runner.os == 'macOS'
       # Windows Code Signing
-      - name: Sign Application (Windows) 
+      - name: Sign Application (Windows)
         uses: Dana-Prajea/code-sign-action@v4
         with:
           certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
