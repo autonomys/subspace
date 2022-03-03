@@ -8,7 +8,6 @@ use log::info;
 use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 
@@ -82,7 +81,8 @@ enum Command {
 }
 
 fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
-    sp_core::sr25519::Public::from_str(s).map(|key| PublicKey::from(key.0))
+    s.parse::<sp_core::sr25519::Public>()
+        .map(|key| PublicKey::from(key.0))
 }
 
 #[tokio::main]

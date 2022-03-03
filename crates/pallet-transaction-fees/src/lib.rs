@@ -23,10 +23,11 @@ mod default_weights;
 
 use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
-use frame_support::traits::{Currency, FindAuthor, Get};
+use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
 use scale_info::TypeInfo;
+use subspace_runtime_primitives::FindBlockRewardsAddress;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -47,8 +48,9 @@ struct CollectedFees<Balance: Codec> {
 mod pallet {
     use super::{BalanceOf, CollectedFees, WeightInfo};
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::{Currency, FindAuthor};
+    use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
+    use subspace_runtime_primitives::FindBlockRewardsAddress;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -85,7 +87,7 @@ mod pallet {
 
         type Currency: Currency<Self::AccountId>;
 
-        type FindAuthor: FindAuthor<Self::AccountId>;
+        type FindBlockRewardsAddress: FindBlockRewardsAddress<Self::AccountId>;
 
         type WeightInfo: WeightInfo;
     }
@@ -172,7 +174,7 @@ where
     BalanceOf<T>: From<u64>,
 {
     fn do_initialize(_n: T::BlockNumber) {
-        let block_author = T::FindAuthor::find_author(
+        let block_author = T::FindBlockRewardsAddress::find_block_rewards_address(
             frame_system::Pallet::<T>::digest()
                 .logs
                 .iter()

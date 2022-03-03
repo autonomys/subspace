@@ -341,7 +341,7 @@ where
                                 let public_key =
                                     match FarmerPublicKey::from_slice(&solution.public_key) {
                                         Ok(public_key) => public_key,
-                                        Err(_) => {
+                                        Err(()) => {
                                             warn!(
                                                 "Failed to convert public key: {:?}",
                                                 solution.public_key
@@ -352,7 +352,7 @@ where
                                 let reward_address =
                                     match FarmerPublicKey::from_slice(&solution.reward_address) {
                                         Ok(public_key) => public_key,
-                                        Err(_) => {
+                                        Err(()) => {
                                             warn!(
                                                 "Failed to convert reward address: {:?}",
                                                 solution.reward_address,

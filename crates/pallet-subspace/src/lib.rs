@@ -843,6 +843,18 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
         digests
             .into_iter()
             .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
+            .map(|pre_digest| pre_digest.solution.public_key)
+    }
+}
+
+impl<T: Config> subspace_runtime_primitives::FindBlockRewardsAddress<T::AccountId> for Pallet<T> {
+    fn find_block_rewards_address<'a, I>(digests: I) -> Option<T::AccountId>
+    where
+        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+    {
+        digests
+            .into_iter()
+            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
             .map(|pre_digest| pre_digest.solution.reward_address)
     }
 }
