@@ -92,6 +92,7 @@ impl SubstrateCli for Cli {
         2021
     }
 
+    #[cfg(not(feature = "byte-chain-spec"))]
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         Ok(match id {
             "testnet" => Box::new(chain_spec::subspace_testnet_config()?),
@@ -99,6 +100,18 @@ impl SubstrateCli for Cli {
             "" | "local" => Box::new(chain_spec::subspace_local_testnet_config()?),
             path => Box::new(chain_spec::SubspaceChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
+            )?),
+        })
+    }
+
+    #[cfg(feature = "byte-chain-spec")]
+    fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
+        Ok(match id {
+            "testnet" => Box::new(chain_spec::subspace_testnet_config()?),
+            "dev" => Box::new(chain_spec::subspace_development_config()?),
+            "" | "local" => Box::new(chain_spec::subspace_local_testnet_config()?),
+            file => Box::new(chain_spec::SubspaceChainSpec::from_json_bytes(
+                &include_bytes!(file)[..],
             )?),
         })
     }

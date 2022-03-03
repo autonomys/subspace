@@ -46,3 +46,4 @@ runtime-benchmarks = [
 	"subspace-runtime/runtime-benchmarks",
 ]
 json-chain-spec = ["subspace-service/json-chain-spec"]
+byte-chain-spec = []
