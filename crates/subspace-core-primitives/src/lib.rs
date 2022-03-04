@@ -77,22 +77,6 @@ const PUBLIC_KEY_LENGTH: usize = 32;
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PublicKey([u8; PUBLIC_KEY_LENGTH]);
 
-// TODO: add std::error::Error implementation
-/// Unexpected length for public key
-#[derive(Debug, Clone, Copy)]
-pub struct UnexpectedLengthError;
-
-impl PublicKey {
-    /// Converts slice to public key
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, UnexpectedLengthError> {
-        bytes
-            .to_vec()
-            .try_into()
-            .map(From::<[u8; PUBLIC_KEY_LENGTH]>::from)
-            .map_err(|_| UnexpectedLengthError)
-    }
-}
-
 impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
         Self(bytes)

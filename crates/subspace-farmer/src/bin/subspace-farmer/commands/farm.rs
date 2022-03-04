@@ -63,7 +63,12 @@ pub(crate) async fn farm(
     let identity = Identity::open_or_create(&base_directory)?;
 
     let reward_address = reward_address.unwrap_or_else(|| {
-        PublicKey::from_slice(identity.public_key().as_ref())
+        identity
+            .public_key()
+            .as_ref()
+            .to_vec()
+            .try_into()
+            .map(From::<[u8; 32]>::from)
             .expect("Length of public key is always correct")
     });
 
