@@ -848,7 +848,7 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
 }
 
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardsAddress<T::AccountId> for Pallet<T> {
-    fn find_block_rewards_address<'a, I>(digests: I) -> Option<T::AccountId>
+    fn find_block_reward_address<'a, I>(digests: I) -> Option<T::AccountId>
     where
         I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
     {

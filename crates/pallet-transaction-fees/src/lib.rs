@@ -174,7 +174,7 @@ where
     BalanceOf<T>: From<u64>,
 {
     fn do_initialize(_n: T::BlockNumber) {
-        let block_author = T::FindBlockRewardsAddress::find_block_rewards_address(
+        let block_author = T::FindBlockRewardsAddress::find_block_reward_address(
             frame_system::Pallet::<T>::digest()
                 .logs
                 .iter()
