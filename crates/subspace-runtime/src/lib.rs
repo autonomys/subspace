@@ -318,7 +318,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type TotalSpacePledged = TotalSpacePledged;
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
-    type FindBlockRewardsAddress = Subspace;
+    type FindBlockRewardAddress = Subspace;
     type WeightInfo = ();
 }
 
@@ -468,7 +468,7 @@ impl pallet_rewards::Config for Runtime {
     type Event = Event;
     type Currency = Balances;
     type BlockReward = BlockReward;
-    type FindBlockRewardsAddress = Subspace;
+    type FindBlockRewardAddress = Subspace;
     type WeightInfo = ();
 }
 

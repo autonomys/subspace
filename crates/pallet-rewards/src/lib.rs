@@ -24,7 +24,7 @@ mod default_weights;
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
-use subspace_runtime_primitives::FindBlockRewardsAddress;
+use subspace_runtime_primitives::FindBlockRewardAddress;
 
 pub trait WeightInfo {
     fn on_initialize() -> Weight;
@@ -36,7 +36,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
-    use subspace_runtime_primitives::FindBlockRewardsAddress;
+    use subspace_runtime_primitives::FindBlockRewardAddress;
 
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -52,7 +52,7 @@ mod pallet {
         #[pallet::constant]
         type BlockReward: Get<BalanceOf<Self>>;
 
-        type FindBlockRewardsAddress: FindBlockRewardsAddress<Self::AccountId>;
+        type FindBlockRewardAddress: FindBlockRewardAddress<Self::AccountId>;
 
         type WeightInfo: WeightInfo;
     }
@@ -84,7 +84,7 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     fn do_initialize(_n: T::BlockNumber) {
-        let block_author = T::FindBlockRewardsAddress::find_block_reward_address(
+        let block_author = T::FindBlockRewardAddress::find_block_reward_address(
             frame_system::Pallet::<T>::digest()
                 .logs
                 .iter()
