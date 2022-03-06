@@ -36,12 +36,21 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let client = MockRpc::new();
 
+    let reward_address = identity
+        .public_key()
+        .as_ref()
+        .to_vec()
+        .try_into()
+        .map(From::<[u8; 32]>::from)
+        .unwrap();
+
     // start the farming task
     let farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
         client.clone(),
         identity.clone(),
+        reward_address,
     );
 
     let mut counter = 0;

@@ -560,6 +560,9 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                     let _ = solution_sender
                         .send(Solution {
                             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                            reward_address: FarmerPublicKey::unchecked_from(
+                                keypair.public.to_bytes(),
+                            ),
                             piece_index,
                             encoding,
                             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -666,6 +669,7 @@ pub fn dummy_claim_slot(slot: Slot) -> Option<(PreDigest<FarmerPublicKey>, Farme
         PreDigest {
             solution: Solution {
                 public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
+                reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
                 piece_index: 0,
                 encoding: Piece::default(),
                 signature: Signature::default(),
@@ -725,6 +729,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
                     slot,
                     solution: Solution {
                         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                        reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                         piece_index: 0,
                         encoding,
                         signature: signature.into(),

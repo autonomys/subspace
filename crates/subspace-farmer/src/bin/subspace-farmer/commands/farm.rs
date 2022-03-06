@@ -5,6 +5,7 @@ use std::mem;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subspace_core_primitives::PublicKey;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
@@ -23,6 +24,7 @@ pub(crate) async fn farm(
     listen_on: Vec<Multiaddr>,
     node_rpc_url: &str,
     ws_server_listen_addr: SocketAddr,
+    reward_address: Option<PublicKey>,
 ) -> Result<(), anyhow::Error> {
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
@@ -59,6 +61,16 @@ pub(crate) async fn farm(
         .map_err(|error| anyhow::Error::msg(error.to_string()))?;
 
     let identity = Identity::open_or_create(&base_directory)?;
+
+    let reward_address = reward_address.unwrap_or_else(|| {
+        identity
+            .public_key()
+            .as_ref()
+            .to_vec()
+            .try_into()
+            .map(From::<[u8; 32]>::from)
+            .expect("Length of public key is always correct")
+    });
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
@@ -120,8 +132,13 @@ pub(crate) async fn farm(
     });
 
     // start the farming task
-    let farming_instance =
-        Farming::start(plot.clone(), commitments.clone(), client.clone(), identity);
+    let farming_instance = Farming::start(
+        plot.clone(),
+        commitments.clone(),
+        client.clone(),
+        identity,
+        reward_address,
+    );
 
     // start the background plotting
     let plotting_instance = Plotting::start(

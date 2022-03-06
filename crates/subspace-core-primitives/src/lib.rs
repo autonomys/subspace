@@ -464,6 +464,8 @@ impl RootBlock {
 pub struct Solution<AccountId> {
     /// Public key of the farmer that created the solution
     pub public_key: AccountId,
+    /// Address for receiving block reward
+    pub reward_address: AccountId,
     /// Index of encoded piece
     pub piece_index: u64,
     /// Encoding
@@ -476,11 +478,13 @@ pub struct Solution<AccountId> {
     pub tag: Tag,
 }
 
-impl<AccountId> Solution<AccountId> {
+impl<AccountId: Clone> Solution<AccountId> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: AccountId) -> Self {
+        let reward_address = public_key.clone();
         Self {
             public_key,
+            reward_address,
             piece_index: 0u64,
             encoding: Piece::default(),
             signature: Signature::default(),
