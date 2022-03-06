@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    Commitments, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -125,13 +125,12 @@ pub(crate) async fn farm(
     let farming_instance =
         Farming::start(plot.clone(), commitments.clone(), client.clone(), identity);
 
+    let farmer_data = FarmerData::new(plot, commitments, object_mappings, farmer_metadata);
+
     // start the background plotting
     let plotting_instance = Plotting::start(
-        plot,
-        commitments,
-        object_mappings,
+        farmer_data,
         client,
-        farmer_metadata,
         subspace_codec,
         best_block_number_check_interval,
     );

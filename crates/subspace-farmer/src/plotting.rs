@@ -46,15 +46,35 @@ pub struct Plotting {
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
+pub struct FarmerData {
+    plot: Plot,
+    commitments: Commitments,
+    object_mappings: ObjectMappings,
+    metadata: FarmerMetadata,
+}
+
+impl FarmerData {
+    pub fn new(
+        plot: Plot,
+        commitments: Commitments,
+        object_mappings: ObjectMappings,
+        metadata: FarmerMetadata,
+    ) -> Self {
+        Self {
+            plot,
+            commitments,
+            object_mappings,
+            metadata,
+        }
+    }
+}
+
 /// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
 impl Plotting {
     /// Returns an instance of plotting, and also starts a concurrent background plotting task
     pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
-        plot: Plot,
-        commitments: Commitments,
-        object_mappings: ObjectMappings,
+        farmer_data: FarmerData,
         client: T,
-        farmer_metadata: FarmerMetadata,
         subspace_codec: SubspaceCodec,
         best_block_number_check_interval: Duration,
     ) -> Self {
@@ -64,11 +84,8 @@ impl Plotting {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(async move {
             background_plotting(
+                farmer_data,
                 client,
-                plot,
-                commitments,
-                object_mappings,
-                farmer_metadata,
                 subspace_codec,
                 best_block_number_check_interval,
                 stop_receiver,
@@ -101,29 +118,25 @@ impl Drop for Plotting {
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-#[allow(clippy::too_many_arguments)]
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
+    farmer_data: FarmerData,
     client: T,
-    plot: Plot,
-    commitments: Commitments,
-    object_mappings: ObjectMappings,
-    farmer_metadata: FarmerMetadata,
     mut subspace_codec: SubspaceCodec,
     best_block_number_check_interval: Duration,
     mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
-    let weak_plot = plot.downgrade();
+    let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
-    } = farmer_metadata;
+    } = farmer_data.metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let maybe_last_root_block = tokio::task::spawn_blocking({
-        let plot = plot.clone();
+        let plot = farmer_data.plot.clone();
 
         move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
     })
@@ -132,7 +145,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
-        if plot.is_empty() {
+        if farmer_data.plot.is_empty() {
             return Err(PlottingError::ContinueError);
         }
 
@@ -162,12 +175,12 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     } else {
         // Starting from genesis
-        if !plot.is_empty() {
+        if !farmer_data.plot.is_empty() {
             // Restart before first block was archived, erase the plot
             // TODO: Erase plot
         }
 
-        drop(plot);
+        drop(farmer_data.plot);
 
         Archiver::new(record_size as usize, recorded_history_segment_size as usize)
             .map_err(PlottingError::Archiver)?
@@ -257,12 +270,13 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
-                            if let Err(error) =
-                                commitments.create_for_pieces(&pieces, piece_index_offset)
+                            if let Err(error) = farmer_data
+                                .commitments
+                                .create_for_pieces(&pieces, piece_index_offset)
                             {
                                 error!("Failed to create commitments for pieces: {}", error);
                             }
-                            if let Err(error) = object_mappings.store(&object_mapping) {
+                            if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }
                             let segment_index = root_block.segment_index();
