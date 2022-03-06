@@ -194,6 +194,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -250,6 +251,7 @@ pub fn generate_equivocation_proof(
             slot,
             Solution {
                 public_key: public_key.clone(),
+                reward_address: public_key.clone(),
                 piece_index,
                 encoding,
                 signature: signature.into(),

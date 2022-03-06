@@ -5,9 +5,11 @@ use anyhow::Result;
 use clap::{Parser, ValueHint};
 use env_logger::Env;
 use log::info;
+use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 
 const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
@@ -75,13 +77,21 @@ enum Command {
         /// Host and port where built-in WebSocket RPC server should listen for incoming connections
         #[clap(long, short, default_value = "127.0.0.1:9955")]
         ws_server_listen_addr: SocketAddr,
+        /// Address for farming rewards
+        #[clap(long, parse(try_from_str = parse_reward_address))]
+        reward_address: Option<PublicKey>,
     },
+}
+
+fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
+    s.parse::<sp_core::sr25519::Public>()
+        .map(|key| PublicKey::from(key.0))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
-    let command: Command = Command::parse();
+    let command = Command::parse();
     match command {
         Command::Identity(identity_command) => {
             commands::identity(identity_command)?;
@@ -102,6 +112,7 @@ async fn main() -> Result<()> {
             listen_on,
             node_rpc_url,
             ws_server_listen_addr,
+            reward_address,
         } => {
             let path = utils::get_path(custom_path);
             commands::farm(
@@ -110,6 +121,7 @@ async fn main() -> Result<()> {
                 listen_on,
                 &node_rpc_url,
                 ws_server_listen_addr,
+                reward_address,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
             )
             .await?;

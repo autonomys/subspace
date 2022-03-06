@@ -146,6 +146,7 @@ async fn start_farming<Client>(
             let _ = solution_sender
                 .send(Solution {
                     public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     piece_index,
                     encoding,
                     signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
