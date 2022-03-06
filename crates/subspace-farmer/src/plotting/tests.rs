@@ -15,6 +15,7 @@ const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
+const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -74,6 +75,7 @@ async fn plotting_happy_path() {
         client.clone(),
         farmer_metadata,
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -182,6 +184,7 @@ async fn plotting_continue() {
         client.clone(),
         farmer_metadata.clone(),
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -252,6 +255,7 @@ async fn plotting_continue() {
         client.clone(),
         farmer_metadata,
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {

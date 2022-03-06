@@ -5,9 +5,12 @@ use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
-use log::{debug, error, info};
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
@@ -16,6 +19,8 @@ use subspace_solving::SubspaceCodec;
 use thiserror::Error;
 use tokio::sync::oneshot::Receiver;
 use tokio::{sync::oneshot, task::JoinHandle};
+
+const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum PlottingError {
@@ -51,6 +56,7 @@ impl Plotting {
         client: T,
         farmer_metadata: FarmerMetadata,
         subspace_codec: SubspaceCodec,
+        best_block_number_check_interval: Duration,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = oneshot::channel();
@@ -64,6 +70,7 @@ impl Plotting {
                 object_mappings,
                 farmer_metadata,
                 subspace_codec,
+                best_block_number_check_interval,
                 stop_receiver,
             )
             .await
@@ -94,6 +101,7 @@ impl Drop for Plotting {
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
+#[allow(clippy::too_many_arguments)]
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     client: T,
     plot: Plot,
@@ -101,6 +109,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     object_mappings: ObjectMappings,
     farmer_metadata: FarmerMetadata,
     mut subspace_codec: SubspaceCodec,
+    best_block_number_check_interval: Duration,
     mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = plot.downgrade();
@@ -295,6 +304,30 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             .expect("Failed to send genesis block archiving message");
     }
 
+    let (mut best_block_number_sender, mut best_block_number_receiver) = mpsc::channel(1);
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(best_block_number_check_interval).await;
+
+            // In case connection dies, we need to disconnect from the node
+            let best_block_number_result =
+                tokio::time::timeout(BEST_BLOCK_REQUEST_TIMEOUT, client.best_block_number()).await;
+
+            let is_error = !matches!(best_block_number_result, Ok(Ok(_)));
+            // Result doesn't matter here
+            let _ = best_block_number_sender
+                .send(best_block_number_result)
+                .await;
+
+            if is_error {
+                break;
+            }
+        }
+    });
+
+    let mut last_best_block_number_error = false;
+
     // Listen for new blocks produced on the network
     loop {
         tokio::select! {
@@ -308,15 +341,54 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
                         debug!("Last block number: {:#?}", block_number);
 
-                        if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
-                            // We send block that should be archived over channel that doesn't have a buffer, atomic
-                            // integer is used to make sure archiving process always read up to date value
-                            block_to_archive.store(block, Ordering::Relaxed);
+                        if let Some(block_number) = block_number.checked_sub(confirmation_depth_k) {
+                            // We send block that should be archived over channel that doesn't have
+                            // a buffer, atomic integer is used to make sure archiving process
+                            // always read up to date value
+                            block_to_archive.store(block_number, Ordering::Relaxed);
                             let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
                         }
                     },
                     None => {
                         debug!("Subscription has forcefully closed from node side!");
+                        break;
+                    }
+                }
+            }
+            maybe_result = best_block_number_receiver.next() => {
+                match maybe_result {
+                    Some(Ok(Ok(best_block_number))) => {
+                        debug!("Best block number: {:#?}", best_block_number);
+                        last_best_block_number_error = false;
+
+                        if let Some(block_number) = best_block_number.checked_sub(confirmation_depth_k) {
+                            // We send block that should be archived over channel that doesn't have
+                            // a buffer, atomic integer is used to make sure archiving process
+                            // always read up to date value
+                            block_to_archive.fetch_max(block_number, Ordering::Relaxed);
+                            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                        }
+                    }
+                    Some(Ok(Err(error))) => {
+                        if last_best_block_number_error {
+                            error!("Request to get new best block failed second time: {error}");
+                            break;
+                        } else {
+                            warn!("Request to get new best block failed: {error}");
+                            last_best_block_number_error = true;
+                        }
+                    }
+                    Some(Err(_error)) => {
+                        if last_best_block_number_error {
+                            error!("Request to get new best block timed out second time");
+                            break;
+                        } else {
+                            warn!("Request to get new best block timed out");
+                            last_best_block_number_error = true;
+                        }
+                    }
+                    None => {
+                        debug!("Best block number channel closed!");
                         break;
                     }
                 }

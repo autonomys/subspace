@@ -1,6 +1,7 @@
 use crate::rpc::{Error as MockError, NewHead, RpcClient};
 use async_trait::async_trait;
 use std::sync::Arc;
+use subspace_core_primitives::BlockNumber;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
@@ -121,6 +122,11 @@ impl MockRpc {
 impl RpcClient for MockRpc {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, MockError> {
         Ok(self.inner.metadata_receiver.lock().await.try_recv()?)
+    }
+
+    async fn best_block_number(&self) -> Result<BlockNumber, MockError> {
+        // Doesn't matter for tests (at least yet)
+        Ok(0)
     }
 
     async fn block_by_number(

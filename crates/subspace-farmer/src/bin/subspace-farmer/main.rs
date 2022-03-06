@@ -7,7 +7,10 @@ use env_logger::Env;
 use log::info;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 use subspace_networking::libp2p::Multiaddr;
+
+const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Parser)]
 enum IdentityCommand {
@@ -107,6 +110,7 @@ async fn main() -> Result<()> {
                 listen_on,
                 &node_rpc_url,
                 ws_server_listen_addr,
+                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
             )
             .await?;
         }

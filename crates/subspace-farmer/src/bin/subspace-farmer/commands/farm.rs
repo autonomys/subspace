@@ -5,6 +5,7 @@ use std::mem;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
@@ -23,6 +24,7 @@ pub(crate) async fn farm(
     listen_on: Vec<Multiaddr>,
     node_rpc_url: &str,
     ws_server_listen_addr: SocketAddr,
+    best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
@@ -131,6 +133,7 @@ pub(crate) async fn farm(
         client,
         farmer_metadata,
         subspace_codec,
+        best_block_number_check_interval,
     );
 
     tokio::select! {
