@@ -5,9 +5,12 @@ use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
-use log::{debug, error, info};
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
@@ -16,6 +19,8 @@ use subspace_solving::SubspaceCodec;
 use thiserror::Error;
 use tokio::sync::oneshot::Receiver;
 use tokio::{sync::oneshot, task::JoinHandle};
+
+const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum PlottingError {
@@ -41,16 +46,37 @@ pub struct Plotting {
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
+pub struct FarmerData {
+    plot: Plot,
+    commitments: Commitments,
+    object_mappings: ObjectMappings,
+    metadata: FarmerMetadata,
+}
+
+impl FarmerData {
+    pub fn new(
+        plot: Plot,
+        commitments: Commitments,
+        object_mappings: ObjectMappings,
+        metadata: FarmerMetadata,
+    ) -> Self {
+        Self {
+            plot,
+            commitments,
+            object_mappings,
+            metadata,
+        }
+    }
+}
+
 /// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
 impl Plotting {
     /// Returns an instance of plotting, and also starts a concurrent background plotting task
     pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
-        plot: Plot,
-        commitments: Commitments,
-        object_mappings: ObjectMappings,
+        farmer_data: FarmerData,
         client: T,
-        farmer_metadata: FarmerMetadata,
         subspace_codec: SubspaceCodec,
+        best_block_number_check_interval: Duration,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = oneshot::channel();
@@ -58,12 +84,10 @@ impl Plotting {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(async move {
             background_plotting(
+                farmer_data,
                 client,
-                plot,
-                commitments,
-                object_mappings,
-                farmer_metadata,
                 subspace_codec,
+                best_block_number_check_interval,
                 stop_receiver,
             )
             .await
@@ -95,26 +119,24 @@ impl Drop for Plotting {
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
+    farmer_data: FarmerData,
     client: T,
-    plot: Plot,
-    commitments: Commitments,
-    object_mappings: ObjectMappings,
-    farmer_metadata: FarmerMetadata,
     mut subspace_codec: SubspaceCodec,
+    best_block_number_check_interval: Duration,
     mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
-    let weak_plot = plot.downgrade();
+    let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
-    } = farmer_metadata;
+    } = farmer_data.metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let maybe_last_root_block = tokio::task::spawn_blocking({
-        let plot = plot.clone();
+        let plot = farmer_data.plot.clone();
 
         move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
     })
@@ -123,7 +145,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
-        if plot.is_empty() {
+        if farmer_data.plot.is_empty() {
             return Err(PlottingError::ContinueError);
         }
 
@@ -153,12 +175,12 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     } else {
         // Starting from genesis
-        if !plot.is_empty() {
+        if !farmer_data.plot.is_empty() {
             // Restart before first block was archived, erase the plot
             // TODO: Erase plot
         }
 
-        drop(plot);
+        drop(farmer_data.plot);
 
         Archiver::new(record_size as usize, recorded_history_segment_size as usize)
             .map_err(PlottingError::Archiver)?
@@ -248,12 +270,13 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             {
                                 error!("Failed to write encoded pieces: {}", error);
                             }
-                            if let Err(error) =
-                                commitments.create_for_pieces(&pieces, piece_index_offset)
+                            if let Err(error) = farmer_data
+                                .commitments
+                                .create_for_pieces(&pieces, piece_index_offset)
                             {
                                 error!("Failed to create commitments for pieces: {}", error);
                             }
-                            if let Err(error) = object_mappings.store(&object_mapping) {
+                            if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }
                             let segment_index = root_block.segment_index();
@@ -295,6 +318,30 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             .expect("Failed to send genesis block archiving message");
     }
 
+    let (mut best_block_number_sender, mut best_block_number_receiver) = mpsc::channel(1);
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(best_block_number_check_interval).await;
+
+            // In case connection dies, we need to disconnect from the node
+            let best_block_number_result =
+                tokio::time::timeout(BEST_BLOCK_REQUEST_TIMEOUT, client.best_block_number()).await;
+
+            let is_error = !matches!(best_block_number_result, Ok(Ok(_)));
+            // Result doesn't matter here
+            let _ = best_block_number_sender
+                .send(best_block_number_result)
+                .await;
+
+            if is_error {
+                break;
+            }
+        }
+    });
+
+    let mut last_best_block_number_error = false;
+
     // Listen for new blocks produced on the network
     loop {
         tokio::select! {
@@ -308,15 +355,54 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
                         debug!("Last block number: {:#?}", block_number);
 
-                        if let Some(block) = block_number.checked_sub(confirmation_depth_k) {
-                            // We send block that should be archived over channel that doesn't have a buffer, atomic
-                            // integer is used to make sure archiving process always read up to date value
-                            block_to_archive.store(block, Ordering::Relaxed);
+                        if let Some(block_number) = block_number.checked_sub(confirmation_depth_k) {
+                            // We send block that should be archived over channel that doesn't have
+                            // a buffer, atomic integer is used to make sure archiving process
+                            // always read up to date value
+                            block_to_archive.store(block_number, Ordering::Relaxed);
                             let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
                         }
                     },
                     None => {
                         debug!("Subscription has forcefully closed from node side!");
+                        break;
+                    }
+                }
+            }
+            maybe_result = best_block_number_receiver.next() => {
+                match maybe_result {
+                    Some(Ok(Ok(best_block_number))) => {
+                        debug!("Best block number: {:#?}", best_block_number);
+                        last_best_block_number_error = false;
+
+                        if let Some(block_number) = best_block_number.checked_sub(confirmation_depth_k) {
+                            // We send block that should be archived over channel that doesn't have
+                            // a buffer, atomic integer is used to make sure archiving process
+                            // always read up to date value
+                            block_to_archive.fetch_max(block_number, Ordering::Relaxed);
+                            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                        }
+                    }
+                    Some(Ok(Err(error))) => {
+                        if last_best_block_number_error {
+                            error!("Request to get new best block failed second time: {error}");
+                            break;
+                        } else {
+                            warn!("Request to get new best block failed: {error}");
+                            last_best_block_number_error = true;
+                        }
+                    }
+                    Some(Err(_error)) => {
+                        if last_best_block_number_error {
+                            error!("Request to get new best block timed out second time");
+                            break;
+                        } else {
+                            warn!("Request to get new best block timed out");
+                            last_best_block_number_error = true;
+                        }
+                    }
+                    None => {
+                        debug!("Best block number channel closed!");
                         break;
                     }
                 }

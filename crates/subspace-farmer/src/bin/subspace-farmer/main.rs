@@ -8,8 +8,11 @@ use log::info;
 use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+
+const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Parser)]
 enum IdentityCommand {
@@ -119,6 +122,7 @@ async fn main() -> Result<()> {
                 &node_rpc_url,
                 ws_server_listen_addr,
                 reward_address,
+                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
             )
             .await?;
         }
