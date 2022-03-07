@@ -34,20 +34,6 @@ impl NativeExecutionDispatch for TemplateRuntimeExecutor {
 	}
 }
 
-struct SubspaceExecutorDispatch;
-
-impl NativeExecutionDispatch for SubspaceExecutorDispatch {
-	type ExtendHostFunctions = ();
-
-	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-		subspace_runtime::api::dispatch(method, data)
-	}
-
-	fn native_version() -> sc_executor::NativeVersion {
-		subspace_runtime::native_version()
-	}
-}
-
 /// Starts a `ServiceBuilder` for a full service.
 ///
 /// Use this macro if you don't actually need the full service, but just the builder in order to
@@ -231,7 +217,7 @@ where
 		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
 		let _enter = span.enter();
 
-		subspace_service::new_full::<subspace_runtime::RuntimeApi, SubspaceExecutorDispatch>(
+		subspace_service::new_full::<subspace_runtime::RuntimeApi, subspace_node::ExecutorDispatch>(
 			polkadot_config,
 			false,
 		)

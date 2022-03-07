@@ -18,9 +18,8 @@
 
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
-use sc_executor::NativeExecutionDispatch;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_node::{Cli, Subcommand};
+use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_runtime::RuntimeApi;
 
 /// Subspace node error.
@@ -46,25 +45,6 @@ pub enum Error {
 impl From<String> for Error {
     fn from(s: String) -> Self {
         Self::Other(s)
-    }
-}
-
-struct ExecutorDispatch;
-
-impl NativeExecutionDispatch for ExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_runtime::native_version()
     }
 }
 
