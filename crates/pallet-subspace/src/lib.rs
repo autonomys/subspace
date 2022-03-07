@@ -847,6 +847,18 @@ impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
     }
 }
 
+impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
+    fn find_block_reward_address<'a, I>(digests: I) -> Option<T::AccountId>
+    where
+        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+    {
+        digests
+            .into_iter()
+            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
+            .map(|pre_digest| pre_digest.solution.reward_address)
+    }
+}
+
 impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();
