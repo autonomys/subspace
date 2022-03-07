@@ -140,11 +140,12 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "${{ secrets.MACOS_CERTIFICATE_PW }}" build.keychain
           security import certificate.p12 -k build.keychain -P "${{ secrets.MACOS_CERTIFICATE_PW }}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.MACOS_CERTIFICATE_PW }}" build.keychain
           /usr/bin/codesign --force --options=runtime -s "${{ secrets.MACOS_IDENTITY }}" --timestamp target/production/subspace-node
           /usr/bin/codesign --force --options=runtime -s "${{ secrets.MACOS_IDENTITY }}" --timestamp target/production/subspace-farmer
-          /usr/bin/xcrun altool --notarize-app --primary-bundle-id node-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file target/production/subspace-node
-          /usr/bin/xcrun altool --notarize-app --primary-bundle-id farmer-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file target/production/subspace-farmer
+          zip -r -X subspace-node.zip target/production/subspace-node
+          zip -r -X subspace-farmer.zip target/production/subspace-farmer
+          /usr/bin/xcrun altool --notarize-app --primary-bundle-id node-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-node.zip
+          /usr/bin/xcrun altool --notarize-app --primary-bundle-id farmer-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-farmer.zip
         if: runner.os == 'macOS'
       # Windows Code Signing
       - name: Sign Application (Windows)
