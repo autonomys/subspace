@@ -11,6 +11,7 @@ use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
+use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::{LocalChallenge, Salt, Solution};
 use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -42,15 +43,17 @@ impl Farming {
         commitments: Commitments,
         client: T,
         identity: Identity,
+        reward_adress: PublicKey,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = async_oneshot::oneshot();
 
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(async {
+        let farming_handle = tokio::spawn(async move {
             match future::select(
                 Box::pin(async move {
-                    subscribe_to_slot_info(&client, &plot, &commitments, &identity).await
+                    subscribe_to_slot_info(&client, &plot, &commitments, &identity, reward_adress)
+                        .await
                 }),
                 stop_receiver,
             )
@@ -105,6 +108,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     plot: &Plot,
     commitments: &Commitments,
     identity: &Identity,
+    reward_address: PublicKey,
 ) -> Result<(), FarmingError> {
     info!("Subscribing to slot info notifications");
     let mut slot_info_notifications = client
@@ -135,6 +139,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                         let encoding = plot.read(piece_index).map_err(FarmingError::PlotRead)?;
                         let solution = Solution {
                             public_key: identity.public_key().to_bytes().into(),
+                            reward_address,
                             piece_index,
                             encoding,
                             signature: identity.sign_farmer_solution(&tag).to_bytes().into(),

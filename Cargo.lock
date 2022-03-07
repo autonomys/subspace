@@ -5048,6 +5048,7 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -5092,6 +5093,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "subspace-solving",
 ]
 
@@ -5135,6 +5137,7 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]

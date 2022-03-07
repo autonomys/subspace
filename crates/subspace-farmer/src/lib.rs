@@ -38,6 +38,6 @@ pub use identity::Identity;
 pub use jsonrpsee;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};
-pub use plotting::Plotting;
+pub use plotting::{FarmerData, Plotting};
 pub use rpc::RpcClient;
 pub use ws_rpc::WsRpc;

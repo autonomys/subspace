@@ -82,7 +82,7 @@ You can find these executables in the [Releases](https://github.com/subspace/sub
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
-3. Make the farmer & node executable  `chmod +x $(farmer-name)` & `chmod +X $(node-name)`
+3. Make the farmer & node executable  `chmod +x farmer-name` & `chmod +X node-name`
 4. We will then start the node using the following command
 
 > *Note, when attempting to run this command you may be prompted:* Click on `cancel` instead of moving it to trash.
@@ -143,7 +143,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
-3. Make the farmer & node executable  `chmod +x $(farmer-name)` & `chmod +X $(node-name)`
+3. Make the farmer & node executable  `chmod +x farmer-name` & `chmod +X node-name`
 4. We will then start the node using the following command
 
 > *Note, when attempting to run this command you may be prompted:* Click on `cancel` instead of moving it to trash.

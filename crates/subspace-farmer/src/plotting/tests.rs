@@ -3,7 +3,7 @@ use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::plotting::Plotting;
+use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
 use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
@@ -15,6 +15,7 @@ const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
+const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -49,6 +50,8 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
+    let farmer_data = FarmerData::new(plot.clone(), commitments, object_mappings, farmer_metadata);
+
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
         object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
@@ -68,12 +71,10 @@ async fn plotting_happy_path() {
     let new_heads = vec![new_head0, new_head1];
 
     let plotting_instance = Plotting::start(
-        plot.clone(),
-        commitments,
-        object_mappings,
+        farmer_data,
         client.clone(),
-        farmer_metadata,
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -157,6 +158,13 @@ async fn plotting_continue() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        object_mappings.clone(),
+        farmer_metadata.clone(),
+    );
+
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
         object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
@@ -176,12 +184,10 @@ async fn plotting_continue() {
     let new_heads = vec![new_head0, new_head1];
 
     let plotting_instance = Plotting::start(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
+        farmer_data,
         client.clone(),
-        farmer_metadata.clone(),
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -216,6 +222,13 @@ async fn plotting_continue() {
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
 
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        object_mappings.clone(),
+        farmer_metadata.clone(),
+    );
+
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
         block: vec![1u8; SEGMENT_SIZE / 2],
@@ -246,12 +259,10 @@ async fn plotting_continue() {
     sleep(Duration::from_millis(250)).await;
 
     let plotting_instance = Plotting::start(
-        plot.clone(),
-        commitments,
-        object_mappings,
+        farmer_data,
         client.clone(),
-        farmer_metadata,
         subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
