@@ -160,7 +160,7 @@ jobs:
           codesign --force --options=runtime -s "${{ secrets.MACOS_IDENTITY }}" --timestamp target/production/subspace-node
           echo "Creating an archive"
           mkdir target/production/macos-binaries
-          cp target/production/subspace-{farmer, node} target/production/macos-binaries
+          cp target/production/subspace-farmer target/production/subspace-node target/production/macos-binaries
           ditto -c -k --keepParent --rsrc target/production/macos-binaries subspace-binaries.zip
           echo "Notarizing"
           xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
