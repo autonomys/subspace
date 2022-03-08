@@ -196,8 +196,8 @@ jobs:
           # Zip it so that signature is not lost
           ditto -c -k --rsrc executables/subspace-farmer-${{ matrix.build.suffix }} executables/subspace-farmer-${{ matrix.build.suffix }}.zip
           ditto -c -k --rsrc executables/subspace-node-${{ matrix.build.suffix }} executables/subspace-node-${{ matrix.build.suffix }}.zip
-          rm target/production/subspace-farmer
-          rm target/production/subspace-node
+          rm executables/subspace-farmer-${{ matrix.build.suffix }}
+          rm executables/subspace-node-${{ matrix.build.suffix }}
         if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
