@@ -81,7 +81,7 @@ jobs:
           - os: ubuntu-20.04
             suffix: x86_64-ubuntu
           - os: macos-11
-            suffix: x86_64-macOS
+            suffix: x86_64-macos
           - os: windows-2022
             suffix: x86_64-windows
 
