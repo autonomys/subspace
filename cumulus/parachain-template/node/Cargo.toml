@@ -20,7 +20,10 @@ name = "subspace-executor"
 path = "src/main.rs"
 
 [features]
-runtime-benchmarks = ["parachain-template-runtime/runtime-benchmarks"]
+runtime-benchmarks = [
+    "parachain-template-runtime/runtime-benchmarks",
+    "subspace-node/runtime-benchmarks",
+]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.3.0" }
