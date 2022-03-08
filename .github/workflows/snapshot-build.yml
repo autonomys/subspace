@@ -164,10 +164,11 @@ jobs:
           ditto -c -k --keepParent --rsrc target/production/macos-binaries subspace-binaries.zip
           echo "Notarizing"
           xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
-          echo "Stapling farmer"
-          xcrun stapler staple target/production/subspace-farmer
-          echo "Stapling node"
-          xcrun stapler staple target/production/subspace-node
+          # TODO: Wait for notarization before stapling
+          # echo "Stapling farmer"
+          # xcrun stapler staple target/production/subspace-farmer
+          # echo "Stapling node"
+          # xcrun stapler staple target/production/subspace-node
           echo "Done!"
         if: runner.os == 'macOS'
 
