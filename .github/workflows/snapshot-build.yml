@@ -79,11 +79,11 @@ jobs:
       matrix:
         build:
           - os: ubuntu-20.04
-            suffix: x86_64-ubuntu
+            suffix: ubuntu-x86_64-${{ github.ref_name }}
           - os: macos-11
-            suffix: x86_64-macos
+            suffix: macos-x86_64-${{ github.ref_name }}
           - os: windows-2022
-            suffix: x86_64-windows
+            suffix: windows-x86_64-${{ github.ref_name }}
 
     runs-on: ${{ matrix.build.os }}
 
@@ -161,7 +161,7 @@ jobs:
           echo "Creating an archive"
           mkdir target/production/macos-binaries
           cp target/production/subspace-farmer target/production/subspace-node target/production/macos-binaries
-          ditto -c -k --keepParent --rsrc target/production/macos-binaries subspace-binaries.zip
+          ditto -c -k --rsrc target/production/macos-binaries subspace-binaries.zip
           echo "Notarizing"
           xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
           # TODO: Wait for notarization before stapling
@@ -180,18 +180,31 @@ jobs:
           certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
           folder: 'target/production'
         if: runner.os == 'Windows'
-      - name: Prepare executables for uploading (Linux or macOS)
+
+      - name: Prepare executables for uploading Linux
         run: |
           mkdir executables
-          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}-${{ github.ref_name }}
-          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}-${{ github.ref_name }}
-        if: runner.os == 'Linux' || runner.os == 'macOS'
+          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
+          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
+        if: runner.os == 'Linux'
+
+      - name: Prepare executables for uploading macOS
+        run: |
+          mkdir executables
+          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
+          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
+          # Zip it so that signature is not lost
+          ditto -c -k --rsrc executables/subspace-farmer-${{ matrix.build.suffix }} executables/subspace-farmer-${{ matrix.build.suffix }}.zip
+          ditto -c -k --rsrc executables/subspace-node-${{ matrix.build.suffix }} executables/subspace-node-${{ matrix.build.suffix }}.zip
+          rm target/production/subspace-farmer
+          rm target/production/subspace-node
+        if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move target/production/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}-${{ github.ref_name }}.exe
-          move target/production/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}-${{ github.ref_name }}.exe
+          move target/production/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
+          move target/production/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to assets
