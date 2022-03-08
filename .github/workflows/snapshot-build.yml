@@ -49,8 +49,8 @@ jobs:
 
       - name: Generate testnet chain specifications
         run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec.json
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec-${{ github.ref_name }}.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw-${{ github.ref_name }}.json
         if: matrix.image == 'node'
 
       - name: Upload testnet chain specifications to artifacts
@@ -58,8 +58,8 @@ jobs:
         with:
           name: chain-specifications
           path: |
-            chain-spec.json
-            chain-spec-raw.json
+            chain-spec-${{ github.ref_name }}.json
+            chain-spec-raw-${{ github.ref_name }}.json
           if-no-files-found: error
         if: matrix.image == 'node'
 
@@ -68,7 +68,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["chain-spec.json", "chain-spec-raw.json"]'
+          asset_paths: '["chain-spec-${{ github.ref_name }}.json", "chain-spec-raw-${{ github.ref_name }}.json"]'
         if: matrix.image == 'node'
 
   executables:
@@ -77,13 +77,15 @@ jobs:
 
     strategy:
       matrix:
-        os:
-          - ubuntu-20.04
-          - macos-11
-          - windows-2019
-          - windows-2022
+        build:
+          - os: ubuntu-20.04
+            suffix: x86_64-ubuntu
+          - os: macos-11
+            suffix: x86_64-macOS
+          - os: windows-2022
+            suffix: x86_64-windows
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.build.os }}
 
     steps:
       - name: Checkout
@@ -94,13 +96,23 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: 14.29
-        if: matrix.os == 'windows-2022'
+        if: matrix.build.os == 'windows-2022'
 
       - name: Download testnet chain specifications from artifacts
         uses: actions/download-artifact@v2
         with:
           name: chain-specifications
           path: .
+
+      - name: Rename chain spec file (Linux or macOS)
+        run: |
+          mv chain-spec-${{ github.ref_name }}.json chain-spec.json
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+
+      - name: Rename chain spec file (Windows)
+        run: |
+          move chain-spec-${{ github.ref_name }}.json chain-spec.json
+        if: runner.os == 'Windows'
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -132,7 +144,7 @@ jobs:
           command: build
           args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-node/json-chain-spec
         if: runner.os == 'macOS'
-      # macOS Code Signing
+
       - name: Sign Application (macOS)
         run: |
           echo "Importing certificate"
@@ -157,7 +169,7 @@ jobs:
           xcrun stapler staple target/production/subspace-node
           echo "Done!"
         if: runner.os == 'macOS'
-      # Windows Code Signing
+
       - name: Sign Application (Windows)
         uses: skymatic/code-sign-action@v1.1.0
         with:
@@ -169,15 +181,15 @@ jobs:
       - name: Prepare executables for uploading (Linux or macOS)
         run: |
           mkdir executables
-          mv target/production/subspace-node executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}
-          mv target/production/subspace-farmer executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}
+          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}-${{ github.ref_name }}
+          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}-${{ github.ref_name }}
         if: runner.os == 'Linux' || runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move target/production/subspace-node.exe executables/subspace-node-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
-          move target/production/subspace-farmer.exe executables/subspace-farmer-x86_64-${{ matrix.os }}-${{ github.ref_name }}.exe
+          move target/production/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}-${{ github.ref_name }}.exe
+          move target/production/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}-${{ github.ref_name }}.exe
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to assets
