@@ -95,11 +95,11 @@ impl SubstrateCli for RelayChainCli {
 	}
 
 	fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-		subspace_node::cli::Cli::from_iter([RelayChainCli::executable_name()].iter()).load_spec(id)
+		subspace_node::Cli::from_iter([RelayChainCli::executable_name()].iter()).load_spec(id)
 	}
 
 	fn native_runtime_version(chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-		subspace_node::cli::Cli::native_runtime_version(chain_spec)
+		subspace_node::Cli::native_runtime_version(chain_spec)
 	}
 }
 
