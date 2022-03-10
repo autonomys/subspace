@@ -123,7 +123,7 @@ impl Commitments {
                 let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
                 // TODO: Read next batch while creating tags for the previous one for faster
                 //  recommitment.
-                let pieces = plot
+                let (pieces, indexes) = plot
                     .read_pieces(batch_start, pieces_to_process)
                     .map_err(CommitmentError::Plot)?;
 
@@ -132,7 +132,7 @@ impl Commitments {
                     .map(|piece| subspace_solving::create_tag(piece, salt))
                     .collect();
 
-                for (tag, index) in tags.iter().zip(batch_start..) {
+                for (tag, index) in tags.iter().zip(indexes) {
                     db.put(tag, index.to_le_bytes())
                         .map_err(CommitmentError::CommitmentDb)?;
                 }

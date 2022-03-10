@@ -7,6 +7,7 @@ use rocksdb::DB;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -16,12 +17,17 @@ use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
+pub type PieceIndex = u64;
+pub(crate) type PieceOffset = u64;
+
 #[derive(Debug, Error)]
 pub enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
     #[error("Metadata DB open error: {0}")]
     MetadataDbOpen(rocksdb::Error),
+    #[error("Offset DB open error: {0}")]
+    OffsetDbOpen(rocksdb::Error),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -37,14 +43,17 @@ struct Handlers {
 #[derive(Debug)]
 enum ReadRequests {
     ReadEncoding {
-        index: u64,
+        index: PieceIndex,
         result_sender: mpsc::Sender<io::Result<Piece>>,
     },
     ReadEncodings {
-        first_index: u64,
+        /// Can be from 0 to the `piece_count`
+        cursor_offset: u64,
         count: u64,
-        /// Vector containing all of the pieces as contiguous block of memory
-        result_sender: mpsc::Sender<io::Result<Vec<u8>>>,
+        /// Result is both:
+        /// - Vector containing all of the pieces as contiguous block of memory
+        /// - Vector with all the piece indexes
+        result_sender: mpsc::Sender<io::Result<(Vec<u8>, Vec<PieceIndex>)>>,
     },
 }
 
@@ -52,7 +61,7 @@ enum ReadRequests {
 enum WriteRequests {
     WriteEncodings {
         encodings: Arc<FlatPieces>,
-        first_index: u64,
+        first_index: PieceIndex,
         result_sender: mpsc::Sender<io::Result<()>>,
     },
 }
@@ -127,7 +136,7 @@ impl Plot {
     }
 
     /// Reads a piece from plot by index
-    pub(crate) fn read(&self, index: u64) -> io::Result<Piece> {
+    pub(crate) fn read(&self, index: PieceIndex) -> io::Result<Piece> {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
@@ -160,7 +169,7 @@ impl Plot {
     pub(crate) fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
-        first_index: u64,
+        first_index: PieceIndex,
     ) -> io::Result<()> {
         if encodings.is_empty() {
             return Ok(());
@@ -235,13 +244,18 @@ impl Plot {
         }
     }
 
-    pub fn read_piece(&self, piece_index: u64) -> io::Result<Vec<u8>> {
-        self.read_pieces(piece_index, 1)
+    pub fn read_piece(&self, index: PieceIndex) -> io::Result<Vec<u8>> {
+        self.read(index)
+            .map(|piece| <[u8; PIECE_SIZE]>::from(piece).to_vec())
     }
 
     // TODO: Replace index with offset
     /// Returns pieces packed one after another in contiguous `Vec<u8>`
-    pub(crate) fn read_pieces(&self, first_index: u64, count: u64) -> io::Result<Vec<u8>> {
+    pub(crate) fn read_pieces(
+        &self,
+        cursor_offset: u64,
+        count: u64,
+    ) -> io::Result<(Vec<u8>, Vec<PieceIndex>)> {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
@@ -249,7 +263,7 @@ impl Plot {
             .clone()
             .unwrap()
             .send(ReadRequests::ReadEncodings {
-                first_index,
+                cursor_offset,
                 count,
                 result_sender,
             })
@@ -264,10 +278,10 @@ impl Plot {
         let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.recv().map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Read encodings result sender was dropped: {}", error),
-            )
+            io::Error::other(format!(
+                "Read encodings result sender was dropped: {}",
+                error
+            ))
         })?
     }
 
@@ -290,8 +304,43 @@ impl WeakPlot {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct TypedDB<K, V> {
+    inner: DB,
+    _kv: PhantomData<(K, V)>,
+}
+
+impl<K, V> From<DB> for TypedDB<K, V> {
+    fn from(inner: DB) -> Self {
+        let _kv = PhantomData;
+        Self { inner, _kv }
+    }
+}
+
+impl TypedDB<u64, u64> {
+    pub fn get(&self, key: u64) -> io::Result<Option<u64>> {
+        self.inner
+            .get(key.to_be_bytes())
+            .map_err(io::Error::other)
+            .and_then(|opt_val| {
+                opt_val
+                    .map(|val| TryInto::<[u8; 8]>::try_into(val).map(u64::from_be_bytes))
+                    .transpose()
+                    .map_err(|_| io::Error::other("Offsets in rocksdb supposed to be 8 bytes long"))
+            })
+    }
+
+    pub fn put(&self, key: u64, value: u64) -> io::Result<()> {
+        self.inner
+            .put(key.to_be_bytes(), value.to_be_bytes())
+            .map_err(io::Error::other)
+    }
+}
+
 struct Plotter {
     plot: File,
+    offset_db: TypedDB<PieceIndex, PieceOffset>,
+    index_db: TypedDB<PieceOffset, PieceIndex>,
     piece_count: Arc<AtomicU64>,
 }
 
@@ -311,7 +360,33 @@ impl Plotter {
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
-        Ok(Self { plot, piece_count })
+        let offset_db = DB::open_default(base_directory.as_ref().join("plot-offset"))
+            .map(TypedDB::from)
+            .map_err(PlotError::OffsetDbOpen)?;
+
+        let index_db = DB::open_default(base_directory.as_ref().join("plot-index"))
+            .map(TypedDB::from)
+            .map_err(PlotError::OffsetDbOpen)?;
+
+        Ok(Self {
+            plot,
+            offset_db,
+            index_db,
+            piece_count,
+        })
+    }
+
+    pub fn read_encoding(
+        &mut self,
+        piece_index: u64,
+        mut buffer: impl AsMut<[u8]>,
+    ) -> io::Result<()> {
+        let offset = self
+            .offset_db
+            .get(piece_index)?
+            .ok_or_else(|| io::Error::other(format!("Piece with {piece_index} not found")))?;
+        self.plot.seek(SeekFrom::Start(offset))?;
+        self.plot.read_exact(buffer.as_mut())
     }
 
     pub fn do_plot(
@@ -340,30 +415,36 @@ impl Plotter {
                         index,
                         result_sender,
                     } => {
-                        let _ = result_sender.send(
-                            try {
-                                self.plot.seek(SeekFrom::Start(index * PIECE_SIZE as u64))?;
-                                let mut buffer = Piece::default();
-                                self.plot.read_exact(&mut buffer)?;
-                                buffer
-                            },
-                        );
+                        let mut buffer = Piece::default();
+                        let result = self.read_encoding(index, &mut buffer).map(|()| buffer);
+                        let _ = result_sender.send(result);
                     }
                     ReadRequests::ReadEncodings {
-                        first_index,
+                        cursor_offset,
                         count,
                         result_sender,
                     } => {
-                        let _ = result_sender.send(
-                            try {
-                                self.plot
-                                    .seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))?;
-                                let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
-                                buffer.resize(buffer.capacity(), 0);
-                                self.plot.read_exact(&mut buffer)?;
-                                buffer
-                            },
-                        );
+                        let result = try {
+                            self.plot
+                                .seek(SeekFrom::Start(cursor_offset * PIECE_SIZE as u64))?;
+                            let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
+                            buffer.resize(buffer.capacity(), 0);
+                            self.plot.read_exact(&mut buffer)?;
+
+                            let indexes = (cursor_offset..cursor_offset + count)
+                                .map(|offset| {
+                                    self.index_db.get(offset).and_then(|opt| {
+                                        opt.ok_or_else(|| {
+                                            io::Error::other(format!(
+                                                "Didn't found piece index for offset {offset}"
+                                            ))
+                                        })
+                                    })
+                                })
+                                .collect::<io::Result<Vec<_>>>()?;
+                            (buffer, indexes)
+                        };
+                        let _ = result_sender.send(result);
                     }
                 }
             }
@@ -379,19 +460,28 @@ impl Plotter {
                 result_sender,
             }) = write_request
             {
-                let _ = result_sender.send(
-                    try {
-                        self.plot
-                            .seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))?;
-                        {
-                            self.plot.write_all(&encodings)?;
-                            self.piece_count.fetch_max(
-                                first_index + encodings.count() as u64,
-                                Ordering::AcqRel,
-                            );
-                        }
-                    },
-                );
+                // TODO: Update piece count on error
+                let result = try {
+                    let current_piece_count = self.piece_count.load(Ordering::Acquire);
+                    self.plot
+                        .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
+                    self.plot.write_all(&encodings)?;
+
+                    let new_piece_count = (encodings.len() / PIECE_SIZE) as u64;
+                    (0..new_piece_count).try_for_each(|i| {
+                        let offset = current_piece_count + i;
+                        let index = first_index + i;
+                        self.offset_db.put(index, offset)?;
+                        self.index_db.put(offset, index)?;
+                        Ok::<_, io::Error>(())
+                    })?;
+
+                    // TODO: Should we release it on error?
+                    self.piece_count
+                        .fetch_add((encodings.len() / PIECE_SIZE) as u64, Ordering::Release);
+                };
+
+                let _ = result_sender.send(result);
             }
         }
 
