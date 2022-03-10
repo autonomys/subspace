@@ -7,7 +7,6 @@ use rocksdb::DB;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -26,8 +25,10 @@ pub enum PlotError {
     PlotOpen(io::Error),
     #[error("Metadata DB open error: {0}")]
     MetadataDbOpen(rocksdb::Error),
+    #[error("Index DB open error: {0}")]
+    IndexDbOpen(rocksdb::Error),
     #[error("Offset DB open error: {0}")]
-    OffsetDbOpen(rocksdb::Error),
+    OffsetDbOpen(io::Error),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -90,7 +91,7 @@ pub struct Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
-        let plotter = Plotter::from_base_directory(base_directory.as_ref())?;
+        let background_worker = BackgroundWorker::from_base_directory(base_directory.as_ref())?;
 
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
@@ -102,9 +103,9 @@ impl Plot {
         let (write_requests_sender, write_requests_receiver) =
             mpsc::sync_channel::<WriteRequests>(100);
 
-        let piece_count = Arc::clone(&plotter.piece_count);
+        let piece_count = Arc::clone(&background_worker.piece_count);
         tokio::task::spawn_blocking(move || {
-            plotter.do_plot(
+            background_worker.do_plot(
                 any_requests_receiver,
                 read_requests_receiver,
                 write_requests_receiver,
@@ -305,19 +306,17 @@ impl WeakPlot {
 }
 
 #[derive(Debug)]
-pub(crate) struct TypedDB<K, V> {
+pub(crate) struct IndexToOffsetDB {
     inner: DB,
-    _kv: PhantomData<(K, V)>,
 }
 
-impl<K, V> From<DB> for TypedDB<K, V> {
+impl From<DB> for IndexToOffsetDB {
     fn from(inner: DB) -> Self {
-        let _kv = PhantomData;
-        Self { inner, _kv }
+        Self { inner }
     }
 }
 
-impl TypedDB<u64, u64> {
+impl IndexToOffsetDB {
     pub fn get(&self, key: u64) -> io::Result<Option<u64>> {
         self.inner
             .get(key.to_be_bytes())
@@ -337,14 +336,14 @@ impl TypedDB<u64, u64> {
     }
 }
 
-struct Plotter {
+struct BackgroundWorker {
     plot: File,
-    offset_db: TypedDB<PieceIndex, PieceOffset>,
-    index_db: TypedDB<PieceOffset, PieceIndex>,
+    piece_index_to_offset_db: IndexToOffsetDB,
+    piece_offset_to_index_file: File,
     piece_count: Arc<AtomicU64>,
 }
 
-impl Plotter {
+impl BackgroundWorker {
     pub fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -360,33 +359,54 @@ impl Plotter {
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
-        let offset_db = DB::open_default(base_directory.as_ref().join("plot-offset"))
-            .map(TypedDB::from)
+        let piece_offset_to_index_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
-        let index_db = DB::open_default(base_directory.as_ref().join("plot-index"))
-            .map(TypedDB::from)
-            .map_err(PlotError::OffsetDbOpen)?;
+        let piece_index_to_offset_db =
+            DB::open_default(base_directory.as_ref().join("plot-index-to-offset"))
+                .map(IndexToOffsetDB::from)
+                .map_err(PlotError::IndexDbOpen)?;
 
         Ok(Self {
             plot,
-            offset_db,
-            index_db,
+            piece_index_to_offset_db,
+            piece_offset_to_index_file,
             piece_count,
         })
     }
 
     pub fn read_encoding(
         &mut self,
-        piece_index: u64,
+        piece_index: PieceIndex,
         mut buffer: impl AsMut<[u8]>,
     ) -> io::Result<()> {
         let offset = self
-            .offset_db
+            .piece_index_to_offset_db
             .get(piece_index)?
             .ok_or_else(|| io::Error::other(format!("Piece with {piece_index} not found")))?;
         self.plot.seek(SeekFrom::Start(offset))?;
         self.plot.read_exact(buffer.as_mut())
+    }
+
+    fn get_piece_index(&mut self, offset: PieceOffset) -> io::Result<PieceIndex> {
+        let mut buf = [0; 8];
+        self.piece_offset_to_index_file.seek(SeekFrom::Start(
+            offset * std::mem::size_of::<PieceIndex>() as u64,
+        ))?;
+        self.piece_offset_to_index_file.read_exact(&mut buf)?;
+        Ok(u64::from_be_bytes(buf))
+    }
+
+    fn put_piece_index(&mut self, offset: PieceOffset, index: PieceIndex) -> io::Result<()> {
+        self.piece_offset_to_index_file.seek(SeekFrom::Start(
+            offset * std::mem::size_of::<PieceIndex>() as u64,
+        ))?;
+        self.piece_offset_to_index_file
+            .write_all(&index.to_be_bytes())
     }
 
     pub fn do_plot(
@@ -432,15 +452,7 @@ impl Plotter {
                             self.plot.read_exact(&mut buffer)?;
 
                             let indexes = (cursor_offset..cursor_offset + count)
-                                .map(|offset| {
-                                    self.index_db.get(offset).and_then(|opt| {
-                                        opt.ok_or_else(|| {
-                                            io::Error::other(format!(
-                                                "Didn't found piece index for offset {offset}"
-                                            ))
-                                        })
-                                    })
-                                })
+                                .map(|offset| self.get_piece_index(offset))
                                 .collect::<io::Result<Vec<_>>>()?;
                             (buffer, indexes)
                         };
@@ -471,8 +483,8 @@ impl Plotter {
                     (0..new_piece_count).try_for_each(|i| {
                         let offset = current_piece_count + i;
                         let index = first_index + i;
-                        self.offset_db.put(index, offset)?;
-                        self.index_db.put(offset, index)?;
+                        self.piece_index_to_offset_db.put(index, offset)?;
+                        self.put_piece_index(offset, index)?;
                         Ok::<_, io::Error>(())
                     })?;
 
