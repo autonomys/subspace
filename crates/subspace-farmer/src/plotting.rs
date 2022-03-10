@@ -205,7 +205,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             let runtime_handle = tokio::runtime::Handle::current();
             info!("Plotting new blocks in the background");
 
-            'outer: while let Ok(blocks_to_archive_to) = new_block_to_archive_receiver.recv() {
+            'outer: for blocks_to_archive_to in new_block_to_archive_receiver.into_iter() {
                 let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
                 if blocks_to_archive_to >= blocks_to_archive_from {
                     debug!(

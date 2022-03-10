@@ -15,9 +15,7 @@
 //! keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
 //! converted back to bytes.
 
-#![feature(try_blocks)]
-#![feature(hash_drain_filter)]
-#![feature(int_log)]
+#![feature(try_blocks, hash_drain_filter, int_log, io_error_other)]
 
 pub(crate) mod commitments;
 pub(crate) mod farming;

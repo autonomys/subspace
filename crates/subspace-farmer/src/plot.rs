@@ -4,7 +4,7 @@ mod tests;
 use event_listener_primitives::{Bag, HandlerId};
 use log::error;
 use rocksdb::DB;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -81,16 +81,7 @@ pub struct Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
-        let mut plot_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(base_directory.as_ref().join("plot.bin"))
-            .map_err(PlotError::PlotOpen)?;
-
-        let plot_size = plot_file.metadata().map_err(PlotError::PlotOpen)?.len();
-
-        let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
+        let plotter = Plotter::from_base_directory(base_directory.as_ref())?;
 
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
@@ -102,91 +93,13 @@ impl Plot {
         let (write_requests_sender, write_requests_receiver) =
             mpsc::sync_channel::<WriteRequests>(100);
 
-        tokio::task::spawn_blocking({
-            let piece_count = Arc::clone(&piece_count);
-
-            move || {
-                let mut did_nothing = true;
-                loop {
-                    if did_nothing {
-                        // Wait for stuff to come in
-                        if any_requests_receiver.recv().is_err() {
-                            break;
-                        }
-                    }
-
-                    did_nothing = true;
-
-                    // Process as many read requests as there is
-                    while let Ok(read_request) = read_requests_receiver.try_recv() {
-                        did_nothing = false;
-
-                        match read_request {
-                            ReadRequests::ReadEncoding {
-                                index,
-                                result_sender,
-                            } => {
-                                let _ = result_sender.send(
-                                    try {
-                                        plot_file
-                                            .seek(SeekFrom::Start(index * PIECE_SIZE as u64))?;
-                                        let mut buffer = Piece::default();
-                                        plot_file.read_exact(&mut buffer)?;
-                                        buffer
-                                    },
-                                );
-                            }
-                            ReadRequests::ReadEncodings {
-                                first_index,
-                                count,
-                                result_sender,
-                            } => {
-                                let _ = result_sender.send(
-                                    try {
-                                        plot_file.seek(SeekFrom::Start(
-                                            first_index * PIECE_SIZE as u64,
-                                        ))?;
-                                        let mut buffer =
-                                            Vec::with_capacity(count as usize * PIECE_SIZE);
-                                        buffer.resize(buffer.capacity(), 0);
-                                        plot_file.read_exact(&mut buffer)?;
-                                        buffer
-                                    },
-                                );
-                            }
-                        }
-                    }
-
-                    let write_request = write_requests_receiver.try_recv();
-                    if write_request.is_ok() {
-                        did_nothing = false;
-                    }
-                    // Process at most write request since reading is higher priority
-                    if let Ok(WriteRequests::WriteEncodings {
-                        encodings,
-                        first_index,
-                        result_sender,
-                    }) = write_request
-                    {
-                        let _ = result_sender.send(
-                            try {
-                                plot_file.seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))?;
-                                {
-                                    plot_file.write_all(&encodings)?;
-                                    piece_count.fetch_max(
-                                        first_index + encodings.count() as u64,
-                                        Ordering::AcqRel,
-                                    );
-                                }
-                            },
-                        );
-                    }
-                }
-
-                if let Err(error) = plot_file.sync_all() {
-                    error!("Failed to sync plot file before exit: {}", error);
-                }
-            }
+        let piece_count = Arc::clone(&plotter.piece_count);
+        tokio::task::spawn_blocking(move || {
+            plotter.do_plot(
+                any_requests_receiver,
+                read_requests_receiver,
+                write_requests_receiver,
+            )
         });
 
         let inner = Inner {
@@ -374,5 +287,116 @@ pub(crate) struct WeakPlot {
 impl WeakPlot {
     pub(crate) fn upgrade(&self) -> Option<Plot> {
         self.inner.upgrade().map(|inner| Plot { inner })
+    }
+}
+
+struct Plotter {
+    plot: File,
+    piece_count: Arc<AtomicU64>,
+}
+
+impl Plotter {
+    pub fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
+        let plot = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(base_directory.as_ref().join("plot.bin"))
+            .map_err(PlotError::PlotOpen)?;
+
+        let plot_size = plot
+            .metadata()
+            .map(|metadata| metadata.len())
+            .map_err(PlotError::PlotOpen)?;
+
+        let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
+
+        Ok(Self { plot, piece_count })
+    }
+
+    pub fn do_plot(
+        mut self,
+        any_requests_receiver: mpsc::Receiver<()>,
+        read_requests_receiver: mpsc::Receiver<ReadRequests>,
+        write_requests_receiver: mpsc::Receiver<WriteRequests>,
+    ) {
+        let mut did_nothing = true;
+        loop {
+            if did_nothing {
+                // Wait for stuff to come in
+                if any_requests_receiver.recv().is_err() {
+                    break;
+                }
+            }
+
+            did_nothing = true;
+
+            // Process as many read requests as there is
+            while let Ok(read_request) = read_requests_receiver.try_recv() {
+                did_nothing = false;
+
+                match read_request {
+                    ReadRequests::ReadEncoding {
+                        index,
+                        result_sender,
+                    } => {
+                        let _ = result_sender.send(
+                            try {
+                                self.plot.seek(SeekFrom::Start(index * PIECE_SIZE as u64))?;
+                                let mut buffer = Piece::default();
+                                self.plot.read_exact(&mut buffer)?;
+                                buffer
+                            },
+                        );
+                    }
+                    ReadRequests::ReadEncodings {
+                        first_index,
+                        count,
+                        result_sender,
+                    } => {
+                        let _ = result_sender.send(
+                            try {
+                                self.plot
+                                    .seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))?;
+                                let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
+                                buffer.resize(buffer.capacity(), 0);
+                                self.plot.read_exact(&mut buffer)?;
+                                buffer
+                            },
+                        );
+                    }
+                }
+            }
+
+            let write_request = write_requests_receiver.try_recv();
+            if write_request.is_ok() {
+                did_nothing = false;
+            }
+            // Process at most write request since reading is higher priority
+            if let Ok(WriteRequests::WriteEncodings {
+                encodings,
+                first_index,
+                result_sender,
+            }) = write_request
+            {
+                let _ = result_sender.send(
+                    try {
+                        self.plot
+                            .seek(SeekFrom::Start(first_index * PIECE_SIZE as u64))?;
+                        {
+                            self.plot.write_all(&encodings)?;
+                            self.piece_count.fetch_max(
+                                first_index + encodings.count() as u64,
+                                Ordering::AcqRel,
+                            );
+                        }
+                    },
+                );
+            }
+        }
+
+        if let Err(error) = self.plot.sync_all() {
+            error!("Failed to sync plot file before exit: {}", error);
+        }
     }
 }

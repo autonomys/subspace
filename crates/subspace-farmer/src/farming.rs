@@ -51,10 +51,13 @@ impl Farming {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let farming_handle = tokio::spawn(async move {
             match future::select(
-                Box::pin(async move {
-                    subscribe_to_slot_info(&client, &plot, &commitments, &identity, reward_adress)
-                        .await
-                }),
+                Box::pin(subscribe_to_slot_info(
+                    &client,
+                    &plot,
+                    &commitments,
+                    &identity,
+                    reward_adress,
+                )),
                 stop_receiver,
             )
             .await
