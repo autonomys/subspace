@@ -137,8 +137,10 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     slot_info.solution_range,
                     slot_info.salt,
                 ) {
-                    Some((tag, piece_index)) => {
-                        let encoding = plot.read(piece_index).map_err(FarmingError::PlotRead)?;
+                    Some((tag, piece_offset)) => {
+                        let (encoding, piece_index) = plot
+                            .read_piece_with_index(piece_offset)
+                            .map_err(FarmingError::PlotRead)?;
                         let solution = Solution {
                             public_key: identity.public_key().to_bytes().into(),
                             reward_address,

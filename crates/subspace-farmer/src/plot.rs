@@ -40,20 +40,23 @@ struct Handlers {
     progress_change: Bag<Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>, PlottedPieces>,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 enum ReadRequests {
     ReadEncoding {
         index_hash: PieceIndexHash,
         result_sender: mpsc::Sender<io::Result<Piece>>,
     },
+    ReadEncodingWithIndex {
+        piece_offset: PieceOffset,
+        result_sender: mpsc::Sender<io::Result<(Piece, PieceIndex)>>,
+    },
     ReadEncodings {
         /// Can be from 0 to the `piece_count`
         piece_offset: PieceOffset,
         count: u64,
-        /// Result is both:
-        /// - Vector containing all of the pieces as contiguous block of memory
-        /// - Vector with all the piece indexes
-        result_sender: mpsc::Sender<io::Result<(Vec<u8>, Vec<PieceIndex>)>>,
+        /// Vector containing all of the pieces as contiguous block of memory
+        result_sender: mpsc::Sender<io::Result<Vec<u8>>>,
     },
 }
 
@@ -250,13 +253,40 @@ impl Plot {
             .map(|piece| <[u8; PIECE_SIZE]>::from(piece).to_vec())
     }
 
-    // TODO: Replace index with offset
-    /// Returns pieces packed one after another in contiguous `Vec<u8>`
-    pub(crate) fn read_pieces(
+    pub(crate) fn read_piece_with_index(
         &self,
         piece_offset: PieceOffset,
-        count: u64,
-    ) -> io::Result<(Vec<u8>, Vec<PieceIndex>)> {
+    ) -> io::Result<(Piece, PieceIndex)> {
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        self.inner
+            .read_requests_sender
+            .clone()
+            .unwrap()
+            .send(ReadRequests::ReadEncodingWithIndex {
+                piece_offset,
+                result_sender,
+            })
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed sending read encodings request: {}", error),
+                )
+            })?;
+
+        // If fails - it is either full or disconnected, we don't care either way, so ignore result
+        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
+
+        result_receiver.recv().map_err(|error| {
+            io::Error::other(format!(
+                "Read encodings result sender was dropped: {}",
+                error
+            ))
+        })?
+    }
+
+    /// Returns pieces packed one after another in contiguous `Vec<u8>`
+    pub(crate) fn read_pieces(&self, piece_offset: PieceOffset, count: u64) -> io::Result<Vec<u8>> {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
@@ -440,6 +470,19 @@ impl PlotWorker {
                         let result = self.read_encoding(index_hash, &mut buffer).map(|()| buffer);
                         let _ = result_sender.send(result);
                     }
+                    ReadRequests::ReadEncodingWithIndex {
+                        piece_offset,
+                        result_sender,
+                    } => {
+                        let result = try {
+                            let mut buffer = Piece::default();
+                            self.plot.seek(SeekFrom::Start(piece_offset))?;
+                            self.plot.read_exact(buffer.as_mut())?;
+                            let index = self.get_piece_index(piece_offset)?;
+                            (buffer, index)
+                        };
+                        let _ = result_sender.send(result);
+                    }
                     ReadRequests::ReadEncodings {
                         piece_offset,
                         count,
@@ -451,11 +494,7 @@ impl PlotWorker {
                             let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
                             buffer.resize(buffer.capacity(), 0);
                             self.plot.read_exact(&mut buffer)?;
-
-                            let indexes = (piece_offset..piece_offset + count)
-                                .map(|offset| self.get_piece_index(offset))
-                                .collect::<io::Result<Vec<_>>>()?;
-                            (buffer, indexes)
+                            buffer
                         };
                         let _ = result_sender.send(result);
                     }
@@ -480,11 +519,10 @@ impl PlotWorker {
                         .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
                     self.plot.write_all(&encodings)?;
 
-                    let n_pieces = (encodings.len() / PIECE_SIZE) as u64;
-
-                    for i in 0..n_pieces {
-                        let offset = current_piece_count + i;
-                        let index = first_index + i;
+                    for (offset, index) in (current_piece_count..)
+                        .zip(first_index..)
+                        .take(encodings.len() / PIECE_SIZE)
+                    {
                         self.piece_index_hash_to_offset_db.put(index, offset)?;
                         self.put_piece_index(offset, index)?;
                         self.piece_count.fetch_add(1, Ordering::AcqRel);
