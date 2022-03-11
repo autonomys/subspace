@@ -457,6 +457,46 @@ impl RootBlock {
     }
 }
 
+/// Index of piece on disk
+pub type PieceOffset = u64;
+/// Piece index in consensus
+pub type PieceIndex = u64;
+
+/// Hash of `PieceIndex`
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PieceIndexHash(pub u64);
+
+impl From<[u8; 8]> for PieceIndexHash {
+    fn from(bytes: [u8; 8]) -> Self {
+        Self::from_bytes(bytes)
+    }
+}
+
+impl From<PieceIndexHash> for [u8; 8] {
+    fn from(hash: PieceIndexHash) -> Self {
+        hash.to_bytes()
+    }
+}
+
+impl From<PieceIndex> for PieceIndexHash {
+    fn from(index: PieceIndex) -> Self {
+        let hash = &crypto::sha256_hash(&index.to_be_bytes())[..8];
+        (*<&[u8; 8]>::try_from(hash).unwrap()).into()
+    }
+}
+
+impl PieceIndexHash {
+    /// Get `PieceIndexHash` from bytes
+    pub fn from_bytes(bytes: [u8; 8]) -> Self {
+        Self(u64::from_be_bytes(bytes))
+    }
+
+    /// Convert `PieceIndexHash` to bytes
+    pub fn to_bytes(self) -> [u8; 8] {
+        self.0.to_be_bytes()
+    }
+}
+
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -467,7 +507,7 @@ pub struct Solution<AccountId> {
     /// Address for receiving block reward
     pub reward_address: AccountId,
     /// Index of encoded piece
-    pub piece_index: u64,
+    pub piece_index: PieceIndex,
     /// Encoding
     pub encoding: Piece,
     /// Signature of the tag
@@ -485,7 +525,7 @@ impl<AccountId: Clone> Solution<AccountId> {
         Self {
             public_key,
             reward_address,
-            piece_index: 0u64,
+            piece_index: 0,
             encoding: Piece::default(),
             signature: Signature::default(),
             local_challenge: LocalChallenge::default(),

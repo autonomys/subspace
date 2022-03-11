@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, PieceIndex, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -133,7 +133,7 @@ impl Commitments {
                     .collect();
 
                 for (tag, index) in tags.iter().zip(indexes) {
-                    db.put(tag, index.to_le_bytes())
+                    db.put(tag, index.to_be_bytes())
                         .map_err(CommitmentError::CommitmentDb)?;
                 }
             }
@@ -216,15 +216,36 @@ impl Commitments {
     }
 
     /// Finds the commitment/s falling in the range of the challenge
-    pub(crate) fn find_by_range(&self, target: Tag, range: u64, salt: Salt) -> Option<(Tag, u64)> {
+    pub(crate) fn find_by_range(
+        &self,
+        target: Tag,
+        range: u64,
+        salt: Salt,
+    ) -> Option<(Tag, PieceIndex)> {
+        fn iter_solutions(
+            iter: &mut rocksdb::DBRawIteratorWithThreadMode<'_, DB>,
+        ) -> Option<(Tag, PieceIndex)> {
+            match (iter.key(), iter.value()) {
+                (Some(key), Some(value)) => {
+                    let result = Some((
+                        key.try_into().unwrap(),
+                        PieceIndex::from_be_bytes(value.try_into().unwrap()),
+                    ));
+
+                    iter.next();
+                    result
+                }
+                (None, None) => None,
+                _ => unreachable!("RockDB should always return value if key is present"),
+            }
+        }
+
         let db_entry = self.get_local_db_entry(&salt)?;
 
         let db_guard = db_entry.try_lock()?;
         let db = db_guard.clone()?;
 
         let mut iter = db.raw_iterator();
-
-        let mut solutions: Vec<(Tag, u64)> = Vec::new();
 
         let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
         let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
@@ -238,39 +259,24 @@ impl Commitments {
 
         if is_lower_overflowed || is_upper_overflowed {
             iter.seek_to_first();
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
-                if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
-                    iter.next();
-                } else {
-                    break;
-                }
-            }
-            iter.seek(lower.to_be_bytes());
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
 
-                solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
-                iter.next();
-            }
+            let mut solutions = std::iter::from_fn(|| iter_solutions(&mut iter))
+                .take_while(|(tag, _)| u64::from_be_bytes(*tag) <= upper)
+                .collect::<Vec<_>>();
+
+            iter.seek(lower.to_be_bytes());
+
+            solutions.extend(std::iter::from_fn(|| iter_solutions(&mut iter)));
+            solutions
         } else {
             iter.seek(lower.to_be_bytes());
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
-                if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
-                    iter.next();
-                } else {
-                    break;
-                }
-            }
-        }
 
-        solutions.into_iter().next()
+            std::iter::from_fn(|| iter_solutions(&mut iter))
+                .take_while(|(tag, _)| u64::from_be_bytes(*tag) <= upper)
+                .collect()
+        }
+        .into_iter()
+        .next()
     }
 
     pub fn on_status_change(

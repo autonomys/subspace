@@ -11,13 +11,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
-use subspace_core_primitives::{FlatPieces, Piece, RootBlock, PIECE_SIZE};
+use subspace_core_primitives::{
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, RootBlock, PIECE_SIZE,
+};
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
-
-pub type PieceIndex = u64;
-pub(crate) type PieceOffset = u64;
 
 #[derive(Debug, Error)]
 pub enum PlotError {
@@ -44,12 +43,12 @@ struct Handlers {
 #[derive(Debug)]
 enum ReadRequests {
     ReadEncoding {
-        index: PieceIndex,
+        index_hash: PieceIndexHash,
         result_sender: mpsc::Sender<io::Result<Piece>>,
     },
     ReadEncodings {
         /// Can be from 0 to the `piece_count`
-        cursor_offset: u64,
+        piece_offset: PieceOffset,
         count: u64,
         /// Result is both:
         /// - Vector containing all of the pieces as contiguous block of memory
@@ -91,7 +90,7 @@ pub struct Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
-        let background_worker = BackgroundWorker::from_base_directory(base_directory.as_ref())?;
+        let background_worker = PlotWorker::from_base_directory(base_directory.as_ref())?;
 
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
@@ -127,7 +126,7 @@ impl Plot {
     }
 
     /// How many pieces are there in the plot
-    pub(crate) fn piece_count(&self) -> u64 {
+    pub(crate) fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
     }
 
@@ -137,15 +136,16 @@ impl Plot {
     }
 
     /// Reads a piece from plot by index
-    pub(crate) fn read(&self, index: PieceIndex) -> io::Result<Piece> {
+    pub(crate) fn read(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Piece> {
         let (result_sender, result_receiver) = mpsc::channel();
+        let index_hash = index_hash.into();
 
         self.inner
             .read_requests_sender
             .clone()
             .unwrap()
             .send(ReadRequests::ReadEncoding {
-                index,
+                index_hash,
                 result_sender,
             })
             .map_err(|error| {
@@ -245,8 +245,8 @@ impl Plot {
         }
     }
 
-    pub fn read_piece(&self, index: PieceIndex) -> io::Result<Vec<u8>> {
-        self.read(index)
+    pub fn read_piece(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Vec<u8>> {
+        self.read(index_hash)
             .map(|piece| <[u8; PIECE_SIZE]>::from(piece).to_vec())
     }
 
@@ -254,7 +254,7 @@ impl Plot {
     /// Returns pieces packed one after another in contiguous `Vec<u8>`
     pub(crate) fn read_pieces(
         &self,
-        cursor_offset: u64,
+        piece_offset: PieceOffset,
         count: u64,
     ) -> io::Result<(Vec<u8>, Vec<PieceIndex>)> {
         let (result_sender, result_receiver) = mpsc::channel();
@@ -264,7 +264,7 @@ impl Plot {
             .clone()
             .unwrap()
             .send(ReadRequests::ReadEncodings {
-                cursor_offset,
+                piece_offset,
                 count,
                 result_sender,
             })
@@ -306,44 +306,47 @@ impl WeakPlot {
 }
 
 #[derive(Debug)]
-pub(crate) struct IndexToOffsetDB {
+pub(crate) struct IndexHashToOffsetDB {
     inner: DB,
 }
 
-impl From<DB> for IndexToOffsetDB {
-    fn from(inner: DB) -> Self {
-        Self { inner }
+impl IndexHashToOffsetDB {
+    pub fn open_default(path: impl AsRef<Path>) -> Result<Self, PlotError> {
+        DB::open_default(path.as_ref())
+            .map(|inner| Self { inner })
+            .map_err(PlotError::IndexDbOpen)
     }
-}
 
-impl IndexToOffsetDB {
-    pub fn get(&self, key: u64) -> io::Result<Option<u64>> {
+    pub fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(key.to_be_bytes())
+            .get(&index_hash.to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
-                    .map(|val| TryInto::<[u8; 8]>::try_into(val).map(u64::from_be_bytes))
+                    .map(|val| <[u8; 8]>::try_from(val).map(PieceOffset::from_be_bytes))
                     .transpose()
                     .map_err(|_| io::Error::other("Offsets in rocksdb supposed to be 8 bytes long"))
             })
     }
 
-    pub fn put(&self, key: u64, value: u64) -> io::Result<()> {
+    pub fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
         self.inner
-            .put(key.to_be_bytes(), value.to_be_bytes())
+            .put(
+                &PieceIndexHash::from(index).to_bytes(),
+                offset.to_be_bytes(),
+            )
             .map_err(io::Error::other)
     }
 }
 
-struct BackgroundWorker {
+struct PlotWorker {
     plot: File,
-    piece_index_to_offset_db: IndexToOffsetDB,
+    piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index_file: File,
     piece_count: Arc<AtomicU64>,
 }
 
-impl BackgroundWorker {
+impl PlotWorker {
     pub fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -366,14 +369,13 @@ impl BackgroundWorker {
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
-        let piece_index_to_offset_db =
-            DB::open_default(base_directory.as_ref().join("plot-index-to-offset"))
-                .map(IndexToOffsetDB::from)
-                .map_err(PlotError::IndexDbOpen)?;
+        let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
+            base_directory.as_ref().join("plot-index-to-offset"),
+        )?;
 
         Ok(Self {
             plot,
-            piece_index_to_offset_db,
+            piece_index_hash_to_offset_db,
             piece_offset_to_index_file,
             piece_count,
         })
@@ -381,13 +383,15 @@ impl BackgroundWorker {
 
     pub fn read_encoding(
         &mut self,
-        piece_index: PieceIndex,
+        piece_index_hash: PieceIndexHash,
         mut buffer: impl AsMut<[u8]>,
     ) -> io::Result<()> {
         let offset = self
-            .piece_index_to_offset_db
-            .get(piece_index)?
-            .ok_or_else(|| io::Error::other(format!("Piece with {piece_index} not found")))?;
+            .piece_index_hash_to_offset_db
+            .get(piece_index_hash)?
+            .ok_or_else(|| {
+                io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
+            })?;
         self.plot.seek(SeekFrom::Start(offset))?;
         self.plot.read_exact(buffer.as_mut())
     }
@@ -398,15 +402,15 @@ impl BackgroundWorker {
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
         self.piece_offset_to_index_file.read_exact(&mut buf)?;
-        Ok(u64::from_be_bytes(buf))
+        Ok(PieceIndex::from_be_bytes(buf))
     }
 
-    fn put_piece_index(&mut self, offset: PieceOffset, index: PieceIndex) -> io::Result<()> {
+    fn put_piece_index(&mut self, offset: PieceOffset, piece_index: PieceIndex) -> io::Result<()> {
         self.piece_offset_to_index_file.seek(SeekFrom::Start(
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
         self.piece_offset_to_index_file
-            .write_all(&index.to_be_bytes())
+            .write_all(&piece_index.to_be_bytes())
     }
 
     pub fn do_plot(
@@ -432,26 +436,26 @@ impl BackgroundWorker {
 
                 match read_request {
                     ReadRequests::ReadEncoding {
-                        index,
+                        index_hash,
                         result_sender,
                     } => {
                         let mut buffer = Piece::default();
-                        let result = self.read_encoding(index, &mut buffer).map(|()| buffer);
+                        let result = self.read_encoding(index_hash, &mut buffer).map(|()| buffer);
                         let _ = result_sender.send(result);
                     }
                     ReadRequests::ReadEncodings {
-                        cursor_offset,
+                        piece_offset,
                         count,
                         result_sender,
                     } => {
                         let result = try {
                             self.plot
-                                .seek(SeekFrom::Start(cursor_offset * PIECE_SIZE as u64))?;
+                                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
                             let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
                             buffer.resize(buffer.capacity(), 0);
                             self.plot.read_exact(&mut buffer)?;
 
-                            let indexes = (cursor_offset..cursor_offset + count)
+                            let indexes = (piece_offset..piece_offset + count)
                                 .map(|offset| self.get_piece_index(offset))
                                 .collect::<io::Result<Vec<_>>>()?;
                             (buffer, indexes)
@@ -483,7 +487,7 @@ impl BackgroundWorker {
                     (0..new_piece_count).try_for_each(|i| {
                         let offset = current_piece_count + i;
                         let index = first_index + i;
-                        self.piece_index_to_offset_db.put(index, offset)?;
+                        self.piece_index_hash_to_offset_db.put(index, offset)?;
                         self.put_piece_index(offset, index)?;
                         Ok::<_, io::Error>(())
                     })?;
