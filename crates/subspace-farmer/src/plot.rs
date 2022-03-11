@@ -319,7 +319,7 @@ impl IndexHashToOffsetDB {
 
     pub fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&index_hash.to_bytes())
+            .get(&index_hash.0)
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -331,10 +331,7 @@ impl IndexHashToOffsetDB {
 
     pub fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
         self.inner
-            .put(
-                &PieceIndexHash::from(index).to_bytes(),
-                offset.to_be_bytes(),
-            )
+            .put(&PieceIndexHash::from(index).0, offset.to_be_bytes())
             .map_err(io::Error::other)
     }
 }

@@ -464,36 +464,18 @@ pub type PieceIndex = u64;
 
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PieceIndexHash(pub u64);
-
-impl From<[u8; 8]> for PieceIndexHash {
-    fn from(bytes: [u8; 8]) -> Self {
-        Self::from_bytes(bytes)
-    }
-}
-
-impl From<PieceIndexHash> for [u8; 8] {
-    fn from(hash: PieceIndexHash) -> Self {
-        hash.to_bytes()
-    }
-}
+pub struct PieceIndexHash(pub Sha256Hash);
 
 impl From<PieceIndex> for PieceIndexHash {
     fn from(index: PieceIndex) -> Self {
-        let hash = &crypto::sha256_hash(&index.to_be_bytes())[..8];
-        (*<&[u8; 8]>::try_from(hash).unwrap()).into()
+        Self::from_index(index)
     }
 }
 
 impl PieceIndexHash {
-    /// Get `PieceIndexHash` from bytes
-    pub fn from_bytes(bytes: [u8; 8]) -> Self {
-        Self(u64::from_be_bytes(bytes))
-    }
-
-    /// Convert `PieceIndexHash` to bytes
-    pub fn to_bytes(self) -> [u8; 8] {
-        self.0.to_be_bytes()
+    /// Constructs `PieceIndexHash` from `PieceIndex`
+    pub fn from_index(index: PieceIndex) -> Self {
+        Self(crypto::sha256_hash(&index.to_be_bytes()))
     }
 }
 
