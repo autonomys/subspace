@@ -475,7 +475,7 @@ impl From<PieceIndex> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(crypto::sha256_hash(&index.to_be_bytes()))
+        Self(crypto::sha256_hash(&index.to_le_bytes()))
     }
 }
 

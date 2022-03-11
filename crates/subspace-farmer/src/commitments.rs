@@ -133,7 +133,7 @@ impl Commitments {
                     .collect();
 
                 for (tag, index) in tags.iter().zip(indexes) {
-                    db.put(tag, index.to_be_bytes())
+                    db.put(tag, index.to_le_bytes())
                         .map_err(CommitmentError::CommitmentDb)?;
                 }
             }
@@ -247,7 +247,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let index = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_be_bytes(index.try_into().unwrap())));
+                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;
@@ -259,7 +259,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let index = iter.value().unwrap();
 
-                solutions.push((tag, u64::from_be_bytes(index.try_into().unwrap())));
+                solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
                 iter.next();
             }
         } else {
@@ -268,7 +268,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let index = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_be_bytes(index.try_into().unwrap())));
+                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;

@@ -323,7 +323,7 @@ impl IndexHashToOffsetDB {
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
-                    .map(|val| <[u8; 8]>::try_from(val).map(PieceOffset::from_be_bytes))
+                    .map(|val| <[u8; 8]>::try_from(val).map(PieceOffset::from_le_bytes))
                     .transpose()
                     .map_err(|_| io::Error::other("Offsets in rocksdb supposed to be 8 bytes long"))
             })
@@ -331,7 +331,7 @@ impl IndexHashToOffsetDB {
 
     pub fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
         self.inner
-            .put(&PieceIndexHash::from(index).0, offset.to_be_bytes())
+            .put(&PieceIndexHash::from(index).0, offset.to_le_bytes())
             .map_err(io::Error::other)
     }
 }
@@ -399,7 +399,7 @@ impl PlotWorker {
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
         self.piece_offset_to_index_file.read_exact(&mut buf)?;
-        Ok(PieceIndex::from_be_bytes(buf))
+        Ok(PieceIndex::from_le_bytes(buf))
     }
 
     fn put_piece_index(&mut self, offset: PieceOffset, piece_index: PieceIndex) -> io::Result<()> {
@@ -407,7 +407,7 @@ impl PlotWorker {
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
         self.piece_offset_to_index_file
-            .write_all(&piece_index.to_be_bytes())
+            .write_all(&piece_index.to_le_bytes())
     }
 
     pub fn do_plot(
