@@ -476,25 +476,22 @@ impl PlotWorker {
                 result_sender,
             }) = write_request
             {
-                // TODO: Update piece count on error
+                // TODO: Add error recovery
                 let result = try {
-                    let current_piece_count = self.piece_count.load(Ordering::Acquire);
+                    let current_piece_count = self.piece_count.load(Ordering::SeqCst);
                     self.plot
                         .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
                     self.plot.write_all(&encodings)?;
 
-                    let new_piece_count = (encodings.len() / PIECE_SIZE) as u64;
-                    (0..new_piece_count).try_for_each(|i| {
+                    let n_pieces = (encodings.len() / PIECE_SIZE) as u64;
+
+                    for i in 0..n_pieces {
                         let offset = current_piece_count + i;
                         let index = first_index + i;
                         self.piece_index_hash_to_offset_db.put(index, offset)?;
                         self.put_piece_index(offset, index)?;
-                        Ok::<_, io::Error>(())
-                    })?;
-
-                    // TODO: Should we release it on error?
-                    self.piece_count
-                        .fetch_add((encodings.len() / PIECE_SIZE) as u64, Ordering::Release);
+                        self.piece_count.fetch_add(1, Ordering::AcqRel);
+                    }
                 };
 
                 let _ = result_sender.send(result);
