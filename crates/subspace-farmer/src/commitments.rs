@@ -132,10 +132,7 @@ impl Commitments {
                     .map(|piece| subspace_solving::create_tag(piece, salt))
                     .collect();
 
-                for (tag, offset) in tags
-                    .iter()
-                    .zip(batch_start..batch_start + pieces_to_process)
-                {
+                for (tag, offset) in tags.iter().zip(batch_start..) {
                     db.put(tag, offset.to_le_bytes())
                         .map_err(CommitmentError::CommitmentDb)?;
                 }

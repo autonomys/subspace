@@ -93,7 +93,7 @@ pub struct Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
-        let background_worker = PlotWorker::from_base_directory(base_directory.as_ref())?;
+        let plot_worker = PlotWorker::from_base_directory(base_directory.as_ref())?;
 
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
@@ -105,9 +105,9 @@ impl Plot {
         let (write_requests_sender, write_requests_receiver) =
             mpsc::sync_channel::<WriteRequests>(100);
 
-        let piece_count = Arc::clone(&background_worker.piece_count);
+        let piece_count = Arc::clone(&plot_worker.piece_count);
         tokio::task::spawn_blocking(move || {
-            background_worker.do_plot(
+            plot_worker.do_plot(
                 any_requests_receiver,
                 read_requests_receiver,
                 write_requests_receiver,
@@ -336,7 +336,7 @@ impl WeakPlot {
 }
 
 #[derive(Debug)]
-pub(crate) struct IndexHashToOffsetDB {
+struct IndexHashToOffsetDB {
     inner: DB,
 }
 
@@ -408,11 +408,8 @@ impl PlotWorker {
         })
     }
 
-    pub fn read_encoding(
-        &mut self,
-        piece_index_hash: PieceIndexHash,
-        mut buffer: impl AsMut<[u8]>,
-    ) -> io::Result<()> {
+    pub fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
+        let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
             .get(piece_index_hash)?
@@ -420,7 +417,7 @@ impl PlotWorker {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
         self.plot.seek(SeekFrom::Start(offset))?;
-        self.plot.read_exact(buffer.as_mut())
+        self.plot.read_exact(buffer.as_mut()).map(|()| buffer)
     }
 
     fn get_piece_index(&mut self, offset: PieceOffset) -> io::Result<PieceIndex> {
@@ -466,9 +463,7 @@ impl PlotWorker {
                         index_hash,
                         result_sender,
                     } => {
-                        let mut buffer = Piece::default();
-                        let result = self.read_encoding(index_hash, &mut buffer).map(|()| buffer);
-                        let _ = result_sender.send(result);
+                        let _ = result_sender.send(self.read_encoding(index_hash));
                     }
                     ReadRequests::ReadEncodingWithIndex {
                         piece_offset,
