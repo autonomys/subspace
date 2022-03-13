@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, PieceOffset, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -132,8 +132,8 @@ impl Commitments {
                     .map(|piece| subspace_solving::create_tag(piece, salt))
                     .collect();
 
-                for (tag, index) in tags.iter().zip(batch_start..) {
-                    db.put(tag, index.to_le_bytes())
+                for (tag, offset) in tags.iter().zip(batch_start..) {
+                    db.put(tag, offset.to_le_bytes())
                         .map_err(CommitmentError::CommitmentDb)?;
                 }
             }
@@ -216,7 +216,12 @@ impl Commitments {
     }
 
     /// Finds the commitment/s falling in the range of the challenge
-    pub(crate) fn find_by_range(&self, target: Tag, range: u64, salt: Salt) -> Option<(Tag, u64)> {
+    pub(crate) fn find_by_range(
+        &self,
+        target: Tag,
+        range: u64,
+        salt: Salt,
+    ) -> Option<(Tag, PieceOffset)> {
         let db_entry = self.get_local_db_entry(&salt)?;
 
         let db_guard = db_entry.try_lock()?;
@@ -224,7 +229,7 @@ impl Commitments {
 
         let mut iter = db.raw_iterator();
 
-        let mut solutions: Vec<(Tag, u64)> = Vec::new();
+        let mut solutions = Vec::new();
 
         let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
         let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
@@ -240,29 +245,30 @@ impl Commitments {
             iter.seek_to_first();
             while let Some(tag) = iter.key() {
                 let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
+                let offset = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
+                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;
                 }
             }
+
             iter.seek(lower.to_be_bytes());
             while let Some(tag) = iter.key() {
                 let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
+                let offset = iter.value().unwrap();
 
-                solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
+                solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                 iter.next();
             }
         } else {
             iter.seek(lower.to_be_bytes());
             while let Some(tag) = iter.key() {
                 let tag = tag.try_into().unwrap();
-                let index = iter.value().unwrap();
+                let offset = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(index.try_into().unwrap())));
+                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;
