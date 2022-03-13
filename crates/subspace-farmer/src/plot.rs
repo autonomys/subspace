@@ -341,13 +341,13 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
-    pub fn open_default(path: impl AsRef<Path>) -> Result<Self, PlotError> {
+    fn open_default(path: impl AsRef<Path>) -> Result<Self, PlotError> {
         DB::open_default(path.as_ref())
             .map(|inner| Self { inner })
             .map_err(PlotError::IndexDbOpen)
     }
 
-    pub fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
+    fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
             .get(&index_hash.0)
             .map_err(io::Error::other)
@@ -359,7 +359,7 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    pub fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
+    fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
         self.inner
             .put(&PieceIndexHash::from(index).0, offset.to_le_bytes())
             .map_err(io::Error::other)
@@ -374,7 +374,7 @@ struct PlotWorker {
 }
 
 impl PlotWorker {
-    pub fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
+    fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
             .write(true)
@@ -408,7 +408,7 @@ impl PlotWorker {
         })
     }
 
-    pub fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
+    fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
         let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
@@ -437,7 +437,7 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    pub fn do_plot(
+    fn do_plot(
         mut self,
         any_requests_receiver: mpsc::Receiver<()>,
         read_requests_receiver: mpsc::Receiver<ReadRequests>,
