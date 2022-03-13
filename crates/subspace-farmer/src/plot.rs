@@ -69,13 +69,33 @@ enum WriteRequests {
     },
 }
 
+#[derive(Debug)]
+enum ControlRequests {
+    /// Signal that we have either read or write request
+    AnyRequest,
+    /// Signal worker to exit. At the time when plot worker is done and
+    /// dropped we will receive an update.
+    Exit(mpsc::SyncSender<()>),
+}
+
 struct Inner {
-    any_requests_sender: Option<mpsc::SyncSender<()>>,
+    control_requests_sender: Option<mpsc::SyncSender<ControlRequests>>,
     handlers: Handlers,
     read_requests_sender: Option<mpsc::SyncSender<ReadRequests>>,
     write_requests_sender: Option<mpsc::SyncSender<WriteRequests>>,
     plot_metadata_db: Option<Arc<DB>>,
     piece_count: Arc<AtomicU64>,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        if let Some(control_requests_sender) = self.control_requests_sender.take() {
+            let (notifier_sender, notifier_receiver) = mpsc::sync_channel(1);
+            if let Ok(()) = control_requests_sender.send(ControlRequests::Exit(notifier_sender)) {
+                let _ = notifier_receiver.recv();
+            }
+        }
+    }
 }
 
 /// `Plot` struct is an abstraction on top of both plot and tags database.
@@ -99,7 +119,8 @@ impl Plot {
             .map_err(PlotError::MetadataDbOpen)?;
 
         // Channel with at most single element to throttle loop below if there are no updates
-        let (any_requests_sender, any_requests_receiver) = mpsc::sync_channel::<()>(1);
+        let (control_requests_sender, control_requests_receiver) =
+            mpsc::sync_channel::<ControlRequests>(1);
         let (read_requests_sender, read_requests_receiver) =
             mpsc::sync_channel::<ReadRequests>(100);
         let (write_requests_sender, write_requests_receiver) =
@@ -108,14 +129,14 @@ impl Plot {
         let piece_count = Arc::clone(&plot_worker.piece_count);
         tokio::task::spawn_blocking(move || {
             plot_worker.do_plot(
-                any_requests_receiver,
+                control_requests_receiver,
                 read_requests_receiver,
                 write_requests_receiver,
             )
         });
 
         let inner = Inner {
-            any_requests_sender: Some(any_requests_sender),
+            control_requests_sender: Some(control_requests_sender),
             handlers: Handlers::default(),
             read_requests_sender: Some(read_requests_sender),
             write_requests_sender: Some(write_requests_sender),
@@ -159,7 +180,12 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
+        let _ = self
+            .inner
+            .control_requests_sender
+            .clone()
+            .unwrap()
+            .try_send(ControlRequests::AnyRequest);
 
         result_receiver.recv().map_err(|error| {
             io::Error::new(
@@ -204,7 +230,12 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
+        let _ = self
+            .inner
+            .control_requests_sender
+            .clone()
+            .unwrap()
+            .try_send(ControlRequests::AnyRequest);
 
         result_receiver.recv().map_err(|error| {
             io::Error::new(
@@ -275,7 +306,12 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
+        let _ = self
+            .inner
+            .control_requests_sender
+            .clone()
+            .unwrap()
+            .try_send(ControlRequests::AnyRequest);
 
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!(
@@ -306,7 +342,12 @@ impl Plot {
             })?;
 
         // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
+        let _ = self
+            .inner
+            .control_requests_sender
+            .clone()
+            .unwrap()
+            .try_send(ControlRequests::AnyRequest);
 
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!(
@@ -368,9 +409,25 @@ impl IndexHashToOffsetDB {
 
 struct PlotWorker {
     plot: File,
-    piece_index_hash_to_offset_db: IndexHashToOffsetDB,
+    piece_index_hash_to_offset_db: Option<IndexHashToOffsetDB>,
     piece_offset_to_index_file: File,
     piece_count: Arc<AtomicU64>,
+    drop_notifier: Option<mpsc::SyncSender<()>>,
+}
+
+impl Drop for PlotWorker {
+    fn drop(&mut self) {
+        if let Err(error) = self.plot.sync_all() {
+            error!("Failed to sync plot file before exit: {}", error);
+        }
+        if let Err(error) = self.piece_offset_to_index_file.sync_all() {
+            error!("Failed to sync piece index file before exit: {}", error);
+        }
+        drop(self.piece_index_hash_to_offset_db.take());
+        if let Some(drop_notifier) = self.drop_notifier.take() {
+            let _ = drop_notifier.send(());
+        }
+    }
 }
 
 impl PlotWorker {
@@ -396,11 +453,12 @@ impl PlotWorker {
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
-        let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
-            base_directory.as_ref().join("plot-index-to-offset"),
-        )?;
+        let piece_index_hash_to_offset_db =
+            IndexHashToOffsetDB::open_default(base_directory.as_ref().join("plot-index-to-offset"))
+                .map(Some)?;
 
         Ok(Self {
+            drop_notifier: None,
             plot,
             piece_index_hash_to_offset_db,
             piece_offset_to_index_file,
@@ -412,6 +470,8 @@ impl PlotWorker {
         let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
+            .as_ref()
+            .unwrap()
             .get(piece_index_hash)?
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
@@ -439,7 +499,7 @@ impl PlotWorker {
 
     fn do_plot(
         mut self,
-        any_requests_receiver: mpsc::Receiver<()>,
+        control_requests_receiver: mpsc::Receiver<ControlRequests>,
         read_requests_receiver: mpsc::Receiver<ReadRequests>,
         write_requests_receiver: mpsc::Receiver<WriteRequests>,
     ) {
@@ -447,8 +507,13 @@ impl PlotWorker {
         loop {
             if did_nothing {
                 // Wait for stuff to come in
-                if any_requests_receiver.recv().is_err() {
-                    break;
+                match control_requests_receiver.recv() {
+                    Ok(ControlRequests::AnyRequest) => (),
+                    Ok(ControlRequests::Exit(drop_notifier)) => {
+                        self.drop_notifier = Some(drop_notifier);
+                        return;
+                    }
+                    Err(_) => return,
                 }
             }
 
@@ -518,7 +583,10 @@ impl PlotWorker {
                         .zip(first_index..)
                         .take(encodings.len() / PIECE_SIZE)
                     {
-                        self.piece_index_hash_to_offset_db.put(index, offset)?;
+                        self.piece_index_hash_to_offset_db
+                            .as_ref()
+                            .unwrap()
+                            .put(index, offset)?;
                         self.put_piece_index(offset, index)?;
                         self.piece_count.fetch_add(1, Ordering::AcqRel);
                     }
@@ -526,10 +594,6 @@ impl PlotWorker {
 
                 let _ = result_sender.send(result);
             }
-        }
-
-        if let Err(error) = self.plot.sync_all() {
-            error!("Failed to sync plot file before exit: {}", error);
         }
     }
 }
