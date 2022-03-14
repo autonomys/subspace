@@ -30,7 +30,7 @@ impl ObjectMappings {
     }
 
     /// Retrieve mapping for object
-    pub(super) fn retrieve(
+    pub fn retrieve(
         &self,
         object_id: &Sha256Hash,
     ) -> Result<Option<GlobalObject>, ObjectMappingError> {
@@ -42,7 +42,7 @@ impl ObjectMappings {
     }
 
     /// Store object mappings in database
-    pub(super) fn store(
+    pub fn store(
         &self,
         object_mapping: &[(Sha256Hash, GlobalObject)],
     ) -> Result<(), ObjectMappingError> {

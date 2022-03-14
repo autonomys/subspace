@@ -141,6 +141,22 @@ fn main() -> std::result::Result<(), Error> {
                 ))
             })?;
         }
+        Some(Subcommand::ImportBlocksFromNetwork(cmd)) => {
+            let runner = cli.create_runner(cmd)?;
+            set_default_ss58_version(&runner.config().chain_spec);
+            runner.async_run(|config| {
+                let sc_service::PartialComponents {
+                    client,
+                    import_queue,
+                    task_manager,
+                    ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                Ok((
+                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
+                    task_manager,
+                ))
+            })?;
+        }
         Some(Subcommand::PurgeChain(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run(config.database))?
