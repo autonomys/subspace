@@ -416,7 +416,8 @@ impl PlotWorker {
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
-        self.plot.seek(SeekFrom::Start(offset))?;
+        self.plot
+            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
         self.plot.read_exact(buffer.as_mut()).map(|()| buffer)
     }
 
@@ -471,7 +472,8 @@ impl PlotWorker {
                     } => {
                         let result = try {
                             let mut buffer = Piece::default();
-                            self.plot.seek(SeekFrom::Start(piece_offset))?;
+                            self.plot
+                                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
                             self.plot.read_exact(buffer.as_mut())?;
                             let index = self.get_piece_index(piece_offset)?;
                             (buffer, index)
