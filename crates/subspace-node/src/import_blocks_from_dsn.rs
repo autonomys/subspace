@@ -15,6 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
+use futures::stream::FuturesOrdered;
+use futures::StreamExt;
 use log::info;
 use parity_scale_codec::Encode;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
@@ -160,30 +162,23 @@ where
     // Collection is intentional to make sure downloading starts right away and not lazily
     #[allow(clippy::needless_collect)]
     for segment_index in 0.. {
-        let source_pieces_futs = (0..merkle_num_leaves / 2)
+        let source_pieces_results = (0..merkle_num_leaves / 2)
             .map(|piece_position| {
                 let piece_index: PieceIndex = segment_index * merkle_num_leaves + piece_position;
 
-                // Start downloading in parallel
-                tokio::spawn({
-                    let node = node.clone();
-
-                    async move {
-                        node.get_value(multimess::create_piece_index_fake_multihash(piece_index))
-                            .await
-                    }
-                })
+                node.get_value(multimess::create_piece_index_fake_multihash(piece_index))
             })
-            .collect::<Vec<_>>();
+            .collect::<FuturesOrdered<_>>()
+            .collect::<Vec<_>>()
+            .await;
 
         let mut pieces = vec![None::<Piece>; merkle_num_leaves as usize];
         let mut found_one_piece = false;
 
-        for (source_piece_fut, piece) in source_pieces_futs.into_iter().zip(pieces.iter_mut()) {
-            let maybe_piece = source_piece_fut
-                .await
-                .expect("Must never panic")
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+        for (source_piece_result, piece) in source_pieces_results.into_iter().zip(pieces.iter_mut())
+        {
+            let maybe_piece =
+                source_piece_result.map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
             if let Some(piece_vec) = maybe_piece {
                 found_one_piece = true;
