@@ -141,7 +141,7 @@ fn main() -> std::result::Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ImportBlocksFromNetwork(cmd)) => {
+        Some(Subcommand::ImportBlocksFromDsn(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {

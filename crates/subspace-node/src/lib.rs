@@ -17,9 +17,9 @@
 //! Subspace Node library.
 
 mod chain_spec;
-mod import_blocks_from_network;
+mod import_blocks_from_dsn;
 
-pub use crate::import_blocks_from_network::ImportBlocksFromNetworkCmd;
+pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -67,8 +67,8 @@ pub enum Subcommand {
     /// Import blocks.
     ImportBlocks(sc_cli::ImportBlocksCmd),
 
-    /// Import blocks from network.
-    ImportBlocksFromNetwork(ImportBlocksFromNetworkCmd),
+    /// Import blocks from Subspace Network DSN.
+    ImportBlocksFromDsn(ImportBlocksFromDsnCmd),
 
     /// Remove the whole chain.
     PurgeChain(sc_cli::PurgeChainCmd),

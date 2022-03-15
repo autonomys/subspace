@@ -36,7 +36,7 @@ type PieceIndex = u64;
 
 /// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
 #[derive(Debug, Parser)]
-pub struct ImportBlocksFromNetworkCmd {
+pub struct ImportBlocksFromDsnCmd {
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
     #[clap(long)]
     pub bootstrap_node: Vec<Multiaddr>,
@@ -56,7 +56,7 @@ pub struct ImportBlocksFromNetworkCmd {
     pub import_params: ImportParams,
 }
 
-impl ImportBlocksFromNetworkCmd {
+impl ImportBlocksFromDsnCmd {
     /// Run the import-blocks command
     pub async fn run<B, C, IQ>(&self, client: Arc<C>, import_queue: IQ) -> sc_cli::Result<()>
     where
@@ -70,7 +70,7 @@ impl ImportBlocksFromNetworkCmd {
     }
 }
 
-impl CliConfiguration for ImportBlocksFromNetworkCmd {
+impl CliConfiguration for ImportBlocksFromDsnCmd {
     fn shared_params(&self) -> &SharedParams {
         &self.shared_params
     }
