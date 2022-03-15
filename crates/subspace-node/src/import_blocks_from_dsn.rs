@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
-use log::{info, warn};
+use log::info;
 use parity_scale_codec::Encode;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -80,21 +80,26 @@ impl CliConfiguration for ImportBlocksFromDsnCmd {
     }
 }
 
-struct WaitLink {
-    imported_blocks: u64,
-    has_error: bool,
+struct WaitLinkError<B: BlockT> {
+    error: BlockImportError,
+    hash: B::Hash,
 }
 
-impl WaitLink {
-    fn new() -> WaitLink {
-        WaitLink {
+struct WaitLink<B: BlockT> {
+    imported_blocks: u64,
+    error: Option<WaitLinkError<B>>,
+}
+
+impl<B: BlockT> WaitLink<B> {
+    fn new() -> Self {
+        Self {
             imported_blocks: 0,
-            has_error: false,
+            error: None,
         }
     }
 }
 
-impl<B: BlockT> Link<B> for WaitLink {
+impl<B: BlockT> Link<B> for WaitLink<B> {
     fn blocks_processed(
         &mut self,
         imported: usize,
@@ -108,12 +113,8 @@ impl<B: BlockT> Link<B> for WaitLink {
         self.imported_blocks += imported as u64;
 
         for result in results {
-            if let (Err(err), hash) = result {
-                warn!(
-                    "There was an error importing block with hash {:?}: {}",
-                    hash, err
-                );
-                self.has_error = true;
+            if let (Err(error), hash) = result {
+                self.error.replace(WaitLinkError { error, hash });
                 break;
             }
         }
@@ -257,10 +258,10 @@ where
         })
         .await;
 
-        if link.has_error {
+        if let Some(WaitLinkError { error, hash }) = &link.error {
             return Err(sc_service::Error::Other(format!(
-                "Stopping after #{} blocks because of an error",
-                link.imported_blocks
+                "Stopping block import after #{} blocks on {} because of an error: {}",
+                link.imported_blocks, hash, error
             )));
         }
     }
