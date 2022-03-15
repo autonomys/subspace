@@ -99,14 +99,22 @@ pub(crate) async fn farm(
             let plot = plot.clone();
 
             move |key| {
-                if key.code() != MultihashCode::Piece as u64 {
-                    return None;
+                let code = key.code();
+
+                if code == u64::from(MultihashCode::Piece)
+                    || code == u64::from(MultihashCode::PieceIndex)
+                {
+                    let piece_index =
+                        u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
+                    let mut piece = plot.read_piece(piece_index).ok()?;
+
+                    subspace_codec
+                        .decode(&mut piece, piece_index)
+                        .expect("Decoding of local pieces must never fail");
+                    Some(piece)
+                } else {
+                    None
                 }
-
-                let piece_index =
-                    u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
-
-                plot.read_piece(piece_index).ok()
             }
         }),
         allow_non_globals_in_dht: true,
