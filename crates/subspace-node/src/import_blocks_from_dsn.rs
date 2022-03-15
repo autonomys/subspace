@@ -160,7 +160,6 @@ where
 
     // TODO: Check latest known root block on chain and skip downloading of corresponding segments
     // Collection is intentional to make sure downloading starts right away and not lazily
-    #[allow(clippy::needless_collect)]
     for segment_index in 0.. {
         let source_pieces_results = (0..merkle_num_leaves / 2)
             .map(|piece_position| {
