@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, RootBlock, PIECE_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, RootBlock, Sha256Hash, PIECE_SIZE,
 };
 use thiserror::Error;
 
@@ -119,8 +119,11 @@ pub struct Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
-        let plot_worker = PlotWorker::from_base_directory(base_directory.as_ref())?;
+    pub fn open_or_create<B: AsRef<Path>>(
+        base_directory: B,
+        address: Sha256Hash,
+    ) -> Result<Plot, PlotError> {
+        let plot_worker = PlotWorker::from_base_directory(base_directory.as_ref(), address)?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
@@ -342,18 +345,19 @@ impl WeakPlot {
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
+    address: Sha256Hash,
 }
 
 impl IndexHashToOffsetDB {
-    fn open_default(path: impl AsRef<Path>) -> Result<Self, PlotError> {
+    fn open_default(path: impl AsRef<Path>, address: Sha256Hash) -> Result<Self, PlotError> {
         DB::open_default(path.as_ref())
-            .map(|inner| Self { inner })
+            .map(|inner| Self { inner, address })
             .map_err(PlotError::IndexDbOpen)
     }
 
-    fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
+    fn get(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&index_hash.0)
+            .get(&index_hash.into().distance(self.address))
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -363,9 +367,10 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    fn put(&self, index: PieceIndex, offset: PieceOffset) -> io::Result<()> {
+    fn put(&self, index_hash: impl Into<PieceIndexHash>, offset: PieceOffset) -> io::Result<()> {
+        let distance = index_hash.into().distance(self.address);
         self.inner
-            .put(&PieceIndexHash::from(index).0, offset.to_le_bytes())
+            .put(&distance, offset.to_le_bytes())
             .map_err(io::Error::other)
     }
 }
@@ -378,7 +383,10 @@ struct PlotWorker {
 }
 
 impl PlotWorker {
-    fn from_base_directory(base_directory: impl AsRef<Path>) -> Result<Self, PlotError> {
+    fn from_base_directory(
+        base_directory: impl AsRef<Path>,
+        address: Sha256Hash,
+    ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
             .write(true)
@@ -402,6 +410,7 @@ impl PlotWorker {
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
+            address,
         )?;
 
         Ok(Self {

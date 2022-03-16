@@ -477,6 +477,14 @@ impl PieceIndexHash {
     pub fn from_index(index: PieceIndex) -> Self {
         Self(crypto::sha256_hash(&index.to_le_bytes()))
     }
+
+    /// Calculates the distance between piece index and farmer address.
+    pub fn distance(mut self, address: Sha256Hash) -> Sha256Hash {
+        for (hash_byte, address_byte) in self.0.iter_mut().zip(address) {
+            *hash_byte = hash_byte.wrapping_sub(address_byte);
+        }
+        self.0
+    }
 }
 
 /// Farmer solution for slot challenge.

@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::{PublicKey, Sha256Hash};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
@@ -28,13 +28,23 @@ pub(crate) async fn farm(
     reward_address: Option<PublicKey>,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
+    let identity = Identity::open_or_create(&base_directory)?;
+    let address: Sha256Hash = identity
+        .public_key()
+        .as_ref()
+        .to_vec()
+        .try_into()
+        .expect("Length of public key is always correct");
+
+    let reward_address = reward_address.unwrap_or_else(|| address.into());
+
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
 
-        move || Plot::open_or_create(&base_directory)
+        move || Plot::open_or_create(&base_directory, address)
     });
     let plot = plot_fut.await.unwrap()?;
 
@@ -61,18 +71,6 @@ pub(crate) async fn farm(
         .farmer_metadata()
         .await
         .map_err(|error| anyhow::Error::msg(error.to_string()))?;
-
-    let identity = Identity::open_or_create(&base_directory)?;
-
-    let reward_address = reward_address.unwrap_or_else(|| {
-        identity
-            .public_key()
-            .as_ref()
-            .to_vec()
-            .try_into()
-            .map(From::<[u8; 32]>::from)
-            .expect("Length of public key is always correct")
-    });
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 

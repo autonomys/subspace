@@ -26,7 +26,15 @@ async fn plotting_happy_path() {
     init();
 
     let base_directory = TempDir::new().unwrap();
-    let plot = Plot::open_or_create(&base_directory).unwrap();
+
+    let identity =
+        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
+
+    let plot = Plot::open_or_create(
+        &base_directory,
+        identity.public_key().as_ref().to_vec().try_into().unwrap(),
+    )
+    .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -44,9 +52,6 @@ async fn plotting_happy_path() {
         .farmer_metadata()
         .await
         .expect("Could not retrieve farmer_metadata");
-
-    let identity =
-        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
@@ -134,7 +139,14 @@ async fn plotting_continue() {
     init();
 
     let base_directory = TempDir::new().unwrap();
-    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let identity =
+        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
+
+    let plot = Plot::open_or_create(
+        &base_directory,
+        identity.public_key().as_ref().to_vec().try_into().unwrap(),
+    )
+    .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -152,9 +164,6 @@ async fn plotting_continue() {
         .farmer_metadata()
         .await
         .expect("Could not retrieve farmer_metadata");
-
-    let identity =
-        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
