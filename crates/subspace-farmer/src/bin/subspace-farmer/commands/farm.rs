@@ -26,6 +26,7 @@ pub(crate) async fn farm(
     node_rpc_url: &str,
     ws_server_listen_addr: SocketAddr,
     reward_address: Option<PublicKey>,
+    plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
     let identity = Identity::open_or_create(&base_directory)?;
@@ -44,7 +45,7 @@ pub(crate) async fn farm(
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
 
-        move || Plot::open_or_create(&base_directory, address)
+        move || Plot::open_or_create(&base_directory, address, plot_size)
     });
     let plot = plot_fut.await.unwrap()?;
 

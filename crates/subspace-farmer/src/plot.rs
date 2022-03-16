@@ -122,8 +122,10 @@ impl Plot {
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: Sha256Hash,
+        max_piece_count: Option<u64>,
     ) -> Result<Plot, PlotError> {
-        let plot_worker = PlotWorker::from_base_directory(base_directory.as_ref(), address)?;
+        let plot_worker =
+            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
@@ -349,6 +351,12 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
+    fn max_distance(&self) -> Option<Sha256Hash> {
+        let mut iter = self.inner.raw_iterator();
+        iter.seek_to_last();
+        iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap())
+    }
+
     fn open_default(path: impl AsRef<Path>, address: Sha256Hash) -> Result<Self, PlotError> {
         DB::open_default(path.as_ref())
             .map(|inner| Self { inner, address })
@@ -367,7 +375,26 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    fn put(&self, index_hash: impl Into<PieceIndexHash>, offset: PieceOffset) -> io::Result<()> {
+    fn remove_farest(&mut self) -> io::Result<Option<PieceOffset>> {
+        let max_distance = match self.max_distance() {
+            Some(max_distance) => max_distance,
+            None => return Ok(None),
+        };
+        let result = self
+            .inner
+            .get(max_distance)
+            .map_err(io::Error::other)?
+            .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
+            .map(PieceOffset::from_le_bytes);
+        self.inner.delete(max_distance).map_err(io::Error::other)?;
+        Ok(result)
+    }
+
+    fn put(
+        &mut self,
+        index_hash: impl Into<PieceIndexHash>,
+        offset: PieceOffset,
+    ) -> io::Result<()> {
         let distance = index_hash.into().distance(self.address);
         self.inner
             .put(&distance, offset.to_le_bytes())
@@ -375,17 +402,24 @@ impl IndexHashToOffsetDB {
     }
 }
 
+fn get_piece_amount(_base_directory: impl AsRef<Path>) -> Result<u64, PlotError> {
+    // TODO: implement heuristics to calculate maximum number of pieces from disk space available
+    Ok(u64::MAX)
+}
+
 struct PlotWorker {
     plot: File,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: File,
     piece_count: Arc<AtomicU64>,
+    max_piece_count: u64,
 }
 
 impl PlotWorker {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
         address: Sha256Hash,
+        max_piece_count: Option<u64>,
     ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -408,6 +442,12 @@ impl PlotWorker {
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
+        let max_piece_count = if let Some(max_piece_count) = max_piece_count {
+            max_piece_count
+        } else {
+            get_piece_amount(base_directory.as_ref())? + piece_count.load(Ordering::Relaxed)
+        };
+
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
             address,
@@ -418,6 +458,7 @@ impl PlotWorker {
             piece_index_hash_to_offset_db,
             piece_offset_to_index,
             piece_count,
+            max_piece_count,
         })
     }
 
@@ -451,9 +492,53 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
+    fn try_write_piece(&mut self, piece: &[u8], index: PieceIndex) -> io::Result<()> {
+        // TODO: Add error recovery
+        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+        if current_piece_count < self.max_piece_count {
+            let piece_offset: PieceOffset = current_piece_count;
+
+            self.plot
+                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+            self.plot.write_all(piece)?;
+
+            self.piece_index_hash_to_offset_db
+                .put(index, piece_offset)?;
+            self.put_piece_index(piece_offset, index)?;
+            self.piece_count.fetch_add(1, Ordering::AcqRel);
+            return Ok(());
+        }
+
+        let index_hash = PieceIndexHash::from(index);
+        // Check if piece is already out of plot range or if it is already in the plot
+        if index_hash.distance(self.piece_index_hash_to_offset_db.address)
+            >= self.piece_index_hash_to_offset_db.max_distance().expect(
+                "Plot already has at least one piece, therefore database should have entries. QED",
+            )
+            || self
+                .piece_index_hash_to_offset_db
+                .get(index_hash)?
+                .is_some()
+        {
+            return Ok(());
+        }
+
+        let offset = self
+            .piece_index_hash_to_offset_db
+            .remove_farest()?
+            .expect("Should be always present as plot is non-empty");
+        self.plot
+            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.plot.write_all(piece)?;
+
+        self.piece_index_hash_to_offset_db.put(index, offset)?;
+        self.put_piece_index(offset, index)?;
+
+        Ok(())
+    }
+
     fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
-
         let mut exit_result_sender = None;
 
         // Process as many high priority as possible, interleaved with single low priority request
@@ -509,23 +594,10 @@ impl PlotWorker {
                             first_index,
                             result_sender,
                         } => {
-                            // TODO: Add error recovery
-                            let result = try {
-                                let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-                                self.plot.seek(SeekFrom::Start(
-                                    current_piece_count * PIECE_SIZE as u64,
-                                ))?;
-                                self.plot.write_all(&encodings)?;
-
-                                for (offset, index) in (current_piece_count..)
-                                    .zip(first_index..)
-                                    .take(encodings.len() / PIECE_SIZE)
-                                {
-                                    self.piece_index_hash_to_offset_db.put(index, offset)?;
-                                    self.put_piece_index(offset, index)?;
-                                    self.piece_count.fetch_add(1, Ordering::AcqRel);
-                                }
-                            };
+                            let result = encodings
+                                .chunks_exact(PIECE_SIZE)
+                                .zip(first_index..)
+                                .try_for_each(|(piece, index)| self.try_write_piece(piece, index));
 
                             let _ = result_sender.send(result);
                         }

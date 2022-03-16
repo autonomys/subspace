@@ -80,6 +80,13 @@ enum Command {
         /// Address for farming rewards
         #[clap(long, parse(try_from_str = parse_reward_address))]
         reward_address: Option<PublicKey>,
+        // TODO: Add human friendly parsing. Something like this should do:
+        // https://www.gnu.org/software/coreutils/manual/html_node/Block-size.html
+        //
+        /// Number of plot pieces to store on disk for farming. You can calculate plot size by
+        /// multiplying it by 4 kilobytes
+        #[clap(long)]
+        plot_size: Option<u64>,
     },
 }
 
@@ -113,6 +120,7 @@ async fn main() -> Result<()> {
             node_rpc_url,
             ws_server_listen_addr,
             reward_address,
+            plot_size,
         } => {
             let path = utils::get_path(custom_path);
             commands::farm(
@@ -122,6 +130,7 @@ async fn main() -> Result<()> {
                 &node_rpc_url,
                 ws_server_listen_addr,
                 reward_address,
+                plot_size,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
             )
             .await?;

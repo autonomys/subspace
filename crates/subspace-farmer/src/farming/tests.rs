@@ -30,6 +30,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let plot = Plot::open_or_create(
         &base_directory,
         identity.public_key().as_ref().to_vec().try_into().unwrap(),
+        None,
     )
     .unwrap();
 
