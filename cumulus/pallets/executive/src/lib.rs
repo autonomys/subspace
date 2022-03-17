@@ -239,7 +239,6 @@ impl<
 			AllPalletsWithSystem,
 			COnRuntimeUpgrade,
 		>::initialize_block(header);
-		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 	}
 
 	// TODO: https://github.com/paritytech/substrate/issues/10711
@@ -307,6 +306,7 @@ impl<
 
 	/// Wrapped `frame_executive::Executive::finalize_block`.
 	pub fn finalize_block() -> System::Header {
+		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 		frame_executive::Executive::<
 			System,
 			Block,
@@ -347,6 +347,7 @@ impl<
 	///
 	/// Note the storage root in the end.
 	pub fn apply_extrinsic(uxt: Block::Extrinsic) -> ApplyExtrinsicResult {
+		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 		let res = frame_executive::Executive::<
 			System,
 			Block,
@@ -355,8 +356,6 @@ impl<
 			AllPalletsWithSystem,
 			COnRuntimeUpgrade,
 		>::apply_extrinsic(uxt);
-		// TODO: when the extrinsic fails, the storage root does not change, thus skip it?
-		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 		res
 	}
 
