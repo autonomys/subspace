@@ -359,6 +359,12 @@ impl<
 		res
 	}
 
+	/// Variant of [`apply_extrinsic`] to return the storage root after applying the extrinsic.
+	pub fn apply_extrinsic_with_post_state_root(uxt: Block::Extrinsic) -> Vec<u8> {
+		let _ = Self::apply_extrinsic(uxt);
+		Self::storage_root()
+	}
+
 	// TODO: https://github.com/paritytech/substrate/issues/10711
 	fn final_checks(header: &System::Header) {
 		sp_tracing::enter_span!(sp_tracing::Level::TRACE, "final_checks");
