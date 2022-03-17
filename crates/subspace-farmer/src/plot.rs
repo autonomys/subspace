@@ -4,6 +4,7 @@ mod tests;
 use event_listener_primitives::{Bag, HandlerId};
 use log::error;
 use rocksdb::DB;
+use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -431,67 +432,104 @@ impl PlotWorker {
     }
 
     fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
-        while let Ok(RequestWithPriority { request, priority }) = requests_receiver.recv() {
-            match request {
-                Request::ReadEncoding {
-                    index_hash,
-                    result_sender,
-                } => {
-                    let _ = result_sender.send(self.read_encoding(index_hash));
-                }
-                Request::ReadEncodingWithIndex {
-                    piece_offset,
-                    result_sender,
-                } => {
-                    let result = try {
-                        let mut buffer = Piece::default();
-                        self.plot
-                            .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-                        self.plot.read_exact(buffer.as_mut())?;
-                        let index = self.get_piece_index(piece_offset)?;
-                        (buffer, index)
-                    };
-                    let _ = result_sender.send(result);
-                }
-                Request::ReadEncodings {
-                    piece_offset,
-                    count,
-                    result_sender,
-                } => {
-                    let result = try {
-                        self.plot
-                            .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-                        let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
-                        buffer.resize(buffer.capacity(), 0);
-                        self.plot.read_exact(&mut buffer)?;
-                        buffer
-                    };
-                    let _ = result_sender.send(result);
-                }
-                Request::WriteEncodings {
-                    encodings,
-                    first_index,
-                    result_sender,
-                } => {
-                    // TODO: Add error recovery
-                    let result = try {
-                        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-                        self.plot
-                            .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
-                        self.plot.write_all(&encodings)?;
+        let mut low_priority_requests = VecDeque::new();
 
-                        for (offset, index) in (current_piece_count..)
-                            .zip(first_index..)
-                            .take(encodings.len() / PIECE_SIZE)
-                        {
-                            self.piece_index_hash_to_offset_db.put(index, offset)?;
-                            self.put_piece_index(offset, index)?;
-                            self.piece_count.fetch_add(1, Ordering::AcqRel);
+        // Process as many high priority as possible, interleaved with single low priority request
+        // in case no high priority requests are available.
+        while let Ok(request_with_priority) = requests_receiver.recv() {
+            let RequestWithPriority {
+                mut request,
+                mut priority,
+            } = request_with_priority;
+
+            loop {
+                if matches!(priority, RequestPriority::Low) {
+                    low_priority_requests.push_back(request);
+                } else {
+                    match request {
+                        Request::ReadEncoding {
+                            index_hash,
+                            result_sender,
+                        } => {
+                            let _ = result_sender.send(self.read_encoding(index_hash));
                         }
-                    };
+                        Request::ReadEncodingWithIndex {
+                            piece_offset,
+                            result_sender,
+                        } => {
+                            let result = try {
+                                let mut buffer = Piece::default();
+                                self.plot
+                                    .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+                                self.plot.read_exact(buffer.as_mut())?;
+                                let index = self.get_piece_index(piece_offset)?;
+                                (buffer, index)
+                            };
+                            let _ = result_sender.send(result);
+                        }
+                        Request::ReadEncodings {
+                            piece_offset,
+                            count,
+                            result_sender,
+                        } => {
+                            let result = try {
+                                self.plot
+                                    .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+                                let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
+                                buffer.resize(buffer.capacity(), 0);
+                                self.plot.read_exact(&mut buffer)?;
+                                buffer
+                            };
+                            let _ = result_sender.send(result);
+                        }
+                        Request::WriteEncodings {
+                            encodings,
+                            first_index,
+                            result_sender,
+                        } => {
+                            // TODO: Add error recovery
+                            let result = try {
+                                let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+                                self.plot.seek(SeekFrom::Start(
+                                    current_piece_count * PIECE_SIZE as u64,
+                                ))?;
+                                self.plot.write_all(&encodings)?;
 
-                    let _ = result_sender.send(result);
+                                for (offset, index) in (current_piece_count..)
+                                    .zip(first_index..)
+                                    .take(encodings.len() / PIECE_SIZE)
+                                {
+                                    self.piece_index_hash_to_offset_db.put(index, offset)?;
+                                    self.put_piece_index(offset, index)?;
+                                    self.piece_count.fetch_add(1, Ordering::AcqRel);
+                                }
+                            };
+
+                            let _ = result_sender.send(result);
+                        }
+                    }
                 }
+
+                match requests_receiver.try_recv() {
+                    Ok(some_request_with_priority) => {
+                        request = some_request_with_priority.request;
+                        priority = some_request_with_priority.priority;
+                        continue;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        // If no high priority requests available, process one low priority request.
+                        if let Some(low_priority_request) = low_priority_requests.pop_front() {
+                            request = low_priority_request;
+                            priority = RequestPriority::High;
+                            continue;
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        // Ignore
+                    }
+                }
+
+                break;
             }
         }
 
