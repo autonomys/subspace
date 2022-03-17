@@ -14,6 +14,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, RootBlock, Sha256Hash, PIECE_SIZE,
+    SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 
@@ -401,9 +402,12 @@ impl IndexHashToOffsetDB {
     }
 }
 
-fn get_piece_amount(_base_directory: impl AsRef<Path>) -> Result<u64, PlotError> {
-    // TODO: implement heuristics to calculate maximum number of pieces from disk space available
-    Ok(u64::MAX)
+fn get_piece_amount(base_directory: impl AsRef<Path>) -> u64 {
+    let available_bytes = fs2::available_space(base_directory)
+        .expect("Failed to calculate maximum number of pieces to store");
+    let bytes_per_piece =
+        PIECE_SIZE as usize + SHA256_HASH_SIZE + std::mem::size_of::<PieceOffset>() * 2 + 100;
+    available_bytes / bytes_per_piece as u64
 }
 
 struct PlotWorker {
@@ -444,7 +448,7 @@ impl PlotWorker {
         let max_piece_count = if let Some(max_piece_count) = max_piece_count {
             max_piece_count
         } else {
-            get_piece_amount(base_directory.as_ref())? + piece_count.load(Ordering::Relaxed)
+            get_piece_amount(&base_directory) + piece_count.load(Ordering::Relaxed)
         };
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
