@@ -254,7 +254,7 @@ where
 	let params = StartExecutorParams {
 		announce_block,
 		client: client.clone(),
-		spawner: task_manager.spawn_handle(),
+		spawner: Box::new(task_manager.spawn_handle()),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
 		parachain_consensus,

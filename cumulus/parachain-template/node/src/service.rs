@@ -313,7 +313,7 @@ where
 		client: client.clone(),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
-		spawner,
+		spawner: Box::new(spawner),
 		parachain_consensus,
 		import_queue,
 		transaction_pool,

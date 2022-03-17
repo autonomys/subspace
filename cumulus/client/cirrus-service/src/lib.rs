@@ -63,7 +63,7 @@ pub struct StartExecutorParams<
 > {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-	pub spawner: Spawner,
+	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<RClient>,
 	pub task_manager: &'a mut TaskManager,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
