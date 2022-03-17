@@ -2,33 +2,36 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
 use std::mem;
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{PublicKey, Sha256Hash};
+use subspace_core_primitives::Sha256Hash;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_solving::SubspaceCodec;
 
+use crate::FarmingArgs;
+
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(
-    base_directory: PathBuf,
-    bootstrap_nodes: Vec<Multiaddr>,
-    listen_on: Vec<Multiaddr>,
-    node_rpc_url: &str,
-    ws_server_listen_addr: SocketAddr,
-    reward_address: Option<PublicKey>,
-    plot_size: Option<u64>,
+    FarmingArgs {
+        bootstrap_nodes,
+        custom_path,
+        listen_on,
+        node_rpc_url,
+        ws_server_listen_addr,
+        reward_address,
+        plot_size,
+    }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
+    let base_directory = crate::utils::get_path(custom_path);
+
     let identity = Identity::open_or_create(&base_directory)?;
     let address: Sha256Hash = identity
         .public_key()
@@ -66,7 +69,7 @@ pub(crate) async fn farm(
     .await??;
 
     info!("Connecting to node at {}", node_rpc_url);
-    let client = WsRpc::new(node_rpc_url).await?;
+    let client = WsRpc::new(&node_rpc_url).await?;
 
     let farmer_metadata = client
         .farmer_metadata()
