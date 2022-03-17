@@ -37,7 +37,7 @@ use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
 use sp_core::{Pair, H256};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256};
+use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
 use substrate_test_client::{
 	BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -53,6 +53,12 @@ pub use sp_keyring::Sr25519Keyring as Keyring;
 
 /// The signature of the announce block fn.
 pub type WrapAnnounceBlockFn = Arc<dyn Fn(Hash, Option<Vec<u8>>) + Send + Sync>;
+
+/// The backend type used by the test service.
+pub type Backend = TFullBackend<Block>;
+
+/// Code executor for the test service.
+pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 
 /// Native executor instance.
 pub struct RuntimeExecutor;
@@ -147,6 +153,8 @@ async fn start_node_impl<RB>(
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<Client>,
+	Arc<Backend>,
+	Arc<CodeExecutor>,
 	Arc<NetworkService<Block, H256>>,
 	RpcHandlers,
 )>
@@ -271,7 +279,7 @@ where
 
 	start_network.start_network();
 
-	Ok((task_manager, client, network, rpc_handlers))
+	Ok((task_manager, client, backend, code_executor, network, rpc_handlers))
 }
 
 /// A Cumulus test node instance used for testing.
@@ -280,6 +288,10 @@ pub struct TestNode {
 	pub task_manager: TaskManager,
 	/// Client's instance.
 	pub client: Arc<Client>,
+	/// Client backend.
+	pub backend: Arc<Backend>,
+	/// Code executor.
+	pub code_executor: Arc<CodeExecutor>,
 	/// Node's network.
 	pub network: Arc<NetworkService<Block, H256>>,
 	/// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node"
@@ -426,20 +438,21 @@ impl TestNodeBuilder {
 			format!("{} (primary chain)", relay_chain_config.network.node_name);
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
-		let (task_manager, client, network, rpc_handlers) = start_node_impl(
-			parachain_config,
-			self.collator_key,
-			relay_chain_config,
-			self.wrap_announce_block,
-			|_| Ok(Default::default()),
-		)
-		.await
-		.expect("could not create Cumulus test service");
+		let (task_manager, client, backend, code_executor, network, rpc_handlers) =
+			start_node_impl(
+				parachain_config,
+				self.collator_key,
+				relay_chain_config,
+				self.wrap_announce_block,
+				|_| Ok(Default::default()),
+			)
+			.await
+			.expect("could not create Cumulus test service");
 
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
-		TestNode { task_manager, client, network, addr, rpc_handlers }
+		TestNode { task_manager, client, backend, code_executor, network, addr, rpc_handlers }
 	}
 }
 
@@ -549,14 +562,24 @@ impl TestNode {
 		self.client.wait_for_blocks(count)
 	}
 
-	/// Send an extrinsic to this node.
-	pub async fn send_extrinsic(
+	/// Construct and sned an extrinsic to this node.
+	pub async fn construct_and_send_extrinsic(
 		&self,
 		function: impl Into<runtime::Call>,
 		caller: Sr25519Keyring,
+		immortal: bool,
+		nonce: u32,
 	) -> Result<RpcTransactionOutput, RpcTransactionError> {
-		let extrinsic = construct_extrinsic(&*self.client, function, caller);
+		let extrinsic = construct_extrinsic(&*self.client, function, caller, immortal, nonce);
 
+		self.rpc_handlers.send_transaction(extrinsic.into()).await
+	}
+
+	/// Send an extrinsic to this node.
+	pub async fn send_extrinsic(
+		&self,
+		extrinsic: impl Into<OpaqueExtrinsic>,
+	) -> Result<RpcTransactionOutput, RpcTransactionError> {
 		self.rpc_handlers.send_transaction(extrinsic.into()).await
 	}
 }
@@ -566,12 +589,13 @@ pub fn construct_extrinsic(
 	client: &Client,
 	function: impl Into<runtime::Call>,
 	caller: Sr25519Keyring,
+	immortal: bool,
+	nonce: u32,
 ) -> runtime::UncheckedExtrinsic {
 	let function = function.into();
 	let current_block_hash = client.info().best_hash;
 	let current_block = client.info().best_number.saturated_into();
 	let genesis_block = client.hash(0).unwrap().unwrap();
-	let nonce = 0;
 	let period = runtime::BlockHashCount::get()
 		.checked_next_power_of_two()
 		.map(|c| c / 2)
@@ -582,10 +606,11 @@ pub fn construct_extrinsic(
 		frame_system::CheckSpecVersion::<runtime::Runtime>::new(),
 		frame_system::CheckTxVersion::<runtime::Runtime>::new(),
 		frame_system::CheckGenesis::<runtime::Runtime>::new(),
-		frame_system::CheckEra::<runtime::Runtime>::from(generic::Era::mortal(
-			period,
-			current_block,
-		)),
+		frame_system::CheckEra::<runtime::Runtime>::from(if immortal {
+			generic::Era::Immortal
+		} else {
+			generic::Era::mortal(period, current_block)
+		}),
 		frame_system::CheckNonce::<runtime::Runtime>::from(nonce),
 		frame_system::CheckWeight::<runtime::Runtime>::new(),
 		pallet_transaction_payment::ChargeTransactionPayment::<runtime::Runtime>::from(tip),
