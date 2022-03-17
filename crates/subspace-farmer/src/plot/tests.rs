@@ -26,15 +26,6 @@ fn generate_random_pieces(n: usize) -> FlatPieces {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = r#"
-    TODO: Fix test
-
-    Plot for now has a background worker which has rocksdb in it. We need to synchronize
-    dropping plot and its background worker for the following reason:
-
-    If we open the same plot while background worker of dropped plot is still alive and
-    tries to close everything, we will have a rocksdb error (trying to acquire the taken file lock).
-"#]
 async fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
