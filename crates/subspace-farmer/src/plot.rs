@@ -41,7 +41,7 @@ struct Handlers {
 }
 
 #[derive(Debug)]
-enum Requests {
+enum Request {
     ReadEncoding {
         index_hash: PieceIndexHash,
         result_sender: mpsc::Sender<io::Result<Piece>>,
@@ -64,9 +64,21 @@ enum Requests {
     },
 }
 
+#[derive(Debug)]
+enum RequestPriority {
+    Low,
+    High,
+}
+
+#[derive(Debug)]
+struct RequestWithPriority {
+    request: Request,
+    priority: RequestPriority,
+}
+
 struct Inner {
     handlers: Handlers,
-    requests_sender: Option<mpsc::SyncSender<Requests>>,
+    requests_sender: Option<mpsc::SyncSender<RequestWithPriority>>,
     plot_metadata_db: Option<Arc<DB>>,
     piece_count: Arc<AtomicU64>,
 }
@@ -91,7 +103,7 @@ impl Plot {
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
 
-        let (requests_sender, requests_receiver) = mpsc::sync_channel::<Requests>(100);
+        let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
         tokio::task::spawn_blocking(move || plot_worker.do_plot(requests_receiver));
@@ -127,9 +139,12 @@ impl Plot {
             .requests_sender
             .clone()
             .unwrap()
-            .send(Requests::ReadEncoding {
-                index_hash,
-                result_sender,
+            .send(RequestWithPriority {
+                request: Request::ReadEncoding {
+                    index_hash,
+                    result_sender,
+                },
+                priority: RequestPriority::High,
             })
             .map_err(|error| {
                 io::Error::new(
@@ -168,10 +183,13 @@ impl Plot {
             .requests_sender
             .clone()
             .unwrap()
-            .send(Requests::WriteEncodings {
-                encodings,
-                first_index,
-                result_sender,
+            .send(RequestWithPriority {
+                request: Request::WriteEncodings {
+                    encodings,
+                    first_index,
+                    result_sender,
+                },
+                priority: RequestPriority::Low,
             })
             .map_err(|error| {
                 io::Error::new(
@@ -237,9 +255,12 @@ impl Plot {
             .requests_sender
             .clone()
             .unwrap()
-            .send(Requests::ReadEncodingWithIndex {
-                piece_offset,
-                result_sender,
+            .send(RequestWithPriority {
+                request: Request::ReadEncodingWithIndex {
+                    piece_offset,
+                    result_sender,
+                },
+                priority: RequestPriority::High,
             })
             .map_err(|error| {
                 io::Error::new(
@@ -264,10 +285,13 @@ impl Plot {
             .requests_sender
             .clone()
             .unwrap()
-            .send(Requests::ReadEncodings {
-                piece_offset,
-                count,
-                result_sender,
+            .send(RequestWithPriority {
+                request: Request::ReadEncodings {
+                    piece_offset,
+                    count,
+                    result_sender,
+                },
+                priority: RequestPriority::High,
             })
             .map_err(|error| {
                 io::Error::new(
@@ -406,16 +430,16 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn do_plot(mut self, requests_receiver: mpsc::Receiver<Requests>) {
-        while let Ok(read_request) = requests_receiver.recv() {
-            match read_request {
-                Requests::ReadEncoding {
+    fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
+        while let Ok(RequestWithPriority { request, priority }) = requests_receiver.recv() {
+            match request {
+                Request::ReadEncoding {
                     index_hash,
                     result_sender,
                 } => {
                     let _ = result_sender.send(self.read_encoding(index_hash));
                 }
-                Requests::ReadEncodingWithIndex {
+                Request::ReadEncodingWithIndex {
                     piece_offset,
                     result_sender,
                 } => {
@@ -429,7 +453,7 @@ impl PlotWorker {
                     };
                     let _ = result_sender.send(result);
                 }
-                Requests::ReadEncodings {
+                Request::ReadEncodings {
                     piece_offset,
                     count,
                     result_sender,
@@ -444,7 +468,7 @@ impl PlotWorker {
                     };
                     let _ = result_sender.send(result);
                 }
-                Requests::WriteEncodings {
+                Request::WriteEncodings {
                     encodings,
                     first_index,
                     result_sender,
