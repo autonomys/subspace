@@ -61,7 +61,8 @@ enum Request {
     WriteEncodings {
         encodings: Arc<FlatPieces>,
         first_index: PieceIndex,
-        result_sender: mpsc::Sender<io::Result<()>>,
+        /// Returns offsets of all new pieces and pieces which were replaced
+        result_sender: mpsc::Sender<io::Result<(Vec<PieceOffset>, Vec<Piece>)>>,
     },
     Exit {
         result_sender: mpsc::Sender<()>,
@@ -188,14 +189,15 @@ impl Plot {
         })?
     }
 
-    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
+    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates).
+    /// Returns tupple of offsets of new pieces and pieces which were removed
     pub(crate) fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
         first_index: PieceIndex,
-    ) -> io::Result<()> {
+    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
         if encodings.is_empty() {
-            return Ok(());
+            return Ok(Default::default());
         }
         self.inner
             .handlers
@@ -224,10 +226,7 @@ impl Plot {
             })?;
 
         result_receiver.recv().map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Write many result sender was dropped: {}", error),
-            )
+            io::Error::other(format!("Write many result sender was dropped: {error}"))
         })?
     }
 
@@ -492,7 +491,11 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn try_write_piece(&mut self, piece: &[u8], index: PieceIndex) -> io::Result<()> {
+    fn try_write_piece(
+        &mut self,
+        piece: &[u8],
+        index: PieceIndex,
+    ) -> io::Result<(Option<PieceOffset>, Option<Piece>)> {
         // TODO: Add error recovery
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
         if current_piece_count < self.max_piece_count {
@@ -506,7 +509,7 @@ impl PlotWorker {
                 .put(index, piece_offset)?;
             self.put_piece_index(piece_offset, index)?;
             self.piece_count.fetch_add(1, Ordering::AcqRel);
-            return Ok(());
+            return Ok((Some(piece_offset), None));
         }
 
         let index_hash = PieceIndexHash::from(index);
@@ -520,13 +523,19 @@ impl PlotWorker {
                 .get(index_hash)?
                 .is_some()
         {
-            return Ok(());
+            return Ok((None, None));
         }
 
         let offset = self
             .piece_index_hash_to_offset_db
             .remove_farest()?
             .expect("Should be always present as plot is non-empty");
+
+        let mut old_piece = Piece::default();
+        self.plot
+            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.plot.read_exact(&mut old_piece)?;
+
         self.plot
             .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
         self.plot.write_all(piece)?;
@@ -534,7 +543,7 @@ impl PlotWorker {
         self.piece_index_hash_to_offset_db.put(index, offset)?;
         self.put_piece_index(offset, index)?;
 
-        Ok(())
+        Ok((Some(offset), Some(old_piece)))
     }
 
     fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
@@ -594,11 +603,24 @@ impl PlotWorker {
                             first_index,
                             result_sender,
                         } => {
-                            let result = encodings
-                                .chunks_exact(PIECE_SIZE)
-                                .zip(first_index..)
-                                .try_for_each(|(piece, index)| self.try_write_piece(piece, index));
+                            let result = try {
+                                let mut offsets = Vec::new();
+                                let mut old_pieces = Vec::new();
 
+                                for (piece, index) in
+                                    encodings.chunks_exact(PIECE_SIZE).zip(first_index..)
+                                {
+                                    let (offset, old_piece_offset) =
+                                        self.try_write_piece(piece, index)?;
+                                    if let Some(offset) = offset {
+                                        offsets.push(offset);
+                                    }
+                                    if let Some(old_piece) = old_piece_offset {
+                                        old_pieces.push(old_piece);
+                                    }
+                                }
+                                (offsets, old_pieces)
+                            };
                             let _ = result_sender.send(result);
                         }
                         Request::Exit { result_sender } => {

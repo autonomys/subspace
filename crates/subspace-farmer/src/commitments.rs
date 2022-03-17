@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, PieceOffset, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceOffset, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -170,11 +170,46 @@ impl Commitments {
         Ok(())
     }
 
+    pub(crate) fn remove_pieces(&self, pieces: Vec<Piece>) -> Result<(), CommitmentError> {
+        let salts = self.inner.commitment_databases.lock().get_salts();
+
+        for salt in salts {
+            let db_entry = match self
+                .inner
+                .commitment_databases
+                .lock()
+                .get_db_entry(&salt)
+                .cloned()
+            {
+                Some(db_entry) => db_entry,
+                None => {
+                    continue;
+                }
+            };
+
+            let db_guard = db_entry.lock();
+
+            let db = match db_guard.clone() {
+                Some(db) => db,
+                None => {
+                    continue;
+                }
+            };
+
+            for piece in &pieces {
+                let tag = subspace_solving::create_tag(piece, salt);
+                db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Create commitments for all salts for specified pieces
     pub(crate) fn create_for_pieces(
         &self,
         pieces: &Arc<FlatPieces>,
-        start_offset: u64,
+        offsets: impl IntoIterator<Item = PieceOffset> + Clone,
     ) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
@@ -206,7 +241,7 @@ impl Commitments {
                 .map(|piece| subspace_solving::create_tag(piece, salt))
                 .collect();
 
-            for (tag, offset) in tags.iter().zip(start_offset..) {
+            for (tag, offset) in tags.iter().zip(offsets.clone().into_iter()) {
                 db.put(tag, offset.to_le_bytes())
                     .map_err(CommitmentError::CommitmentDb)?;
             }

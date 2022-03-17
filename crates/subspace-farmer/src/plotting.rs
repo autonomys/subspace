@@ -82,16 +82,13 @@ impl Plotting {
         let (stop_sender, stop_receiver) = oneshot::channel();
 
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let plotting_handle = tokio::spawn(async move {
-            background_plotting(
-                farmer_data,
-                client,
-                subspace_codec,
-                best_block_number_check_interval,
-                stop_receiver,
-            )
-            .await
-        });
+        let plotting_handle = tokio::spawn(background_plotting(
+            farmer_data,
+            client,
+            subspace_codec,
+            best_block_number_check_interval,
+            stop_receiver,
+        ));
 
         Plotting {
             stop_sender: Some(stop_sender),
@@ -263,19 +260,30 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         }
                         if let Some(plot) = weak_plot.upgrade() {
                             let pieces = Arc::new(pieces);
-                            // TODO: There is no internal mapping between pieces and their indexes yet
-                            // TODO: Then we might want to send indexes as a separate vector
-                            if let Err(error) =
-                                plot.write_many(Arc::clone(&pieces), piece_index_offset)
-                            {
-                                error!("Failed to write encoded pieces: {}", error);
+
+                            match plot.write_many(Arc::clone(&pieces), piece_index_offset) {
+                                Ok((offsets, old_pieces)) => {
+                                    if let Err(error) =
+                                        farmer_data.commitments.remove_pieces(old_pieces)
+                                    {
+                                        error!(
+                                            "Failed to remove old commitments for pieces: {}",
+                                            error
+                                        );
+                                    }
+
+                                    if let Err(error) =
+                                        farmer_data.commitments.create_for_pieces(&pieces, offsets)
+                                    {
+                                        error!(
+                                            "Failed to create commitments for pieces: {}",
+                                            error
+                                        );
+                                    }
+                                }
+                                Err(error) => error!("Failed to write encoded pieces: {}", error),
                             }
-                            if let Err(error) = farmer_data
-                                .commitments
-                                .create_for_pieces(&pieces, piece_index_offset)
-                            {
-                                error!("Failed to create commitments for pieces: {}", error);
-                            }
+
                             if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }
