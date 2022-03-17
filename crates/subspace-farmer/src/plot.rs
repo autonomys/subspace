@@ -40,9 +40,8 @@ struct Handlers {
     progress_change: Bag<Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>, PlottedPieces>,
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
-enum ReadRequests {
+enum Requests {
     ReadEncoding {
         index_hash: PieceIndexHash,
         result_sender: mpsc::Sender<io::Result<Piece>>,
@@ -58,10 +57,6 @@ enum ReadRequests {
         /// Vector containing all of the pieces as contiguous block of memory
         result_sender: mpsc::Sender<io::Result<Vec<u8>>>,
     },
-}
-
-#[derive(Debug)]
-enum WriteRequests {
     WriteEncodings {
         encodings: Arc<FlatPieces>,
         first_index: PieceIndex,
@@ -70,10 +65,8 @@ enum WriteRequests {
 }
 
 struct Inner {
-    any_requests_sender: Option<mpsc::SyncSender<()>>,
     handlers: Handlers,
-    read_requests_sender: Option<mpsc::SyncSender<ReadRequests>>,
-    write_requests_sender: Option<mpsc::SyncSender<WriteRequests>>,
+    requests_sender: Option<mpsc::SyncSender<Requests>>,
     plot_metadata_db: Option<Arc<DB>>,
     piece_count: Arc<AtomicU64>,
 }
@@ -98,27 +91,14 @@ impl Plot {
         let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
             .map_err(PlotError::MetadataDbOpen)?;
 
-        // Channel with at most single element to throttle loop below if there are no updates
-        let (any_requests_sender, any_requests_receiver) = mpsc::sync_channel::<()>(1);
-        let (read_requests_sender, read_requests_receiver) =
-            mpsc::sync_channel::<ReadRequests>(100);
-        let (write_requests_sender, write_requests_receiver) =
-            mpsc::sync_channel::<WriteRequests>(100);
+        let (requests_sender, requests_receiver) = mpsc::sync_channel::<Requests>(100);
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
-        tokio::task::spawn_blocking(move || {
-            plot_worker.do_plot(
-                any_requests_receiver,
-                read_requests_receiver,
-                write_requests_receiver,
-            )
-        });
+        tokio::task::spawn_blocking(move || plot_worker.do_plot(requests_receiver));
 
         let inner = Inner {
-            any_requests_sender: Some(any_requests_sender),
             handlers: Handlers::default(),
-            read_requests_sender: Some(read_requests_sender),
-            write_requests_sender: Some(write_requests_sender),
+            requests_sender: Some(requests_sender),
             plot_metadata_db: Some(Arc::new(plot_metadata_db)),
             piece_count,
         };
@@ -144,10 +124,10 @@ impl Plot {
         let index_hash = index_hash.into();
 
         self.inner
-            .read_requests_sender
+            .requests_sender
             .clone()
             .unwrap()
-            .send(ReadRequests::ReadEncoding {
+            .send(Requests::ReadEncoding {
                 index_hash,
                 result_sender,
             })
@@ -157,9 +137,6 @@ impl Plot {
                     format!("Failed sending read encoding request: {}", error),
                 )
             })?;
-
-        // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.recv().map_err(|error| {
             io::Error::new(
@@ -188,10 +165,10 @@ impl Plot {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
-            .write_requests_sender
+            .requests_sender
             .clone()
             .unwrap()
-            .send(WriteRequests::WriteEncodings {
+            .send(Requests::WriteEncodings {
                 encodings,
                 first_index,
                 result_sender,
@@ -202,9 +179,6 @@ impl Plot {
                     format!("Failed sending write many request: {}", error),
                 )
             })?;
-
-        // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.recv().map_err(|error| {
             io::Error::new(
@@ -260,10 +234,10 @@ impl Plot {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
-            .read_requests_sender
+            .requests_sender
             .clone()
             .unwrap()
-            .send(ReadRequests::ReadEncodingWithIndex {
+            .send(Requests::ReadEncodingWithIndex {
                 piece_offset,
                 result_sender,
             })
@@ -273,9 +247,6 @@ impl Plot {
                     format!("Failed sending read encodings request: {}", error),
                 )
             })?;
-
-        // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!(
@@ -290,10 +261,10 @@ impl Plot {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
-            .read_requests_sender
+            .requests_sender
             .clone()
             .unwrap()
-            .send(ReadRequests::ReadEncodings {
+            .send(Requests::ReadEncodings {
                 piece_offset,
                 count,
                 result_sender,
@@ -304,9 +275,6 @@ impl Plot {
                     format!("Failed sending read encodings request: {}", error),
                 )
             })?;
-
-        // If fails - it is either full or disconnected, we don't care either way, so ignore result
-        let _ = self.inner.any_requests_sender.clone().unwrap().try_send(());
 
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!(
@@ -438,95 +406,68 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn do_plot(
-        mut self,
-        any_requests_receiver: mpsc::Receiver<()>,
-        read_requests_receiver: mpsc::Receiver<ReadRequests>,
-        write_requests_receiver: mpsc::Receiver<WriteRequests>,
-    ) {
-        let mut did_nothing = true;
-        loop {
-            if did_nothing {
-                // Wait for stuff to come in
-                if any_requests_receiver.recv().is_err() {
-                    break;
+    fn do_plot(mut self, requests_receiver: mpsc::Receiver<Requests>) {
+        while let Ok(read_request) = requests_receiver.recv() {
+            match read_request {
+                Requests::ReadEncoding {
+                    index_hash,
+                    result_sender,
+                } => {
+                    let _ = result_sender.send(self.read_encoding(index_hash));
                 }
-            }
-
-            did_nothing = true;
-
-            // Process as many read requests as there is
-            while let Ok(read_request) = read_requests_receiver.try_recv() {
-                did_nothing = false;
-
-                match read_request {
-                    ReadRequests::ReadEncoding {
-                        index_hash,
-                        result_sender,
-                    } => {
-                        let _ = result_sender.send(self.read_encoding(index_hash));
-                    }
-                    ReadRequests::ReadEncodingWithIndex {
-                        piece_offset,
-                        result_sender,
-                    } => {
-                        let result = try {
-                            let mut buffer = Piece::default();
-                            self.plot
-                                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-                            self.plot.read_exact(buffer.as_mut())?;
-                            let index = self.get_piece_index(piece_offset)?;
-                            (buffer, index)
-                        };
-                        let _ = result_sender.send(result);
-                    }
-                    ReadRequests::ReadEncodings {
-                        piece_offset,
-                        count,
-                        result_sender,
-                    } => {
-                        let result = try {
-                            self.plot
-                                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-                            let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
-                            buffer.resize(buffer.capacity(), 0);
-                            self.plot.read_exact(&mut buffer)?;
-                            buffer
-                        };
-                        let _ = result_sender.send(result);
-                    }
+                Requests::ReadEncodingWithIndex {
+                    piece_offset,
+                    result_sender,
+                } => {
+                    let result = try {
+                        let mut buffer = Piece::default();
+                        self.plot
+                            .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+                        self.plot.read_exact(buffer.as_mut())?;
+                        let index = self.get_piece_index(piece_offset)?;
+                        (buffer, index)
+                    };
+                    let _ = result_sender.send(result);
                 }
-            }
+                Requests::ReadEncodings {
+                    piece_offset,
+                    count,
+                    result_sender,
+                } => {
+                    let result = try {
+                        self.plot
+                            .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+                        let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
+                        buffer.resize(buffer.capacity(), 0);
+                        self.plot.read_exact(&mut buffer)?;
+                        buffer
+                    };
+                    let _ = result_sender.send(result);
+                }
+                Requests::WriteEncodings {
+                    encodings,
+                    first_index,
+                    result_sender,
+                } => {
+                    // TODO: Add error recovery
+                    let result = try {
+                        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+                        self.plot
+                            .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
+                        self.plot.write_all(&encodings)?;
 
-            let write_request = write_requests_receiver.try_recv();
-            if write_request.is_ok() {
-                did_nothing = false;
-            }
-            // Process at most write request since reading is higher priority
-            if let Ok(WriteRequests::WriteEncodings {
-                encodings,
-                first_index,
-                result_sender,
-            }) = write_request
-            {
-                // TODO: Add error recovery
-                let result = try {
-                    let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-                    self.plot
-                        .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
-                    self.plot.write_all(&encodings)?;
+                        for (offset, index) in (current_piece_count..)
+                            .zip(first_index..)
+                            .take(encodings.len() / PIECE_SIZE)
+                        {
+                            self.piece_index_hash_to_offset_db.put(index, offset)?;
+                            self.put_piece_index(offset, index)?;
+                            self.piece_count.fetch_add(1, Ordering::AcqRel);
+                        }
+                    };
 
-                    for (offset, index) in (current_piece_count..)
-                        .zip(first_index..)
-                        .take(encodings.len() / PIECE_SIZE)
-                    {
-                        self.piece_index_hash_to_offset_db.put(index, offset)?;
-                        self.put_piece_index(offset, index)?;
-                        self.piece_count.fetch_add(1, Ordering::AcqRel);
-                    }
-                };
-
-                let _ = result_sender.send(result);
+                    let _ = result_sender.send(result);
+                }
             }
         }
 
