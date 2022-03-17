@@ -202,6 +202,13 @@ where
 		return Err("Light client not supported!".into())
 	}
 
+	let code_executor = sc_executor::NativeElseWasmExecutor::<Executor>::new(
+		parachain_config.wasm_method,
+		parachain_config.default_heap_pages,
+		parachain_config.max_runtime_instances,
+		parachain_config.runtime_cache_size,
+	);
+
 	let mut parachain_config = prepare_node_config(parachain_config);
 
 	parachain_config
@@ -313,6 +320,7 @@ where
 		network,
 		backend,
 		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
+		code_executor: Arc::new(code_executor),
 		is_authority: validator,
 	};
 

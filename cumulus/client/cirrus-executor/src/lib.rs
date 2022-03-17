@@ -29,7 +29,7 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
-use sp_core::traits::SpawnNamed;
+use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
@@ -62,7 +62,7 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP> {
+pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	client: Arc<Client>,
@@ -73,11 +73,12 @@ pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP> {
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
+	code_executor: Arc<E>,
 	is_authority: bool,
 }
 
-impl<Block: BlockT, Client, TransactionPool, Backend, CIDP> Clone
-	for Executor<Block, Client, TransactionPool, Backend, CIDP>
+impl<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> Clone
+	for Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -90,13 +91,14 @@ impl<Block: BlockT, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
 		}
 	}
 }
 
-impl<Block, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP, E>
+	Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
@@ -114,6 +116,7 @@ where
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	/// Create a new instance.
 	fn new(
@@ -126,6 +129,7 @@ where
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		create_inherent_data_providers: Arc<CIDP>,
+		code_executor: Arc<E>,
 		is_authority: bool,
 	) -> Self {
 		Self {
@@ -138,6 +142,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			code_executor,
 			is_authority,
 		}
 	}
@@ -364,8 +369,8 @@ pub enum GossipMessageError {
 	SendError,
 }
 
-impl<Block, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
-	for Executor<Block, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP, E> GossipMessageHandler<Block>
+	for Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Client: HeaderBackend<Block>
@@ -389,6 +394,7 @@ where
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	type Error = GossipMessageError;
 
@@ -525,7 +531,7 @@ where
 }
 
 /// Parameters for [`start_executor`].
-pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, CIDP> {
+pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, CIDP, E> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
@@ -536,11 +542,12 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub code_executor: Arc<E>,
 	pub is_authority: bool,
 }
 
 /// Start the executor.
-pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CIDP>(
+pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CIDP, E>(
 	StartExecutorParams {
 		client,
 		announce_block: _,
@@ -552,9 +559,10 @@ pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CI
 		execution_receipt_sender,
 		backend,
 		create_inherent_data_providers,
+		code_executor,
 		is_authority,
-	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, CIDP>,
-) -> Executor<Block, Client, TransactionPool, Backend, CIDP>
+	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, CIDP, E>,
+) -> Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
@@ -580,6 +588,7 @@ where
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	let executor = Executor::new(
 		parachain_consensus,
@@ -591,6 +600,7 @@ where
 		Arc::new(execution_receipt_sender),
 		backend,
 		create_inherent_data_providers,
+		code_executor,
 		is_authority,
 	);
 
