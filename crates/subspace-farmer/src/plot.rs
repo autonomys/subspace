@@ -63,6 +63,9 @@ enum Request {
         first_index: PieceIndex,
         result_sender: mpsc::Sender<io::Result<()>>,
     },
+    Exit {
+        result_sender: mpsc::Sender<()>,
+    },
 }
 
 #[derive(Debug)]
@@ -79,9 +82,27 @@ struct RequestWithPriority {
 
 struct Inner {
     handlers: Handlers,
-    requests_sender: Option<mpsc::SyncSender<RequestWithPriority>>,
-    plot_metadata_db: Option<Arc<DB>>,
+    requests_sender: mpsc::SyncSender<RequestWithPriority>,
+    plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        if self
+            .requests_sender
+            .send(RequestWithPriority {
+                request: Request::Exit { result_sender },
+                priority: RequestPriority::Low,
+            })
+            .is_ok()
+        {
+            // We don't care why this returns
+            let _ = result_receiver.recv();
+        }
+    }
 }
 
 /// `Plot` struct is an abstraction on top of both plot and tags database.
@@ -101,8 +122,10 @@ impl Plot {
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Plot, PlotError> {
         let plot_worker = PlotWorker::from_base_directory(base_directory.as_ref())?;
 
-        let plot_metadata_db = DB::open_default(base_directory.as_ref().join("plot-metadata"))
-            .map_err(PlotError::MetadataDbOpen)?;
+        let plot_metadata_db = Arc::new(
+            DB::open_default(base_directory.as_ref().join("plot-metadata"))
+                .map_err(PlotError::MetadataDbOpen)?,
+        );
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -111,8 +134,8 @@ impl Plot {
 
         let inner = Inner {
             handlers: Handlers::default(),
-            requests_sender: Some(requests_sender),
-            plot_metadata_db: Some(Arc::new(plot_metadata_db)),
+            requests_sender,
+            plot_metadata_db,
             piece_count,
         };
 
@@ -138,8 +161,6 @@ impl Plot {
 
         self.inner
             .requests_sender
-            .clone()
-            .unwrap()
             .send(RequestWithPriority {
                 request: Request::ReadEncoding {
                     index_hash,
@@ -182,8 +203,6 @@ impl Plot {
 
         self.inner
             .requests_sender
-            .clone()
-            .unwrap()
             .send(RequestWithPriority {
                 request: Request::WriteEncodings {
                     encodings,
@@ -211,8 +230,6 @@ impl Plot {
     pub(crate) fn get_last_root_block(&self) -> Result<Option<RootBlock>, rocksdb::Error> {
         self.inner
             .plot_metadata_db
-            .as_ref()
-            .unwrap()
             .get(LAST_ROOT_BLOCK_KEY)
             .map(|maybe_last_root_block| {
                 maybe_last_root_block.as_ref().map(|last_root_block| {
@@ -230,8 +247,6 @@ impl Plot {
         let last_root_block = serde_json::to_vec(&last_root_block).unwrap();
         self.inner
             .plot_metadata_db
-            .as_ref()
-            .unwrap()
             .put(LAST_ROOT_BLOCK_KEY, last_root_block)
     }
 
@@ -254,8 +269,6 @@ impl Plot {
 
         self.inner
             .requests_sender
-            .clone()
-            .unwrap()
             .send(RequestWithPriority {
                 request: Request::ReadEncodingWithIndex {
                     piece_offset,
@@ -284,8 +297,6 @@ impl Plot {
 
         self.inner
             .requests_sender
-            .clone()
-            .unwrap()
             .send(RequestWithPriority {
                 request: Request::ReadEncodings {
                     piece_offset,
@@ -362,7 +373,7 @@ impl IndexHashToOffsetDB {
 struct PlotWorker {
     plot: File,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
-    piece_offset_to_index_file: File,
+    piece_offset_to_index: File,
     piece_count: Arc<AtomicU64>,
 }
 
@@ -382,7 +393,7 @@ impl PlotWorker {
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
-        let piece_offset_to_index_file = OpenOptions::new()
+        let piece_offset_to_index = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -396,7 +407,7 @@ impl PlotWorker {
         Ok(Self {
             plot,
             piece_index_hash_to_offset_db,
-            piece_offset_to_index_file,
+            piece_offset_to_index,
             piece_count,
         })
     }
@@ -416,27 +427,29 @@ impl PlotWorker {
 
     fn get_piece_index(&mut self, offset: PieceOffset) -> io::Result<PieceIndex> {
         let mut buf = [0; 8];
-        self.piece_offset_to_index_file.seek(SeekFrom::Start(
+        self.piece_offset_to_index.seek(SeekFrom::Start(
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
-        self.piece_offset_to_index_file.read_exact(&mut buf)?;
+        self.piece_offset_to_index.read_exact(&mut buf)?;
         Ok(PieceIndex::from_le_bytes(buf))
     }
 
     fn put_piece_index(&mut self, offset: PieceOffset, piece_index: PieceIndex) -> io::Result<()> {
-        self.piece_offset_to_index_file.seek(SeekFrom::Start(
+        self.piece_offset_to_index.seek(SeekFrom::Start(
             offset * std::mem::size_of::<PieceIndex>() as u64,
         ))?;
-        self.piece_offset_to_index_file
+        self.piece_offset_to_index
             .write_all(&piece_index.to_le_bytes())
     }
 
     fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
 
+        let mut exit_result_sender = None;
+
         // Process as many high priority as possible, interleaved with single low priority request
         // in case no high priority requests are available.
-        while let Ok(request_with_priority) = requests_receiver.recv() {
+        'outer: while let Ok(request_with_priority) = requests_receiver.recv() {
             let RequestWithPriority {
                 mut request,
                 mut priority,
@@ -507,6 +520,10 @@ impl PlotWorker {
 
                             let _ = result_sender.send(result);
                         }
+                        Request::Exit { result_sender } => {
+                            exit_result_sender.replace(result_sender);
+                            break 'outer;
+                        }
                     }
                 }
 
@@ -536,5 +553,15 @@ impl PlotWorker {
         if let Err(error) = self.plot.sync_all() {
             error!("Failed to sync plot file before exit: {}", error);
         }
+
+        if let Err(error) = self.piece_offset_to_index.sync_all() {
+            error!(
+                "Failed to sync piece offset to index file before exit: {}",
+                error
+            );
+        }
+
+        // Close the rest of databases
+        drop(self);
     }
 }
