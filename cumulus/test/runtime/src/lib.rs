@@ -433,5 +433,10 @@ impl_runtime_apis! {
 		fn intermediate_roots() -> Vec<[u8; 32]> {
 			ExecutivePallet::intermediate_roots()
 		}
+
+		fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8> {
+			let _ = Executive::apply_extrinsic(extrinsic);
+			Executive::storage_root()
+		}
 	}
 }
