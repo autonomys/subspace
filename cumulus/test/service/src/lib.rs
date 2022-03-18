@@ -93,7 +93,7 @@ pub fn new_partial(
 		(),
 		sc_consensus::import_queue::BasicQueue<Block, PrefixedMemoryDB<BlakeTwo256>>,
 		sc_transaction_pool::FullPool<Block, Client>,
-		(),
+		CodeExecutor,
 	>,
 	sc_service::Error,
 > {
@@ -105,7 +105,7 @@ pub fn new_partial(
 	);
 
 	let (client, backend, keystore_container, task_manager) =
-		sc_service::new_full_parts::<Block, RuntimeApi, _>(config, None, executor)?;
+		sc_service::new_full_parts::<Block, RuntimeApi, _>(config, None, executor.clone())?;
 	let client = Arc::new(client);
 
 	let registry = config.prometheus_registry();
@@ -134,7 +134,7 @@ pub fn new_partial(
 		task_manager,
 		transaction_pool,
 		select_chain: (),
-		other: (),
+		other: (executor),
 	};
 
 	Ok(params)
@@ -166,13 +166,6 @@ where
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
-
-	let code_executor = Arc::new(sc_executor::NativeElseWasmExecutor::<RuntimeExecutor>::new(
-		parachain_config.wasm_method,
-		parachain_config.default_heap_pages,
-		parachain_config.max_runtime_instances,
-		parachain_config.runtime_cache_size,
-	));
 
 	let mut parachain_config = prepare_node_config(parachain_config);
 
@@ -259,6 +252,7 @@ where
 		))
 	};
 
+	let code_executor = Arc::new(params.other);
 	let params = StartExecutorParams {
 		announce_block,
 		client: client.clone(),

@@ -55,7 +55,7 @@ pub fn new_partial<RuntimeApi, Executor, BIQ>(
 			Block,
 			TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
 		>,
-		(Option<Telemetry>, Option<TelemetryWorkerHandle>),
+		(Option<Telemetry>, Option<TelemetryWorkerHandle>, NativeElseWasmExecutor<Executor>),
 	>,
 	sc_service::Error,
 >
@@ -98,7 +98,7 @@ where
 		})
 		.transpose()?;
 
-	let executor = sc_executor::NativeElseWasmExecutor::<Executor>::new(
+	let executor = NativeElseWasmExecutor::<Executor>::new(
 		config.wasm_method,
 		config.default_heap_pages,
 		config.max_runtime_instances,
@@ -109,7 +109,7 @@ where
 		sc_service::new_full_parts::<Block, RuntimeApi, _>(
 			config,
 			telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
-			executor,
+			executor.clone(),
 		)?;
 	let client = Arc::new(client);
 
@@ -143,7 +143,7 @@ where
 		task_manager,
 		transaction_pool,
 		select_chain: (),
-		other: (telemetry, telemetry_worker_handle),
+		other: (telemetry, telemetry_worker_handle, executor),
 	};
 
 	Ok(params)
@@ -202,13 +202,6 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	let code_executor = sc_executor::NativeElseWasmExecutor::<Executor>::new(
-		parachain_config.wasm_method,
-		parachain_config.default_heap_pages,
-		parachain_config.max_runtime_instances,
-		parachain_config.runtime_cache_size,
-	);
-
 	let mut parachain_config = prepare_node_config(parachain_config);
 
 	parachain_config
@@ -218,7 +211,7 @@ where
 
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
 
-	let (mut telemetry, _telemetry_worker_handle) = params.other;
+	let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
 	let primary_chain_full_node = {
 		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
