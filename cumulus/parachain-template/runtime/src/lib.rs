@@ -434,7 +434,8 @@ impl_runtime_apis! {
 		}
 
 		fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8> {
-			Executive::apply_extrinsic_with_post_state_root(extrinsic)
+			let _ = Executive::apply_extrinsic(extrinsic);
+			Executive::storage_root()
 		}
 	}
 

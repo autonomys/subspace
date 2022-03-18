@@ -184,7 +184,7 @@ impl<
 	UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
 {
 	/// Returns the latest storage root.
-	fn storage_root() -> Vec<u8> {
+	pub fn storage_root() -> Vec<u8> {
 		let version = System::Version::get().state_version();
 		sp_io::storage::root(version)
 	}
@@ -366,12 +366,6 @@ impl<
 			}
 		);
 		res
-	}
-
-	/// Variant of [`apply_extrinsic`] to return the storage root after applying the extrinsic.
-	pub fn apply_extrinsic_with_post_state_root(uxt: Block::Extrinsic) -> Vec<u8> {
-		let _ = Self::apply_extrinsic(uxt);
-		Self::storage_root()
 	}
 
 	// TODO: https://github.com/paritytech/substrate/issues/10711
