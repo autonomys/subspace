@@ -18,9 +18,9 @@ sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7d
 # Other deps
 async-trait = "0.1.52"
 codec = { package = "parity-scale-codec", version = "3.1.2", features = [ "derive" ] }
-dyn-clone = "1.0.4"
-futures = { version = "0.3.19", features = ["compat"] }
-tracing = "0.1.25"
+dyn-clone = "1.0.5"
+futures = { version = "0.3.21", features = ["compat"] }
+tracing = "0.1.32"
 
 cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

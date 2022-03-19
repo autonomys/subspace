@@ -26,15 +26,15 @@ cumulus-client-consensus-common = { path = "../consensus/common" }
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "3.1.2", features = [ "derive" ] }
 crossbeam = "0.8"
-futures = { version = "0.3.19", features = ["compat"] }
+futures = { version = "0.3.21", features = ["compat"] }
 futures-timer = "3.0.1"
-rand = "0.8.4"
+rand = "0.8.5"
 rand_chacha = "0.3.1"
 merkletree = "0.21.0"
 parking_lot = "0.12.0"
-tracing = "0.1.25"
+tracing = "0.1.23"
 thiserror = "1.0.29"
-tokio = "1.16.1"
+tokio = "1.17.0"
 
 polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }

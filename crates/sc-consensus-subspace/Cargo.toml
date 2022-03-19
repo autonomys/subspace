@@ -17,12 +17,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = "0.1.52"
 codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-futures = "0.3.19"
+futures = "0.3.21"
 log = "0.4.14"
-lru = "0.7.2"
+lru = "0.7.3"
 parking_lot = "0.12.0"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998", version = "0.10.0-dev" }
-rand = "0.8.4"
+rand = "0.8.5"
 schnorrkel = "0.9.1"
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

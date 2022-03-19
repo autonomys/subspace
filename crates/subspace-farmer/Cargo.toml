@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.51"
+anyhow = "1.0.56"
 arc-swap = "1.5.0"
 async-oneshot = "0.5.0"
 async-trait = "0.1.52"
@@ -20,12 +20,12 @@ clap = { version = "3.1.6", features = ["color", "derive"] }
 dirs = "4.0.0"
 env_logger = "0.9.0"
 event-listener-primitives = "2.0.1"
-futures = "0.3.19"
+futures = "0.3.21"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
 jsonrpsee = { version = "0.8.0", features = ["client", "macros", "server"] }
 log = "0.4.14"
-lru = "0.7.2"
+lru = "0.7.3"
 parity-scale-codec = "3.1.2"
 parking_lot = "0.12.0"
 rayon = "1.5.1"
@@ -33,7 +33,7 @@ schnorrkel = "0.9.1"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-ss58-registry = "1.10.0"
+ss58-registry = "1.17.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
@@ -41,7 +41,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 thiserror = "1.0.30"
 tiny-bip39 = "0.8.2"
-tokio = { version = "1.16.1", features = ["macros", "parking_lot", "rt-multi-thread"] }
+tokio = { version = "1.17.0", features = ["macros", "parking_lot", "rt-multi-thread"] }
 zeroize = "1.4.3"
 
 [dependencies.rocksdb]
@@ -53,7 +53,7 @@ features = ["snappy"]
 version = "0.18.0"
 
 [dev-dependencies]
-rand = "0.8.4"
+rand = "0.8.5"
 tempfile = "3.3.0"
 
 [features]

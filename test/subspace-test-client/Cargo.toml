@@ -15,8 +15,8 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-futures = "0.3.19"
-rand = "0.8.3"
+futures = "0.3.21"
+rand = "0.8.5"
 schnorrkel = "0.9.1"
 sc-chain-spec = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

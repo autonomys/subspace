@@ -17,9 +17,9 @@ async-std = "1.6.5"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 log = "0.4.8"
 parking_lot = "0.12.0"
-futures = "0.3.19"
+futures = "0.3.21"
 futures-timer = "3.0.1"
-rand = "0.8.4"
+rand = "0.8.5"
 libp2p = { version = "0.40.0", default-features = false }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
