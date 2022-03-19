@@ -8,10 +8,10 @@ edition = "2021"
 futures = "0.3.19"
 tracing = "0.1.29"
 memory-lru = "0.1.0"
-parity-util-mem = { version = "0.10.0", default-features = false }
+parity-util-mem = { version = "0.11.0", default-features = false }
 
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
 polkadot-subsystem = { package = "polkadot-node-subsystem", path = "../../subsystem" }
 polkadot-node-subsystem-util = { path = "../../subsystem-util" }

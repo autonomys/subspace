@@ -9,10 +9,10 @@ futures = "0.3.19"
 tracing = "0.1.29"
 polkadot-node-subsystem = { path = "../subsystem" }
 polkadot-node-subsystem-util = { path = "../subsystem-util" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-sp-maybe-compressed-blob  = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-maybe-compressed-blob  = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 thiserror = "1.0.30"
-parity-scale-codec = { version = "2.3.1", default-features = false, features = ["bit-vec", "derive"] }
+parity-scale-codec = { version = "3.1.2", default-features = false, features = ["bit-vec", "derive"] }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 sp-executor  = { path = "../../../crates/sp-executor" }
