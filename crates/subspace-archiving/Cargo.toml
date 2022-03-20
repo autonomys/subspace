@@ -14,7 +14,7 @@ include = [
 
 [dependencies]
 merkletree = "0.21.0"
-parity-scale-codec = { version = "2.3.0", features = ["derive"], default-features = false }
+parity-scale-codec = { version = "3.1.2", features = ["derive"], default-features = false }
 reed-solomon-erasure = { version = "5.0.1", default-features = true }
 serde = { version = "1.0.136", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
@@ -34,7 +34,7 @@ version = "0.10.0"
 
 [dev-dependencies]
 criterion = "0.3.5"
-rand = { version = "0.8.4", features = ["min_const_gen"] }
+rand = { version = "0.8.5", features = ["min_const_gen"] }
 
 [features]
 default = ["std"]

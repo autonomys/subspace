@@ -5,25 +5,25 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-client = { package = "sc-client-api", git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-futures = "0.3.19"
+client = { package = "sc-client-api", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+futures = "0.3.21"
 futures-timer = "3.0.2"
 parking_lot = "0.12.0"
 polkadot-node-subsystem-types = { path = "../subsystem-types" }
 polkadot-node-metrics = { path = "../metrics" }
 polkadot-overseer-gen = { path = "./overseer-gen" }
-tracing = "0.1.29"
-lru = "0.7.2"
-parity-util-mem = { version = ">= 0.10.1", default-features = false }
+tracing = "0.1.32"
+lru = "0.7.3"
+parity-util-mem = { version = "0.11.0", default-features = false }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 
 [dev-dependencies]
 metered-channel = { path = "../metered-channel" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "e6def65920d30029e42d498cb07cec5dd433b927" }
-futures = { version = "0.3.19", features = ["thread-pool"] }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+futures = { version = "0.3.21", features = ["thread-pool"] }
 
 [features]
 default = []

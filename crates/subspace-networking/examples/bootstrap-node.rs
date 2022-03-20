@@ -1,6 +1,6 @@
 //! Simple bootstrap node implementation
 
-use clap::{AppSettings, Parser};
+use clap::Parser;
 use env_logger::Env;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
@@ -11,7 +11,6 @@ use subspace_networking::Config;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
-#[clap(global_setting(AppSettings::AllArgsOverrideSelf))]
 enum Command {
     /// Start bootstrap node
     Start {
