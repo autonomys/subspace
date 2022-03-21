@@ -124,8 +124,9 @@ impl Plot {
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: Sha256Hash,
-        max_piece_count: Option<u64>,
+        plot_size: Option<u64>,
     ) -> Result<Plot, PlotError> {
+        let max_piece_count = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
         let plot_worker =
             PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
 

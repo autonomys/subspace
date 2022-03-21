@@ -66,8 +66,8 @@ struct FarmingArgs {
     // TODO: Add human friendly parsing. Something like this should do:
     // https://www.gnu.org/software/coreutils/manual/html_node/Block-size.html
     //
-    /// Number of plot pieces to store on disk for farming. You can calculate plot size by
-    /// multiplying it by 4 kilobytes
+    // TODO: Should we require user to set plot size?
+    /// Number of plot pieces to store on disk for farming.
     #[clap(long)]
     plot_size: Option<u64>,
 }
