@@ -929,6 +929,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "hash-db",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
+]
+
+[[package]]
 name = "cirrus-node-primitives"
 version = "0.1.0"
 dependencies = [
