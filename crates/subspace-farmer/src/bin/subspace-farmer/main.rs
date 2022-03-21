@@ -63,12 +63,9 @@ struct FarmingArgs {
     /// Address for farming rewards
     #[clap(long, parse(try_from_str = parse_reward_address))]
     reward_address: Option<PublicKey>,
-    // TODO: Add human friendly parsing. Something like this should do:
-    // https://www.gnu.org/software/coreutils/manual/html_node/Block-size.html
-    //
-    // TODO: Should we require user to set plot size?
-    /// Number of plot pieces to store on disk for farming.
-    #[clap(long)]
+    // TODO: Should we require user to always set plot size?
+    /// Maximum plot size in human readable format (e.g., 1K 234M 2G).
+    #[clap(long, parse(try_from_str = parse_human_readable))]
     plot_size: Option<u64>,
 }
 
@@ -92,6 +89,33 @@ enum Command {
     },
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
+}
+
+fn parse_human_readable(s: &str) -> Result<u64, std::num::ParseIntError> {
+    const SUFFIXES: &[(&str, u64)] = &[
+        ("kB", 10u64.pow(3)),
+        ("k", 2u64.pow(10)),
+        ("K", 2u64.pow(10)),
+        ("KiB", 2u64.pow(10)),
+        ("mB", 10u64.pow(6)),
+        ("m", 2u64.pow(20)),
+        ("M", 2u64.pow(20)),
+        ("MiB", 2u64.pow(20)),
+        ("gB", 10u64.pow(9)),
+        ("g", 2u64.pow(30)),
+        ("G", 2u64.pow(30)),
+        ("GiB", 2u64.pow(30)),
+        ("tB", 10u64.pow(12)),
+        ("t", 2u64.pow(40)),
+        ("T", 2u64.pow(40)),
+        ("TiB", 2u64.pow(40)),
+    ];
+
+    SUFFIXES
+        .iter()
+        .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
+        .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
+        .unwrap_or_else(|| s.parse::<u64>())
 }
 
 fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
