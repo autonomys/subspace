@@ -461,6 +461,8 @@ impl RootBlock {
 pub type PieceOffset = u64;
 /// Piece index in consensus
 pub type PieceIndex = u64;
+/// Distance to piece index hash from farmer identity
+pub type PieceDistance = [u8; SHA256_HASH_SIZE];
 
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -479,7 +481,7 @@ impl PieceIndexHash {
     }
 
     /// Calculates the distance between piece index and farmer address.
-    pub fn distance(mut self, address: Sha256Hash) -> Sha256Hash {
+    pub fn distance(mut self, PublicKey(address): PublicKey) -> PieceDistance {
         for (hash_byte, address_byte) in self.0.iter_mut().zip(address) {
             *hash_byte = hash_byte.wrapping_sub(address_byte);
         }

@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, RootBlock, Sha256Hash, PIECE_SIZE,
-    SHA256_HASH_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, PublicKey, RootBlock, Sha256Hash,
+    PIECE_SIZE, SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 
@@ -123,7 +123,7 @@ impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
-        address: Sha256Hash,
+        address: PublicKey,
         plot_size: Option<u64>,
     ) -> Result<Plot, PlotError> {
         let max_piece_count = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
@@ -348,7 +348,7 @@ impl WeakPlot {
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
-    address: Sha256Hash,
+    address: PublicKey,
 }
 
 impl IndexHashToOffsetDB {
@@ -358,7 +358,7 @@ impl IndexHashToOffsetDB {
         iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap())
     }
 
-    fn open_default(path: impl AsRef<Path>, address: Sha256Hash) -> Result<Self, PlotError> {
+    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
         DB::open_default(path.as_ref())
             .map(|inner| Self { inner, address })
             .map_err(PlotError::IndexDbOpen)
@@ -422,7 +422,7 @@ struct PlotWorker {
 impl PlotWorker {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
-        address: Sha256Hash,
+        address: PublicKey,
         max_piece_count: Option<u64>,
     ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
