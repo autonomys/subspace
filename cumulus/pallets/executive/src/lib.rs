@@ -315,12 +315,6 @@ impl<
 			AllPalletsWithSystem,
 			COnRuntimeUpgrade,
 		>::finalize_block()
-		// NOTE: Somehow the executor will run into an error `state already discarded for ...`
-		// if we note the storage root after the origin `finalize_block`(This error might relate to
-		// the `execute_block`, but not for sure). Since we calculate the final state root anyway,
-		// this step can just be skipped.
-		//
-		// Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 	}
 
 	// TODO: https://github.com/paritytech/substrate/issues/10711
