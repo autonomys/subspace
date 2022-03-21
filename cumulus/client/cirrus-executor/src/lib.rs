@@ -24,12 +24,16 @@ mod processor;
 #[cfg(test)]
 mod tests;
 
+use codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::{
+	traits::{CodeExecutor, SpawnNamed},
+	H256,
+};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
@@ -286,6 +290,12 @@ where
 		);
 	}
 
+	fn header(&self, at: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
+		self.client
+			.header(BlockId::Hash(at))?
+			.ok_or(sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
+	}
+
 	async fn wait_for_local_receipt(
 		&self,
 		block_hash: Block::Hash,
@@ -361,6 +371,8 @@ where
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
 	BundleEquivocation,
+	#[error("State root not using H256")]
+	InvalidStateRootType,
 	#[error(transparent)]
 	Client(#[from] sp_blockchain::Error),
 	#[error(transparent)]
@@ -500,7 +512,7 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some(_local_trace_idx) = local_receipt
+		if let Some(local_trace_idx) = local_receipt
 			.trace
 			.iter()
 			.enumerate()
@@ -514,11 +526,40 @@ where
 					}
 				},
 			) {
-			// TODO: generate a fraud proof
-			let fraud_proof = FraudProof {
-				pre_state_root: sp_core::H256::random(),
-				post_state_root: sp_core::H256::random(),
-				proof: StorageProof::empty(),
+			let header = self.header(execution_receipt.secondary_hash)?;
+			let parent_header = self.header(*header.parent_hash())?;
+
+			// TODO: avoid the encode & decode?
+			let as_h256 = |state_root: &Block::Hash| {
+				H256::decode(&mut state_root.encode().as_slice())
+					.map_err(|_| Self::Error::InvalidStateRootType)
+			};
+
+			let fraud_proof = if local_trace_idx == 0 {
+				// `initialize_block` execution proof.
+				let pre_state_root = as_h256(parent_header.state_root())?;
+				let post_state_root = as_h256(&execution_receipt.trace[0])?;
+
+				let proof = todo!("Create `initialize_block` proof");
+
+				FraudProof { pre_state_root, post_state_root, proof }
+			} else if local_trace_idx == local_receipt.trace.len() - 1 {
+				// `finalize_block` execution proof.
+				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
+
+				let proof = todo!("Create `finalize_block` proof");
+
+				FraudProof { pre_state_root, post_state_root, proof }
+			} else {
+				// Regular extrinsic execution proof.
+				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
+
+				let proof = todo!("Create extrinsic proof");
+
+				// TODO: proof should be a CompactProof.
+				FraudProof { pre_state_root, post_state_root, proof }
 			};
 
 			self.submit_fraud_proof(fraud_proof);
