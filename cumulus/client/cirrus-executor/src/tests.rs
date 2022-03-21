@@ -228,4 +228,41 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
 	}
+
+	// Test `finalize_block`
+	let storage_changes = create_block_builder()
+		.prepare_storage_changes_before_finalize_block()
+		.expect("Get StorageChanges before `finalize_block`");
+
+	let delta = storage_changes.transaction;
+	let post_delta_root = storage_changes.transaction_storage_root;
+
+	assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
+
+	let storage_proof = cirrus_fraud_proof::prove_execution(
+		&charlie.backend,
+		&*charlie.code_executor,
+		charlie.task_manager.spawn_handle(),
+		&BlockId::Hash(parent_header.hash()),
+		"BlockBuilder_finalize_block",
+		Default::default(),
+		Some((delta, post_delta_root)),
+	)
+	.expect("Create `finalize_block` proof");
+
+	let execution_result = cirrus_fraud_proof::check_execution_proof(
+		&charlie.backend,
+		&*charlie.code_executor,
+		charlie.task_manager.spawn_handle(),
+		&BlockId::Hash(parent_header.hash()),
+		"BlockBuilder_finalize_block",
+		Default::default(),
+		post_delta_root,
+		storage_proof,
+	)
+	.expect("Check `finalize_block` proof");
+
+	let new_header = Header::decode(&mut execution_result.as_slice()).unwrap();
+	let post_execution_root = *new_header.state_root();
+	assert_eq!(post_execution_root, *header.state_root());
 }

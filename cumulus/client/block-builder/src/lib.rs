@@ -283,6 +283,14 @@ where
 		))))
 	}
 
+	/// Returns the state before finalizing the block.
+	pub fn prepare_storage_changes_before_finalize_block(
+		&self,
+	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
+		self.execute_extrinsics()?;
+		self.collect_storage_changes()
+	}
+
 	/// Consume the builder to build a valid `Block` containing all pushed extrinsics.
 	///
 	/// Returns the build `Block`, the changes to the storage and an optional `StorageProof`

@@ -622,7 +622,30 @@ where
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
 				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
 
-				let proof = todo!("Create `finalize_block` proof");
+				let block_builder = BlockBuilder::with_extrinsics(
+					&*self.client,
+					parent_header.hash(),
+					*parent_header.number(),
+					RecordProof::No,
+					Default::default(),
+					&*self.backend,
+					self.block_body(execution_receipt.secondary_hash)?,
+				)?;
+				let storage_changes =
+					block_builder.prepare_storage_changes_before_finalize_block()?;
+
+				let delta = storage_changes.transaction;
+				let post_delta_root = storage_changes.transaction_storage_root;
+
+				let proof = cirrus_fraud_proof::prove_execution(
+					&self.backend,
+					&*self.code_executor,
+					self.spawner.clone() as Box<dyn SpawnNamed>,
+					&BlockId::Hash(parent_header.hash()),
+					"BlockBuilder_finalize_block",
+					Default::default(),
+					Some((delta, post_delta_root)),
+				)?;
 
 				FraudProof { pre_state_root, post_state_root, proof }
 			} else {
