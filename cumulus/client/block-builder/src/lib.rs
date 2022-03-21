@@ -223,6 +223,16 @@ where
 		Ok(())
 	}
 
+	fn collect_storage_changes(
+		&self,
+	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
+		let state = self.backend.state_at(self.block_id)?;
+		let parent_hash = self.parent_hash;
+		self.api
+			.into_storage_changes(&state, parent_hash)
+			.map_err(sp_blockchain::Error::StorageChanges)
+	}
+
 	/// Consume the builder to build a valid `Block` containing all pushed extrinsics.
 	///
 	/// Returns the build `Block`, the changes to the storage and an optional `StorageProof`
@@ -245,13 +255,7 @@ where
 
 		let proof = self.api.extract_proof();
 
-		let state = self.backend.state_at(self.block_id)?;
-		let parent_hash = self.parent_hash;
-
-		let storage_changes = self
-			.api
-			.into_storage_changes(&state, parent_hash)
-			.map_err(|e| sp_blockchain::Error::StorageChanges(e))?;
+		let storage_changes = self.collect_storage_changes()?;
 
 		Ok(BuiltBlock {
 			block: <Block as BlockT>::new(header, self.extrinsics),
