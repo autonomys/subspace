@@ -840,6 +840,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
+ "cirrus-fraud-proof",
  "cirrus-node-primitives",
  "cirrus-primitives",
  "cirrus-test-service",
@@ -924,6 +925,7 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-runtime",
+ "sp-trie",
  "subspace-service",
  "tracing",
 ]

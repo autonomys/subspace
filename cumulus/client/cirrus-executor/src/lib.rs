@@ -24,6 +24,7 @@ mod processor;
 #[cfg(test)]
 mod tests;
 
+use cirrus_block_builder::{BlockBuilder, RecordProof};
 use codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -37,7 +38,7 @@ use sp_core::{
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, Zero},
+	traits::{Block as BlockT, HashFor, Header as HeaderT, Zero},
 };
 use sp_trie::StorageProof;
 
@@ -101,6 +102,11 @@ impl<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> Clone
 	}
 }
 
+type TransactionFor<Backend, Block> =
+	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
+		HashFor<Block>,
+	>>::Transaction;
+
 impl<Block, Client, TransactionPool, Backend, CIDP, E>
 	Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
@@ -118,6 +124,7 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 	E: CodeExecutor,
@@ -296,6 +303,49 @@ where
 			.ok_or(sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
 	}
 
+	fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+		self.client
+			.block_body(&BlockId::Hash(at))?
+			.ok_or(sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at)))
+	}
+
+	fn create_extrinsic_execution_proof(
+		&self,
+		extrinsic_index: usize,
+		parent_header: &Block::Header,
+		current_hash: Block::Hash,
+	) -> Result<StorageProof, GossipMessageError> {
+		let extrinsics = self.block_body(current_hash)?;
+
+		let encoded_extrinsic = extrinsics[extrinsic_index].encode();
+
+		let block_builder = BlockBuilder::with_extrinsics(
+			&*self.client,
+			parent_header.hash(),
+			*parent_header.number(),
+			RecordProof::No,
+			Default::default(),
+			&*self.backend,
+			extrinsics,
+		)?;
+		let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
+
+		let delta = storage_changes.transaction;
+		let post_delta_root = storage_changes.transaction_storage_root;
+
+		let execution_proof = cirrus_fraud_proof::prove_execution(
+			&self.backend,
+			&*self.code_executor,
+			self.spawner.clone() as Box<dyn SpawnNamed>,
+			&BlockId::Hash(parent_header.hash()),
+			"BlockBuilder_apply_extrinsic",
+			&encoded_extrinsic,
+			Some((delta, post_delta_root)),
+		)?;
+
+		Ok(execution_proof)
+	}
+
 	async fn wait_for_local_receipt(
 		&self,
 		block_hash: Block::Hash,
@@ -404,6 +454,7 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
 	E: CodeExecutor,
@@ -556,7 +607,11 @@ where
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
 				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
 
-				let proof = todo!("Create extrinsic proof");
+				let proof = self.create_extrinsic_execution_proof(
+					local_trace_idx - 1,
+					&parent_header,
+					execution_receipt.secondary_hash,
+				)?;
 
 				// TODO: proof should be a CompactProof.
 				FraudProof { pre_state_root, post_state_root, proof }
@@ -607,6 +662,7 @@ pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CI
 where
 	Block: BlockT,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
