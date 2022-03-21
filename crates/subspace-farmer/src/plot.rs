@@ -366,7 +366,7 @@ impl IndexHashToOffsetDB {
 
     fn get(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&index_hash.into().distance(self.address))
+            .get(&index_hash.into().xor_distance(self.address))
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -396,7 +396,7 @@ impl IndexHashToOffsetDB {
         index_hash: impl Into<PieceIndexHash>,
         offset: PieceOffset,
     ) -> io::Result<()> {
-        let distance = index_hash.into().distance(self.address);
+        let distance = index_hash.into().xor_distance(self.address);
         self.inner
             .put(&distance, offset.to_le_bytes())
             .map_err(io::Error::other)
@@ -519,7 +519,7 @@ impl PlotWorker {
 
         let index_hash = PieceIndexHash::from(index);
         // Check if piece is already out of plot range or if it is already in the plot
-        if index_hash.distance(self.piece_index_hash_to_offset_db.address)
+        if index_hash.xor_distance(self.piece_index_hash_to_offset_db.address)
             >= self.piece_index_hash_to_offset_db.max_distance().expect(
                 "Plot already has at least one piece, therefore database should have entries. QED",
             )

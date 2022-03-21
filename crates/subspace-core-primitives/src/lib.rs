@@ -480,10 +480,10 @@ impl PieceIndexHash {
         Self(crypto::sha256_hash(&index.to_le_bytes()))
     }
 
-    /// Calculates the distance between piece index and farmer address.
-    pub fn distance(mut self, PublicKey(address): PublicKey) -> PieceDistance {
+    /// Calculates the xor distance metric between piece index hash and farmer address.
+    pub fn xor_distance(mut self, PublicKey(address): PublicKey) -> PieceDistance {
         for (hash_byte, address_byte) in self.0.iter_mut().zip(address) {
-            *hash_byte = hash_byte.wrapping_sub(address_byte);
+            *hash_byte ^= address_byte;
         }
         self.0
     }

@@ -135,8 +135,9 @@ pub trait Rpc {
 /// let ws_server_listen_addr = "127.0.0.1:0";
 ///
 /// let identity = Identity::open_or_create(base_directory)?;
-/// let address = identity.public_key().as_ref().to_vec().try_into().unwrap();
-/// let plot = Plot::open_or_create(base_directory, address, None)?;
+/// let address = <&[u8; 32]>::try_from(identity.public_key().as_ref())
+///     .expect("Length of public key is always correct");
+/// let plot = Plot::open_or_create(&base_directory, (*address).into(), None)?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
