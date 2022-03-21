@@ -2,12 +2,16 @@ use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_primitives::{Hash, SecondaryApi};
 use cirrus_test_service::{
 	run_primary_chain_validator_node,
+	runtime::Header,
 	Keyring::{Alice, Charlie, Dave},
 };
 use codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
-use sp_runtime::{generic::BlockId, traits::Header as HeaderT};
+use sp_runtime::{
+	generic::BlockId,
+	traits::{BlakeTwo256, Header as HeaderT},
+};
 
 #[substrate_test_utils::test]
 async fn test_executor_full_node_catching_up() {
@@ -144,6 +148,44 @@ async fn execution_proof_creation_and_verification_should_work() {
 		"intermediate_roots: {:?}",
 		intermediate_roots.clone().into_iter().map(Hash::from).collect::<Vec<_>>()
 	);
+
+	// Test `initialize_block`.
+	let storage_proof = {
+		let new_header = Header::new(
+			*header.number(),
+			Default::default(),
+			Default::default(),
+			parent_header.hash(),
+			Default::default(),
+		);
+
+		cirrus_fraud_proof::prove_execution::<_, _, _, _, sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
+			&charlie.backend,
+			&*charlie.code_executor,
+			charlie.task_manager.spawn_handle(),
+			&BlockId::Hash(parent_header.hash()),
+			"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
+			&new_header.encode(),
+			None,
+		)
+		.expect("Create `initialize_block` proof")
+	};
+
+	let execution_result = cirrus_fraud_proof::check_execution_proof(
+		&charlie.backend,
+		&*charlie.code_executor,
+		charlie.task_manager.spawn_handle(),
+		&BlockId::Hash(parent_header.hash()),
+		"SecondaryApi_initialize_block_with_post_state_root",
+		&header.encode(),
+		*parent_header.state_root(),
+		storage_proof,
+	)
+	.expect("Check `initialize_block` proof");
+
+	let res = Vec::<u8>::decode(&mut execution_result.as_slice()).unwrap();
+	let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
+	assert_eq!(post_execution_root, intermediate_roots[0].into());
 
 	// Test extrinsic execution.
 	for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {

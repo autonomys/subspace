@@ -586,12 +586,35 @@ where
 					.map_err(|_| Self::Error::InvalidStateRootType)
 			};
 
+			// TODO: abstract the execution proof impl to be reusable in the test.
 			let fraud_proof = if local_trace_idx == 0 {
 				// `initialize_block` execution proof.
 				let pre_state_root = as_h256(parent_header.state_root())?;
 				let post_state_root = as_h256(&execution_receipt.trace[0])?;
 
-				let proof = todo!("Create `initialize_block` proof");
+				let new_header = Block::Header::new(
+					block_number,
+					Default::default(),
+					Default::default(),
+					parent_header.hash(),
+					Default::default(),
+				);
+
+				let proof = cirrus_fraud_proof::prove_execution::<
+					_,
+					_,
+					_,
+					_,
+					TransactionFor<Backend, Block>,
+				>(
+					&self.backend,
+					&*self.code_executor,
+					self.spawner.clone() as Box<dyn SpawnNamed>,
+					&BlockId::Hash(parent_header.hash()),
+					"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
+					&new_header.encode(),
+					None,
+				)?;
 
 				FraudProof { pre_state_root, post_state_root, proof }
 			} else if local_trace_idx == local_receipt.trace.len() - 1 {
