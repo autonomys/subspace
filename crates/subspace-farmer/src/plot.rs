@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::ops::Range;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -513,59 +514,86 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn try_write_piece(
+    fn write_pieces_to_end(
         &mut self,
-        piece: &[u8],
-        index: PieceIndex,
-    ) -> io::Result<(Option<PieceOffset>, Option<Piece>)> {
-        // TODO: Add error recovery
+        pieces: &[u8],
+        start_index: PieceIndex,
+    ) -> io::Result<Range<PieceOffset>> {
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-        if current_piece_count < self.max_piece_count {
-            let piece_offset: PieceOffset = current_piece_count;
+        let npieces =
+            (self.max_piece_count - current_piece_count).min((pieces.len() / PIECE_SIZE) as u64);
+
+        let start_offset: PieceOffset = current_piece_count;
+
+        self.plot
+            .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
+        self.plot
+            .write_all(&pieces[..npieces as usize * PIECE_SIZE])?;
+
+        for (index, offset) in (start_index..start_index + npieces).zip(start_offset..) {
+            self.piece_index_hash_to_offset_db.put(index, offset)?;
+            self.put_piece_index(offset, index)?;
+        }
+
+        self.piece_count.fetch_add(npieces, Ordering::AcqRel);
+
+        Ok(start_offset..start_offset + npieces)
+    }
+
+    // TODO: Add error recovery
+    fn write_pieces(
+        &mut self,
+        pieces: &[u8],
+        start_index: PieceIndex,
+    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
+        let range = self.write_pieces_to_end(pieces, start_index)?;
+
+        // Overwrite pieces
+        let mut offsets = range.clone().collect::<Vec<_>>();
+        let mut old_pieces = Vec::new();
+
+        for (index, piece) in pieces
+            .chunks(PIECE_SIZE)
+            .skip((range.end - range.start) as usize)
+            .enumerate()
+            .map(|(i, piece)| (i as u64 + range.end, piece))
+        {
+            let index_hash = PieceIndexHash::from(index);
+            // Check if piece is out of plot range or if it is in the plot
+            if xor_distance(index_hash, self.piece_index_hash_to_offset_db.address)
+                >= self.piece_index_hash_to_offset_db.max_distance().expect(
+                    "Plot already has at least one piece, therefore database should have entries. QED",
+                )
+                || self
+                    .piece_index_hash_to_offset_db
+                    .get(index_hash)?
+                    .is_some()
+            {
+                continue;
+            }
+
+            let offset = self
+                .piece_index_hash_to_offset_db
+                .remove_farest()?
+                .expect("Should be always present as plot is non-empty");
+
+            let mut old_piece = Piece::default();
+            self.plot
+                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+            self.plot.read_exact(&mut old_piece)?;
 
             self.plot
-                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
+                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
             self.plot.write_all(piece)?;
 
-            self.piece_index_hash_to_offset_db
-                .put(index, piece_offset)?;
-            self.put_piece_index(piece_offset, index)?;
-            self.piece_count.fetch_add(1, Ordering::AcqRel);
-            return Ok((Some(piece_offset), None));
+            self.piece_index_hash_to_offset_db.put(index, offset)?;
+            self.put_piece_index(offset, index)?;
+
+            offsets.push(offset);
+            old_pieces.push(old_piece);
         }
 
-        let index_hash = PieceIndexHash::from(index);
-        // Check if piece is already out of plot range or if it is already in the plot
-        if xor_distance(index_hash, self.piece_index_hash_to_offset_db.address)
-            >= self.piece_index_hash_to_offset_db.max_distance().expect(
-                "Plot already has at least one piece, therefore database should have entries. QED",
-            )
-            || self
-                .piece_index_hash_to_offset_db
-                .get(index_hash)?
-                .is_some()
-        {
-            return Ok((None, None));
-        }
-
-        let offset = self
-            .piece_index_hash_to_offset_db
-            .remove_farest()?
-            .expect("Should be always present as plot is non-empty");
-
-        let mut old_piece = Piece::default();
-        self.plot
-            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.plot.read_exact(&mut old_piece)?;
-
-        self.plot
-            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.plot.write_all(piece)?;
-
-        self.piece_index_hash_to_offset_db.put(index, offset)?;
-        self.put_piece_index(offset, index)?;
-
-        Ok((Some(offset), Some(old_piece)))
+        Ok((offsets, old_pieces))
     }
 
     fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
@@ -625,25 +653,7 @@ impl PlotWorker {
                             first_index,
                             result_sender,
                         } => {
-                            let result = try {
-                                let mut offsets = Vec::new();
-                                let mut old_pieces = Vec::new();
-
-                                for (piece, index) in
-                                    encodings.chunks_exact(PIECE_SIZE).zip(first_index..)
-                                {
-                                    let (offset, old_piece_offset) =
-                                        self.try_write_piece(piece, index)?;
-                                    if let Some(offset) = offset {
-                                        offsets.push(offset);
-                                    }
-                                    if let Some(old_piece) = old_piece_offset {
-                                        old_pieces.push(old_piece);
-                                    }
-                                }
-                                (offsets, old_pieces)
-                            };
-                            let _ = result_sender.send(result);
+                            let _ = result_sender.send(self.write_pieces(&encodings, first_index));
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);
