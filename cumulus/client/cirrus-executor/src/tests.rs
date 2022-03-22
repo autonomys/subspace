@@ -6,7 +6,7 @@ use cirrus_test_service::{
 	Keyring::{Alice, Charlie, Dave},
 };
 use codec::{Decode, Encode};
-use sc_client_api::HeaderBackend;
+use sc_client_api::{HeaderBackend, StorageProof};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::{
 	generic::BlockId,
@@ -265,4 +265,124 @@ async fn execution_proof_creation_and_verification_should_work() {
 	let new_header = Header::decode(&mut execution_result.as_slice()).unwrap();
 	let post_execution_root = *new_header.state_root();
 	assert_eq!(post_execution_root, *header.state_root());
+}
+
+#[substrate_test_utils::test]
+async fn invalid_execution_proof_should_not_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// start alice
+	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	// run cirrus charlie (a secondary chain authority node)
+	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
+		.connect_to_relay_chain_node(&alice)
+		.build()
+		.await;
+
+	// run cirrus dave (a secondary chain full node)
+	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
+		.connect_to_parachain_node(&charlie)
+		.connect_to_relay_chain_node(&alice)
+		.build()
+		.await;
+
+	// dave is able to sync blocks.
+	futures::future::join(charlie.wait_for_blocks(3), dave.wait_for_blocks(3)).await;
+
+	let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
+		&charlie.client,
+		pallet_balances::Call::transfer {
+			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+			value: 8,
+		},
+		Alice.into(),
+		false,
+		0,
+	);
+
+	let transfer_to_charlie_again = cirrus_test_service::construct_extrinsic(
+		&charlie.client,
+		pallet_balances::Call::transfer {
+			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+			value: 8,
+		},
+		Alice.into(),
+		false,
+		1,
+	);
+
+	let test_txs = vec![transfer_to_charlie.clone(), transfer_to_charlie_again.clone()];
+
+	for tx in test_txs.iter() {
+		charlie.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
+	}
+
+	// Wait until the test txs are included in the next block.
+	charlie.wait_for_blocks(1).await;
+
+	let best_hash = charlie.client.info().best_hash;
+	let header = charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
+	let parent_header =
+		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
+
+	let create_block_builder = || {
+		BlockBuilder::with_extrinsics(
+			&*charlie.client,
+			parent_header.hash(),
+			*parent_header.number(),
+			RecordProof::No,
+			Default::default(),
+			&*charlie.backend,
+			test_txs.clone().into_iter().map(Into::into).collect(),
+		)
+		.unwrap()
+	};
+
+	let create_extrinsic_proof = |extrinsic_index: usize| {
+		let storage_changes = create_block_builder()
+			.prepare_storage_changes_before(extrinsic_index)
+			.unwrap_or_else(|_| panic!("Get StorageChanges before extrinsic #{}", extrinsic_index));
+
+		let delta = storage_changes.transaction;
+		let post_delta_root = storage_changes.transaction_storage_root;
+
+		let proof = cirrus_fraud_proof::prove_execution(
+			&charlie.backend,
+			&*charlie.code_executor,
+			charlie.task_manager.spawn_handle(),
+			&BlockId::Hash(parent_header.hash()),
+			"BlockBuilder_apply_extrinsic",
+			&test_txs[extrinsic_index].encode(),
+			Some((delta.clone(), post_delta_root.clone())),
+		)
+		.expect("Create extrinsic execution proof");
+
+		(proof, delta, post_delta_root)
+	};
+
+	let (proof0, _delta0, post_delta_root0) = create_extrinsic_proof(0);
+	let (proof1, _delta1, post_delta_root1) = create_extrinsic_proof(1);
+
+	let check_proof = |post_delta_root: Hash, proof: StorageProof| {
+		cirrus_fraud_proof::check_execution_proof(
+			&charlie.backend,
+			&*charlie.code_executor,
+			charlie.task_manager.spawn_handle(),
+			&BlockId::Hash(parent_header.hash()),
+			"SecondaryApi_apply_extrinsic_with_post_state_root",
+			&transfer_to_charlie_again.encode(),
+			post_delta_root,
+			proof,
+		)
+	};
+
+	assert!(check_proof(post_delta_root1, proof0.clone()).is_err());
+	assert!(check_proof(post_delta_root0, proof1.clone()).is_err());
+	assert!(check_proof(post_delta_root0, proof0).is_ok());
+	assert!(check_proof(post_delta_root1, proof1).is_ok());
 }
