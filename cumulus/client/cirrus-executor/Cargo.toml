@@ -42,6 +42,7 @@ polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 cirrus-block-builder = { path = "../block-builder" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+cirrus-fraud-proof = { path = "../fraud-proof" }
 cirrus-primitives = { path = "../../primitives" }
 sp-executor = { path = "../../../crates/sp-executor" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
@@ -59,6 +60,7 @@ version = "0.10.0"
 
 [dev-dependencies]
 cirrus-test-service = { path = "../../test/service" }
+pallet-balances = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-cli = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 substrate-test-runtime = { path = "../../../substrate/substrate-test-runtime" }

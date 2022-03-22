@@ -1,0 +1,23 @@
+[package]
+name = "cirrus-fraud-proof"
+version = "0.1.0"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace/"
+description = "Subspace fraud proof utilities"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
+hash-db = "0.15.2"
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-state-machine = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

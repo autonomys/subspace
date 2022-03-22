@@ -555,7 +555,7 @@ impl TestNode {
 		self.client.wait_for_blocks(count)
 	}
 
-	/// Construct and sned an extrinsic to this node.
+	/// Construct and send an extrinsic to this node.
 	pub async fn construct_and_send_extrinsic(
 		&self,
 		function: impl Into<runtime::Call>,
