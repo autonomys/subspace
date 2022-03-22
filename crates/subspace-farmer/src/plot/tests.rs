@@ -1,4 +1,4 @@
-use crate::plot::Plot;
+use crate::plot::{xor_distance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::{
@@ -96,5 +96,42 @@ async fn piece_retrivable() {
     for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(2..) {
         let piece = plot.read(offset).unwrap();
         assert_eq!(piece.as_ref(), original_piece)
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn partial_plot() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let max_plot_pieces = 10;
+    let address = rand::random::<[u8; 32]>().into();
+
+    let plot = Plot::open_or_create(
+        &base_directory,
+        address,
+        Some(max_plot_pieces * PIECE_SIZE as u64),
+    )
+    .unwrap();
+    assert!(plot.is_empty());
+
+    let npieces = max_plot_pieces * 2;
+
+    let pieces = Arc::new(generate_random_pieces(npieces as usize));
+    plot.write_many(Arc::clone(&pieces), 0).unwrap();
+    assert!(!plot.is_empty());
+
+    let mut piece_indexes = (0..npieces).collect::<Vec<_>>();
+    piece_indexes.sort_by_key(|i| xor_distance((*i).into(), address));
+
+    // First pieces should be present and equal
+    for &i in &piece_indexes[..max_plot_pieces as usize] {
+        let piece = plot.read(i).unwrap();
+        let original_piece = pieces.chunks_exact(PIECE_SIZE).nth(i as usize).unwrap();
+        assert_eq!(piece.as_ref(), original_piece);
+    }
+    // Last pieces should not be present at all
+    for &i in &piece_indexes[max_plot_pieces as usize..] {
+        assert!(plot.read(i).is_err());
     }
 }

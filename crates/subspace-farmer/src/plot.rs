@@ -351,7 +351,10 @@ impl WeakPlot {
 }
 
 /// Calculates the xor distance metric between piece index hash and farmer address.
-fn xor_distance(PieceIndexHash(mut hash): PieceIndexHash, address: PublicKey) -> PieceDistance {
+pub(crate) fn xor_distance(
+    PieceIndexHash(mut hash): PieceIndexHash,
+    address: PublicKey,
+) -> PieceDistance {
     for (hash_byte, address_byte) in hash.iter_mut().zip(address.iter()) {
         *hash_byte ^= address_byte;
     }
