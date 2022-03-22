@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{FlatPieces, Sha256Hash, PIECE_SIZE};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -241,27 +241,54 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                     for archived_segment in archiver.add_block(block, object_mapping) {
                         let ArchivedSegment {
                             root_block,
-                            mut pieces,
+                            pieces,
                             object_mapping,
                         } = archived_segment;
-                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+                        let piece_index = merkle_num_leaves * root_block.segment_index();
 
                         let object_mapping =
-                            create_global_object_mapping(piece_index_offset, object_mapping);
+                            create_global_object_mapping(piece_index, object_mapping);
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
-                        let piece_indexes = (piece_index_offset..)
-                            .take(pieces.count())
-                            .collect::<Vec<_>>();
-                        if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes)
-                        {
-                            error!("Failed to encode a piece: error: {}", error);
-                            continue;
-                        }
                         if let Some(plot) = weak_plot.upgrade() {
+                            // TODO: add regression for case when piece is ommitted. Ommitted pieces shouldn't be committed.
+                            let (piece_indexes, mut pieces) = if (piece_index
+                                ..piece_index + pieces.count() as u64)
+                                .any(|index| plot.is_piece_ommitted(index).unwrap_or(false))
+                            {
+                                let mut piece_indexes = Vec::new();
+                                let mut filtered_pieces = Vec::new();
+                                for (index, piece) in (piece_index..).zip(pieces.chunks(PIECE_SIZE))
+                                {
+                                    if plot.is_piece_ommitted(index).unwrap_or(false) {
+                                        continue;
+                                    }
+                                    filtered_pieces.extend(piece);
+                                    piece_indexes.push(index);
+                                }
+
+                                (
+                                    piece_indexes,
+                                    FlatPieces::try_from(filtered_pieces)
+                                        .expect("Always okay, as piece sizes are checked before"),
+                                )
+                            } else {
+                                (
+                                    (piece_index..piece_index + pieces.count() as u64)
+                                        .collect::<Vec<_>>(),
+                                    pieces,
+                                )
+                            };
+
+                            if let Err(error) =
+                                subspace_codec.batch_encode(&mut pieces, &piece_indexes)
+                            {
+                                error!("Failed to encode a piece: error: {}", error);
+                                continue;
+                            }
                             let pieces = Arc::new(pieces);
 
-                            match plot.write_many(Arc::clone(&pieces), piece_index_offset) {
+                            match plot.write_many(Arc::clone(&pieces), piece_index) {
                                 Ok((offsets, old_pieces)) => {
                                     if let Err(error) =
                                         farmer_data.commitments.remove_pieces(old_pieces)
@@ -283,7 +310,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                 }
                                 Err(error) => error!("Failed to write encoded pieces: {}", error),
                             }
-
                             if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }

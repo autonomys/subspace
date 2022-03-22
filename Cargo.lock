@@ -8685,6 +8685,7 @@ dependencies = [
  "async-oneshot",
  "async-trait",
  "clap 3.1.6",
+ "crossbeam",
  "dirs",
  "env_logger 0.9.0",
  "event-listener-primitives",
