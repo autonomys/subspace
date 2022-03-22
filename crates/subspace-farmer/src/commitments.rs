@@ -250,14 +250,13 @@ impl Commitments {
         Ok(())
     }
 
-    // TODO: Should we just make it an iterator?
-    /// Returns iterator over commitments falling in the range of the challenge
-    pub(crate) fn find_by_range_many<C: Default + Extend<(Tag, PieceOffset)>>(
+    /// Finds the commitment falling in the range of the challenge
+    pub(crate) fn find_by_range(
         &self,
         target: Tag,
         range: u64,
         salt: Salt,
-    ) -> Option<C> {
+    ) -> Option<(Tag, PieceOffset)> {
         let db_entry = self.get_local_db_entry(&salt)?;
 
         let db_guard = db_entry.try_lock()?;
@@ -265,7 +264,7 @@ impl Commitments {
 
         let mut iter = db.raw_iterator();
 
-        let mut solutions = C::default();
+        let mut solutions = Vec::new();
 
         let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
         let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
@@ -283,7 +282,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let offset = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.extend([(tag, u64::from_le_bytes(offset.try_into().unwrap()))]);
+                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;
@@ -295,7 +294,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let offset = iter.value().unwrap();
 
-                solutions.extend([(tag, u64::from_le_bytes(offset.try_into().unwrap()))]);
+                solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                 iter.next();
             }
         } else {
@@ -304,7 +303,7 @@ impl Commitments {
                 let tag = tag.try_into().unwrap();
                 let offset = iter.value().unwrap();
                 if u64::from_be_bytes(tag) <= upper {
-                    solutions.extend([(tag, u64::from_le_bytes(offset.try_into().unwrap()))]);
+                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
                     iter.next();
                 } else {
                     break;
@@ -312,18 +311,7 @@ impl Commitments {
             }
         }
 
-        Some(solutions)
-    }
-
-    /// Finds the commitment falling in the range of the challenge
-    pub(crate) fn find_by_range(
-        &self,
-        target: Tag,
-        range: u64,
-        salt: Salt,
-    ) -> Option<(Tag, PieceOffset)> {
-        self.find_by_range_many::<Vec<_>>(target, range, salt)
-            .and_then(|solutions| solutions.into_iter().next())
+        solutions.into_iter().next()
     }
 
     pub fn on_status_change(

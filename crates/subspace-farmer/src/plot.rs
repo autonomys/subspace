@@ -417,7 +417,7 @@ impl IndexHashToOffsetDB {
         })
     }
 
-    fn remove_farest(&self) -> io::Result<Option<PieceOffset>> {
+    fn remove_furthest(&self) -> io::Result<Option<PieceOffset>> {
         let max_distance = match self.max_distance.load() {
             Some(max_distance) => max_distance,
             None => return Ok(None),
@@ -583,9 +583,15 @@ impl PlotWorker {
     ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
         let range = self.write_pieces_to_end(pieces, start_index)?;
 
+        let len = pieces
+            .chunks(PIECE_SIZE)
+            .skip((range.end - range.start) as usize)
+            .len();
+
         // Overwrite pieces
         let mut offsets = range.clone().collect::<Vec<_>>();
-        let mut old_pieces = Vec::new();
+        offsets.reserve(len);
+        let mut old_pieces = Vec::with_capacity(len);
 
         for (index, piece) in pieces
             .chunks(PIECE_SIZE)
@@ -603,7 +609,7 @@ impl PlotWorker {
 
             let offset = self
                 .piece_index_hash_to_offset_db
-                .remove_farest()?
+                .remove_furthest()?
                 .expect("Should be always present as plot is non-empty");
 
             let mut old_piece = Piece::default();
