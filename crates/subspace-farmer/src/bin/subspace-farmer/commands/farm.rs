@@ -4,7 +4,6 @@ use log::info;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::SHA256_HASH_SIZE;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
@@ -33,9 +32,7 @@ pub(crate) async fn farm(
     let base_directory = crate::utils::get_path(custom_path);
 
     let identity = Identity::open_or_create(&base_directory)?;
-    let address = <&[u8; SHA256_HASH_SIZE]>::try_from(identity.public_key().as_ref())
-        .expect("Length of public key is always correct");
-    let address = (*address).into();
+    let address = identity.public_key().to_bytes().into();
 
     let reward_address = reward_address.unwrap_or(address);
 

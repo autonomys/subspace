@@ -30,9 +30,8 @@ async fn plotting_happy_path() {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let address = <&[u8; 32]>::try_from(identity.public_key().as_ref())
-        .expect("Length of public key is always correct");
-    let plot = Plot::open_or_create(&base_directory, (*address).into(), None).unwrap();
+    let address = identity.public_key().to_bytes().into();
+    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -139,10 +138,9 @@ async fn plotting_continue() {
     let base_directory = TempDir::new().unwrap();
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
+    let address = identity.public_key().to_bytes().into();
 
-    let address = <&[u8; 32]>::try_from(identity.public_key().as_ref())
-        .expect("Length of public key is always correct");
-    let plot = Plot::open_or_create(&base_directory, (*address).into(), None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 

@@ -457,12 +457,8 @@ impl RootBlock {
     }
 }
 
-/// Index of piece on disk
-pub type PieceOffset = u64;
 /// Piece index in consensus
 pub type PieceIndex = u64;
-/// Distance to piece index hash from farmer identity
-pub type PieceDistance = [u8; SHA256_HASH_SIZE];
 
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -478,14 +474,6 @@ impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
         Self(crypto::sha256_hash(&index.to_le_bytes()))
-    }
-
-    /// Calculates the xor distance metric between piece index hash and farmer address.
-    pub fn xor_distance(mut self, PublicKey(address): PublicKey) -> PieceDistance {
-        for (hash_byte, address_byte) in self.0.iter_mut().zip(address) {
-            *hash_byte ^= address_byte;
-        }
-        self.0
     }
 }
 

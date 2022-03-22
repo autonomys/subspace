@@ -13,12 +13,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PieceOffset, PublicKey, RootBlock, Sha256Hash,
-    PIECE_SIZE, SHA256_HASH_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, Sha256Hash, PIECE_SIZE,
+    SHA256_HASH_SIZE,
 };
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
+
+/// Index of piece on disk
+pub(crate) type PieceOffset = u64;
+/// Distance to piece index hash from farmer identity
+type PieceDistance = [u8; SHA256_HASH_SIZE];
 
 #[derive(Debug, Error)]
 pub enum PlotError {
@@ -345,6 +350,14 @@ impl WeakPlot {
     }
 }
 
+/// Calculates the xor distance metric between piece index hash and farmer address.
+fn xor_distance(PieceIndexHash(mut hash): PieceIndexHash, address: PublicKey) -> PieceDistance {
+    for (hash_byte, address_byte) in hash.iter_mut().zip(address.iter()) {
+        *hash_byte ^= address_byte;
+    }
+    hash
+}
+
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
@@ -365,8 +378,9 @@ impl IndexHashToOffsetDB {
     }
 
     fn get(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Option<PieceOffset>> {
+        let distance = xor_distance(index_hash.into(), self.address);
         self.inner
-            .get(&index_hash.into().xor_distance(self.address))
+            .get(&distance)
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -396,7 +410,7 @@ impl IndexHashToOffsetDB {
         index_hash: impl Into<PieceIndexHash>,
         offset: PieceOffset,
     ) -> io::Result<()> {
-        let distance = index_hash.into().xor_distance(self.address);
+        let distance = xor_distance(index_hash.into(), self.address);
         self.inner
             .put(&distance, offset.to_le_bytes())
             .map_err(io::Error::other)
@@ -519,7 +533,7 @@ impl PlotWorker {
 
         let index_hash = PieceIndexHash::from(index);
         // Check if piece is already out of plot range or if it is already in the plot
-        if index_hash.xor_distance(self.piece_index_hash_to_offset_db.address)
+        if xor_distance(index_hash, self.piece_index_hash_to_offset_db.address)
             >= self.piece_index_hash_to_offset_db.max_distance().expect(
                 "Plot already has at least one piece, therefore database should have entries. QED",
             )

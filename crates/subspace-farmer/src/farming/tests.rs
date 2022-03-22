@@ -27,9 +27,8 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
     let index = 0;
 
-    let address = <&[u8; 32]>::try_from(identity.public_key().as_ref())
-        .expect("Length of public key is always correct");
-    let plot = Plot::open_or_create(&base_directory, (*address).into(), None).unwrap();
+    let address = identity.public_key().to_bytes().into();
+    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
 
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
@@ -38,21 +37,13 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let client = MockRpc::new();
 
-    let reward_address = identity
-        .public_key()
-        .as_ref()
-        .to_vec()
-        .try_into()
-        .map(From::<[u8; 32]>::from)
-        .unwrap();
-
     // start the farming task
     let farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
         client.clone(),
         identity.clone(),
-        reward_address,
+        address,
     );
 
     let mut counter = 0;

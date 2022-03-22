@@ -92,24 +92,7 @@ enum Command {
 }
 
 fn parse_human_readable(s: &str) -> Result<u64, std::num::ParseIntError> {
-    const SUFFIXES: &[(&str, u64)] = &[
-        ("kB", 10u64.pow(3)),
-        ("k", 2u64.pow(10)),
-        ("K", 2u64.pow(10)),
-        ("KiB", 2u64.pow(10)),
-        ("mB", 10u64.pow(6)),
-        ("m", 2u64.pow(20)),
-        ("M", 2u64.pow(20)),
-        ("MiB", 2u64.pow(20)),
-        ("gB", 10u64.pow(9)),
-        ("g", 2u64.pow(30)),
-        ("G", 2u64.pow(30)),
-        ("GiB", 2u64.pow(30)),
-        ("tB", 10u64.pow(12)),
-        ("t", 2u64.pow(40)),
-        ("T", 2u64.pow(40)),
-        ("TiB", 2u64.pow(40)),
-    ];
+    const SUFFIXES: &[(&str, u64)] = &[("G", 10u64.pow(9)), ("T", 10u64.pow(12))];
 
     SUFFIXES
         .iter()
