@@ -317,7 +317,13 @@ where
 	) -> Result<StorageProof, GossipMessageError> {
 		let extrinsics = self.block_body(current_hash)?;
 
-		let encoded_extrinsic = extrinsics[extrinsic_index].encode();
+		let encoded_extrinsic = extrinsics
+			.get(extrinsic_index)
+			.ok_or(GossipMessageError::InvalidExtrinsicIndex {
+				index: extrinsic_index,
+				max: extrinsics.len() - 1,
+			})?
+			.encode();
 
 		let block_builder = BlockBuilder::with_extrinsics(
 			&*self.client,
@@ -332,7 +338,8 @@ where
 
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
-
+		// TODO: way to call some runtime api against any specific state instead of having
+		// to work with String API directly.
 		let execution_proof = cirrus_fraud_proof::prove_execution(
 			&self.backend,
 			&*self.code_executor,
@@ -423,6 +430,8 @@ pub enum GossipMessageError {
 	BundleEquivocation,
 	#[error("State root not using H256")]
 	InvalidStateRootType,
+	#[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
+	InvalidExtrinsicIndex { index: usize, max: usize },
 	#[error(transparent)]
 	Client(#[from] sp_blockchain::Error),
 	#[error(transparent)]
@@ -563,20 +572,18 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some(local_trace_idx) = local_receipt
+		if let Some((local_trace_idx, local_root)) = local_receipt
 			.trace
 			.iter()
 			.enumerate()
 			.zip(execution_receipt.trace.iter().enumerate())
-			.find_map(
-				|((local_idx, local_root), (_, external_root))| {
-					if local_root != external_root {
-						Some(local_idx)
-					} else {
-						None
-					}
-				},
-			) {
+			.find_map(|((local_idx, local_root), (_, external_root))| {
+				if local_root != external_root {
+					Some((local_idx, local_root))
+				} else {
+					None
+				}
+			}) {
 			let header = self.header(execution_receipt.secondary_hash)?;
 			let parent_header = self.header(*header.parent_hash())?;
 
@@ -590,7 +597,7 @@ where
 			let fraud_proof = if local_trace_idx == 0 {
 				// `initialize_block` execution proof.
 				let pre_state_root = as_h256(parent_header.state_root())?;
-				let post_state_root = as_h256(&execution_receipt.trace[0])?;
+				let post_state_root = as_h256(local_root)?;
 
 				let new_header = Block::Header::new(
 					block_number,
@@ -600,6 +607,8 @@ where
 					Default::default(),
 				);
 
+				// TODO: way to call some runtime api against any specific state instead of having
+				// to work with String API directly.
 				let proof = cirrus_fraud_proof::prove_execution::<
 					_,
 					_,
@@ -620,7 +629,7 @@ where
 			} else if local_trace_idx == local_receipt.trace.len() - 1 {
 				// `finalize_block` execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
+				let post_state_root = as_h256(local_root)?;
 
 				let block_builder = BlockBuilder::with_extrinsics(
 					&*self.client,
@@ -637,6 +646,8 @@ where
 				let delta = storage_changes.transaction;
 				let post_delta_root = storage_changes.transaction_storage_root;
 
+				// TODO: way to call some runtime api against any specific state instead of having
+				// to work with String API directly.
 				let proof = cirrus_fraud_proof::prove_execution(
 					&self.backend,
 					&*self.code_executor,
@@ -651,7 +662,7 @@ where
 			} else {
 				// Regular extrinsic execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(&execution_receipt.trace[local_trace_idx])?;
+				let post_state_root = as_h256(local_root)?;
 
 				let proof = self.create_extrinsic_execution_proof(
 					local_trace_idx - 1,
