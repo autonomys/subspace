@@ -120,6 +120,9 @@ where
 	>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
+	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
+		sp_api::HashFor<Block>,
+	>>::Transaction: sp_trie::HashDBT<sp_api::HashFor<Block>, sp_trie::DBValue>,
 	IQ: ImportQueue<Block> + 'static,
 	TP: TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash> + 'static,

@@ -9,6 +9,7 @@ members = [
     "cumulus/client/consensus/common",
     "cumulus/client/consensus/relay-chain",
     "cumulus/client/executor-gossip",
+    "cumulus/client/fraud-proof",
     "cumulus/pallets/executive",
     "cumulus/parachain-template/node",
     "cumulus/parachain-template/runtime",
