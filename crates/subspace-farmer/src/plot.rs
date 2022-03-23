@@ -147,7 +147,7 @@ impl Plot {
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
         let piece_index_hash_to_offset_db = Arc::clone(&plot_worker.piece_index_hash_to_offset_db);
-        tokio::task::spawn_blocking(move || plot_worker.do_plot(requests_receiver));
+        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
 
         let inner = Inner {
             handlers: Handlers::default(),
@@ -173,10 +173,10 @@ impl Plot {
     }
 
     /// Checks if piece will be written on disk or it will be skipped
-    pub fn is_piece_ommitted(&self, index: PieceIndex) -> io::Result<bool> {
+    pub fn is_piece_omitted(&self, index: PieceIndex) -> io::Result<bool> {
         self.inner
             .piece_index_hash_to_offset_db
-            .is_ommitted(index.into())
+            .is_omitted(index.into())
     }
 
     /// Reads a piece from plot by index
@@ -209,7 +209,7 @@ impl Plot {
     }
 
     /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates).
-    /// Returns tupple of offsets of new pieces and pieces which were removed
+    /// Returns a tuple of offsets of new pieces and pieces which were removed
     pub(crate) fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
@@ -408,7 +408,7 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    fn is_ommitted(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
+    fn is_omitted(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
         Ok(match self.max_distance.load() {
             Some(max_distance) => {
                 xor_distance(index_hash, self.address) >= max_distance
@@ -559,7 +559,7 @@ impl PlotWorker {
         start_index: PieceIndex,
     ) -> io::Result<Range<PieceOffset>> {
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-        let npieces =
+        let pieces_to_plot =
             (self.max_piece_count - current_piece_count).min((pieces.len() / PIECE_SIZE) as u64);
 
         let start_offset: PieceOffset = current_piece_count;
@@ -567,20 +567,20 @@ impl PlotWorker {
         self.plot
             .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
         self.plot
-            .write_all(&pieces[..npieces as usize * PIECE_SIZE])?;
+            .write_all(&pieces[..pieces_to_plot as usize * PIECE_SIZE])?;
 
-        for (index, offset) in (start_index..start_index + npieces).zip(start_offset..) {
+        for (index, offset) in (start_index..start_index + pieces_to_plot).zip(start_offset..) {
             self.piece_index_hash_to_offset_db.put(index, offset)?;
             self.put_piece_index(offset, index)?;
         }
 
-        self.piece_count.fetch_add(npieces, Ordering::AcqRel);
+        self.piece_count.fetch_add(pieces_to_plot, Ordering::AcqRel);
 
-        Ok(start_offset..start_offset + npieces)
+        Ok(start_offset..start_offset + pieces_to_plot)
     }
 
     // TODO: Add error recovery
-    fn write_pieces(
+    fn write_encodings(
         &mut self,
         pieces: &[u8],
         start_index: PieceIndex,
@@ -606,7 +606,7 @@ impl PlotWorker {
             // Check if piece is out of plot range or if it is in the plot
             if self
                 .piece_index_hash_to_offset_db
-                .is_ommitted(index.into())?
+                .is_omitted(index.into())?
             {
                 continue;
             }
@@ -635,7 +635,7 @@ impl PlotWorker {
         Ok((offsets, old_pieces))
     }
 
-    fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
+    fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
         let mut exit_result_sender = None;
 
@@ -692,7 +692,8 @@ impl PlotWorker {
                             first_index,
                             result_sender,
                         } => {
-                            let _ = result_sender.send(self.write_pieces(&encodings, first_index));
+                            let _ =
+                                result_sender.send(self.write_encodings(&encodings, first_index));
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);

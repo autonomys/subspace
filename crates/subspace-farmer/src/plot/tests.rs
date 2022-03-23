@@ -73,7 +73,7 @@ async fn last_root_block() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn piece_retrivable() {
+async fn piece_retrievable() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -115,13 +115,13 @@ async fn partial_plot() {
     .unwrap();
     assert!(plot.is_empty());
 
-    let npieces = max_plot_pieces * 2;
+    let pieces_to_plot = max_plot_pieces * 2;
 
-    let pieces = Arc::new(generate_random_pieces(npieces as usize));
+    let pieces = Arc::new(generate_random_pieces(pieces_to_plot as usize));
     plot.write_many(Arc::clone(&pieces), 0).unwrap();
     assert!(!plot.is_empty());
 
-    let mut piece_indexes = (0..npieces).collect::<Vec<_>>();
+    let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
     piece_indexes.sort_by_key(|i| xor_distance((*i).into(), address));
 
     // First pieces should be present and equal

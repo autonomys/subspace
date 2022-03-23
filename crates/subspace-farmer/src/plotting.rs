@@ -251,16 +251,17 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
                         if let Some(plot) = weak_plot.upgrade() {
-                            // TODO: add regression for case when piece is ommitted. Ommitted pieces shouldn't be committed.
+                            // TODO: add regression for case when piece is omitted. Omitted pieces
+                            //  shouldn't be committed.
                             let (piece_indexes, mut pieces) = if (piece_index
                                 ..piece_index + pieces.count() as u64)
-                                .any(|index| plot.is_piece_ommitted(index).unwrap_or(false))
+                                .any(|index| plot.is_piece_omitted(index).unwrap_or(false))
                             {
                                 let mut piece_indexes = Vec::new();
                                 let mut filtered_pieces = Vec::new();
                                 for (index, piece) in (piece_index..).zip(pieces.chunks(PIECE_SIZE))
                                 {
-                                    if plot.is_piece_ommitted(index).unwrap_or(false) {
+                                    if plot.is_piece_omitted(index).unwrap_or(false) {
                                         continue;
                                     }
                                     filtered_pieces.extend(piece);
