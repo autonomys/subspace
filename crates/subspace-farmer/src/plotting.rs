@@ -244,22 +244,23 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             pieces,
                             object_mapping,
                         } = archived_segment;
-                        let piece_index = merkle_num_leaves * root_block.segment_index();
+                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
                         let object_mapping =
-                            create_global_object_mapping(piece_index, object_mapping);
+                            create_global_object_mapping(piece_index_offset, object_mapping);
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
                         if let Some(plot) = weak_plot.upgrade() {
                             // TODO: add regression for case when piece is omitted. Omitted pieces
                             //  shouldn't be committed.
-                            let (piece_indexes, mut pieces) = if (piece_index
-                                ..piece_index + pieces.count() as u64)
+                            let (piece_indexes, mut pieces) = if (piece_index_offset
+                                ..piece_index_offset + pieces.count() as u64)
                                 .any(|index| plot.is_piece_omitted(index).unwrap_or(false))
                             {
                                 let mut piece_indexes = Vec::new();
                                 let mut filtered_pieces = Vec::new();
-                                for (index, piece) in (piece_index..).zip(pieces.chunks(PIECE_SIZE))
+                                for (index, piece) in
+                                    (piece_index_offset..).zip(pieces.chunks(PIECE_SIZE))
                                 {
                                     if plot.is_piece_omitted(index).unwrap_or(false) {
                                         continue;
@@ -275,7 +276,8 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                 )
                             } else {
                                 (
-                                    (piece_index..piece_index + pieces.count() as u64)
+                                    (piece_index_offset
+                                        ..piece_index_offset + pieces.count() as u64)
                                         .collect::<Vec<_>>(),
                                     pieces,
                                 )
@@ -289,7 +291,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             }
                             let pieces = Arc::new(pieces);
 
-                            match plot.write_many(Arc::clone(&pieces), piece_index) {
+                            match plot.write_many(Arc::clone(&pieces), piece_indexes) {
                                 Ok((offsets, old_pieces)) => {
                                     if let Err(error) =
                                         farmer_data.commitments.remove_pieces(&old_pieces)

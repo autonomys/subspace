@@ -68,7 +68,7 @@ enum Request {
     },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
-        first_index: PieceIndex,
+        piece_indexes: Vec<PieceIndex>,
         /// Returns offsets of all new pieces and pieces which were replaced
         result_sender: mpsc::Sender<io::Result<(Vec<PieceOffset>, Vec<Piece>)>>,
     },
@@ -212,7 +212,7 @@ impl Plot {
     pub(crate) fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
-        first_index: PieceIndex,
+        piece_indexes: Vec<PieceIndex>,
     ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
         if encodings.is_empty() {
             return Ok(Default::default());
@@ -231,7 +231,7 @@ impl Plot {
             .send(RequestWithPriority {
                 request: Request::WriteEncodings {
                     encodings,
-                    first_index,
+                    piece_indexes,
                     result_sender,
                 },
                 priority: RequestPriority::Low,
@@ -554,12 +554,12 @@ impl PlotWorker {
 
     fn write_pieces_to_end(
         &mut self,
-        pieces: &[u8],
-        start_index: PieceIndex,
+        pieces: &FlatPieces,
+        piece_indexes: &[PieceIndex],
     ) -> io::Result<Range<PieceOffset>> {
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
         let pieces_to_plot =
-            (self.max_piece_count - current_piece_count).min((pieces.len() / PIECE_SIZE) as u64);
+            (self.max_piece_count - current_piece_count).min((pieces.count()) as u64);
 
         let start_offset: PieceOffset = current_piece_count;
 
@@ -568,7 +568,13 @@ impl PlotWorker {
         self.plot
             .write_all(&pieces[..pieces_to_plot as usize * PIECE_SIZE])?;
 
-        for (index, offset) in (start_index..start_index + pieces_to_plot).zip(start_offset..) {
+        let piece_indexes: Vec<PieceIndex> = piece_indexes
+            .iter()
+            .take(pieces_to_plot as usize)
+            .copied()
+            .collect();
+
+        for (index, offset) in piece_indexes.iter().copied().zip(start_offset..) {
             self.piece_index_hash_to_offset_db.put(index, offset)?;
             self.put_piece_index(offset, index)?;
         }
@@ -581,26 +587,24 @@ impl PlotWorker {
     // TODO: Add error recovery
     fn write_encodings(
         &mut self,
-        pieces: &[u8],
-        start_index: PieceIndex,
+        pieces: &FlatPieces,
+        piece_indexes: Vec<PieceIndex>,
     ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
-        let range = self.write_pieces_to_end(pieces, start_index)?;
-
-        let len = pieces
-            .chunks(PIECE_SIZE)
-            .skip((range.end - range.start) as usize)
-            .len();
+        let range = self.write_pieces_to_end(pieces, &piece_indexes)?;
 
         // Overwrite pieces
-        let mut offsets = range.clone().collect::<Vec<_>>();
-        offsets.reserve(len);
-        let mut old_pieces = Vec::with_capacity(len);
+        let mut offsets = Vec::<PieceOffset>::with_capacity(pieces.count());
+        offsets.extend(range.clone());
+        let mut old_pieces = Vec::with_capacity(pieces.count());
 
-        for (index, piece) in pieces
-            .chunks(PIECE_SIZE)
+        for (piece, index) in pieces
+            .as_pieces()
             .skip((range.end - range.start) as usize)
-            .enumerate()
-            .map(|(i, piece)| (i as u64 + range.end, piece))
+            .zip(
+                piece_indexes
+                    .into_iter()
+                    .skip((range.end - range.start) as usize),
+            )
         {
             // Check if piece is out of plot range or if it is in the plot
             if self
@@ -688,11 +692,11 @@ impl PlotWorker {
                         }
                         Request::WriteEncodings {
                             encodings,
-                            first_index,
+                            piece_indexes,
                             result_sender,
                         } => {
                             let _ =
-                                result_sender.send(self.write_encodings(&encodings, first_index));
+                                result_sender.send(self.write_encodings(&encodings, piece_indexes));
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);

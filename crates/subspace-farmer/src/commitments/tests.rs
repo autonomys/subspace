@@ -19,11 +19,11 @@ async fn create() {
     let salt: Salt = [1u8; 8];
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-    let index = 0;
 
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    plot.write_many(Arc::new(pieces), index).unwrap();
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
     commitments.create(salt, plot).unwrap();
 
     let (tag, _) = commitments
@@ -47,7 +47,8 @@ async fn find_by_tag() {
     let mut rng = StdRng::seed_from_u64(0);
     let mut pieces: FlatPieces = vec![0u8; 1024 * PIECE_SIZE].try_into().unwrap();
     rng.fill(pieces.as_mut());
-    plot.write_many(Arc::new(pieces), 0).unwrap();
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
 
     commitments.create(salt, plot).unwrap();
 
@@ -120,11 +121,11 @@ async fn remove_commitments() {
     let salt: Salt = [1u8; 8];
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-    let index = 0;
 
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    plot.write_many(Arc::new(pieces), index).unwrap();
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
     commitments.create(salt, plot.clone()).unwrap();
 
     let (_, offset) = commitments
