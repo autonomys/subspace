@@ -38,6 +38,29 @@ pub enum PlotError {
     OffsetDbOpen(io::Error),
 }
 
+#[derive(Debug, Default)]
+pub struct WriteResult {
+    pieces: Arc<FlatPieces>,
+    piece_offsets: Vec<Option<PieceOffset>>,
+    evicted_pieces: Vec<Piece>,
+}
+
+impl WriteResult {
+    /// Iterator over tuple of piece offset and piece itself as memory slice
+    pub fn to_recommitment_iterator(&self) -> impl Iterator<Item = (PieceOffset, &[u8])> {
+        self.piece_offsets
+            .iter()
+            .zip(self.pieces.as_pieces())
+            .filter_map(|(maybe_piece_offset, piece)| {
+                maybe_piece_offset.map(|piece_offset| (piece_offset, piece))
+            })
+    }
+
+    pub fn evicted_pieces(&self) -> &[Piece] {
+        &self.evicted_pieces
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct PlottedPieces {
     pub plotted_piece_count: usize,
@@ -69,7 +92,7 @@ enum Request {
         encodings: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,
         /// Returns offsets of all new pieces and pieces which were replaced
-        result_sender: mpsc::Sender<io::Result<(Vec<PieceOffset>, Vec<Piece>)>>,
+        result_sender: mpsc::Sender<io::Result<WriteResult>>,
     },
     Exit {
         result_sender: mpsc::Sender<()>,
@@ -215,7 +238,7 @@ impl Plot {
         &self,
         encodings: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,
-    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
+    ) -> io::Result<WriteResult> {
         if encodings.is_empty() {
             return Ok(Default::default());
         }
@@ -543,9 +566,9 @@ impl PlotWorker {
     // TODO: Add error recovery
     fn write_encodings(
         &mut self,
-        pieces: &FlatPieces,
+        pieces: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,
-    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
+    ) -> io::Result<WriteResult> {
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
         let pieces_left_until_full_plot =
             (self.max_piece_count - current_piece_count).min(pieces.count() as u64);
@@ -580,12 +603,23 @@ impl PlotWorker {
                 .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
         }
 
-        let mut offsets = Vec::<PieceOffset>::with_capacity(pieces.count());
-        offsets.extend((current_piece_count..).take(pieces_left_until_full_plot as usize));
+        let mut piece_offsets = Vec::<Option<PieceOffset>>::with_capacity(pieces.count());
+        piece_offsets.extend(
+            (current_piece_count..)
+                .take(pieces_left_until_full_plot as usize)
+                .map(Some),
+        );
+        piece_offsets.resize(piece_offsets.capacity(), None);
         let mut evicted_pieces = Vec::with_capacity(pieces.count());
 
         // Process random pieces
-        for (piece, &piece_index) in random_pieces.zip(random_piece_indexes) {
+        for ((piece, &piece_index), maybe_piece_offset) in
+            random_pieces.zip(random_piece_indexes).zip(
+                piece_offsets
+                    .iter_mut()
+                    .skip(pieces_left_until_full_plot as usize),
+            )
+        {
             // Check if piece is out of plot range or if it is in the plot
             if self
                 .piece_index_hash_to_offset_db
@@ -612,11 +646,17 @@ impl PlotWorker {
                 .put(piece_index, piece_offset)?;
             self.put_piece_index(piece_offset, piece_index)?;
 
-            offsets.push(piece_offset);
+            // TODO: This is a bit inefficient when pieces from previous iterations of this loop are
+            //  evicted, causing extra tags overrides during recommitment
+            maybe_piece_offset.replace(piece_offset);
             evicted_pieces.push(old_piece);
         }
 
-        Ok((offsets, evicted_pieces))
+        Ok(WriteResult {
+            pieces,
+            piece_offsets,
+            evicted_pieces,
+        })
     }
 
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
@@ -677,7 +717,7 @@ impl PlotWorker {
                             result_sender,
                         } => {
                             let _ =
-                                result_sender.send(self.write_encodings(&encodings, piece_indexes));
+                                result_sender.send(self.write_encodings(encodings, piece_indexes));
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);
