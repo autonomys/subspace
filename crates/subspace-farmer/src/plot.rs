@@ -546,78 +546,77 @@ impl PlotWorker {
         pieces: &FlatPieces,
         piece_indexes: Vec<PieceIndex>,
     ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
-        let range = {
-            let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-            let pieces_to_plot =
-                (self.max_piece_count - current_piece_count).min((pieces.count()) as u64);
+        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+        let pieces_left_until_full_plot =
+            (self.max_piece_count - current_piece_count).min(pieces.count() as u64);
 
-            let start_offset: PieceOffset = current_piece_count;
+        // Split pieces and indexes in those that can be appended to the end of plot (thus written
+        // sequentially) and those that need to be checked individually and plotted one by one in
+        // place of old pieces
+        let (sequential_pieces, _) =
+            pieces.split_at(pieces_left_until_full_plot as usize * PIECE_SIZE);
+        // Iterator is more convenient for random pieces, otherwise we could take it from above
+        let random_pieces = pieces
+            .as_pieces()
+            .skip(pieces_left_until_full_plot as usize);
+        let (sequential_piece_indexes, random_piece_indexes) =
+            piece_indexes.split_at(pieces_left_until_full_plot as usize);
 
+        // Process sequential pieces
+        {
             self.plot
-                .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
-            self.plot
-                .write_all(&pieces[..pieces_to_plot as usize * PIECE_SIZE])?;
+                .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
+            self.plot.write_all(sequential_pieces)?;
 
-            let piece_indexes: Vec<PieceIndex> = piece_indexes
-                .iter()
-                .take(pieces_to_plot as usize)
-                .copied()
-                .collect();
-
-            for (index, offset) in piece_indexes.iter().copied().zip(start_offset..) {
-                self.piece_index_hash_to_offset_db.put(index, offset)?;
-                self.put_piece_index(offset, index)?;
+            for (piece_offset, &piece_index) in
+                (current_piece_count..).zip(sequential_piece_indexes)
+            {
+                self.piece_index_hash_to_offset_db
+                    .put(piece_index, piece_offset)?;
+                self.put_piece_index(piece_offset, piece_index)?;
             }
 
-            self.piece_count.fetch_add(pieces_to_plot, Ordering::AcqRel);
+            self.piece_count
+                .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
+        }
 
-            start_offset..start_offset + pieces_to_plot
-        };
-
-        // Overwrite pieces
         let mut offsets = Vec::<PieceOffset>::with_capacity(pieces.count());
-        offsets.extend(range.clone());
-        let mut old_pieces = Vec::with_capacity(pieces.count());
+        offsets.extend((current_piece_count..).take(pieces_left_until_full_plot as usize));
+        let mut evicted_pieces = Vec::with_capacity(pieces.count());
 
-        for (piece, index) in pieces
-            .as_pieces()
-            .skip((range.end - range.start) as usize)
-            .zip(
-                piece_indexes
-                    .into_iter()
-                    .skip((range.end - range.start) as usize),
-            )
-        {
+        // Process random pieces
+        for (piece, &piece_index) in random_pieces.zip(random_piece_indexes) {
             // Check if piece is out of plot range or if it is in the plot
             if self
                 .piece_index_hash_to_offset_db
-                .is_omitted(index.into())?
+                .is_omitted(piece_index.into())?
             {
                 continue;
             }
 
-            let offset = self
+            let piece_offset = self
                 .piece_index_hash_to_offset_db
                 .remove_furthest()?
-                .expect("Should be always present as plot is non-empty");
+                .expect("Must be always present as plot is non-empty; qed");
 
             let mut old_piece = Piece::default();
             self.plot
-                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
             self.plot.read_exact(&mut old_piece)?;
 
             self.plot
-                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
             self.plot.write_all(piece)?;
 
-            self.piece_index_hash_to_offset_db.put(index, offset)?;
-            self.put_piece_index(offset, index)?;
+            self.piece_index_hash_to_offset_db
+                .put(piece_index, piece_offset)?;
+            self.put_piece_index(piece_offset, piece_index)?;
 
-            offsets.push(offset);
-            old_pieces.push(old_piece);
+            offsets.push(piece_offset);
+            evicted_pieces.push(old_piece);
         }
 
-        Ok((offsets, old_pieces))
+        Ok((offsets, evicted_pieces))
     }
 
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
