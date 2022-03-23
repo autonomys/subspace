@@ -504,6 +504,9 @@ impl PlotWorker {
             get_piece_amount(&base_directory) + piece_count.load()
         };
 
+        // TODO: handle `piece_count.load() > max_piece_count`
+        // We should discard some of the pieces here
+
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
             address,
