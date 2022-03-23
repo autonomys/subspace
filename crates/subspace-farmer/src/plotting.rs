@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{FlatPieces, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -241,7 +241,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                     for archived_segment in archiver.add_block(block, object_mapping) {
                         let ArchivedSegment {
                             root_block,
-                            pieces,
+                            mut pieces,
                             object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
@@ -251,37 +251,9 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
                         if let Some(plot) = weak_plot.upgrade() {
-                            // TODO: add regression for case when piece is omitted. Omitted pieces
-                            //  shouldn't be committed.
-                            let (piece_indexes, mut pieces) = if (piece_index_offset
-                                ..piece_index_offset + pieces.count() as u64)
-                                .any(|index| plot.is_piece_omitted(index).unwrap_or(false))
-                            {
-                                let mut piece_indexes = Vec::new();
-                                let mut filtered_pieces = Vec::new();
-                                for (index, piece) in
-                                    (piece_index_offset..).zip(pieces.chunks(PIECE_SIZE))
-                                {
-                                    if plot.is_piece_omitted(index).unwrap_or(false) {
-                                        continue;
-                                    }
-                                    filtered_pieces.extend(piece);
-                                    piece_indexes.push(index);
-                                }
-
-                                (
-                                    piece_indexes,
-                                    FlatPieces::try_from(filtered_pieces)
-                                        .expect("Always okay, as piece sizes are checked before"),
-                                )
-                            } else {
-                                (
-                                    (piece_index_offset
-                                        ..piece_index_offset + pieces.count() as u64)
-                                        .collect::<Vec<_>>(),
-                                    pieces,
-                                )
-                            };
+                            let piece_indexes = (piece_index_offset..)
+                                .take(pieces.count())
+                                .collect::<Vec<PieceIndex>>();
 
                             if let Err(error) =
                                 subspace_codec.batch_encode(&mut pieces, &piece_indexes)

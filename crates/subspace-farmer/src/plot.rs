@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-use crossbeam::atomic::AtomicCell;
 use event_listener_primitives::{Bag, HandlerId};
 use log::error;
 use rocksdb::DB;
@@ -116,7 +115,6 @@ struct Inner {
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
-    piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
 }
 
 impl Drop for Inner {
@@ -170,7 +168,6 @@ impl Plot {
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
-        let piece_index_hash_to_offset_db = Arc::clone(&plot_worker.piece_index_hash_to_offset_db);
         tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
 
         let inner = Inner {
@@ -178,7 +175,6 @@ impl Plot {
             requests_sender,
             plot_metadata_db,
             piece_count,
-            piece_index_hash_to_offset_db,
         };
 
         Ok(Plot {
@@ -194,13 +190,6 @@ impl Plot {
     /// Whether plot doesn't have anything in it
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.piece_count.load(Ordering::Acquire) == 0
-    }
-
-    /// Checks if piece will be written on disk or it will be skipped
-    pub fn is_piece_omitted(&self, index: PieceIndex) -> io::Result<bool> {
-        self.inner
-            .piece_index_hash_to_offset_db
-            .is_omitted(index.into())
     }
 
     /// Reads a piece from plot by index
@@ -401,7 +390,7 @@ pub(crate) fn xor_distance(
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance: Arc<AtomicCell<Option<Sha256Hash>>>,
+    max_distance: Option<Sha256Hash>,
 }
 
 impl IndexHashToOffsetDB {
@@ -415,7 +404,7 @@ impl IndexHashToOffsetDB {
         Ok(Self {
             inner,
             address,
-            max_distance: Arc::new(AtomicCell::new(max_distance)),
+            max_distance,
         })
     }
 
@@ -432,18 +421,20 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    fn is_omitted(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
-        Ok(match self.max_distance.load() {
+    /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
+    /// already
+    fn should_store(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
+        Ok(match self.max_distance {
             Some(max_distance) => {
-                xor_distance(index_hash, self.address) >= max_distance
-                    || self.get(index_hash)?.is_some()
+                xor_distance(index_hash, self.address) < max_distance
+                    && self.get(index_hash)?.is_none()
             }
             None => false,
         })
     }
 
-    fn remove_furthest(&self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance.load() {
+    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
+        let max_distance = match self.max_distance {
             Some(max_distance) => max_distance,
             None => return Ok(None),
         };
@@ -457,23 +448,29 @@ impl IndexHashToOffsetDB {
 
         let mut iter = self.inner.raw_iterator();
         iter.seek_to_last();
-        self.max_distance
-            .store(iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap()));
+        self.max_distance = iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap());
         Ok(result)
     }
 
-    fn put(&self, index_hash: impl Into<PieceIndexHash>, offset: PieceOffset) -> io::Result<()> {
+    fn put(
+        &mut self,
+        index_hash: impl Into<PieceIndexHash>,
+        offset: PieceOffset,
+    ) -> io::Result<()> {
         let distance = xor_distance(index_hash.into(), self.address);
         self.inner
             .put(&distance, offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        match self.max_distance.load() {
-            None => self.max_distance.store(Some(distance)),
-            Some(old_distance) if old_distance < distance => {
-                self.max_distance.store(Some(distance))
+        match self.max_distance {
+            Some(old_distance) => {
+                if old_distance < distance {
+                    self.max_distance.replace(distance);
+                }
             }
-            _ => (),
+            None => {
+                self.max_distance.replace(distance);
+            }
         };
 
         Ok(())
@@ -482,7 +479,7 @@ impl IndexHashToOffsetDB {
 
 struct PlotWorker {
     plot: File,
-    piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
+    piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: File,
     piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
@@ -521,8 +518,7 @@ impl PlotWorker {
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
             address,
-        )
-        .map(Arc::new)?;
+        )?;
 
         Ok(Self {
             plot,
@@ -621,9 +617,9 @@ impl PlotWorker {
             )
         {
             // Check if piece is out of plot range or if it is in the plot
-            if self
+            if !self
                 .piece_index_hash_to_offset_db
-                .is_omitted(piece_index.into())?
+                .should_store(piece_index.into())?
             {
                 continue;
             }
