@@ -11,6 +11,7 @@ use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
@@ -92,7 +93,7 @@ struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
-    piece_count: Arc<AtomicCell<PieceOffset>>,
+    piece_count: Arc<AtomicU64>,
     piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
 }
 
@@ -163,12 +164,12 @@ impl Plot {
 
     /// How many pieces are there in the plot
     pub(crate) fn piece_count(&self) -> PieceOffset {
-        self.inner.piece_count.load()
+        self.inner.piece_count.load(Ordering::Acquire)
     }
 
     /// Whether plot doesn't have anything in it
     pub(crate) fn is_empty(&self) -> bool {
-        self.inner.piece_count.load() == 0
+        self.inner.piece_count.load(Ordering::Acquire) == 0
     }
 
     /// Checks if piece will be written on disk or it will be skipped
@@ -467,7 +468,7 @@ struct PlotWorker {
     plot: File,
     piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
     piece_offset_to_index: File,
-    piece_count: Arc<AtomicCell<PieceOffset>>,
+    piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
 }
 
@@ -489,7 +490,7 @@ impl PlotWorker {
             .map(|metadata| metadata.len())
             .map_err(PlotError::PlotOpen)?;
 
-        let piece_count = Arc::new(AtomicCell::new(plot_size / PIECE_SIZE as u64));
+        let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
         let piece_offset_to_index = OpenOptions::new()
             .read(true)
@@ -501,7 +502,7 @@ impl PlotWorker {
         let max_piece_count = if let Some(max_piece_count) = max_piece_count {
             max_piece_count
         } else {
-            get_piece_amount(&base_directory) + piece_count.load()
+            get_piece_amount(&base_directory) + piece_count.load(Ordering::Relaxed)
         };
 
         // TODO: handle `piece_count.load() > max_piece_count`
@@ -557,7 +558,7 @@ impl PlotWorker {
         pieces: &[u8],
         start_index: PieceIndex,
     ) -> io::Result<Range<PieceOffset>> {
-        let current_piece_count = self.piece_count.load();
+        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
         let npieces =
             (self.max_piece_count - current_piece_count).min((pieces.len() / PIECE_SIZE) as u64);
 
@@ -573,7 +574,7 @@ impl PlotWorker {
             self.put_piece_index(offset, index)?;
         }
 
-        self.piece_count.fetch_add(npieces);
+        self.piece_count.fetch_add(npieces, Ordering::AcqRel);
 
         Ok(start_offset..start_offset + npieces)
     }
