@@ -170,7 +170,7 @@ impl Commitments {
         Ok(())
     }
 
-    pub(crate) fn remove_pieces(&self, pieces: Vec<Piece>) -> Result<(), CommitmentError> {
+    pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
         for salt in salts {
@@ -189,16 +189,11 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            let db = match db_guard.clone() {
-                Some(db) => db,
-                None => {
-                    continue;
+            if let Some(db) = db_guard.as_ref() {
+                for piece in pieces {
+                    let tag = subspace_solving::create_tag(piece, salt);
+                    db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
                 }
-            };
-
-            for piece in &pieces {
-                let tag = subspace_solving::create_tag(piece, salt);
-                db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
@@ -208,8 +203,8 @@ impl Commitments {
     /// Create commitments for all salts for specified pieces
     pub(crate) fn create_for_pieces(
         &self,
-        pieces: &Arc<FlatPieces>,
-        offsets: impl IntoIterator<Item = PieceOffset> + Clone,
+        pieces: &FlatPieces,
+        offsets: &[PieceOffset],
     ) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
@@ -229,22 +224,17 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            let db = match db_guard.clone() {
-                Some(db) => db,
-                None => {
-                    continue;
+            if let Some(db) = db_guard.as_ref() {
+                let tags: Vec<Tag> = pieces
+                    .par_chunks_exact(PIECE_SIZE)
+                    .map(|piece| subspace_solving::create_tag(piece, salt))
+                    .collect();
+
+                for (tag, offset) in tags.iter().zip(offsets) {
+                    db.put(tag, offset.to_le_bytes())
+                        .map_err(CommitmentError::CommitmentDb)?;
                 }
             };
-
-            let tags: Vec<Tag> = pieces
-                .par_chunks_exact(PIECE_SIZE)
-                .map(|piece| subspace_solving::create_tag(piece, salt))
-                .collect();
-
-            for (tag, offset) in tags.iter().zip(offsets.clone().into_iter()) {
-                db.put(tag, offset.to_le_bytes())
-                    .map_err(CommitmentError::CommitmentDb)?;
-            }
         }
 
         Ok(())

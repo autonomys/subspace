@@ -132,7 +132,7 @@ async fn remove_commitments() {
         .unwrap();
 
     commitments
-        .remove_pieces(vec![plot.read_piece_with_index(offset).unwrap().0])
+        .remove_pieces(&[plot.read_piece_with_index(offset).unwrap().0])
         .unwrap();
 
     assert!(commitments

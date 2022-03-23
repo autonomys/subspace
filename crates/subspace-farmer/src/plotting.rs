@@ -291,7 +291,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             match plot.write_many(Arc::clone(&pieces), piece_index) {
                                 Ok((offsets, old_pieces)) => {
                                     if let Err(error) =
-                                        farmer_data.commitments.remove_pieces(old_pieces)
+                                        farmer_data.commitments.remove_pieces(&old_pieces)
                                     {
                                         error!(
                                             "Failed to remove old commitments for pieces: {}",
@@ -300,7 +300,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                     }
 
                                     if let Err(error) =
-                                        farmer_data.commitments.create_for_pieces(&pieces, offsets)
+                                        farmer_data.commitments.create_for_pieces(&pieces, &offsets)
                                     {
                                         error!(
                                             "Failed to create commitments for pieces: {}",
