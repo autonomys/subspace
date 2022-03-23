@@ -134,8 +134,11 @@ impl Plot {
         address: PublicKey,
         max_piece_count: Option<u64>,
     ) -> Result<Plot, PlotError> {
-        let plot_worker =
-            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
+        let plot_worker = PlotWorker::from_base_directory(
+            base_directory.as_ref(),
+            address,
+            max_piece_count.unwrap_or(u64::MAX),
+        )?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
@@ -455,14 +458,6 @@ impl IndexHashToOffsetDB {
     }
 }
 
-fn get_piece_amount(base_directory: impl AsRef<Path>) -> u64 {
-    let available_bytes = fs2::available_space(base_directory)
-        .expect("Failed to calculate maximum number of pieces to store");
-    let bytes_per_piece =
-        PIECE_SIZE as usize + SHA256_HASH_SIZE + std::mem::size_of::<PieceOffset>() * 2 + 100;
-    available_bytes / bytes_per_piece as u64
-}
-
 struct PlotWorker {
     plot: File,
     piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
@@ -475,7 +470,7 @@ impl PlotWorker {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
         address: PublicKey,
-        max_piece_count: Option<u64>,
+        max_piece_count: u64,
     ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -498,14 +493,8 @@ impl PlotWorker {
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
-        let max_piece_count = if let Some(max_piece_count) = max_piece_count {
-            max_piece_count
-        } else {
-            get_piece_amount(&base_directory) + piece_count.load(Ordering::Relaxed)
-        };
-
-        // TODO: handle `piece_count.load() > max_piece_count`
-        // We should discard some of the pieces here
+        // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
+        //  here
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
