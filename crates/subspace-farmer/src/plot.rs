@@ -9,7 +9,6 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::Range;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -541,45 +540,39 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn write_pieces_to_end(
-        &mut self,
-        pieces: &FlatPieces,
-        piece_indexes: &[PieceIndex],
-    ) -> io::Result<Range<PieceOffset>> {
-        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
-        let pieces_to_plot =
-            (self.max_piece_count - current_piece_count).min((pieces.count()) as u64);
-
-        let start_offset: PieceOffset = current_piece_count;
-
-        self.plot
-            .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
-        self.plot
-            .write_all(&pieces[..pieces_to_plot as usize * PIECE_SIZE])?;
-
-        let piece_indexes: Vec<PieceIndex> = piece_indexes
-            .iter()
-            .take(pieces_to_plot as usize)
-            .copied()
-            .collect();
-
-        for (index, offset) in piece_indexes.iter().copied().zip(start_offset..) {
-            self.piece_index_hash_to_offset_db.put(index, offset)?;
-            self.put_piece_index(offset, index)?;
-        }
-
-        self.piece_count.fetch_add(pieces_to_plot, Ordering::AcqRel);
-
-        Ok(start_offset..start_offset + pieces_to_plot)
-    }
-
     // TODO: Add error recovery
     fn write_encodings(
         &mut self,
         pieces: &FlatPieces,
         piece_indexes: Vec<PieceIndex>,
     ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
-        let range = self.write_pieces_to_end(pieces, &piece_indexes)?;
+        let range = {
+            let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+            let pieces_to_plot =
+                (self.max_piece_count - current_piece_count).min((pieces.count()) as u64);
+
+            let start_offset: PieceOffset = current_piece_count;
+
+            self.plot
+                .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
+            self.plot
+                .write_all(&pieces[..pieces_to_plot as usize * PIECE_SIZE])?;
+
+            let piece_indexes: Vec<PieceIndex> = piece_indexes
+                .iter()
+                .take(pieces_to_plot as usize)
+                .copied()
+                .collect();
+
+            for (index, offset) in piece_indexes.iter().copied().zip(start_offset..) {
+                self.piece_index_hash_to_offset_db.put(index, offset)?;
+                self.put_piece_index(offset, index)?;
+            }
+
+            self.piece_count.fetch_add(pieces_to_plot, Ordering::AcqRel);
+
+            start_offset..start_offset + pieces_to_plot
+        };
 
         // Overwrite pieces
         let mut offsets = Vec::<PieceOffset>::with_capacity(pieces.count());
