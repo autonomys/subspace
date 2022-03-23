@@ -5,7 +5,11 @@ use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
-use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
+use rand::prelude::*;
+use rand::Rng;
+use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use tempfile::TempDir;
@@ -64,13 +68,14 @@ async fn plotting_happy_path() {
     };
     let encoded_blocks = vec![encoded_block0, encoded_block1];
 
-    let new_head0 = NewHead {
-        number: "0x0".to_string(),
-    };
-    let new_head1 = NewHead {
-        number: "0x1".to_string(),
-    };
-    let new_heads = vec![new_head0, new_head1];
+    let new_heads = vec![
+        NewHead {
+            number: "0x0".to_string(),
+        },
+        NewHead {
+            number: "0x1".to_string(),
+        },
+    ];
 
     let plotting_instance = Plotting::start(
         farmer_data,
@@ -80,16 +85,12 @@ async fn plotting_happy_path() {
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
-        let client_copy = client.clone();
-        async move {
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-            client_copy.send_block(block).await;
-            client_copy.send_new_head(new_head).await;
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-        }
-        .await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
+        client.send_block(block).await;
+        client.send_new_head(new_head).await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
     }
 
     assert_eq!(
@@ -178,13 +179,14 @@ async fn plotting_continue() {
     };
     let encoded_blocks = vec![encoded_block0, encoded_block1];
 
-    let new_head0 = NewHead {
-        number: "0x0".to_string(),
-    };
-    let new_head1 = NewHead {
-        number: "0x1".to_string(),
-    };
-    let new_heads = vec![new_head0, new_head1];
+    let new_heads = vec![
+        NewHead {
+            number: "0x0".to_string(),
+        },
+        NewHead {
+            number: "0x1".to_string(),
+        },
+    ];
 
     let plotting_instance = Plotting::start(
         farmer_data,
@@ -194,16 +196,12 @@ async fn plotting_continue() {
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
-        let client_copy = client.clone();
-        async move {
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-            client_copy.send_block(block).await;
-            client_copy.send_new_head(new_head).await;
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-        }
-        .await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
+        client.send_block(block).await;
+        client.send_new_head(new_head).await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
     }
 
     assert_eq!(
@@ -269,16 +267,12 @@ async fn plotting_continue() {
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
-        let client_copy = client.clone();
-        async move {
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-            client_copy.send_block(block).await;
-            client_copy.send_new_head(new_head).await;
-            // putting 250 milliseconds here to give plotter some time
-            sleep(Duration::from_millis(250)).await;
-        }
-        .await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
+        client.send_block(block).await;
+        client.send_new_head(new_head).await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
     }
 
     assert_eq!(
@@ -317,5 +311,143 @@ async fn plotting_continue() {
     // wait for farmer to finish
     if let Err(e) = plotting_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn plotting_piece_eviction() {
+    init();
+
+    let base_directory = TempDir::new().unwrap();
+
+    // Mnemonic and random number generator and configured such that there pieces in the second
+    // segment are plotted with some skipped in the middle of the segment due to plot being already,
+    // as well as such that will not be skipped (will override existing) if their piece index
+    // started with 0. This tests edge case where indexes of pieces in this case are handled
+    // properly during piece replacement.
+    let mnemonic_phrase = "\
+        large accident thrive business sheriff system catch survey smile current feel gossip \
+        panther kick estate three noodle monkey vintage silk harsh spider cross license";
+    let identity = Identity::import_from_mnemonic(&base_directory, mnemonic_phrase)
+        .expect("Could not open/create identity!");
+    let mut rng = StdRng::seed_from_u64(0);
+
+    let address = identity.public_key().to_bytes().into();
+    let salt = Salt::default();
+    let plot = Plot::open_or_create(&base_directory, address, Some(5)).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
+    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
+
+    // There are no pieces, but we need to create empty commitments database for this salt, such
+    //  that plotter will create commitments for plotted pieces
+    commitments.create(salt, plot.clone()).unwrap();
+
+    let client = MockRpc::new();
+
+    let farmer_metadata = FarmerMetadata {
+        confirmation_depth_k: 0,
+        record_size: RECORD_SIZE as u32,
+        recorded_history_segment_size: SEGMENT_SIZE as u32,
+    };
+
+    client.send_metadata(farmer_metadata).await;
+
+    let farmer_metadata = client
+        .farmer_metadata()
+        .await
+        .expect("Could not retrieve farmer_metadata");
+
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
+
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        object_mappings,
+        farmer_metadata,
+    );
+
+    let encoded_block0 = EncodedBlockWithObjectMapping {
+        block: {
+            let mut block = vec![0u8; SEGMENT_SIZE];
+            rng.fill(block.as_mut_slice());
+            block
+        },
+        object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
+    };
+    let encoded_block1 = EncodedBlockWithObjectMapping {
+        block: {
+            let mut block = vec![0u8; SEGMENT_SIZE];
+            rng.fill(block.as_mut_slice());
+            block
+        },
+        object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
+    };
+    let encoded_blocks = vec![encoded_block0, encoded_block1];
+
+    let new_heads = vec![
+        NewHead {
+            number: "0x0".to_string(),
+        },
+        NewHead {
+            number: "0x1".to_string(),
+        },
+    ];
+
+    let plotting_instance = Plotting::start(
+        farmer_data,
+        client.clone(),
+        subspace_codec,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+    );
+
+    for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
+        client.send_block(block).await;
+        client.send_new_head(new_head).await;
+        // putting 250 milliseconds here to give plotter some time
+        sleep(Duration::from_millis(250)).await;
+    }
+
+    // let the farmer know we are done by closing the channel(s)
+    client.drop_new_head_sender().await;
+
+    // wait for farmer to finish
+    if let Err(e) = plotting_instance.wait().await {
+        panic!("Panicked with error...{:?}", e);
+    }
+
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+
+    for encoded_block in encoded_blocks {
+        for archived_segment in
+            archiver.add_block(encoded_block.block, BlockObjectMapping::default())
+        {
+            for (piece, piece_index) in archived_segment
+                .pieces
+                .as_pieces()
+                .zip(archived_segment.root_block.segment_index() * MERKLE_NUM_LEAVES as u64..)
+            {
+                // TODO: `read_piece` should have returned `Result<Option<T>, E>` instead, only
+                //  allow `None` and not errors once that is the case
+                if let Ok(mut read_piece) = plot.read_piece(PieceIndexHash::from_index(piece_index))
+                {
+                    let correct_tag = subspace_solving::create_tag(&read_piece, salt);
+
+                    subspace_codec.decode(&mut read_piece, piece_index).unwrap();
+
+                    // Must be able to find correct tag in the database
+                    assert!(commitments
+                        .find_by_range(correct_tag, u64::MIN, salt)
+                        .is_some());
+
+                    assert!(
+                        read_piece.as_slice() == piece,
+                        "Read incorrect piece for piece index {}",
+                        piece_index
+                    );
+                }
+            }
+        }
     }
 }

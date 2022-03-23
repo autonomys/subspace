@@ -107,12 +107,7 @@ async fn partial_plot() {
     let max_plot_pieces = 10;
     let address = rand::random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(
-        &base_directory,
-        address,
-        Some(max_plot_pieces * PIECE_SIZE as u64),
-    )
-    .unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, Some(max_plot_pieces)).unwrap();
     assert!(plot.is_empty());
 
     let pieces_to_plot = max_plot_pieces * 2;
