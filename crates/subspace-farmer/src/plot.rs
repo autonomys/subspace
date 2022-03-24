@@ -189,7 +189,7 @@ impl Plot {
 
     /// Whether plot doesn't have anything in it
     pub(crate) fn is_empty(&self) -> bool {
-        self.inner.piece_count.load(Ordering::Acquire) == 0
+        self.piece_count() == 0
     }
 
     /// Reads a piece from plot by index
@@ -606,7 +606,8 @@ impl PlotWorker {
                 .map(Some),
         );
         piece_offsets.resize(piece_offsets.capacity(), None);
-        let mut evicted_pieces = Vec::with_capacity(pieces.count());
+        let mut evicted_pieces =
+            Vec::with_capacity(pieces.count() - pieces_left_until_full_plot as usize);
 
         // Process random pieces
         for ((piece, &piece_index), maybe_piece_offset) in
