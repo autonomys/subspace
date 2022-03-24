@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::Deserialize;
+use subspace_core_primitives::BlockNumber;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
@@ -22,6 +23,9 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error>;
 
     /// Get a block by number
+    async fn best_block_number(&self) -> Result<BlockNumber, Error>;
+
+    /// Get best block number
     async fn block_by_number(
         &self,
         block_number: u32,

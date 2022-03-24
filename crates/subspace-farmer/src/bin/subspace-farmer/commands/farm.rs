@@ -5,10 +5,11 @@ use std::mem;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::PublicKey;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    Commitments, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -25,6 +26,7 @@ pub(crate) async fn farm(
     node_rpc_url: &str,
     ws_server_listen_addr: SocketAddr,
     reward_address: Option<PublicKey>,
+    best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
@@ -97,14 +99,22 @@ pub(crate) async fn farm(
             let plot = plot.clone();
 
             move |key| {
-                if key.code() != MultihashCode::Piece as u64 {
-                    return None;
+                let code = key.code();
+
+                if code == u64::from(MultihashCode::Piece)
+                    || code == u64::from(MultihashCode::PieceIndex)
+                {
+                    let piece_index =
+                        u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
+                    let mut piece = plot.read_piece(piece_index).ok()?;
+
+                    subspace_codec
+                        .decode(&mut piece, piece_index)
+                        .expect("Decoding of local pieces must never fail");
+                    Some(piece)
+                } else {
+                    None
                 }
-
-                let piece_index =
-                    u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
-
-                plot.read_piece(piece_index).ok()
             }
         }),
         allow_non_globals_in_dht: true,
@@ -140,14 +150,14 @@ pub(crate) async fn farm(
         reward_address,
     );
 
+    let farmer_data = FarmerData::new(plot, commitments, object_mappings, farmer_metadata);
+
     // start the background plotting
     let plotting_instance = Plotting::start(
-        plot,
-        commitments,
-        object_mappings,
+        farmer_data,
         client,
-        farmer_metadata,
         subspace_codec,
+        best_block_number_check_interval,
     );
 
     tokio::select! {

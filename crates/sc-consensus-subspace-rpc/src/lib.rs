@@ -61,6 +61,10 @@ pub trait SubspaceRpcApi {
     #[rpc(name = "subspace_getFarmerMetadata")]
     fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata>;
 
+    /// Get best block number
+    #[rpc(name = "subspace_getBestBlockNumber")]
+    fn get_best_block_number(&self) -> FutureResult<BlockNumber>;
+
     /// Get encoded block by given block number
     #[rpc(name = "subspace_getBlockByNumber")]
     fn get_block_by_number(
@@ -247,6 +251,15 @@ where
                 RpcError::new(ErrorCode::InternalError)
             })
         })
+    }
+
+    fn get_best_block_number(&self) -> FutureResult<BlockNumber> {
+        let best_number = TryInto::<BlockNumber>::try_into(self.client.info().best_number)
+            .unwrap_or_else(|_| {
+                panic!("Block number can't be converted into BlockNumber");
+            });
+
+        Box::pin(async move { Ok(best_number) })
     }
 
     fn get_block_by_number(

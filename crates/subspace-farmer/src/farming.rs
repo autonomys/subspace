@@ -11,8 +11,7 @@ use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
-use subspace_core_primitives::PublicKey;
-use subspace_core_primitives::{LocalChallenge, Salt, Solution};
+use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
@@ -51,10 +50,13 @@ impl Farming {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let farming_handle = tokio::spawn(async move {
             match future::select(
-                Box::pin(async move {
-                    subscribe_to_slot_info(&client, &plot, &commitments, &identity, reward_adress)
-                        .await
-                }),
+                Box::pin(subscribe_to_slot_info(
+                    &client,
+                    &plot,
+                    &commitments,
+                    &identity,
+                    reward_adress,
+                )),
                 stop_receiver,
             )
             .await
@@ -135,8 +137,10 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     slot_info.solution_range,
                     slot_info.salt,
                 ) {
-                    Some((tag, piece_index)) => {
-                        let encoding = plot.read(piece_index).map_err(FarmingError::PlotRead)?;
+                    Some((tag, piece_offset)) => {
+                        let (encoding, piece_index) = plot
+                            .read_piece_with_index(piece_offset)
+                            .map_err(FarmingError::PlotRead)?;
                         let solution = Solution {
                             public_key: identity.public_key().to_bytes().into(),
                             reward_address,

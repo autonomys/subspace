@@ -24,16 +24,21 @@ mod processor;
 #[cfg(test)]
 mod tests;
 
+use cirrus_block_builder::{BlockBuilder, RecordProof};
+use codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
-use sp_core::traits::SpawnNamed;
+use sp_core::{
+	traits::{CodeExecutor, SpawnNamed},
+	H256,
+};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, Zero},
+	traits::{Block as BlockT, HashFor, Header as HeaderT, Zero},
 };
 use sp_trie::StorageProof;
 
@@ -62,22 +67,23 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP> {
+pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	client: Arc<Client>,
-	spawner: Arc<dyn SpawnNamed + Send + Sync>,
+	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	create_inherent_data_providers: Arc<CIDP>,
+	code_executor: Arc<E>,
 	is_authority: bool,
 }
 
-impl<Block: BlockT, Client, TransactionPool, Backend, CIDP> Clone
-	for Executor<Block, Client, TransactionPool, Backend, CIDP>
+impl<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> Clone
+	for Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -90,13 +96,19 @@ impl<Block: BlockT, Client, TransactionPool, Backend, CIDP> Clone
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
 		}
 	}
 }
 
-impl<Block, Client, TransactionPool, Backend, CIDP>
-	Executor<Block, Client, TransactionPool, Backend, CIDP>
+type TransactionFor<Backend, Block> =
+	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
+		HashFor<Block>,
+	>>::Transaction;
+
+impl<Block, Client, TransactionPool, Backend, CIDP, E>
+	Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
@@ -112,20 +124,23 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	/// Create a new instance.
 	fn new(
 		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 		client: Arc<Client>,
-		spawner: Arc<dyn SpawnNamed + Send + Sync>,
+		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		create_inherent_data_providers: Arc<CIDP>,
+		code_executor: Arc<E>,
 		is_authority: bool,
 	) -> Self {
 		Self {
@@ -138,6 +153,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			code_executor,
 			is_authority,
 		}
 	}
@@ -281,6 +297,62 @@ where
 		);
 	}
 
+	fn header(&self, at: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
+		self.client
+			.header(BlockId::Hash(at))?
+			.ok_or(sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
+	}
+
+	fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+		self.client
+			.block_body(&BlockId::Hash(at))?
+			.ok_or(sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at)))
+	}
+
+	fn create_extrinsic_execution_proof(
+		&self,
+		extrinsic_index: usize,
+		parent_header: &Block::Header,
+		current_hash: Block::Hash,
+	) -> Result<StorageProof, GossipMessageError> {
+		let extrinsics = self.block_body(current_hash)?;
+
+		let encoded_extrinsic = extrinsics
+			.get(extrinsic_index)
+			.ok_or(GossipMessageError::InvalidExtrinsicIndex {
+				index: extrinsic_index,
+				max: extrinsics.len() - 1,
+			})?
+			.encode();
+
+		let block_builder = BlockBuilder::with_extrinsics(
+			&*self.client,
+			parent_header.hash(),
+			*parent_header.number(),
+			RecordProof::No,
+			Default::default(),
+			&*self.backend,
+			extrinsics,
+		)?;
+		let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
+
+		let delta = storage_changes.transaction;
+		let post_delta_root = storage_changes.transaction_storage_root;
+		// TODO: way to call some runtime api against any specific state instead of having
+		// to work with String API directly.
+		let execution_proof = cirrus_fraud_proof::prove_execution(
+			&self.backend,
+			&*self.code_executor,
+			self.spawner.clone() as Box<dyn SpawnNamed>,
+			&BlockId::Hash(parent_header.hash()),
+			"BlockBuilder_apply_extrinsic",
+			&encoded_extrinsic,
+			Some((delta, post_delta_root)),
+		)?;
+
+		Ok(execution_proof)
+	}
+
 	async fn wait_for_local_receipt(
 		&self,
 		block_hash: Block::Hash,
@@ -356,6 +428,10 @@ where
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
 	BundleEquivocation,
+	#[error("State root not using H256")]
+	InvalidStateRootType,
+	#[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
+	InvalidExtrinsicIndex { index: usize, max: usize },
 	#[error(transparent)]
 	Client(#[from] sp_blockchain::Error),
 	#[error(transparent)]
@@ -364,8 +440,8 @@ pub enum GossipMessageError {
 	SendError,
 }
 
-impl<Block, Client, TransactionPool, Backend, CIDP> GossipMessageHandler<Block>
-	for Executor<Block, Client, TransactionPool, Backend, CIDP>
+impl<Block, Client, TransactionPool, Backend, CIDP, E> GossipMessageHandler<Block>
+	for Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Client: HeaderBackend<Block>
@@ -387,8 +463,10 @@ where
 		Error = sp_consensus::Error,
 	>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	type Error = GossipMessageError;
 
@@ -494,25 +572,106 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some(_local_trace_idx) = local_receipt
+		if let Some((local_trace_idx, local_root)) = local_receipt
 			.trace
 			.iter()
 			.enumerate()
 			.zip(execution_receipt.trace.iter().enumerate())
-			.find_map(
-				|((local_idx, local_root), (_, external_root))| {
-					if local_root != external_root {
-						Some(local_idx)
-					} else {
-						None
-					}
-				},
-			) {
-			// TODO: generate a fraud proof
-			let fraud_proof = FraudProof {
-				pre_state_root: sp_core::H256::random(),
-				post_state_root: sp_core::H256::random(),
-				proof: StorageProof::empty(),
+			.find_map(|((local_idx, local_root), (_, external_root))| {
+				if local_root != external_root {
+					Some((local_idx, local_root))
+				} else {
+					None
+				}
+			}) {
+			let header = self.header(execution_receipt.secondary_hash)?;
+			let parent_header = self.header(*header.parent_hash())?;
+
+			// TODO: avoid the encode & decode?
+			let as_h256 = |state_root: &Block::Hash| {
+				H256::decode(&mut state_root.encode().as_slice())
+					.map_err(|_| Self::Error::InvalidStateRootType)
+			};
+
+			// TODO: abstract the execution proof impl to be reusable in the test.
+			let fraud_proof = if local_trace_idx == 0 {
+				// `initialize_block` execution proof.
+				let pre_state_root = as_h256(parent_header.state_root())?;
+				let post_state_root = as_h256(local_root)?;
+
+				let new_header = Block::Header::new(
+					block_number,
+					Default::default(),
+					Default::default(),
+					parent_header.hash(),
+					Default::default(),
+				);
+
+				// TODO: way to call some runtime api against any specific state instead of having
+				// to work with String API directly.
+				let proof = cirrus_fraud_proof::prove_execution::<
+					_,
+					_,
+					_,
+					_,
+					TransactionFor<Backend, Block>,
+				>(
+					&self.backend,
+					&*self.code_executor,
+					self.spawner.clone() as Box<dyn SpawnNamed>,
+					&BlockId::Hash(parent_header.hash()),
+					"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
+					&new_header.encode(),
+					None,
+				)?;
+
+				FraudProof { pre_state_root, post_state_root, proof }
+			} else if local_trace_idx == local_receipt.trace.len() - 1 {
+				// `finalize_block` execution proof.
+				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+				let post_state_root = as_h256(local_root)?;
+
+				let block_builder = BlockBuilder::with_extrinsics(
+					&*self.client,
+					parent_header.hash(),
+					*parent_header.number(),
+					RecordProof::No,
+					Default::default(),
+					&*self.backend,
+					self.block_body(execution_receipt.secondary_hash)?,
+				)?;
+				let storage_changes =
+					block_builder.prepare_storage_changes_before_finalize_block()?;
+
+				let delta = storage_changes.transaction;
+				let post_delta_root = storage_changes.transaction_storage_root;
+
+				// TODO: way to call some runtime api against any specific state instead of having
+				// to work with String API directly.
+				let proof = cirrus_fraud_proof::prove_execution(
+					&self.backend,
+					&*self.code_executor,
+					self.spawner.clone() as Box<dyn SpawnNamed>,
+					&BlockId::Hash(parent_header.hash()),
+					"BlockBuilder_finalize_block",
+					Default::default(),
+					Some((delta, post_delta_root)),
+				)?;
+
+				FraudProof { pre_state_root, post_state_root, proof }
+			} else {
+				// Regular extrinsic execution proof.
+				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+				let post_state_root = as_h256(local_root)?;
+
+				let proof = self.create_extrinsic_execution_proof(
+					local_trace_idx - 1,
+					&parent_header,
+					execution_receipt.secondary_hash,
+				)?;
+
+				// TODO: proof should be a CompactProof.
+				FraudProof { pre_state_root, post_state_root, proof }
 			};
 
 			self.submit_fraud_proof(fraud_proof);
@@ -525,22 +684,23 @@ where
 }
 
 /// Parameters for [`start_executor`].
-pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, CIDP> {
+pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, CIDP, E> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
-	pub spawner: Spawner,
+	pub spawner: Box<Spawner>,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub code_executor: Arc<E>,
 	pub is_authority: bool,
 }
 
 /// Start the executor.
-pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CIDP>(
+pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CIDP, E>(
 	StartExecutorParams {
 		client,
 		announce_block: _,
@@ -552,12 +712,14 @@ pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, CI
 		execution_receipt_sender,
 		backend,
 		create_inherent_data_providers,
+		code_executor,
 		is_authority,
-	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, CIDP>,
-) -> Executor<Block, Client, TransactionPool, Backend, CIDP>
+	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, CIDP, E>,
+) -> Executor<Block, Client, TransactionPool, Backend, CIDP, E>
 where
 	Block: BlockT,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -580,17 +742,19 @@ where
 	TransactionPool:
 		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
 	CIDP: CreateInherentDataProviders<Block, Hash> + 'static,
+	E: CodeExecutor,
 {
 	let executor = Executor::new(
 		parachain_consensus,
 		client,
-		Arc::new(spawner),
+		spawner,
 		overseer_handle.clone(),
 		transaction_pool,
 		Arc::new(bundle_sender),
 		Arc::new(execution_receipt_sender),
 		backend,
 		create_inherent_data_providers,
+		code_executor,
 		is_authority,
 	);
 

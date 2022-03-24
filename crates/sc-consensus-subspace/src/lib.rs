@@ -76,7 +76,7 @@ use sc_consensus::import_queue::{
 use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SlotDuration, SlotProportion,
+    SlotProportion,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -86,9 +86,9 @@ use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
     BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
-    SelectChain, SlotData, SyncOracle,
+    SelectChain, SyncOracle,
 };
-use sp_consensus_slots::Slot;
+use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
@@ -102,7 +102,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::cmp::Ordering;
 use std::future::Future;
-use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
@@ -246,20 +246,11 @@ fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
     error
 }
 
-#[derive(Debug, Copy, Clone)]
-struct SubspaceSlotData(Duration);
-
-impl sp_consensus::SlotData for SubspaceSlotData {
-    fn slot_duration(&self) -> Duration {
-        self.0
-    }
-}
-
 /// A slot duration.
 ///
 /// Create with [`Self::get`].
 #[derive(Clone)]
-pub struct Config(SlotDuration<SubspaceSlotData>);
+pub struct Config(SlotDuration);
 
 impl Config {
     /// Fetch the config from the runtime.
@@ -280,12 +271,17 @@ impl Config {
         }
         let slot_duration = client.runtime_api().slot_duration(&best_block_id)?;
 
-        Ok(Self(SlotDuration::new(SubspaceSlotData(slot_duration))))
+        Ok(Self(SlotDuration::from_millis(
+            slot_duration
+                .as_millis()
+                .try_into()
+                .expect("Slot duration in ms never exceeds u64; qed"),
+        )))
     }
 
     /// Get the inner slot duration
-    pub fn slot_duration(&self) -> Duration {
-        self.0.slot_duration()
+    pub fn slot_duration(&self) -> SlotDuration {
+        self.0
     }
 }
 
@@ -410,7 +406,7 @@ where
     let inner = sc_consensus_slots::start_slot_worker(
         subspace_link.config.0,
         select_chain,
-        worker,
+        sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
         sync_oracle,
         create_inherent_data_providers,
         can_author_with,

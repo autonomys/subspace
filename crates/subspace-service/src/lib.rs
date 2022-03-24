@@ -219,7 +219,7 @@ where
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             let subspace_inherents =
-                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
+                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                     *timestamp,
                     slot_duration,
                     vec![],
@@ -499,7 +499,7 @@ where
                             .number;
 
                         let subspace_inherents =
-                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_duration(
+                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                 *timestamp,
                                 subspace_link.config().slot_duration(),
                                 subspace_link.root_blocks_for_block(block_number + 1),

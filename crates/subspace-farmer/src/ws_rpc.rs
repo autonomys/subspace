@@ -5,6 +5,7 @@ use jsonrpsee::core::Error as JsonError;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
+use subspace_core_primitives::BlockNumber;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
     SolutionResponse,
@@ -31,6 +32,13 @@ impl RpcClient for WsRpc {
         Ok(self
             .client
             .request("subspace_getFarmerMetadata", rpc_params![])
+            .await?)
+    }
+
+    async fn best_block_number(&self) -> Result<BlockNumber, RpcError> {
+        Ok(self
+            .client
+            .request("subspace_getBestBlockNumber", rpc_params![])
             .await?)
     }
 

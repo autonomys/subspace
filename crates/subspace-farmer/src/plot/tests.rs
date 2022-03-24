@@ -1,7 +1,9 @@
 use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{ArchivedBlockProgress, LastArchivedBlock, Piece, RootBlock};
+use subspace_core_primitives::{
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
+};
 use tempfile::TempDir;
 
 fn init() {
@@ -14,19 +16,28 @@ fn generate_random_piece() -> Piece {
     piece
 }
 
+fn generate_random_pieces(n: usize) -> FlatPieces {
+    std::iter::from_fn(|| Some(generate_random_piece().to_vec().into_iter()))
+        .take(n)
+        .flatten()
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
 
     let pieces = Arc::new(generate_random_piece().to_vec().try_into().unwrap());
-    let index = 0;
+    let offset = 0;
 
     let plot = Plot::open_or_create(&base_directory).unwrap();
     assert!(plot.is_empty());
-    plot.write_many(Arc::clone(&pieces), index).unwrap();
+    plot.write_many(Arc::clone(&pieces), offset).unwrap();
     assert!(!plot.is_empty());
-    let extracted_piece = plot.read(index).unwrap();
+    let extracted_piece = plot.read(offset).unwrap();
 
     assert_eq!(pieces[..], extracted_piece[..]);
 
@@ -59,4 +70,31 @@ async fn last_root_block() {
     plot.set_last_root_block(&root_block).unwrap();
 
     assert_eq!(plot.get_last_root_block().unwrap(), Some(root_block));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn piece_retrivable() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+    assert!(plot.is_empty());
+
+    let pieces = Arc::new(generate_random_pieces(10));
+    plot.write_many(Arc::clone(&pieces), 0).unwrap();
+    assert!(!plot.is_empty());
+
+    for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(0..) {
+        let piece = plot.read(offset).unwrap();
+        assert_eq!(piece.as_ref(), original_piece)
+    }
+
+    let pieces = Arc::new(generate_random_pieces(2));
+    plot.write_many(Arc::clone(&pieces), 2).unwrap();
+    assert!(!plot.is_empty());
+
+    for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(2..) {
+        let piece = plot.read(offset).unwrap();
+        assert_eq!(piece.as_ref(), original_piece)
+    }
 }

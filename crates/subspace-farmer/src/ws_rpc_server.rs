@@ -9,7 +9,7 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 use subspace_archiving::archiver::{Segment, SegmentItem};
-use subspace_core_primitives::{Piece, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 
 /// Maximum expected size of one object in bytes
@@ -114,7 +114,7 @@ pub struct Object {
 pub trait Rpc {
     /// Get single piece by its index
     #[method(name = "getPiece")]
-    async fn get_piece(&self, piece_index: u64) -> Result<Option<HexPiece>, Error>;
+    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error>;
 
     /// Find object by its ID
     #[method(name = "findObject")]
@@ -179,7 +179,7 @@ impl RpcServerImpl {
     /// plot and putting necessary bytes together.
     async fn assemble_object(
         &self,
-        piece_index: u64,
+        piece_index: PieceIndex,
         offset: u16,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
@@ -196,7 +196,7 @@ impl RpcServerImpl {
     /// fast) boundary, returns `Ok(None)` if fast retrieval possibility is not guaranteed.
     async fn assemble_object_fast(
         &self,
-        piece_index: u64,
+        piece_index: PieceIndex,
         offset: u16,
     ) -> Result<Option<Vec<u8>>, Error> {
         // We care if the offset is before the last 2 bytes of a piece because if not we might be
@@ -313,7 +313,7 @@ impl RpcServerImpl {
     /// over full segments.
     async fn assemble_object_regular(
         &self,
-        piece_index: u64,
+        piece_index: PieceIndex,
         offset: u16,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
@@ -427,7 +427,7 @@ impl RpcServerImpl {
     }
 
     /// Read and decode the whole piece
-    async fn read_and_decode_piece(&self, piece_index: u64) -> Result<Piece, Error> {
+    async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_fut = tokio::task::spawn_blocking({
             let plot = self.plot.clone();
 
@@ -456,7 +456,7 @@ impl RpcServerImpl {
 
 #[async_trait]
 impl RpcServer for RpcServerImpl {
-    async fn get_piece(&self, piece_index: u64) -> Result<Option<HexPiece>, Error> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_fut = tokio::task::spawn_blocking({
             let plot = self.plot.clone();
 

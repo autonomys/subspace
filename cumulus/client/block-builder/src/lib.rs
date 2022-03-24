@@ -194,6 +194,22 @@ where
 		})
 	}
 
+	/// Create a new instance of builder with given extrinsics.
+	pub fn with_extrinsics(
+		api: &'a A,
+		parent_hash: Block::Hash,
+		parent_number: NumberFor<Block>,
+		record_proof: RecordProof,
+		inherent_digests: Digest,
+		backend: &'a B,
+		extrinsics: Vec<Block::Extrinsic>,
+	) -> Result<Self, Error> {
+		let mut block_builder =
+			Self::new(api, parent_hash, parent_number, record_proof, inherent_digests, backend)?;
+		block_builder.extrinsics = extrinsics;
+		Ok(block_builder)
+	}
+
 	/// Sets the extrinsics.
 	pub fn set_extrinsics(&mut self, extrinsics: Vec<Block::Extrinsic>) {
 		self.extrinsics = extrinsics;
@@ -223,6 +239,58 @@ where
 		Ok(())
 	}
 
+	fn collect_storage_changes(
+		&self,
+	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
+		let state = self.backend.state_at(self.block_id)?;
+		let parent_hash = self.parent_hash;
+		self.api
+			.into_storage_changes(&state, parent_hash)
+			.map_err(sp_blockchain::Error::StorageChanges)
+	}
+
+	/// Returns the state before executing the extrinsic at given extrinsic index.
+	pub fn prepare_storage_changes_before(
+		&self,
+		extrinsic_index: usize,
+	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
+		for (index, xt) in self.extrinsics.iter().enumerate() {
+			if index == extrinsic_index {
+				return Ok(self.collect_storage_changes()?)
+			}
+
+			// TODO: rethink what to do if an error occurs when executing the transaction.
+			self.api.execute_in_transaction(|api| {
+				let res = api.apply_extrinsic_with_context(
+					&self.block_id,
+					ExecutionContext::BlockConstruction,
+					xt.clone(),
+				);
+				match res {
+					Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
+					Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
+						ApplyExtrinsicFailed::Validity(tx_validity).into(),
+					)),
+					Err(e) => TransactionOutcome::Rollback(Err(Error::from(e))),
+				}
+			})?;
+		}
+
+		Err(Error::Execution(Box::new(format!(
+			"Invalid extrinsic index, got: {}, max: {}",
+			extrinsic_index,
+			self.extrinsics.len()
+		))))
+	}
+
+	/// Returns the state before finalizing the block.
+	pub fn prepare_storage_changes_before_finalize_block(
+		&self,
+	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
+		self.execute_extrinsics()?;
+		self.collect_storage_changes()
+	}
+
 	/// Consume the builder to build a valid `Block` containing all pushed extrinsics.
 	///
 	/// Returns the build `Block`, the changes to the storage and an optional `StorageProof`
@@ -245,13 +313,7 @@ where
 
 		let proof = self.api.extract_proof();
 
-		let state = self.backend.state_at(self.block_id)?;
-		let parent_hash = self.parent_hash;
-
-		let storage_changes = self
-			.api
-			.into_storage_changes(&state, parent_hash)
-			.map_err(|e| sp_blockchain::Error::StorageChanges(e))?;
+		let storage_changes = self.collect_storage_changes()?;
 
 		Ok(BuiltBlock {
 			block: <Block as BlockT>::new(header, self.extrinsics),

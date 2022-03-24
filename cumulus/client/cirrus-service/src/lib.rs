@@ -36,7 +36,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_core::traits::SpawnNamed;
+use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	traits::{Block as BlockT, NumberFor},
@@ -49,10 +49,21 @@ use cumulus_client_consensus_common::RelaychainClient;
 pub mod genesis;
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, IQ, TP, Backend, CIDP> {
+pub struct StartExecutorParams<
+	'a,
+	Block: BlockT,
+	Client,
+	Spawner,
+	RClient,
+	IQ,
+	TP,
+	Backend,
+	CIDP,
+	E,
+> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-	pub spawner: Spawner,
+	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<RClient>,
 	pub task_manager: &'a mut TaskManager,
 	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
@@ -61,11 +72,12 @@ pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, IQ, 
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
 	pub create_inherent_data_providers: Arc<CIDP>,
+	pub code_executor: Arc<E>,
 	pub is_authority: bool,
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP, CIDP>(
+pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP, CIDP, E>(
 	StartExecutorParams {
 		client,
 		announce_block,
@@ -78,8 +90,9 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP
 		network,
 		backend,
 		create_inherent_data_providers,
+		code_executor,
 		is_authority,
-	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, IQ, TP, Backend, CIDP>,
+	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, IQ, TP, Backend, CIDP, E>,
 ) -> sc_service::error::Result<()>
 where
 	Block: BlockT,
@@ -107,9 +120,13 @@ where
 	>,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
+	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
+		sp_api::HashFor<Block>,
+	>>::Transaction: sp_trie::HashDBT<sp_api::HashFor<Block>, sp_trie::DBValue>,
 	IQ: ImportQueue<Block> + 'static,
 	TP: TransactionPool<Block = Block> + 'static,
 	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash> + 'static,
+	E: CodeExecutor,
 {
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
 		client.clone(),
@@ -141,6 +158,7 @@ where
 			execution_receipt_sender,
 			backend,
 			create_inherent_data_providers,
+			code_executor,
 			is_authority,
 		})
 		.await;

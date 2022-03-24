@@ -49,7 +49,7 @@ use sp_consensus::{
     AlwaysCanAuthor, BlockOrigin, CacheKeyId, DisableProofRecording, Environment,
     NoNetwork as DummyOracle, Proposal, Proposer,
 };
-use sp_consensus_slots::Slot;
+use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
@@ -366,9 +366,9 @@ impl TestNetFactory for SubspaceTestNet {
                 select_chain: longest_chain,
                 create_inherent_data_providers: Box::new(|_, _| async {
                     let timestamp = TimestampInherentDataProvider::from_system_time();
-                    let slot = InherentDataProvider::from_timestamp_and_duration(
+                    let slot = InherentDataProvider::from_timestamp_and_slot_duration(
                         *timestamp,
-                        Duration::from_secs(6),
+                        SlotDuration::from_millis(6000),
                         vec![],
                     );
 
@@ -514,9 +514,9 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             sync_oracle: DummyOracle,
             create_inherent_data_providers: Box::new(|_, _| async {
                 let timestamp = TimestampInherentDataProvider::from_system_time();
-                let slot = InherentDataProvider::from_timestamp_and_duration(
+                let slot = InherentDataProvider::from_timestamp_and_slot_duration(
                     *timestamp,
-                    Duration::from_secs(6),
+                    SlotDuration::from_millis(6000),
                     vec![],
                 );
 
