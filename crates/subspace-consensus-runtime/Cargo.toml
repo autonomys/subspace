@@ -1,5 +1,5 @@
 [package]
-name = "subspace-runtime"
+name = "subspace-consensus-runtime"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
