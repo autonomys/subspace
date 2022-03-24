@@ -39,12 +39,7 @@ sudo apt-get install llvm clang
 
 Then install the framer using Cargo:
 ```
-cargo +nightly install subspace-farmer
-```
-
-NOTE: Above command requires nightly compiler for now, make sure to install it if you don't have one yet:
-```
-rustup toolchain install nightly
+cargo install subspace-farmer
 ```
 
 ## Usage
