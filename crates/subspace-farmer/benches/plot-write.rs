@@ -1,0 +1,34 @@
+use std::sync::Arc;
+
+use rand::prelude::*;
+use subspace_core_primitives::PIECE_SIZE;
+use subspace_farmer::Plot;
+use tempfile::TempDir;
+
+#[tokio::main]
+async fn main() {
+    let batch_size = 4096; // 16M
+    let piece_count = 2u64.pow(30); // 1G
+    let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+
+    let mut pieces = Vec::with_capacity(batch_size as usize * PIECE_SIZE);
+    pieces.resize(batch_size as usize * PIECE_SIZE, 0u8);
+    rand::thread_rng().fill(&mut pieces[..]);
+    let pieces = Arc::new(pieces.try_into().unwrap());
+
+    let plot = Plot::open_or_create(&base_directory).unwrap();
+
+    let start = std::time::Instant::now();
+
+    for index in (0..piece_count / batch_size).map(|i| i * batch_size) {
+        plot.write_many(Arc::clone(&pieces), index as u64).unwrap();
+    }
+    drop(plot);
+
+    let took = start.elapsed();
+    let write_size = piece_count * PIECE_SIZE as u64 / 1024 / 1024;
+    eprintln!(
+        "Writing {write_size}M to disk took {took:?}. Speed is around {:.2} M/s",
+        write_size as f64 / took.as_secs_f64()
+    );
+}
