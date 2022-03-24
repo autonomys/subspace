@@ -217,10 +217,10 @@ where
 		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
 		let _enter = span.enter();
 
-		subspace_service::new_full::<subspace_runtime::RuntimeApi, subspace_node::ExecutorDispatch>(
-			polkadot_config,
-			false,
-		)
+		subspace_service::new_full::<
+			subspace_runtime::consensus::RuntimeApi,
+			subspace_node::ExecutorDispatch,
+		>(polkadot_config, false)
 		.await
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};

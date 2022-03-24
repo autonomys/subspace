@@ -6,4 +6,4 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-pub use subspace_consensus_runtime::*;
+pub use subspace_consensus_runtime as consensus;
