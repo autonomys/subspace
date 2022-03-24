@@ -8840,6 +8840,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-runtime"
+version = "0.1.0"
+dependencies = [
+ "subspace-consensus-runtime",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "subspace-runtime-primitives"
 version = "0.1.0"
 dependencies = [
