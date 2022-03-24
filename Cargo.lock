@@ -5263,7 +5263,6 @@ dependencies = [
  "jsonrpc-core",
  "log",
  "pallet-transaction-payment-rpc",
- "parachain-template-runtime",
  "parity-scale-codec",
  "sc-basic-authorship",
  "sc-chain-spec",
@@ -5329,7 +5328,6 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
- "substrate-wasm-builder",
 ]
 
 [[package]]
@@ -8842,6 +8840,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
+ "parachain-template-runtime",
  "subspace-consensus-runtime",
  "substrate-wasm-builder",
 ]

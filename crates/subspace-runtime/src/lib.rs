@@ -6,4 +6,5 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+pub use parachain_template_runtime as execution;
 pub use subspace_consensus_runtime as consensus;

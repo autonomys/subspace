@@ -16,6 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+parachain-template-runtime = { version = "0.1.0", default-features = false, path = "../../cumulus/parachain-template/runtime" }
 subspace-consensus-runtime = { version = "0.1.0", default-features = false, path = "../subspace-consensus-runtime" }
 
 [build-dependencies]
@@ -24,9 +25,11 @@ substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/pari
 [features]
 default = ["std"]
 std = [
+	"parachain-template-runtime/std",
 	"subspace-consensus-runtime/std",
 ]
 runtime-benchmarks = [
+	"parachain-template-runtime/runtime-benchmarks",
 	"subspace-consensus-runtime/runtime-benchmarks",
 ]
 do-not-enforce-cost-of-storage = [
