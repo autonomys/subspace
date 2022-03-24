@@ -8724,7 +8724,6 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "substrate-wasm-builder",
 ]
 
 [[package]]
