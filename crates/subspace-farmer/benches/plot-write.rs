@@ -1,30 +1,15 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
-use clap::{Parser, ValueHint};
 use rand::prelude::*;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::Plot;
-
-#[derive(Debug, Parser)]
-struct Args {
-    /// Number of pieces in a batch
-    #[clap(short, long, default_value = "4096")]
-    batch_size: u64,
-    /// Number of pieces to write
-    #[clap(short, long, default_value = "262144")]
-    piece_count: u64,
-
-    #[clap(value_hint = ValueHint::DirPath)]
-    base_directory: PathBuf,
-}
+use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() {
-    let Args {
-        batch_size,
-        piece_count,
-        base_directory,
-    } = Args::parse();
+    let batch_size = 4096; // 16M
+    let piece_count = 2u64.pow(30); // 1G
+    let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
 
     let mut pieces = Vec::with_capacity(batch_size as usize * PIECE_SIZE);
     pieces.resize(batch_size as usize * PIECE_SIZE, 0u8);
