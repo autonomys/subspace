@@ -221,9 +221,8 @@ impl Plot {
         })?
     }
 
-    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates).
-    /// Returns a tuple of offsets of new pieces and pieces which were removed
-    pub(crate) fn write_many(
+    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
+    pub fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,

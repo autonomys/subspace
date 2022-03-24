@@ -62,3 +62,7 @@ default = []
 cuda = [
     "subspace-solving/cuda",
 ]
+
+[[bench]]
+name = "plot-write"
+harness = false
