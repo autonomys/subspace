@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -170,7 +170,7 @@ impl Commitments {
         Ok(())
     }
 
-    pub(crate) fn remove_pieces(&self, pieces: Vec<Piece>) -> Result<(), CommitmentError> {
+    pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
         for salt in salts {
@@ -189,16 +189,11 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            let db = match db_guard.clone() {
-                Some(db) => db,
-                None => {
-                    continue;
+            if let Some(db) = db_guard.as_ref() {
+                for piece in pieces {
+                    let tag = subspace_solving::create_tag(piece, salt);
+                    db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
                 }
-            };
-
-            for piece in &pieces {
-                let tag = subspace_solving::create_tag(piece, salt);
-                db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
@@ -206,11 +201,14 @@ impl Commitments {
     }
 
     /// Create commitments for all salts for specified pieces
-    pub(crate) fn create_for_pieces(
-        &self,
-        pieces: &Arc<FlatPieces>,
-        offsets: impl IntoIterator<Item = PieceOffset> + Clone,
-    ) -> Result<(), CommitmentError> {
+    pub(crate) fn create_for_pieces<'a, 'iter, F, Iter>(
+        &'a self,
+        pieces_with_offsets: F,
+    ) -> Result<(), CommitmentError>
+    where
+        F: Fn() -> Iter,
+        Iter: Iterator<Item = (PieceOffset, &'iter [u8])>,
+    {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
         for salt in salts {
@@ -229,22 +227,18 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            let db = match db_guard.clone() {
-                Some(db) => db,
-                None => {
-                    continue;
+            if let Some(db) = db_guard.as_ref() {
+                let tags_with_offset: Vec<(PieceOffset, Tag)> = pieces_with_offsets()
+                    .map(|(piece_offset, piece)| {
+                        (piece_offset, subspace_solving::create_tag(piece, salt))
+                    })
+                    .collect();
+
+                for (piece_offset, tag) in tags_with_offset {
+                    db.put(tag, piece_offset.to_le_bytes())
+                        .map_err(CommitmentError::CommitmentDb)?;
                 }
             };
-
-            let tags: Vec<Tag> = pieces
-                .par_chunks_exact(PIECE_SIZE)
-                .map(|piece| subspace_solving::create_tag(piece, salt))
-                .collect();
-
-            for (tag, offset) in tags.iter().zip(offsets.clone().into_iter()) {
-                db.put(tag, offset.to_le_bytes())
-                    .map_err(CommitmentError::CommitmentDb)?;
-            }
         }
 
         Ok(())

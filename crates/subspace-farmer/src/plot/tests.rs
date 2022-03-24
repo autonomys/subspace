@@ -30,12 +30,13 @@ async fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let pieces = Arc::new(generate_random_piece().to_vec().try_into().unwrap());
+    let pieces = Arc::<FlatPieces>::new(generate_random_piece().to_vec().try_into().unwrap());
     let offset = 0;
 
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
     assert!(plot.is_empty());
-    plot.write_many(Arc::clone(&pieces), offset).unwrap();
+    let piece_indexes = (offset..).take(pieces.count()).collect();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
     let extracted_piece = plot.read(offset).unwrap();
 
@@ -73,7 +74,7 @@ async fn last_root_block() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn piece_retrivable() {
+async fn piece_retrievable() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -81,7 +82,8 @@ async fn piece_retrivable() {
     assert!(plot.is_empty());
 
     let pieces = Arc::new(generate_random_pieces(10));
-    plot.write_many(Arc::clone(&pieces), 0).unwrap();
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
     for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(0..) {
@@ -90,7 +92,8 @@ async fn piece_retrivable() {
     }
 
     let pieces = Arc::new(generate_random_pieces(2));
-    plot.write_many(Arc::clone(&pieces), 2).unwrap();
+    let piece_indexes = (2..).take(pieces.count()).collect();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
     for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(2..) {
@@ -107,21 +110,17 @@ async fn partial_plot() {
     let max_plot_pieces = 10;
     let address = rand::random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(
-        &base_directory,
-        address,
-        Some(max_plot_pieces * PIECE_SIZE as u64),
-    )
-    .unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, Some(max_plot_pieces)).unwrap();
     assert!(plot.is_empty());
 
-    let npieces = max_plot_pieces * 2;
+    let pieces_to_plot = max_plot_pieces * 2;
 
-    let pieces = Arc::new(generate_random_pieces(npieces as usize));
-    plot.write_many(Arc::clone(&pieces), 0).unwrap();
+    let pieces = Arc::new(generate_random_pieces(pieces_to_plot as usize));
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
-    let mut piece_indexes = (0..npieces).collect::<Vec<_>>();
+    let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
     piece_indexes.sort_by_key(|i| xor_distance((*i).into(), address));
 
     // First pieces should be present and equal

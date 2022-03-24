@@ -25,14 +25,14 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
-    let index = 0;
 
     let address = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
 
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
-    plot.write_many(Arc::new(pieces), index).unwrap();
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
     commitments.create(salt, plot.clone()).unwrap();
 
     let client = MockRpc::new();

@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-use crossbeam::atomic::AtomicCell;
 use event_listener_primitives::{Bag, HandlerId};
 use log::error;
 use rocksdb::DB;
@@ -9,8 +8,8 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::Range;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
@@ -36,6 +35,29 @@ pub enum PlotError {
     IndexDbOpen(rocksdb::Error),
     #[error("Offset DB open error: {0}")]
     OffsetDbOpen(io::Error),
+}
+
+#[derive(Debug, Default)]
+pub struct WriteResult {
+    pieces: Arc<FlatPieces>,
+    piece_offsets: Vec<Option<PieceOffset>>,
+    evicted_pieces: Vec<Piece>,
+}
+
+impl WriteResult {
+    /// Iterator over tuple of piece offset and piece itself as memory slice
+    pub fn to_recommitment_iterator(&self) -> impl Iterator<Item = (PieceOffset, &[u8])> {
+        self.piece_offsets
+            .iter()
+            .zip(self.pieces.as_pieces())
+            .filter_map(|(maybe_piece_offset, piece)| {
+                maybe_piece_offset.map(|piece_offset| (piece_offset, piece))
+            })
+    }
+
+    pub fn evicted_pieces(&self) -> &[Piece] {
+        &self.evicted_pieces
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -67,9 +89,9 @@ enum Request {
     },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
-        first_index: PieceIndex,
+        piece_indexes: Vec<PieceIndex>,
         /// Returns offsets of all new pieces and pieces which were replaced
-        result_sender: mpsc::Sender<io::Result<(Vec<PieceOffset>, Vec<Piece>)>>,
+        result_sender: mpsc::Sender<io::Result<WriteResult>>,
     },
     Exit {
         result_sender: mpsc::Sender<()>,
@@ -92,8 +114,7 @@ struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
-    piece_count: Arc<AtomicCell<PieceOffset>>,
-    piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
+    piece_count: Arc<AtomicU64>,
 }
 
 impl Drop for Inner {
@@ -131,11 +152,13 @@ impl Plot {
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: PublicKey,
-        plot_size: Option<u64>,
+        max_piece_count: Option<u64>,
     ) -> Result<Plot, PlotError> {
-        let max_piece_count = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
-        let plot_worker =
-            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
+        let plot_worker = PlotWorker::from_base_directory(
+            base_directory.as_ref(),
+            address,
+            max_piece_count.unwrap_or(u64::MAX),
+        )?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
@@ -145,15 +168,13 @@ impl Plot {
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
-        let piece_index_hash_to_offset_db = Arc::clone(&plot_worker.piece_index_hash_to_offset_db);
-        tokio::task::spawn_blocking(move || plot_worker.do_plot(requests_receiver));
+        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
 
         let inner = Inner {
             handlers: Handlers::default(),
             requests_sender,
             plot_metadata_db,
             piece_count,
-            piece_index_hash_to_offset_db,
         };
 
         Ok(Plot {
@@ -163,19 +184,12 @@ impl Plot {
 
     /// How many pieces are there in the plot
     pub(crate) fn piece_count(&self) -> PieceOffset {
-        self.inner.piece_count.load()
+        self.inner.piece_count.load(Ordering::Acquire)
     }
 
     /// Whether plot doesn't have anything in it
     pub(crate) fn is_empty(&self) -> bool {
-        self.inner.piece_count.load() == 0
-    }
-
-    /// Checks if piece will be written on disk or it will be skipped
-    pub fn is_piece_ommitted(&self, index: PieceIndex) -> io::Result<bool> {
-        self.inner
-            .piece_index_hash_to_offset_db
-            .is_ommitted(index.into())
+        self.piece_count() == 0
     }
 
     /// Reads a piece from plot by index
@@ -208,12 +222,12 @@ impl Plot {
     }
 
     /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates).
-    /// Returns tupple of offsets of new pieces and pieces which were removed
+    /// Returns a tuple of offsets of new pieces and pieces which were removed
     pub(crate) fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
-        first_index: PieceIndex,
-    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
+        piece_indexes: Vec<PieceIndex>,
+    ) -> io::Result<WriteResult> {
         if encodings.is_empty() {
             return Ok(Default::default());
         }
@@ -231,7 +245,7 @@ impl Plot {
             .send(RequestWithPriority {
                 request: Request::WriteEncodings {
                     encodings,
-                    first_index,
+                    piece_indexes,
                     result_sender,
                 },
                 priority: RequestPriority::Low,
@@ -376,7 +390,7 @@ pub(crate) fn xor_distance(
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance: Arc<AtomicCell<Option<Sha256Hash>>>,
+    max_distance: Option<Sha256Hash>,
 }
 
 impl IndexHashToOffsetDB {
@@ -390,7 +404,7 @@ impl IndexHashToOffsetDB {
         Ok(Self {
             inner,
             address,
-            max_distance: Arc::new(AtomicCell::new(max_distance)),
+            max_distance,
         })
     }
 
@@ -407,18 +421,20 @@ impl IndexHashToOffsetDB {
             })
     }
 
-    fn is_ommitted(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
-        Ok(match self.max_distance.load() {
+    /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
+    /// already
+    fn should_store(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
+        Ok(match self.max_distance {
             Some(max_distance) => {
-                xor_distance(index_hash, self.address) >= max_distance
-                    || self.get(index_hash)?.is_some()
+                xor_distance(index_hash, self.address) < max_distance
+                    && self.get(index_hash)?.is_none()
             }
             None => false,
         })
     }
 
-    fn remove_furthest(&self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance.load() {
+    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
+        let max_distance = match self.max_distance {
             Some(max_distance) => max_distance,
             None => return Ok(None),
         };
@@ -432,42 +448,40 @@ impl IndexHashToOffsetDB {
 
         let mut iter = self.inner.raw_iterator();
         iter.seek_to_last();
-        self.max_distance
-            .store(iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap()));
+        self.max_distance = iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap());
         Ok(result)
     }
 
-    fn put(&self, index_hash: impl Into<PieceIndexHash>, offset: PieceOffset) -> io::Result<()> {
+    fn put(
+        &mut self,
+        index_hash: impl Into<PieceIndexHash>,
+        offset: PieceOffset,
+    ) -> io::Result<()> {
         let distance = xor_distance(index_hash.into(), self.address);
         self.inner
             .put(&distance, offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        match self.max_distance.load() {
-            None => self.max_distance.store(Some(distance)),
-            Some(old_distance) if old_distance < distance => {
-                self.max_distance.store(Some(distance))
+        match self.max_distance {
+            Some(old_distance) => {
+                if old_distance < distance {
+                    self.max_distance.replace(distance);
+                }
             }
-            _ => (),
+            None => {
+                self.max_distance.replace(distance);
+            }
         };
 
         Ok(())
     }
 }
 
-fn get_piece_amount(base_directory: impl AsRef<Path>) -> u64 {
-    let available_bytes = fs2::available_space(base_directory)
-        .expect("Failed to calculate maximum number of pieces to store");
-    let bytes_per_piece =
-        PIECE_SIZE as usize + SHA256_HASH_SIZE + std::mem::size_of::<PieceOffset>() * 2 + 100;
-    available_bytes / bytes_per_piece as u64
-}
-
 struct PlotWorker {
     plot: File,
-    piece_index_hash_to_offset_db: Arc<IndexHashToOffsetDB>,
+    piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: File,
-    piece_count: Arc<AtomicCell<PieceOffset>>,
+    piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
 }
 
@@ -475,7 +489,7 @@ impl PlotWorker {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
         address: PublicKey,
-        max_piece_count: Option<u64>,
+        max_piece_count: u64,
     ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -489,7 +503,7 @@ impl PlotWorker {
             .map(|metadata| metadata.len())
             .map_err(PlotError::PlotOpen)?;
 
-        let piece_count = Arc::new(AtomicCell::new(plot_size / PIECE_SIZE as u64));
+        let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
         let piece_offset_to_index = OpenOptions::new()
             .read(true)
@@ -498,20 +512,13 @@ impl PlotWorker {
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
             .map_err(PlotError::OffsetDbOpen)?;
 
-        let max_piece_count = if let Some(max_piece_count) = max_piece_count {
-            max_piece_count
-        } else {
-            get_piece_amount(&base_directory) + piece_count.load()
-        };
-
-        // TODO: handle `piece_count.load() > max_piece_count`
-        // We should discard some of the pieces here
+        // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
+        //  here
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
             address,
-        )
-        .map(Arc::new)?;
+        )?;
 
         Ok(Self {
             plot,
@@ -552,89 +559,104 @@ impl PlotWorker {
             .write_all(&piece_index.to_le_bytes())
     }
 
-    fn write_pieces_to_end(
+    // TODO: Add error recovery
+    fn write_encodings(
         &mut self,
-        pieces: &[u8],
-        start_index: PieceIndex,
-    ) -> io::Result<Range<PieceOffset>> {
-        let current_piece_count = self.piece_count.load();
-        let npieces =
-            (self.max_piece_count - current_piece_count).min((pieces.len() / PIECE_SIZE) as u64);
+        pieces: Arc<FlatPieces>,
+        piece_indexes: Vec<PieceIndex>,
+    ) -> io::Result<WriteResult> {
+        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+        let pieces_left_until_full_plot =
+            (self.max_piece_count - current_piece_count).min(pieces.count() as u64);
 
-        let start_offset: PieceOffset = current_piece_count;
+        // Split pieces and indexes in those that can be appended to the end of plot (thus written
+        // sequentially) and those that need to be checked individually and plotted one by one in
+        // place of old pieces
+        let (sequential_pieces, _) =
+            pieces.split_at(pieces_left_until_full_plot as usize * PIECE_SIZE);
+        // Iterator is more convenient for random pieces, otherwise we could take it from above
+        let random_pieces = pieces
+            .as_pieces()
+            .skip(pieces_left_until_full_plot as usize);
+        let (sequential_piece_indexes, random_piece_indexes) =
+            piece_indexes.split_at(pieces_left_until_full_plot as usize);
 
-        self.plot
-            .seek(SeekFrom::Start(start_offset * PIECE_SIZE as u64))?;
-        self.plot
-            .write_all(&pieces[..npieces as usize * PIECE_SIZE])?;
+        // Process sequential pieces
+        {
+            self.plot
+                .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
+            self.plot.write_all(sequential_pieces)?;
 
-        for (index, offset) in (start_index..start_index + npieces).zip(start_offset..) {
-            self.piece_index_hash_to_offset_db.put(index, offset)?;
-            self.put_piece_index(offset, index)?;
+            for (piece_offset, &piece_index) in
+                (current_piece_count..).zip(sequential_piece_indexes)
+            {
+                self.piece_index_hash_to_offset_db
+                    .put(piece_index, piece_offset)?;
+                self.put_piece_index(piece_offset, piece_index)?;
+            }
+
+            self.piece_count
+                .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
         }
 
-        self.piece_count.fetch_add(npieces);
+        let mut piece_offsets = Vec::<Option<PieceOffset>>::with_capacity(pieces.count());
+        piece_offsets.extend(
+            (current_piece_count..)
+                .take(pieces_left_until_full_plot as usize)
+                .map(Some),
+        );
+        piece_offsets.resize(piece_offsets.capacity(), None);
+        let mut evicted_pieces =
+            Vec::with_capacity(pieces.count() - pieces_left_until_full_plot as usize);
 
-        Ok(start_offset..start_offset + npieces)
-    }
-
-    // TODO: Add error recovery
-    fn write_pieces(
-        &mut self,
-        pieces: &[u8],
-        start_index: PieceIndex,
-    ) -> io::Result<(Vec<PieceOffset>, Vec<Piece>)> {
-        let range = self.write_pieces_to_end(pieces, start_index)?;
-
-        let len = pieces
-            .chunks(PIECE_SIZE)
-            .skip((range.end - range.start) as usize)
-            .len();
-
-        // Overwrite pieces
-        let mut offsets = range.clone().collect::<Vec<_>>();
-        offsets.reserve(len);
-        let mut old_pieces = Vec::with_capacity(len);
-
-        for (index, piece) in pieces
-            .chunks(PIECE_SIZE)
-            .skip((range.end - range.start) as usize)
-            .enumerate()
-            .map(|(i, piece)| (i as u64 + range.end, piece))
+        // Process random pieces
+        for ((piece, &piece_index), maybe_piece_offset) in
+            random_pieces.zip(random_piece_indexes).zip(
+                piece_offsets
+                    .iter_mut()
+                    .skip(pieces_left_until_full_plot as usize),
+            )
         {
             // Check if piece is out of plot range or if it is in the plot
-            if self
+            if !self
                 .piece_index_hash_to_offset_db
-                .is_ommitted(index.into())?
+                .should_store(piece_index.into())?
             {
                 continue;
             }
 
-            let offset = self
+            let piece_offset = self
                 .piece_index_hash_to_offset_db
                 .remove_furthest()?
-                .expect("Should be always present as plot is non-empty");
+                .expect("Must be always present as plot is non-empty; qed");
 
             let mut old_piece = Piece::default();
             self.plot
-                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
             self.plot.read_exact(&mut old_piece)?;
 
             self.plot
-                .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
             self.plot.write_all(piece)?;
 
-            self.piece_index_hash_to_offset_db.put(index, offset)?;
-            self.put_piece_index(offset, index)?;
+            self.piece_index_hash_to_offset_db
+                .put(piece_index, piece_offset)?;
+            self.put_piece_index(piece_offset, piece_index)?;
 
-            offsets.push(offset);
-            old_pieces.push(old_piece);
+            // TODO: This is a bit inefficient when pieces from previous iterations of this loop are
+            //  evicted, causing extra tags overrides during recommitment
+            maybe_piece_offset.replace(piece_offset);
+            evicted_pieces.push(old_piece);
         }
 
-        Ok((offsets, old_pieces))
+        Ok(WriteResult {
+            pieces,
+            piece_offsets,
+            evicted_pieces,
+        })
     }
 
-    fn do_plot(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
+    fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
         let mut exit_result_sender = None;
 
@@ -688,10 +710,11 @@ impl PlotWorker {
                         }
                         Request::WriteEncodings {
                             encodings,
-                            first_index,
+                            piece_indexes,
                             result_sender,
                         } => {
-                            let _ = result_sender.send(self.write_pieces(&encodings, first_index));
+                            let _ =
+                                result_sender.send(self.write_encodings(encodings, piece_indexes));
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);

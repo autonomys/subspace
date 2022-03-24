@@ -4,6 +4,7 @@ use log::info;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
@@ -42,7 +43,14 @@ pub(crate) async fn farm(
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
 
-        move || Plot::open_or_create(&base_directory, address, plot_size)
+        // TODO: Piece count should account for database overhead of various additional databases
+        move || {
+            Plot::open_or_create(
+                &base_directory,
+                address,
+                plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64),
+            )
+        }
     });
     let plot = plot_fut.await.unwrap()?;
 
