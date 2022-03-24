@@ -244,11 +244,7 @@ impl Plot {
     }
 
     /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
-    pub(crate) fn write_many(
-        &self,
-        encodings: Arc<FlatPieces>,
-        first_index: u64,
-    ) -> io::Result<()> {
+    pub fn write_many(&self, encodings: Arc<FlatPieces>, first_index: u64) -> io::Result<()> {
         if encodings.is_empty() {
             return Ok(());
         }
