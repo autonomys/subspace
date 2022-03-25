@@ -20,7 +20,7 @@ use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
-use subspace_runtime::RuntimeApi;
+use subspace_runtime::consensus::RuntimeApi;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -182,7 +182,7 @@ fn main() -> std::result::Result<(), Error> {
                 let runner = cli.create_runner(cmd)?;
                 set_default_ss58_version(&runner.config().chain_spec);
                 runner.sync_run(|config| {
-                    cmd.run::<subspace_runtime::Block, ExecutorDispatch>(config)
+                    cmd.run::<subspace_runtime::consensus::Block, ExecutorDispatch>(config)
                 })?;
             } else {
                 return Err(Error::Other(
@@ -196,9 +196,10 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|config| async move {
-                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
-                    config, true,
-                )
+                subspace_service::new_full::<
+                    subspace_runtime::consensus::RuntimeApi,
+                    ExecutorDispatch,
+                >(config, true)
                 .await
                 .map(|full| full.task_manager)
             })?;
