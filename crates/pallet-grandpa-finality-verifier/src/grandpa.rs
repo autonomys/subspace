@@ -1,3 +1,19 @@
+// Copyright (C) 2022 Subspace Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// GRANDPA verification is mostly taken from Parity's bridges https://github.com/paritytech/parity-bridges-common/tree/master/primitives/header-chain
 use codec::{Decode, Encode};
 use finality_grandpa::voter_set::VoterSet;
 use frame_support::Parameter;
@@ -76,18 +92,6 @@ pub trait Chain: Send + Sync + 'static {
     type Signature: Parameter + Verify;
 }
 
-/// Block number used by the chain.
-pub type BlockNumberOf<C> = <C as Chain>::BlockNumber;
-
-/// Hash type used by the chain.
-pub type HashOf<C> = <C as Chain>::Hash;
-
-/// Hasher type used by the chain.
-pub type HasherOf<C> = <C as Chain>::Hasher;
-
-/// Header type used by the chain.
-pub type HeaderOf<C> = <C as Chain>::Header;
-
 /// A GRANDPA Justification is a proof that a given header was finalized
 /// at a certain height and with a certain set of authorities.
 ///
@@ -116,11 +120,11 @@ pub struct AuthoritySet {
 
 /// Votes ancestries with useful methods.
 #[derive(RuntimeDebug)]
-pub struct AncestryChain<Header: HeaderT> {
+struct AncestryChain<Header: HeaderT> {
     /// Header hash => parent header hash mapping.
-    pub parents: BTreeMap<Header::Hash, Header::Hash>,
+    parents: BTreeMap<Header::Hash, Header::Hash>,
     /// Hashes of headers that were not visited by `is_ancestor` method.
-    pub unvisited: BTreeSet<Header::Hash>,
+    unvisited: BTreeSet<Header::Hash>,
 }
 
 impl<Header: HeaderT> AncestryChain<Header> {
@@ -145,11 +149,7 @@ impl<Header: HeaderT> AncestryChain<Header> {
         precommit_target: &Header::Hash,
     ) -> Result<Self, Error> {
         let mut current_hash = *precommit_target;
-        loop {
-            if current_hash == *commit_target {
-                break;
-            }
-
+        while current_hash != *commit_target {
             let is_visited_before = !self.unvisited.remove(&current_hash);
             current_hash = match self.parents.get(&current_hash) {
                 Some(parent_hash) => {
@@ -166,6 +166,7 @@ impl<Header: HeaderT> AncestryChain<Header> {
                 None => return Err(Error::PrecommitIsNotCommitDescendant),
             };
         }
+
         Ok(self)
     }
 }
@@ -173,8 +174,6 @@ impl<Header: HeaderT> AncestryChain<Header> {
 /// Justification verification error.
 #[derive(RuntimeDebug, PartialEq)]
 pub enum Error {
-    /// Failed to decode justification.
-    JustificationDecode,
     /// Justification is finalizing unexpected header.
     InvalidJustificationTarget,
     /// The authority has provided an invalid signature.

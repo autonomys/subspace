@@ -9,8 +9,6 @@ repository = "https://github.com/subspace/subspace"
 description = "Pallet to verify GRANDPA finality proofs for Substrate based chains"
 readme = "README.md"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }
 finality-grandpa = { version = "0.15.0", default-features = false }
@@ -31,6 +29,8 @@ sp-trie = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
 sp-io = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
+sp-application-crypto = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
+ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
 
 [features]
 default = ["std"]

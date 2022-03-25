@@ -5054,6 +5054,7 @@ dependencies = [
 name = "pallet-grandpa-finality-verifier"
 version = "1.0.0"
 dependencies = [
+ "ed25519-dalek",
  "finality-grandpa",
  "frame-support",
  "frame-system",
@@ -5062,6 +5063,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
+ "sp-application-crypto",
  "sp-core",
  "sp-finality-grandpa",
  "sp-io",

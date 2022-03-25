@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
+// Copyright (C) 2022 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,3 +16,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 mod grandpa;
+pub use grandpa::verify_justification;
+
+#[cfg(test)]
+mod tests;
