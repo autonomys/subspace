@@ -5051,6 +5051,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-grandpa-finality-verifier"
+version = "1.0.0"
+dependencies = [
+ "finality-grandpa",
+ "frame-support",
+ "frame-system",
+ "log",
+ "num-traits",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-finality-grandpa",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
+]
+
+[[package]]
 name = "pallet-object-store"
 version = "0.1.0"
 dependencies = [
