@@ -256,7 +256,7 @@ impl AsMut<[u8]> for Piece {
 }
 
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct FlatPieces(Vec<u8>);
@@ -457,8 +457,6 @@ impl RootBlock {
     }
 }
 
-/// Index of piece on disk
-pub type PieceOffset = u64;
 /// Piece index in consensus
 pub type PieceIndex = u64;
 

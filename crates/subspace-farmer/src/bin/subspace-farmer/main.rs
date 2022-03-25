@@ -41,6 +41,34 @@ enum IdentityCommand {
     },
 }
 
+/// Arguments for farmer
+#[derive(Debug, Parser)]
+struct FarmingArgs {
+    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
+    #[clap(long)]
+    bootstrap_nodes: Vec<Multiaddr>,
+    /// Custom path for data storage instead of platform-specific default
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    custom_path: Option<PathBuf>,
+    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
+    /// multiple are supported, subspace networking is disabled when none specified
+    #[clap(long)]
+    listen_on: Vec<Multiaddr>,
+    /// WebSocket RPC URL of the Subspace node to connect to
+    #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
+    node_rpc_url: String,
+    /// Host and port where built-in WebSocket RPC server should listen for incoming connections
+    #[clap(long, short, default_value = "127.0.0.1:9955")]
+    ws_server_listen_addr: SocketAddr,
+    /// Address for farming rewards
+    #[clap(long, parse(try_from_str = parse_reward_address))]
+    reward_address: Option<PublicKey>,
+    // TODO: Should we require user to always set plot size?
+    /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    #[clap(long, parse(try_from_str = parse_human_readable))]
+    plot_size: Option<u64>,
+}
+
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {
@@ -60,27 +88,17 @@ enum Command {
         custom_path: Option<PathBuf>,
     },
     /// Start a farmer using previously created plot
-    Farm {
-        /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-        #[clap(long)]
-        bootstrap_node: Vec<Multiaddr>,
-        /// Custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
-        custom_path: Option<PathBuf>,
-        /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-        /// multiple are supported, subspace networking is disabled when none specified
-        #[clap(long)]
-        listen_on: Vec<Multiaddr>,
-        /// WebSocket RPC URL of the Subspace node to connect to
-        #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
-        node_rpc_url: String,
-        /// Host and port where built-in WebSocket RPC server should listen for incoming connections
-        #[clap(long, short, default_value = "127.0.0.1:9955")]
-        ws_server_listen_addr: SocketAddr,
-        /// Address for farming rewards
-        #[clap(long, parse(try_from_str = parse_reward_address))]
-        reward_address: Option<PublicKey>,
-    },
+    Farm(FarmingArgs),
+}
+
+fn parse_human_readable(s: &str) -> Result<u64, std::num::ParseIntError> {
+    const SUFFIXES: &[(&str, u64)] = &[("G", 10u64.pow(9)), ("T", 10u64.pow(12))];
+
+    SUFFIXES
+        .iter()
+        .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
+        .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
+        .unwrap_or_else(|| s.parse::<u64>())
 }
 
 fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
@@ -106,25 +124,8 @@ async fn main() -> Result<()> {
             commands::wipe(&path)?;
             info!("Done");
         }
-        Command::Farm {
-            bootstrap_node,
-            custom_path,
-            listen_on,
-            node_rpc_url,
-            ws_server_listen_addr,
-            reward_address,
-        } => {
-            let path = utils::get_path(custom_path);
-            commands::farm(
-                path,
-                bootstrap_node,
-                listen_on,
-                &node_rpc_url,
-                ws_server_listen_addr,
-                reward_address,
-                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-            )
-            .await?;
+        Command::Farm(args) => {
+            commands::farm(args, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?;
         }
     }
     Ok(())

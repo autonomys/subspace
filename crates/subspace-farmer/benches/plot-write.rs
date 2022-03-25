@@ -8,7 +8,7 @@ use tempfile::TempDir;
 #[tokio::main]
 async fn main() {
     let batch_size = 4096; // 16M
-    let piece_count = 2u64.pow(30); // 1G
+    let piece_count = 2u64.pow(20); // 4G
     let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
 
     let mut pieces = Vec::with_capacity(batch_size as usize * PIECE_SIZE);
@@ -16,12 +16,13 @@ async fn main() {
     rand::thread_rng().fill(&mut pieces[..]);
     let pieces = Arc::new(pieces.try_into().unwrap());
 
-    let plot = Plot::open_or_create(&base_directory).unwrap();
+    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), Some(piece_count)).unwrap();
 
     let start = std::time::Instant::now();
 
     for index in (0..piece_count / batch_size).map(|i| i * batch_size) {
-        plot.write_many(Arc::clone(&pieces), index as u64).unwrap();
+        plot.write_many(Arc::clone(&pieces), (index..index + batch_size).collect())
+            .unwrap();
     }
     drop(plot);
 

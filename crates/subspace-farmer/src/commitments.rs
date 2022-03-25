@@ -2,7 +2,7 @@ mod commitment_databases;
 #[cfg(test)]
 mod tests;
 
-use crate::plot::Plot;
+use crate::plot::{PieceOffset, Plot};
 use arc_swap::ArcSwapOption;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, PieceOffset, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
@@ -170,12 +170,7 @@ impl Commitments {
         Ok(())
     }
 
-    /// Create commitments for all salts for specified pieces
-    pub(crate) fn create_for_pieces(
-        &self,
-        pieces: &Arc<FlatPieces>,
-        start_offset: u64,
-    ) -> Result<(), CommitmentError> {
+    pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
         for salt in salts {
@@ -194,28 +189,62 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            let db = match db_guard.clone() {
-                Some(db) => db,
-                None => {
-                    continue;
+            if let Some(db) = db_guard.as_ref() {
+                for piece in pieces {
+                    let tag = subspace_solving::create_tag(piece, salt);
+                    db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
                 }
-            };
-
-            let tags: Vec<Tag> = pieces
-                .par_chunks_exact(PIECE_SIZE)
-                .map(|piece| subspace_solving::create_tag(piece, salt))
-                .collect();
-
-            for (tag, offset) in tags.iter().zip(start_offset..) {
-                db.put(tag, offset.to_le_bytes())
-                    .map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
         Ok(())
     }
 
-    /// Finds the commitment/s falling in the range of the challenge
+    /// Create commitments for all salts for specified pieces
+    pub(crate) fn create_for_pieces<'a, 'iter, F, Iter>(
+        &'a self,
+        pieces_with_offsets: F,
+    ) -> Result<(), CommitmentError>
+    where
+        F: Fn() -> Iter,
+        Iter: Iterator<Item = (PieceOffset, &'iter [u8])>,
+    {
+        let salts = self.inner.commitment_databases.lock().get_salts();
+
+        for salt in salts {
+            let db_entry = match self
+                .inner
+                .commitment_databases
+                .lock()
+                .get_db_entry(&salt)
+                .cloned()
+            {
+                Some(db_entry) => db_entry,
+                None => {
+                    continue;
+                }
+            };
+
+            let db_guard = db_entry.lock();
+
+            if let Some(db) = db_guard.as_ref() {
+                let tags_with_offset: Vec<(PieceOffset, Tag)> = pieces_with_offsets()
+                    .map(|(piece_offset, piece)| {
+                        (piece_offset, subspace_solving::create_tag(piece, salt))
+                    })
+                    .collect();
+
+                for (piece_offset, tag) in tags_with_offset {
+                    db.put(tag, piece_offset.to_le_bytes())
+                        .map_err(CommitmentError::CommitmentDb)?;
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    /// Finds the commitment falling in the range of the challenge
     pub(crate) fn find_by_range(
         &self,
         target: Tag,

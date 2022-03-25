@@ -20,29 +20,22 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let base_directory = TempDir::new().unwrap();
 
-    let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
-    let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
-    let index = 0;
-
-    let plot = Plot::open_or_create(&base_directory).unwrap();
-
-    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-
-    plot.write_many(Arc::new(pieces), index).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
-
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let client = MockRpc::new();
+    let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
+    let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
-    let reward_address = identity
-        .public_key()
-        .as_ref()
-        .to_vec()
-        .try_into()
-        .map(From::<[u8; 32]>::from)
-        .unwrap();
+    let address = identity.public_key().to_bytes().into();
+    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
+
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
+
+    let piece_indexes = (0..).take(pieces.count()).collect();
+    plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
+    commitments.create(salt, plot.clone()).unwrap();
+
+    let client = MockRpc::new();
 
     // start the farming task
     let farming_instance = Farming::start(
@@ -50,7 +43,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         commitments.clone(),
         client.clone(),
         identity.clone(),
-        reward_address,
+        address,
     );
 
     let mut counter = 0;

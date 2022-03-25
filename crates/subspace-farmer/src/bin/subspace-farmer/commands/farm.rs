@@ -2,39 +2,55 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
 use std::mem;
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_solving::SubspaceCodec;
 
+use crate::FarmingArgs;
+
 /// Start farming by using plot in specified path and connecting to WebSocket server at specified
 /// address.
 pub(crate) async fn farm(
-    base_directory: PathBuf,
-    bootstrap_nodes: Vec<Multiaddr>,
-    listen_on: Vec<Multiaddr>,
-    node_rpc_url: &str,
-    ws_server_listen_addr: SocketAddr,
-    reward_address: Option<PublicKey>,
+    FarmingArgs {
+        bootstrap_nodes,
+        custom_path,
+        listen_on,
+        node_rpc_url,
+        ws_server_listen_addr,
+        reward_address,
+        plot_size,
+    }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
+    let base_directory = crate::utils::get_path(custom_path);
+
+    let identity = Identity::open_or_create(&base_directory)?;
+    let address = identity.public_key().to_bytes().into();
+
+    let reward_address = reward_address.unwrap_or(address);
+
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
 
-        move || Plot::open_or_create(&base_directory)
+        // TODO: Piece count should account for database overhead of various additional databases
+        move || {
+            Plot::open_or_create(
+                &base_directory,
+                address,
+                plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64),
+            )
+        }
     });
     let plot = plot_fut.await.unwrap()?;
 
@@ -55,24 +71,12 @@ pub(crate) async fn farm(
     .await??;
 
     info!("Connecting to node at {}", node_rpc_url);
-    let client = WsRpc::new(node_rpc_url).await?;
+    let client = WsRpc::new(&node_rpc_url).await?;
 
     let farmer_metadata = client
         .farmer_metadata()
         .await
         .map_err(|error| anyhow::Error::msg(error.to_string()))?;
-
-    let identity = Identity::open_or_create(&base_directory)?;
-
-    let reward_address = reward_address.unwrap_or_else(|| {
-        identity
-            .public_key()
-            .as_ref()
-            .to_vec()
-            .try_into()
-            .map(From::<[u8; 32]>::from)
-            .expect("Length of public key is always correct")
-    });
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 

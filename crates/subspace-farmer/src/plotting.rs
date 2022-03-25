@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -82,16 +82,13 @@ impl Plotting {
         let (stop_sender, stop_receiver) = oneshot::channel();
 
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let plotting_handle = tokio::spawn(async move {
-            background_plotting(
-                farmer_data,
-                client,
-                subspace_codec,
-                best_block_number_check_interval,
-                stop_receiver,
-            )
-            .await
-        });
+        let plotting_handle = tokio::spawn(background_plotting(
+            farmer_data,
+            client,
+            subspace_codec,
+            best_block_number_check_interval,
+            stop_receiver,
+        ));
 
         Plotting {
             stop_sender: Some(stop_sender),
@@ -253,28 +250,45 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             create_global_object_mapping(piece_index_offset, object_mapping);
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
-                        let piece_indexes = (piece_index_offset..)
-                            .take(pieces.count())
-                            .collect::<Vec<_>>();
-                        if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes)
-                        {
-                            error!("Failed to encode a piece: error: {}", error);
-                            continue;
-                        }
                         if let Some(plot) = weak_plot.upgrade() {
-                            let pieces = Arc::new(pieces);
-                            // TODO: There is no internal mapping between pieces and their indexes yet
-                            // TODO: Then we might want to send indexes as a separate vector
+                            let piece_indexes = (piece_index_offset..)
+                                .take(pieces.count())
+                                .collect::<Vec<PieceIndex>>();
+
                             if let Err(error) =
-                                plot.write_many(Arc::clone(&pieces), piece_index_offset)
+                                subspace_codec.batch_encode(&mut pieces, &piece_indexes)
                             {
-                                error!("Failed to write encoded pieces: {}", error);
+                                error!("Failed to encode a piece: error: {}", error);
+                                continue;
                             }
-                            if let Err(error) = farmer_data
-                                .commitments
-                                .create_for_pieces(&pieces, piece_index_offset)
-                            {
-                                error!("Failed to create commitments for pieces: {}", error);
+                            let pieces = Arc::new(pieces);
+
+                            match plot.write_many(Arc::clone(&pieces), piece_indexes) {
+                                Ok(write_result) => {
+                                    if let Err(error) = farmer_data
+                                        .commitments
+                                        .remove_pieces(write_result.evicted_pieces())
+                                    {
+                                        error!(
+                                            "Failed to remove old commitments for pieces: {}",
+                                            error
+                                        );
+                                    }
+
+                                    // TODO: This will not create commitments properly if pieces are
+                                    //  evicted during plotting
+                                    if let Err(error) =
+                                        farmer_data.commitments.create_for_pieces(|| {
+                                            write_result.to_recommitment_iterator()
+                                        })
+                                    {
+                                        error!(
+                                            "Failed to create commitments for pieces: {}",
+                                            error
+                                        );
+                                    }
+                                }
+                                Err(error) => error!("Failed to write encoded pieces: {}", error),
                             }
                             if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
