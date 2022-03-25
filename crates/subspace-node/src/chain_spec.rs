@@ -55,7 +55,8 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 ];
 
 /// The `ChainSpec` parameterized for the subspace runtime.
-pub type SubspaceChainSpec = sc_service::GenericChainSpec<subspace_runtime::GenesisConfig>;
+pub type SubspaceChainSpec =
+    sc_service::GenericChainSpec<subspace_runtime::consensus::GenesisConfig>;
 
 /// Generate a crypto pair from seed.
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -77,13 +78,13 @@ pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
 }
 #[cfg(not(feature = "json-chain-spec"))]
 pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
-    use subspace_runtime::{SS58Prefix, SSC};
+    use subspace_runtime::consensus::{SS58Prefix, SSC};
 
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert(
         "tokenDecimals".into(),
-        subspace_runtime::DECIMAL_PLACES.into(),
+        subspace_runtime::consensus::DECIMAL_PLACES.into(),
     );
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
@@ -115,7 +116,7 @@ pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
                     // TODO: Adjust start block to real value before mainnet launch
                     let start_block = 100_000_000;
                     let one_month_in_blocks = u32::try_from(
-                        3600 * 24 * 30 * subspace_runtime::MILLISECS_PER_BLOCK / 1000,
+                        3600 * 24 * 30 * subspace_runtime::consensus::MILLISECS_PER_BLOCK / 1000,
                     )
                     .expect("One month of blocks always fits in u32; qed");
 
@@ -167,7 +168,7 @@ pub fn subspace_testnet_config() -> Result<SubspaceChainSpec, String> {
 }
 
 pub fn subspace_development_config() -> Result<SubspaceChainSpec, String> {
-    use subspace_runtime::SSC;
+    use subspace_runtime::consensus::SSC;
 
     let wasm_binary = subspace_runtime::WASM_BINARY
         .ok_or_else(|| "Development wasm not available".to_string())?;
@@ -208,7 +209,7 @@ pub fn subspace_development_config() -> Result<SubspaceChainSpec, String> {
 }
 
 pub fn subspace_local_testnet_config() -> Result<SubspaceChainSpec, String> {
-    use subspace_runtime::SSC;
+    use subspace_runtime::consensus::SSC;
 
     let wasm_binary = subspace_runtime::WASM_BINARY
         .ok_or_else(|| "Development wasm not available".to_string())?;
@@ -263,18 +264,18 @@ fn subspace_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-) -> subspace_runtime::GenesisConfig {
-    subspace_runtime::GenesisConfig {
-        system: subspace_runtime::SystemConfig {
+) -> subspace_runtime::consensus::GenesisConfig {
+    subspace_runtime::consensus::GenesisConfig {
+        system: subspace_runtime::consensus::SystemConfig {
             // Add Wasm runtime to storage.
             code: wasm_binary.to_vec(),
         },
-        balances: subspace_runtime::BalancesConfig { balances },
+        balances: subspace_runtime::consensus::BalancesConfig { balances },
         transaction_payment: Default::default(),
-        sudo: subspace_runtime::SudoConfig {
+        sudo: subspace_runtime::consensus::SudoConfig {
             // Assign network admin rights.
             key: Some(sudo_account),
         },
-        vesting: subspace_runtime::VestingConfig { vesting },
+        vesting: subspace_runtime::consensus::VestingConfig { vesting },
     }
 }
