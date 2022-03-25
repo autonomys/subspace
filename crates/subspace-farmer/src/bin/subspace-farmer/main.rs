@@ -64,7 +64,7 @@ struct FarmingArgs {
     #[clap(long, parse(try_from_str = parse_reward_address))]
     reward_address: Option<PublicKey>,
     // TODO: Should we require user to always set plot size?
-    /// Maximum plot size in human readable format (e.g., 1K 234M 2G).
+    /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
     #[clap(long, parse(try_from_str = parse_human_readable))]
     plot_size: Option<u64>,
 }
