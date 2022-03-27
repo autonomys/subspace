@@ -11,6 +11,9 @@ edition = "2021"
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
+[build-dependencies]
+substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+
 [dependencies]
 hex-literal = { version = '0.3.1', optional = true }
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false, features = ["derive"]}

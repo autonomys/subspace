@@ -37,11 +37,11 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_runtime::consensus::api::dispatch(method, data)
+        subspace_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        subspace_runtime::consensus::native_version()
+        subspace_runtime::native_version()
     }
 }
 
@@ -138,6 +138,6 @@ impl SubstrateCli for Cli {
     }
 
     fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &subspace_runtime::consensus::VERSION
+        &subspace_runtime::VERSION
     }
 }
