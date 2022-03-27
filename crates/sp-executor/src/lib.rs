@@ -23,6 +23,7 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
+use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -125,6 +126,10 @@ impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
     }
 }
 
+/// Error type of fraud proof verification on primary node.
+#[derive(RuntimeDebug)]
+pub struct VerificationError;
+
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct FraudProof {
@@ -134,6 +139,10 @@ pub struct FraudProof {
     pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
+}
+
+impl PassBy for FraudProof {
+    type PassBy = sp_runtime_interface::pass_by::Codec<Self>;
 }
 
 /// Represents a bundle equivocation proof. An equivocation happens when an executor
@@ -211,5 +220,39 @@ sp_api::decl_runtime_apis! {
 
         /// WASM bundle for execution runtime.
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
+    }
+}
+
+pub mod fraud_proof_ext {
+    use sp_externalities::ExternalitiesExt;
+    use sp_runtime_interface::runtime_interface;
+
+    /// Externalities for verifying fraud proof.
+    pub trait Externalities: Send {
+        /// Returns `true` when the proof is valid.
+        fn verify_fraud_proof(&self, proof: &crate::FraudProof) -> bool;
+    }
+
+    #[cfg(feature = "std")]
+    sp_externalities::decl_extension! {
+        /// An extension to verify the fraud proof.
+        pub struct FraudProofExt(Box<dyn Externalities>);
+    }
+
+    #[cfg(feature = "std")]
+    impl FraudProofExt {
+        pub fn new<E: Externalities + 'static>(fraud_proof: E) -> Self {
+            Self(Box::new(fraud_proof))
+        }
+    }
+
+    #[runtime_interface]
+    pub trait FraudProof {
+        /// Verify fraud proof.
+        fn verify(&mut self, proof: &crate::FraudProof) -> bool {
+            self.extension::<FraudProofExt>()
+                .expect("No `FraudProof` associated for the current context!")
+                .verify_fraud_proof(proof)
+        }
     }
 }

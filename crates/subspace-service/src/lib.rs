@@ -175,8 +175,18 @@ where
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
-            executor,
+            executor.clone(),
         )?;
+
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        backend.clone(),
+        executor,
+        task_manager.spawn_handle(),
+    );
+    client
+        .execution_extensions()
+        .set_extensions_factory(Box::new(proof_verifier));
+
     let client = Arc::new(client);
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
