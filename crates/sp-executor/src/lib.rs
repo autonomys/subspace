@@ -211,6 +211,10 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct FraudProof {
+    /// Parent hash of the block at which the invalid execution occurred.
+    ///
+    /// Runtime code for this block's execution is retrieved on top of the parent block.
+    pub parent_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.

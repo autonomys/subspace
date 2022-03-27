@@ -207,14 +207,17 @@ impl<
 
     fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
         let FraudProof {
+            parent_hash,
             pre_state_root,
             post_state_root,
             proof,
             execution_args,
         } = proof;
 
-        // TODO: we should use parent_hash.
-        let at = BlockId::Hash(Block::Hash::default());
+        let at = BlockId::Hash(
+            Block::Hash::decode(&mut parent_hash.encode().as_slice())
+                .expect("Block Hash must be H256; qed"),
+        );
 
         let state = self
             .backend

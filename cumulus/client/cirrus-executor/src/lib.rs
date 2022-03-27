@@ -626,7 +626,13 @@ where
 					None,
 				)?;
 
-				FraudProof { pre_state_root, post_state_root, proof, execution_args }
+				FraudProof {
+					parent_hash: as_h256(&parent_header.hash())?,
+					pre_state_root,
+					post_state_root,
+					proof,
+					execution_args,
+				}
 			} else if local_trace_idx == local_receipt.trace.len() - 1 {
 				// `finalize_block` execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
@@ -659,7 +665,13 @@ where
 					Some((delta, post_delta_root)),
 				)?;
 
-				FraudProof { pre_state_root, post_state_root, proof, execution_args }
+				FraudProof {
+					parent_hash: as_h256(&parent_header.hash())?,
+					pre_state_root,
+					post_state_root,
+					proof,
+					execution_args,
+				}
 			} else {
 				// Regular extrinsic execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
@@ -672,7 +684,13 @@ where
 				)?;
 
 				// TODO: proof should be a CompactProof.
-				FraudProof { pre_state_root, post_state_root, proof, execution_args }
+				FraudProof {
+					parent_hash: as_h256(&parent_header.hash())?,
+					pre_state_root,
+					post_state_root,
+					proof,
+					execution_args,
+				}
 			};
 
 			self.submit_fraud_proof(fraud_proof);
