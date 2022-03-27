@@ -16,7 +16,9 @@ use sp_core::{
     traits::{CodeExecutor, SpawnNamed},
     H256,
 };
-use sp_executor::{fraud_proof_ext::FraudProofExt, FraudProof, VerificationError};
+use sp_executor::{
+    fraud_proof_ext::FraudProofExt, ExecutionArguments, FraudProof, VerificationError,
+};
 use sp_externalities::Extensions;
 use sp_runtime::{
     generic::BlockId,
@@ -29,10 +31,6 @@ use std::sync::Arc;
 
 /// Returns a storage proof which can be used to reconstruct a partial state trie to re-run
 /// the execution by someone who does not own the whole state.
-// TODO: too many arguments, but no need to refactor it right now as the API of execution proof
-// on the primary node might have some other considerations, e.g., RuntimeCode will be fetched
-// another way.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_execution<
     Block: BlockT,
     B: backend::Backend<Block>,
@@ -44,8 +42,7 @@ pub fn prove_execution<
     executor: &Exec,
     spawn_handle: Spawn,
     at: &BlockId<Block>,
-    method: &str,
-    call_data: &[u8],
+    execution_args: &ExecutionArguments,
     delta_changes: Option<(DB, Block::Hash)>,
 ) -> sp_blockchain::Result<StorageProof> {
     let state = backend.state_at(*at)?;
@@ -67,8 +64,8 @@ pub fn prove_execution<
             &mut Default::default(),
             executor,
             spawn_handle,
-            method,
-            call_data,
+            execution_args.proving_method(),
+            execution_args.call_data(),
             &runtime_code,
         )
         .map(|(_ret, proof)| proof)
@@ -79,8 +76,8 @@ pub fn prove_execution<
             &mut Default::default(),
             executor,
             spawn_handle,
-            method,
-            call_data,
+            execution_args.proving_method(),
+            execution_args.call_data(),
             &runtime_code,
         )
         .map(|(_ret, proof)| proof)
@@ -93,8 +90,6 @@ pub fn prove_execution<
 ///
 /// The execution result contains the information of state root after applying the execution
 /// so that it can be used to compare with the one specified in the fraud proof.
-// TODO: too many arguments.
-#[allow(clippy::too_many_arguments)]
 pub fn check_execution_proof<
     Block: BlockT,
     B: backend::Backend<Block>,
@@ -105,8 +100,7 @@ pub fn check_execution_proof<
     executor: &Exec,
     spawn_handle: Spawn,
     at: &BlockId<Block>,
-    method: &str,
-    call_data: &[u8],
+    execution_args: &ExecutionArguments,
     pre_execution_root: H256,
     proof: StorageProof,
 ) -> sp_blockchain::Result<Vec<u8>> {
@@ -128,8 +122,8 @@ pub fn check_execution_proof<
         &mut Default::default(),
         executor,
         spawn_handle,
-        method,
-        call_data,
+        execution_args.verifying_method(),
+        execution_args.call_data(),
         &runtime_code,
     )
     .map_err(Into::into)

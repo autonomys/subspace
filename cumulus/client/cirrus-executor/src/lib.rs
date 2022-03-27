@@ -347,8 +347,7 @@ where
 			&*self.code_executor,
 			self.spawner.clone() as Box<dyn SpawnNamed>,
 			&BlockId::Hash(parent_header.hash()),
-			execution_args.proving_method(),
-			execution_args.call_data(),
+			&execution_args,
 			Some((delta, post_delta_root)),
 		)?;
 
@@ -623,8 +622,7 @@ where
 					&*self.code_executor,
 					self.spawner.clone() as Box<dyn SpawnNamed>,
 					&BlockId::Hash(parent_header.hash()),
-					execution_args.proving_method(),
-					execution_args.call_data(),
+					&execution_args,
 					None,
 				)?;
 
@@ -657,8 +655,7 @@ where
 					&*self.code_executor,
 					self.spawner.clone() as Box<dyn SpawnNamed>,
 					&BlockId::Hash(parent_header.hash()),
-					execution_args.proving_method(),
-					execution_args.call_data(),
+					&execution_args,
 					Some((delta, post_delta_root)),
 				)?;
 

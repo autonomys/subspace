@@ -180,8 +180,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		execution_args.proving_method(),
-		execution_args.call_data(),
+		&execution_args,
 		None,
 	)
 	.expect("Create `initialize_block` proof");
@@ -191,8 +190,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		execution_args.verifying_method(),
-		execution_args.call_data(),
+		&execution_args,
 		*parent_header.state_root(),
 		storage_proof,
 	)
@@ -219,8 +217,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			execution_args.proving_method(),
-			execution_args.call_data(),
+			&execution_args,
 			Some((delta, post_delta_root)),
 		)
 		.expect("Create extrinsic execution proof");
@@ -233,8 +230,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			execution_args.verifying_method(),
-			execution_args.call_data(),
+			&execution_args,
 			post_delta_root,
 			storage_proof,
 		)
@@ -262,8 +258,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		execution_args.proving_method(),
-		execution_args.call_data(),
+		&execution_args,
 		Some((delta, post_delta_root)),
 	)
 	.expect("Create `finalize_block` proof");
@@ -273,8 +268,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		execution_args.verifying_method(),
-		execution_args.call_data(),
+		&execution_args,
 		post_delta_root,
 		storage_proof,
 	)
@@ -375,8 +369,7 @@ async fn invalid_execution_proof_should_not_work() {
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			execution_args.proving_method(),
-			execution_args.call_data(),
+			&execution_args,
 			Some((delta.clone(), post_delta_root.clone())),
 		)
 		.expect("Create extrinsic execution proof");
@@ -394,8 +387,7 @@ async fn invalid_execution_proof_should_not_work() {
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			execution_args.verifying_method(),
-			execution_args.call_data(),
+			&execution_args,
 			post_delta_root,
 			proof,
 		)
