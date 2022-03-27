@@ -131,7 +131,8 @@ impl_opaque_keys! {
 	pub struct SessionKeys { }
 }
 
-#[sp_version::runtime_version]
+// TODO: Disable runtime version in WASM sections for now, see https://github.com/paritytech/substrate/issues/7327#issuecomment-1079983110
+// #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("subspace-executor"),
 	impl_name: create_runtime_str!("subspace-executor"),
