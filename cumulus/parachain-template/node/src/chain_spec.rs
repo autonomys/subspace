@@ -1,13 +1,13 @@
+use parachain_template_runtime::{AccountId, Signature};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
-use subspace_runtime::execution::{AccountId, Signature};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ChainSpec =
-	sc_service::GenericChainSpec<subspace_runtime::execution::GenesisConfig, Extensions>;
+	sc_service::GenericChainSpec<parachain_template_runtime::GenesisConfig, Extensions>;
 
 /// Helper function to generate a crypto pair from seed
 pub fn get_pair_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -130,14 +130,14 @@ pub fn local_testnet_config() -> ChainSpec {
 	)
 }
 
-fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> subspace_runtime::execution::GenesisConfig {
-	subspace_runtime::execution::GenesisConfig {
-		system: subspace_runtime::execution::SystemConfig {
-			code: subspace_runtime::WASM_BINARY
+fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> parachain_template_runtime::GenesisConfig {
+	parachain_template_runtime::GenesisConfig {
+		system: parachain_template_runtime::SystemConfig {
+			code: parachain_template_runtime::WASM_BINARY
 				.expect("WASM binary was not build, please build it!")
 				.to_vec(),
 		},
-		balances: subspace_runtime::execution::BalancesConfig {
+		balances: parachain_template_runtime::BalancesConfig {
 			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 		},
 	}

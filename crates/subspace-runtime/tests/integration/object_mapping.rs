@@ -1,8 +1,8 @@
 use codec::Encode;
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
-use subspace_consensus_runtime::{Block, Call, Header, Runtime, UncheckedExtrinsic};
 use subspace_core_primitives::crypto;
 use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_runtime::{Block, Call, Header, Runtime, UncheckedExtrinsic};
 
 #[test]
 fn object_mapping() {

@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [features]
 runtime-benchmarks = [
-    "subspace-runtime/runtime-benchmarks",
+    "parachain-template-runtime/runtime-benchmarks",
     "subspace-node/runtime-benchmarks",
 ]
 
@@ -34,6 +34,9 @@ clap = { version = "3.1.6", features = ["derive"] }
 
 # RPC related Dependencies
 jsonrpc-core = "18.0.0"
+
+# Local Dependencies
+parachain-template-runtime = { path = "../runtime" }
 
 # Substrate Dependencies
 frame-benchmarking = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

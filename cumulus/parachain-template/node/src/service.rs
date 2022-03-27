@@ -5,7 +5,7 @@ use sc_basic_authorship::ProposerFactory;
 use std::sync::Arc;
 
 // Local Runtime Types
-use subspace_runtime::execution::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
+use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
 
 // Cumulus Imports
 use cirrus_client_service::prepare_node_config;
@@ -26,11 +26,11 @@ impl NativeExecutionDispatch for TemplateRuntimeExecutor {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-		subspace_runtime::execution::api::dispatch(method, data)
+		parachain_template_runtime::api::dispatch(method, data)
 	}
 
 	fn native_version() -> sc_executor::NativeVersion {
-		subspace_runtime::execution::native_version()
+		parachain_template_runtime::native_version()
 	}
 }
 
@@ -217,10 +217,10 @@ where
 		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
 		let _enter = span.enter();
 
-		subspace_service::new_full::<
-			subspace_runtime::consensus::RuntimeApi,
-			subspace_node::ExecutorDispatch,
-		>(polkadot_config, false)
+		subspace_service::new_full::<subspace_runtime::RuntimeApi, subspace_node::ExecutorDispatch>(
+			polkadot_config,
+			false,
+		)
 		.await
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
