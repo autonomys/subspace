@@ -8819,6 +8819,7 @@ dependencies = [
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",
+ "parachain-template-runtime",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -8836,6 +8837,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -8948,6 +8950,7 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-test-runtime",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -8984,6 +8987,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -9014,6 +9018,10 @@ dependencies = [
  "substrate-test-utils",
  "tokio",
 ]
+
+[[package]]
+name = "subspace-wasm-tools"
+version = "0.1.0"
 
 [[package]]
 name = "substrate-bip39"

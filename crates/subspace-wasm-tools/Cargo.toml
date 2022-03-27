@@ -1,0 +1,11 @@
+[package]
+name = "subspace-wasm-tools"
+description = "Utilities for building WASM bundles"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
