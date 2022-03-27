@@ -197,7 +197,16 @@ impl ExecutionArguments {
 
 /// Error type of fraud proof verification on primary node.
 #[derive(RuntimeDebug)]
-pub struct VerificationError;
+pub enum VerificationError {
+    /// Runtime code backend unavailable.
+    RuntimeCodeBackend,
+    /// Runtime code can not be fetched from the backend.
+    RuntimeCode(&'static str),
+    /// Failed to pass the execution proof check.
+    BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
+    /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
+    BadPostStateRoot { expected: H256, got: H256 },
+}
 
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]

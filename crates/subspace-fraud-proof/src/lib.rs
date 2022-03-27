@@ -7,7 +7,7 @@
 
 #![warn(missing_docs)]
 
-use codec::Codec;
+use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
 use sc_client_api::execution_extensions::ExtensionsFactory;
@@ -206,8 +206,55 @@ impl<
     }
 
     fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
-        // TODO: impl
-        Ok(())
+        let FraudProof {
+            pre_state_root,
+            post_state_root,
+            proof,
+            execution_args,
+        } = proof;
+
+        // TODO: we should use parent_hash.
+        let at = BlockId::Hash(Block::Hash::default());
+
+        let state = self
+            .backend
+            .state_at(at)
+            .map_err(|_| VerificationError::RuntimeCodeBackend)?;
+
+        let trie_backend = state
+            .as_trie_backend()
+            .ok_or(VerificationError::RuntimeCodeBackend)?;
+
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let runtime_code = state_runtime_code
+            .runtime_code()
+            .map_err(VerificationError::RuntimeCode)?;
+
+        let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
+            *pre_state_root,
+            proof.clone(),
+            &mut Default::default(),
+            &self.executor,
+            self.spawn_handle.clone(),
+            execution_args.verifying_method(),
+            execution_args.call_data(),
+            &runtime_code,
+        )
+        .map_err(VerificationError::BadProof)?;
+
+        let new_post_state_root =
+            execution_args.decode_execution_result::<Block::Header>(execution_result);
+        let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())
+            .expect("Block Hash must be H256; qed");
+
+        if new_post_state_root == *post_state_root {
+            Ok(())
+        } else {
+            Err(VerificationError::BadPostStateRoot {
+                expected: new_post_state_root,
+                got: *post_state_root,
+            })
+        }
     }
 }
 
