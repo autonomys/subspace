@@ -21,7 +21,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
@@ -126,6 +126,75 @@ impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
     }
 }
 
+/// Execution phase along with an optional encoded call data.
+///
+/// Each execution phase has a different method for the runtime call.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub enum ExecutionArguments {
+    /// Executes the `initialize_block` hook.
+    InitializeBlock(Vec<u8>),
+    /// Executes some extrinsic.
+    /// TODO: maybe optimized to not include the whole extrinsic blob in the future.
+    ApplyExtrinsic(Vec<u8>),
+    /// Executes the `finalize_block` hook.
+    FinalizeBlock,
+}
+
+impl ExecutionArguments {
+    /// Returns the method for generating the proof.
+    pub fn proving_method(&self) -> &'static str {
+        match self {
+            // TODO: Replace `SecondaryApi_initialize_block_with_post_state_root` with `Core_initalize_block`
+            // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
+            Self::InitializeBlock(_) => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+        }
+    }
+
+    /// Returns the method for verifying the proof.
+    ///
+    /// The difference with [`Self::proving_method`] is that the return value of verifying method
+    /// must contain the post state root info so that it can be used to compare whether the
+    /// result of execution reported in [`FraudProof`] is expected or not.
+    pub fn verifying_method(&self) -> &'static str {
+        match self {
+            Self::InitializeBlock(_) => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic(_) => "SecondaryApi_apply_extrinsic_with_post_state_root",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+        }
+    }
+
+    /// Returns the call data used to generate and verify the proof.
+    pub fn call_data(&self) -> &[u8] {
+        match self {
+            Self::InitializeBlock(call_data) | Self::ApplyExtrinsic(call_data) => call_data,
+            Self::FinalizeBlock => Default::default(),
+        }
+    }
+
+    /// Returns the post state root for the given execution result.
+    pub fn decode_execution_result<Header: HeaderT>(
+        &self,
+        execution_result: Vec<u8>,
+    ) -> Header::Hash {
+        match self {
+            ExecutionArguments::InitializeBlock(_) | ExecutionArguments::ApplyExtrinsic(_) => {
+                let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
+                    .expect("The return value of verifying `initialize_block` and `apply_extrinsic` must be an encoded storage root; qed");
+                Header::Hash::decode(&mut encoded_storage_root.as_slice())
+                    .expect("storage root must use the same Header Hash type; qed")
+            }
+            ExecutionArguments::FinalizeBlock => {
+                let new_header = Header::decode(&mut execution_result.as_slice()).expect(
+                    "The return value of `BlockBuilder_finalize_block` must be a Header; qed",
+                );
+                *new_header.state_root()
+            }
+        }
+    }
+}
+
 /// Error type of fraud proof verification on primary node.
 #[derive(RuntimeDebug)]
 pub struct VerificationError;
@@ -139,6 +208,8 @@ pub struct FraudProof {
     pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
+    /// Execution arguments.
+    pub execution_args: ExecutionArguments,
 }
 
 impl PassBy for FraudProof {

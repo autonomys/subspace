@@ -53,8 +53,8 @@ use cirrus_node_primitives::{
 };
 use cirrus_primitives::{AccountId, Hash, SecondaryApi};
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof,
-	OpaqueBundle,
+	Bundle, BundleEquivocationProof, ExecutionArguments, ExecutionReceipt, FraudProof,
+	InvalidTransactionProof, OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
@@ -314,7 +314,7 @@ where
 		extrinsic_index: usize,
 		parent_header: &Block::Header,
 		current_hash: Block::Hash,
-	) -> Result<StorageProof, GossipMessageError> {
+	) -> Result<(StorageProof, ExecutionArguments), GossipMessageError> {
 		let extrinsics = self.block_body(current_hash)?;
 
 		let encoded_extrinsic = extrinsics
@@ -324,6 +324,8 @@ where
 				max: extrinsics.len() - 1,
 			})?
 			.encode();
+
+		let execution_args = ExecutionArguments::ApplyExtrinsic(encoded_extrinsic);
 
 		let block_builder = BlockBuilder::with_extrinsics(
 			&*self.client,
@@ -345,12 +347,12 @@ where
 			&*self.code_executor,
 			self.spawner.clone() as Box<dyn SpawnNamed>,
 			&BlockId::Hash(parent_header.hash()),
-			"BlockBuilder_apply_extrinsic",
-			&encoded_extrinsic,
+			execution_args.proving_method(),
+			execution_args.call_data(),
 			Some((delta, post_delta_root)),
 		)?;
 
-		Ok(execution_proof)
+		Ok((execution_proof, execution_args))
 	}
 
 	async fn wait_for_local_receipt(
@@ -606,6 +608,7 @@ where
 					parent_header.hash(),
 					Default::default(),
 				);
+				let execution_args = ExecutionArguments::InitializeBlock(new_header.encode());
 
 				// TODO: way to call some runtime api against any specific state instead of having
 				// to work with String API directly.
@@ -620,16 +623,17 @@ where
 					&*self.code_executor,
 					self.spawner.clone() as Box<dyn SpawnNamed>,
 					&BlockId::Hash(parent_header.hash()),
-					"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
-					&new_header.encode(),
+					execution_args.proving_method(),
+					execution_args.call_data(),
 					None,
 				)?;
 
-				FraudProof { pre_state_root, post_state_root, proof }
+				FraudProof { pre_state_root, post_state_root, proof, execution_args }
 			} else if local_trace_idx == local_receipt.trace.len() - 1 {
 				// `finalize_block` execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
 				let post_state_root = as_h256(local_root)?;
+				let execution_args = ExecutionArguments::FinalizeBlock;
 
 				let block_builder = BlockBuilder::with_extrinsics(
 					&*self.client,
@@ -653,25 +657,25 @@ where
 					&*self.code_executor,
 					self.spawner.clone() as Box<dyn SpawnNamed>,
 					&BlockId::Hash(parent_header.hash()),
-					"BlockBuilder_finalize_block",
-					Default::default(),
+					execution_args.proving_method(),
+					execution_args.call_data(),
 					Some((delta, post_delta_root)),
 				)?;
 
-				FraudProof { pre_state_root, post_state_root, proof }
+				FraudProof { pre_state_root, post_state_root, proof, execution_args }
 			} else {
 				// Regular extrinsic execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
 				let post_state_root = as_h256(local_root)?;
 
-				let proof = self.create_extrinsic_execution_proof(
+				let (proof, execution_args) = self.create_extrinsic_execution_proof(
 					local_trace_idx - 1,
 					&parent_header,
 					execution_receipt.secondary_hash,
 				)?;
 
 				// TODO: proof should be a CompactProof.
-				FraudProof { pre_state_root, post_state_root, proof }
+				FraudProof { pre_state_root, post_state_root, proof, execution_args }
 			};
 
 			self.submit_fraud_proof(fraud_proof);

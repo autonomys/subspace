@@ -5,9 +5,10 @@ use cirrus_test_service::{
 	runtime::Header,
 	Keyring::{Alice, Charlie, Dave},
 };
-use codec::{Decode, Encode};
+use codec::Encode;
 use sc_client_api::{HeaderBackend, StorageProof};
 use sp_api::ProvideRuntimeApi;
+use sp_executor::ExecutionArguments;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Header as HeaderT},
@@ -158,42 +159,46 @@ async fn execution_proof_creation_and_verification_should_work() {
 		return
 	}
 
-	// Test `initialize_block`.
-	let storage_proof = {
-		let new_header = Header::new(
-			*header.number(),
-			Default::default(),
-			Default::default(),
-			parent_header.hash(),
-			Default::default(),
-		);
+	let new_header = Header::new(
+		*header.number(),
+		Default::default(),
+		Default::default(),
+		parent_header.hash(),
+		Default::default(),
+	);
+	let execution_args = ExecutionArguments::InitializeBlock(new_header.encode());
 
-		subspace_fraud_proof::prove_execution::<_, _, _, _, sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
-			&new_header.encode(),
-			None,
-		)
-		.expect("Create `initialize_block` proof")
-	};
+	// Test `initialize_block`.
+	let storage_proof = subspace_fraud_proof::prove_execution::<
+		_,
+		_,
+		_,
+		_,
+		sp_trie::PrefixedMemoryDB<BlakeTwo256>,
+	>(
+		&charlie.backend,
+		&*charlie.code_executor,
+		charlie.task_manager.spawn_handle(),
+		&BlockId::Hash(parent_header.hash()),
+		execution_args.proving_method(),
+		execution_args.call_data(),
+		None,
+	)
+	.expect("Create `initialize_block` proof");
 
 	let execution_result = subspace_fraud_proof::check_execution_proof(
 		&charlie.backend,
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		"SecondaryApi_initialize_block_with_post_state_root",
-		&header.encode(),
+		execution_args.verifying_method(),
+		execution_args.call_data(),
 		*parent_header.state_root(),
 		storage_proof,
 	)
 	.expect("Check `initialize_block` proof");
 
-	let res = Vec::<u8>::decode(&mut execution_result.as_slice()).unwrap();
-	let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
+	let post_execution_root = execution_args.decode_execution_result::<Header>(execution_result);
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
 
 	// Test extrinsic execution.
@@ -207,13 +212,15 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
+		let execution_args = ExecutionArguments::ApplyExtrinsic(xt.encode());
+
 		let storage_proof = subspace_fraud_proof::prove_execution(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			"BlockBuilder_apply_extrinsic",
-			&xt.encode(),
+			execution_args.proving_method(),
+			execution_args.call_data(),
 			Some((delta, post_delta_root)),
 		)
 		.expect("Create extrinsic execution proof");
@@ -226,15 +233,15 @@ async fn execution_proof_creation_and_verification_should_work() {
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_apply_extrinsic_with_post_state_root",
-			&xt.encode(),
+			execution_args.verifying_method(),
+			execution_args.call_data(),
 			post_delta_root,
 			storage_proof,
 		)
 		.expect("Check extrinsic execution proof");
 
-		let res = Vec::<u8>::decode(&mut execution_result.as_slice()).unwrap();
-		let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
+		let post_execution_root =
+			execution_args.decode_execution_result::<Header>(execution_result);
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
 	}
 
@@ -248,13 +255,15 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
+	let execution_args = ExecutionArguments::FinalizeBlock;
+
 	let storage_proof = subspace_fraud_proof::prove_execution(
 		&charlie.backend,
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		"BlockBuilder_finalize_block",
-		Default::default(),
+		execution_args.proving_method(),
+		execution_args.call_data(),
 		Some((delta, post_delta_root)),
 	)
 	.expect("Create `finalize_block` proof");
@@ -264,15 +273,14 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
 		&BlockId::Hash(parent_header.hash()),
-		"BlockBuilder_finalize_block",
-		Default::default(),
+		execution_args.verifying_method(),
+		execution_args.call_data(),
 		post_delta_root,
 		storage_proof,
 	)
 	.expect("Check `finalize_block` proof");
 
-	let new_header = Header::decode(&mut execution_result.as_slice()).unwrap();
-	let post_execution_root = *new_header.state_root();
+	let post_execution_root = execution_args.decode_execution_result::<Header>(execution_result);
 	assert_eq!(post_execution_root, *header.state_root());
 }
 
@@ -360,13 +368,15 @@ async fn invalid_execution_proof_should_not_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
+		let execution_args = ExecutionArguments::ApplyExtrinsic(test_txs[extrinsic_index].encode());
+
 		let proof = subspace_fraud_proof::prove_execution(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			"BlockBuilder_apply_extrinsic",
-			&test_txs[extrinsic_index].encode(),
+			execution_args.proving_method(),
+			execution_args.call_data(),
 			Some((delta.clone(), post_delta_root.clone())),
 		)
 		.expect("Create extrinsic execution proof");
@@ -378,13 +388,14 @@ async fn invalid_execution_proof_should_not_work() {
 	let (proof1, _delta1, post_delta_root1) = create_extrinsic_proof(1);
 
 	let check_proof = |post_delta_root: Hash, proof: StorageProof| {
+		let execution_args = ExecutionArguments::ApplyExtrinsic(transfer_to_charlie_again.encode());
 		subspace_fraud_proof::check_execution_proof(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
 			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_apply_extrinsic_with_post_state_root",
-			&transfer_to_charlie_again.encode(),
+			execution_args.verifying_method(),
+			execution_args.call_data(),
 			post_delta_root,
 			proof,
 		)
