@@ -840,7 +840,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-fraud-proof",
  "cirrus-node-primitives",
  "cirrus-primitives",
  "cirrus-test-service",
@@ -874,6 +873,7 @@ dependencies = [
  "sp-runtime",
  "sp-trie",
  "subspace-core-primitives",
+ "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -929,21 +929,6 @@ dependencies = [
  "sp-trie",
  "subspace-service",
  "tracing",
-]
-
-[[package]]
-name = "cirrus-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "hash-db",
- "parity-scale-codec",
- "sc-client-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
 ]
 
 [[package]]
@@ -8754,6 +8739,21 @@ dependencies = [
  "tiny-bip39",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "subspace-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "hash-db",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
 ]
 
 [[package]]

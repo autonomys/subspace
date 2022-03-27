@@ -42,9 +42,9 @@ polkadot-node-subsystem = { path = "../../../polkadot/node/subsystem" }
 cirrus-block-builder = { path = "../block-builder" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
-cirrus-fraud-proof = { path = "../fraud-proof" }
 cirrus-primitives = { path = "../../primitives" }
 sp-executor = { path = "../../../crates/sp-executor" }
+subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 

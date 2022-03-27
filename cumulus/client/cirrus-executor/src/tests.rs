@@ -168,7 +168,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			Default::default(),
 		);
 
-		cirrus_fraud_proof::prove_execution::<_, _, _, _, sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
+		subspace_fraud_proof::prove_execution::<_, _, _, _, sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
@@ -180,7 +180,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		.expect("Create `initialize_block` proof")
 	};
 
-	let execution_result = cirrus_fraud_proof::check_execution_proof(
+	let execution_result = subspace_fraud_proof::check_execution_proof(
 		&charlie.backend,
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
@@ -207,7 +207,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
-		let storage_proof = cirrus_fraud_proof::prove_execution(
+		let storage_proof = subspace_fraud_proof::prove_execution(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
@@ -221,7 +221,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let target_trace_root: Hash = intermediate_roots[target_extrinsic_index].into();
 		assert_eq!(target_trace_root, post_delta_root);
 
-		let execution_result = cirrus_fraud_proof::check_execution_proof(
+		let execution_result = subspace_fraud_proof::check_execution_proof(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
@@ -248,7 +248,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
-	let storage_proof = cirrus_fraud_proof::prove_execution(
+	let storage_proof = subspace_fraud_proof::prove_execution(
 		&charlie.backend,
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
@@ -259,7 +259,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	)
 	.expect("Create `finalize_block` proof");
 
-	let execution_result = cirrus_fraud_proof::check_execution_proof(
+	let execution_result = subspace_fraud_proof::check_execution_proof(
 		&charlie.backend,
 		&*charlie.code_executor,
 		charlie.task_manager.spawn_handle(),
@@ -360,7 +360,7 @@ async fn invalid_execution_proof_should_not_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
-		let proof = cirrus_fraud_proof::prove_execution(
+		let proof = subspace_fraud_proof::prove_execution(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),
@@ -378,7 +378,7 @@ async fn invalid_execution_proof_should_not_work() {
 	let (proof1, _delta1, post_delta_root1) = create_extrinsic_proof(1);
 
 	let check_proof = |post_delta_root: Hash, proof: StorageProof| {
-		cirrus_fraud_proof::check_execution_proof(
+		subspace_fraud_proof::check_execution_proof(
 			&charlie.backend,
 			&*charlie.code_executor,
 			charlie.task_manager.spawn_handle(),

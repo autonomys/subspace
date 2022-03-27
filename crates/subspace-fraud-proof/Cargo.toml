@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-fraud-proof"
+name = "subspace-fraud-proof"
 version = "0.1.0"
 authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
 edition = "2021"

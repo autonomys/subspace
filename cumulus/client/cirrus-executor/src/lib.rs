@@ -340,7 +340,7 @@ where
 		let post_delta_root = storage_changes.transaction_storage_root;
 		// TODO: way to call some runtime api against any specific state instead of having
 		// to work with String API directly.
-		let execution_proof = cirrus_fraud_proof::prove_execution(
+		let execution_proof = subspace_fraud_proof::prove_execution(
 			&self.backend,
 			&*self.code_executor,
 			self.spawner.clone() as Box<dyn SpawnNamed>,
@@ -609,7 +609,7 @@ where
 
 				// TODO: way to call some runtime api against any specific state instead of having
 				// to work with String API directly.
-				let proof = cirrus_fraud_proof::prove_execution::<
+				let proof = subspace_fraud_proof::prove_execution::<
 					_,
 					_,
 					_,
@@ -648,7 +648,7 @@ where
 
 				// TODO: way to call some runtime api against any specific state instead of having
 				// to work with String API directly.
-				let proof = cirrus_fraud_proof::prove_execution(
+				let proof = subspace_fraud_proof::prove_execution(
 					&self.backend,
 					&*self.code_executor,
 					self.spawner.clone() as Box<dyn SpawnNamed>,
