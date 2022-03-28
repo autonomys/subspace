@@ -129,9 +129,18 @@ pub mod pallet {
     pub enum Error<T> {
         /// Unknown chain
         ChainUnknown,
-
         /// All feed operations are halted.
         Halted,
+        /// The authority set from the underlying header chain is invalid.
+        InvalidAuthoritySet,
+        /// The given justification is invalid for the given header.
+        InvalidJustification,
+        /// Failed to Decode block
+        FailedDecodingBlock,
+        // Failed to decode finality proof
+        FailedDecodingFinalityProof,
+        // Failed to decode justifications
+        FailedDecodingJustifications,
     }
 
     /// Ensure that the origin is either root, or `PalletOwner`.

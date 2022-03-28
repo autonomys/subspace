@@ -20,7 +20,9 @@ use frame_support::RuntimeDebug;
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_finality_grandpa::{AuthorityId, AuthorityList, AuthoritySignature, SetId};
+use sp_finality_grandpa::{
+    AuthorityId, AuthorityList, AuthoritySignature, ConsensusLog, SetId, GRANDPA_ENGINE_ID,
+};
 use sp_runtime::traits::Header as HeaderT;
 use sp_std::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use sp_std::prelude::*;
@@ -216,4 +218,44 @@ where
     } else {
         Err(Error::TooLowCumulativeWeight)
     }
+}
+
+pub(crate) fn find_scheduled_change<H: HeaderT>(
+    header: &H,
+) -> Option<sp_finality_grandpa::ScheduledChange<H::Number>> {
+    use sp_runtime::generic::OpaqueDigestItemId;
+
+    let id = OpaqueDigestItemId::Consensus(&GRANDPA_ENGINE_ID);
+
+    let filter_log = |log: ConsensusLog<H::Number>| match log {
+        ConsensusLog::ScheduledChange(change) => Some(change),
+        _ => None,
+    };
+
+    // find the first consensus digest with the right ID which converts to
+    // the right kind of consensus log.
+    header
+        .digest()
+        .convert_first(|l| l.try_to(id).and_then(filter_log))
+}
+
+/// Checks the given header for a consensus digest signaling a **forced** scheduled change and
+/// extracts it.
+pub(crate) fn find_forced_change<H: HeaderT>(
+    header: &H,
+) -> Option<(H::Number, sp_finality_grandpa::ScheduledChange<H::Number>)> {
+    use sp_runtime::generic::OpaqueDigestItemId;
+
+    let id = OpaqueDigestItemId::Consensus(&GRANDPA_ENGINE_ID);
+
+    let filter_log = |log: ConsensusLog<H::Number>| match log {
+        ConsensusLog::ForcedChange(delay, change) => Some((delay, change)),
+        _ => None,
+    };
+
+    // find the first consensus digest with the right ID which converts to
+    // the right kind of consensus log.
+    header
+        .digest()
+        .convert_first(|l| l.try_to(id).and_then(filter_log))
 }

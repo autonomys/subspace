@@ -47,5 +47,5 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"sp-trie/std",
-	"sp-core/std"
+	"sp-core/std",
 ]
