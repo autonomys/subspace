@@ -1,9 +1,15 @@
 mod justification;
 mod keyring;
-use crate::grandpa::{verify_justification, Error};
+mod mock;
 
+use crate::grandpa::{verify_justification, Error};
+use frame_support::{assert_noop, assert_ok};
+
+use super::*;
 use justification::*;
 use keyring::*;
+use mock::{run_test, ChainId, Origin, TestRuntime};
+use sp_runtime::DispatchError;
 
 type TestHeader = sp_runtime::testing::Header;
 
@@ -178,4 +184,38 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
         ),
         Err(Error::TooLowCumulativeWeight),
     );
+}
+
+#[test]
+fn pallet_owner_may_change_owner() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        PalletOwner::<TestRuntime>::put(2);
+
+        assert_ok!(Pallet::<TestRuntime>::set_owner(Origin::root(), Some(1)));
+        assert_noop!(
+            Pallet::<TestRuntime>::set_operational(Origin::signed(2), chain_id, false),
+            DispatchError::BadOrigin,
+        );
+        assert_ok!(Pallet::<TestRuntime>::set_operational(
+            Origin::root(),
+            chain_id,
+            false
+        ));
+
+        assert_ok!(Pallet::<TestRuntime>::set_owner(Origin::signed(1), None));
+        assert_noop!(
+            Pallet::<TestRuntime>::set_operational(Origin::signed(1), chain_id, true),
+            DispatchError::BadOrigin,
+        );
+        assert_noop!(
+            Pallet::<TestRuntime>::set_operational(Origin::signed(2), chain_id, true),
+            DispatchError::BadOrigin,
+        );
+        assert_ok!(Pallet::<TestRuntime>::set_operational(
+            Origin::root(),
+            chain_id,
+            true
+        ));
+    });
 }
