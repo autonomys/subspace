@@ -6,7 +6,7 @@ use num_traits::AsPrimitive;
 use sp_core::Hasher as HasherT;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::{
-    AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
+    AtLeast32BitUnsigned, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
     MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
 };
 use sp_runtime::{generic, OpaqueExtrinsic};
@@ -19,12 +19,11 @@ pub(crate) enum ChainType {
 }
 
 /// Polkadot-like chain.
-struct PolkadotLike;
+pub(crate) struct PolkadotLike;
 
 impl Chain for PolkadotLike {
     type BlockNumber = u32;
     type Hash = <BlakeTwo256 as HasherT>::Out;
-    type Hasher = BlakeTwo256;
     type Header = generic::Header<u32, BlakeTwo256>;
 }
 
@@ -86,13 +85,6 @@ pub(crate) trait Chain {
         + AsMut<[u8]>
         + MaybeMallocSizeOf;
 
-    /// A type that fulfills the abstract idea of what a Substrate hasher (a type
-    /// that produces hashes) is.
-    // Constraits come from the associated Hashing type of `sp_runtime::traits::Header`
-    // See here for more info:
-    // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Hashing
-    type Hasher: HashT<Output = Self::Hash>;
-
     /// A type that fulfills the abstract idea of what a Substrate header is.
     // See here for more info:
     // https://crates.parity.io/sp_runtime/traits/trait.Header.html
@@ -131,6 +123,13 @@ pub(crate) trait Chain {
         SignedBlock::<Self::Header>::decode(&mut &*block).map_err(|error| {
             log::error!("Cannot decode block, error: {:?}", error);
             Error::<T>::FailedDecodingBlock
+        })
+    }
+
+    fn decode_header<T: Config>(header: &[u8]) -> Result<Self::Header, Error<T>> {
+        Self::Header::decode(&mut &*header).map_err(|error| {
+            log::error!("Cannot decode header, error: {:?}", error);
+            Error::<T>::FailedDecodingHeader
         })
     }
 

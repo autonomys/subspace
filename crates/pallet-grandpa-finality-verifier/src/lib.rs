@@ -37,12 +37,15 @@ mod tests;
 
 use chain::ChainType;
 use codec::{Decode, Encode};
-use frame_system::RawOrigin;
+use frame_support::dispatch::DispatchResult;
+use grandpa::{find_forced_change, find_scheduled_change, AuthoritySet};
+use pallet_feeds::FeedValidator;
 use scale_info::TypeInfo;
-use sp_runtime::traits::BadOrigin;
+use sp_runtime::traits::{BadOrigin, Zero};
 use sp_std::fmt::Debug;
 
 // Re-export in crate namespace for `construct_runtime!`
+use crate::chain::{Chain, PolkadotLike};
 pub use pallet::*;
 
 // ChainData holds the type of the Chain and if its operational
@@ -55,8 +58,12 @@ struct ChainData {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use crate::grandpa::verify_justification;
+    use finality_grandpa::voter_set::VoterSet;
+    use frame_support::dispatch::RawOrigin;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::Header;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -120,6 +127,16 @@ pub mod pallet {
     #[pallet::storage]
     pub type PalletOwner<T: Config> = StorageValue<_, T::AccountId, OptionQuery>;
 
+    /// Best finalized header of a Chain
+    #[pallet::storage]
+    pub(super) type BestFinalized<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::ChainId, Vec<u8>, OptionQuery>;
+
+    /// The current GRANDPA Authority set for a given Chain
+    #[pallet::storage]
+    pub(super) type CurrentAuthoritySet<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::ChainId, AuthoritySet, ValueQuery>;
+
     /// Map from Chain Id to ChainData
     #[pallet::storage]
     pub(super) type Chains<T: Config> =
@@ -135,12 +152,22 @@ pub mod pallet {
         InvalidAuthoritySet,
         /// The given justification is invalid for the given header.
         InvalidJustification,
+        /// Failed to Decode header
+        FailedDecodingHeader,
         /// Failed to Decode block
         FailedDecodingBlock,
-        // Failed to decode finality proof
+        /// Failed to decode finality proof
         FailedDecodingFinalityProof,
-        // Failed to decode justifications
+        /// Failed to decode justifications
         FailedDecodingJustifications,
+        /// Best finalized header not found for chain
+        FinalizedHeaderNotFound,
+        /// The header is already finalized
+        OldHeader,
+        /// The scheduled authority set change found in the header is unsupported by the pallet.
+        ///
+        /// This is the case for non-standard (e.g forced) authority set changes.
+        UnsupportedScheduledChange,
     }
 
     /// Ensure that the origin is either root, or `PalletOwner`.
@@ -157,7 +184,9 @@ pub mod pallet {
     }
 
     /// Ensure that the pallet is in operational mode (not halted).
-    fn ensure_operational<T: Config>(chain_id: T::ChainId) -> Result<(), Error<T>> {
+    pub(crate) fn ensure_operational<T: Config>(
+        chain_id: T::ChainId,
+    ) -> Result<ChainType, Error<T>> {
         let data = Chains::<T>::get(chain_id);
         match data {
             None => Err(Error::<T>::ChainUnknown),
@@ -165,8 +194,115 @@ pub mod pallet {
                 if data.halted {
                     Err(Error::<T>::Halted)
                 } else {
-                    Ok(())
+                    Ok(data.chain_type)
                 }
+            }
+        }
+    }
+
+    pub(crate) fn validate_finalized_block<T: Config, C: Chain>(
+        chain_id: T::ChainId,
+        object: &[u8],
+        proof: &[u8],
+    ) -> DispatchResult {
+        let block = C::decode_block::<T>(object)?;
+        let finality_proof = C::decode_finality_proof::<T>(proof)?;
+        let justifications =
+            C::decode_grandpa_justifications::<T>(finality_proof.justification.as_slice())?;
+        let best_finalized = {
+            let data =
+                BestFinalized::<T>::get(chain_id).ok_or(Error::<T>::FinalizedHeaderNotFound)?;
+            C::decode_header::<T>(data.as_slice())
+        }?;
+
+        // ensure block is always increasing
+        let (number, hash) = (block.block.header.number(), block.block.header.hash());
+        ensure!(best_finalized.number() < number, Error::<T>::OldHeader);
+
+        // ensure block and finality points to same block hash
+        ensure!(
+            hash == finality_proof.block,
+            Error::<T>::InvalidJustification
+        );
+
+        // fetch current authority set
+        let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);
+        let voter_set =
+            VoterSet::new(authority_set.authorities).ok_or(Error::<T>::InvalidAuthoritySet)?;
+        let set_id = authority_set.set_id;
+
+        // verify justification
+        verify_justification::<C::Header>((hash, *number), set_id, &voter_set, &justifications)
+            .map_err(|e| {
+                log::error!(
+                    target: "runtime::grandpa-finality-verifier",
+                    "Received invalid justification for {:?}: {:?}",
+                    hash,
+                    e,
+                );
+                Error::<T>::InvalidJustification
+            })?;
+
+        // Update any next authority set if any
+        let next_header = block.block.header;
+        try_enact_authority_change::<T, C>(chain_id, &next_header, set_id)?;
+
+        // Update best finalized header
+        BestFinalized::<T>::insert(chain_id, next_header.encode());
+        Ok(())
+    }
+
+    /// Check the given header for a GRANDPA scheduled authority set change. If a change
+    /// is found it will be enacted immediately.
+    ///
+    /// This function does not support forced changes, or scheduled changes with delays
+    /// since these types of changes are indicative of abnormal behavior from GRANDPA.
+    pub(crate) fn try_enact_authority_change<T: Config, C: Chain>(
+        chain_id: T::ChainId,
+        header: &C::Header,
+        current_set_id: sp_finality_grandpa::SetId,
+    ) -> DispatchResult {
+        // We don't support forced changes - at that point governance intervention is required.
+        ensure!(
+            find_forced_change(header).is_none(),
+            Error::<T>::UnsupportedScheduledChange
+        );
+
+        if let Some(change) = super::find_scheduled_change(header) {
+            // GRANDPA only includes a `delay` for forced changes, so this isn't valid.
+            ensure!(
+                change.delay == Zero::zero(),
+                Error::<T>::UnsupportedScheduledChange
+            );
+
+            let next_authorities = AuthoritySet {
+                authorities: change.next_authorities,
+                set_id: current_set_id + 1,
+            };
+
+            // Since our header schedules a change and we know the delay is 0, it must also enact
+            // the change.
+            CurrentAuthoritySet::<T>::insert(chain_id, &next_authorities);
+
+            log::info!(
+                target: "runtime::grandpa-finality-verifier",
+                "Transitioned from authority set {} to {}! New authorities are: {:?}",
+                current_set_id,
+                current_set_id + 1,
+                next_authorities,
+            );
+        };
+
+        Ok(())
+    }
+}
+
+impl<T: Config> FeedValidator<T::ChainId> for Pallet<T> {
+    fn validate(chain_id: T::ChainId, object: &[u8], proof: &[u8]) -> DispatchResult {
+        let chain_type = ensure_operational::<T>(chain_id)?;
+        match chain_type {
+            ChainType::PolkadotLike => {
+                validate_finalized_block::<T, PolkadotLike>(chain_id, object, proof)
             }
         }
     }

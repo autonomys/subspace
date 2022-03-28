@@ -27,6 +27,9 @@ sp-std = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da84
 sp-trie = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 
+# our pallets
+pallet-feeds = { path = "../pallet-feeds", default-features = false }
+
 [dev-dependencies]
 sp-io = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
 sp-application-crypto = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
@@ -48,4 +51,5 @@ std = [
 	"sp-std/std",
 	"sp-trie/std",
 	"sp-core/std",
+	"pallet-feeds/std"
 ]
