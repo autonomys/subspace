@@ -34,6 +34,8 @@ mod pallet {
     use crate::FeedValidator;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::{CheckedAdd, One};
+    use sp_runtime::ArithmeticError;
     use sp_std::prelude::*;
 
     #[pallet::config]
@@ -41,8 +43,18 @@ mod pallet {
         /// `pallet-feeds` events
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
+        // Feed ID uniquely identifies a Feed
+        type FeedId: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Default
+            + Copy
+            + One
+            + CheckedAdd
+            + PartialOrd;
+
         /// Feed Validator
-        type Validator: FeedValidator<FeedId>;
+        type Validator: FeedValidator<Self::FeedId>;
     }
 
     /// Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
@@ -53,8 +65,6 @@ mod pallet {
 
     /// User-provided object to store
     pub(super) type Object = Vec<u8>;
-    /// ID of the feed
-    pub(super) type FeedId = u64;
     /// User-provided object metadata (not addressable directly, but available in an even)
     pub(super) type ObjectMetadata = Vec<u8>;
     /// Optional user provided proof for validation
@@ -72,21 +82,21 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
     pub(super) type Metadata<T: Config> =
-        StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, ObjectMetadata, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn should_validate)]
     pub(super) type ShouldValidate<T: Config> =
-        StorageMap<_, Blake2_128Concat, FeedId, bool, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, bool, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
     pub(super) type Totals<T: Config> =
-        StorageMap<_, Blake2_128Concat, FeedId, TotalObjectsAndSize, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, TotalObjectsAndSize, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn current_feed_id)]
-    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, FeedId, ValueQuery>;
+    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
 
     /// `pallet-feeds` events
     #[pallet::event]
@@ -99,7 +109,10 @@ mod pallet {
             object_size: u64,
         },
         /// New feed was created.
-        FeedCreated { feed_id: FeedId, who: T::AccountId },
+        FeedCreated {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
     }
 
     /// `pallet-feeds` errors
@@ -122,7 +135,10 @@ mod pallet {
 
             let feed_id = Self::current_feed_id();
 
-            CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
+            let next_feed_id = feed_id
+                .checked_add(&T::FeedId::one())
+                .ok_or(ArithmeticError::Overflow)?;
+            CurrentFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
             ShouldValidate::<T>::mutate(feed_id, |validate| *validate = should_validate);
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
@@ -137,7 +153,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn put(
             origin: OriginFor<T>,
-            feed_id: FeedId,
+            feed_id: T::FeedId,
             object: Object,
             metadata: ObjectMetadata,
             proof: Proof,
@@ -193,7 +209,7 @@ impl<T: Config> Call<T> {
                 // enum variant encoding.
                 Some(CallObject {
                     hash: crypto::sha256_hash(object),
-                    offset: 1 + mem::size_of::<FeedId>() as u32,
+                    offset: 1 + mem::size_of::<T::FeedId>() as u32,
                 })
             }
             _ => None,
