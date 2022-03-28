@@ -10,7 +10,7 @@ fn can_create_feed() {
     new_test_ext().execute_with(|| {
         // current feed id is 0 by default
         assert_eq!(Feeds::current_feed_id(), FEED_ID);
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID)));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), false));
         // current feed id value should be incremented after feed is created
         assert_eq!(Feeds::current_feed_id(), 1);
 
@@ -36,7 +36,8 @@ fn can_do_put() {
             Origin::signed(ACCOUNT_ID),
             FEED_ID,
             object,
-            object_metadata.clone()
+            object_metadata.clone(),
+            None
         ));
 
         // check Metadata hashmap for updated metadata
@@ -72,7 +73,8 @@ fn cannot_do_put_with_wrong_feed_id() {
                 Origin::signed(ACCOUNT_ID),
                 wrong_feed_id,
                 object,
-                object_metadata
+                object_metadata,
+                None
             ),
             Error::<Test>::UnknownFeedId
         );

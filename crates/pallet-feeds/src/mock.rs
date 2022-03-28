@@ -1,4 +1,6 @@
 use crate as pallet_feeds;
+use crate::{FeedId, FeedValidator};
+use frame_support::dispatch::DispatchResult;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use sp_core::H256;
@@ -52,8 +54,15 @@ parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
+impl FeedValidator<FeedId> for () {
+    fn validate(_feed_id: FeedId, _object: &[u8], _proof: &[u8]) -> DispatchResult {
+        Ok(())
+    }
+}
+
 impl pallet_feeds::Config for Test {
     type Event = Event;
+    type Validator = ();
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

@@ -20,6 +20,7 @@
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
 use core::mem;
+use frame_support::sp_runtime::DispatchResult;
 pub use pallet::*;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
@@ -30,6 +31,7 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::FeedValidator;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_std::prelude::*;
@@ -38,6 +40,9 @@ mod pallet {
     pub trait Config: frame_system::Config {
         /// `pallet-feeds` events
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+        /// Feed Validator
+        type Validator: FeedValidator<FeedId>;
     }
 
     /// Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
@@ -52,6 +57,8 @@ mod pallet {
     pub(super) type FeedId = u64;
     /// User-provided object metadata (not addressable directly, but available in an even)
     pub(super) type ObjectMetadata = Vec<u8>;
+    /// Optional user provided proof for validation
+    pub(super) type Proof = Option<Vec<u8>>;
 
     /// Total amount of data and number of objects stored in a feed
     #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
@@ -66,6 +73,11 @@ mod pallet {
     #[pallet::getter(fn metadata)]
     pub(super) type Metadata<T: Config> =
         StorageMap<_, Blake2_128Concat, FeedId, ObjectMetadata, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn should_validate)]
+    pub(super) type ShouldValidate<T: Config> =
+        StorageMap<_, Blake2_128Concat, FeedId, bool, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -95,6 +107,9 @@ mod pallet {
     pub enum Error<T> {
         /// `FeedId` doesn't exist
         UnknownFeedId,
+
+        /// Proof is empty and is required for a feed that needs to be validated
+        ProofEmpty,
     }
 
     #[pallet::call]
@@ -102,13 +117,13 @@ mod pallet {
         // TODO: add proper weights
         /// Create a new feed
         #[pallet::weight(10_000)]
-        pub fn create(origin: OriginFor<T>) -> DispatchResult {
+        pub fn create(origin: OriginFor<T>, should_validate: bool) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let feed_id = Self::current_feed_id();
 
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = feed_id.saturating_add(1));
-
+            ShouldValidate::<T>::mutate(feed_id, |validate| *validate = should_validate);
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
@@ -125,6 +140,7 @@ mod pallet {
             feed_id: FeedId,
             object: Object,
             metadata: ObjectMetadata,
+            proof: Proof,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -136,6 +152,10 @@ mod pallet {
             let current_feed_id = Self::current_feed_id();
 
             ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
+            if ShouldValidate::<T>::get(feed_id) {
+                let proof = proof.ok_or(Error::<T>::ProofEmpty)?;
+                T::Validator::validate(feed_id, object.as_slice(), proof.as_slice())?
+            }
 
             Metadata::<T>::insert(feed_id, metadata.clone());
 
@@ -179,4 +199,9 @@ impl<T: Config> Call<T> {
             _ => None,
         }
     }
+}
+
+/// FeedValidator validates a given feed before accepting the feed
+pub trait FeedValidator<FeedId> {
+    fn validate(feed_id: FeedId, object: &[u8], proof: &[u8]) -> DispatchResult;
 }
