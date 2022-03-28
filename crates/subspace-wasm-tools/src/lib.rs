@@ -28,8 +28,9 @@ pub fn create_runtime_bundle_inclusion_file(
         env::var("OUT_DIR").expect("Set by cargo; qed") + "/" + target_file_name;
     let execution_wasm_bundle_rs_contents = format!(
         r#"
-            pub const {bundle_const_name}: &[u8] = include_bytes!("{execution_wasm_bundle_path}");
-        "#
+            pub const {bundle_const_name}: &[u8] = include_bytes!("{}");
+        "#,
+        execution_wasm_bundle_path.escape_default()
     );
 
     fs::write(
