@@ -31,15 +31,26 @@
 
 mod grandpa;
 
+mod chain;
 #[cfg(test)]
 mod tests;
 
+use chain::ChainType;
+use codec::{Decode, Encode};
 use frame_system::RawOrigin;
+use scale_info::TypeInfo;
 use sp_runtime::traits::BadOrigin;
 use sp_std::fmt::Debug;
 
 // Re-export in crate namespace for `construct_runtime!`
 pub use pallet::*;
+
+// ChainData holds the type of the Chain and if its operational
+#[derive(Encode, Decode, TypeInfo)]
+struct ChainData {
+    chain_type: ChainType,
+    halted: bool,
+}
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -90,17 +101,13 @@ pub mod pallet {
             origin: OriginFor<T>,
             chain_id: T::ChainId,
             operational: bool,
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             ensure_owner_or_root::<T>(origin)?;
-            <IsHalted<T>>::insert(chain_id, !operational);
-
-            if operational {
-                log::info!(target: "runtime::grandpa-finality-verifier", "Resuming pallet operations.");
-            } else {
-                log::warn!(target: "runtime::grandpa-finality-verifier", "Stopping pallet operations.");
-            }
-
-            Ok(().into())
+            Chains::<T>::try_mutate(chain_id, |maybe_data| -> DispatchResult {
+                let data = maybe_data.as_mut().ok_or(Error::<T>::ChainUnknown)?;
+                data.halted = !operational;
+                Ok(())
+            })
         }
     }
 
@@ -113,13 +120,16 @@ pub mod pallet {
     #[pallet::storage]
     pub type PalletOwner<T: Config> = StorageValue<_, T::AccountId, OptionQuery>;
 
-    /// If true, all pallet transactions are failed immediately.
+    /// Map from Chain Id to ChainData
     #[pallet::storage]
-    pub(super) type IsHalted<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::ChainId, bool, ValueQuery>;
+    pub(super) type Chains<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::ChainId, ChainData, OptionQuery>;
 
     #[pallet::error]
     pub enum Error<T> {
+        /// Unknown chain
+        ChainUnknown,
+
         /// All feed operations are halted.
         Halted,
     }
@@ -139,10 +149,16 @@ pub mod pallet {
 
     /// Ensure that the pallet is in operational mode (not halted).
     fn ensure_operational<T: Config>(chain_id: T::ChainId) -> Result<(), Error<T>> {
-        if <IsHalted<T>>::get(chain_id) {
-            Err(Error::<T>::Halted)
-        } else {
-            Ok(())
+        let data = Chains::<T>::get(chain_id);
+        match data {
+            None => Err(Error::<T>::ChainUnknown),
+            Some(data) => {
+                if data.halted {
+                    Err(Error::<T>::Halted)
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 }

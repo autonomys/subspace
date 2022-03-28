@@ -16,81 +16,15 @@
 // GRANDPA verification is mostly taken from Parity's bridges https://github.com/paritytech/parity-bridges-common/tree/master/primitives/header-chain
 use codec::{Decode, Encode};
 use finality_grandpa::voter_set::VoterSet;
-use frame_support::Parameter;
 use frame_support::RuntimeDebug;
-use num_traits::AsPrimitive;
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_finality_grandpa::{AuthorityId, AuthorityList, AuthoritySignature, SetId};
-use sp_runtime::traits::{
-    AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
-    MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps, Verify,
-};
+use sp_runtime::traits::Header as HeaderT;
 use sp_std::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use sp_std::prelude::*;
-use sp_std::{hash::Hash, str::FromStr, vec::Vec};
-
-/// Minimal Substrate-based chain representation that may be used from no_std environment.
-pub trait Chain: Send + Sync + 'static {
-    /// A type that fulfills the abstract idea of what a Substrate block number is.
-    // Constraits come from the associated Number type of `sp_runtime::traits::Header`
-    // See here for more info:
-    // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Number
-    //
-    // Note that the `AsPrimitive<usize>` trait is required by the GRANDPA justification
-    // verifier, and is not usually part of a Substrate Header's Number type.
-    type BlockNumber: Parameter
-        + Member
-        + MaybeSerializeDeserialize
-        + Hash
-        + Copy
-        + Default
-        + MaybeDisplay
-        + AtLeast32BitUnsigned
-        + FromStr
-        + MaybeMallocSizeOf
-        + AsPrimitive<usize>
-        + Default
-        + Saturating
-        // original `sp_runtime::traits::Header::BlockNumber` doesn't have this trait, but
-        // `sp_runtime::generic::Era` requires block number -> `u64` conversion.
-        + Into<u64>;
-
-    /// A type that fulfills the abstract idea of what a Substrate hash is.
-    // Constraits come from the associated Hash type of `sp_runtime::traits::Header`
-    // See here for more info:
-    // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Hash
-    type Hash: Parameter
-        + Member
-        + MaybeSerializeDeserialize
-        + Hash
-        + Ord
-        + Copy
-        + MaybeDisplay
-        + Default
-        + SimpleBitOps
-        + AsRef<[u8]>
-        + AsMut<[u8]>
-        + MaybeMallocSizeOf;
-
-    /// A type that fulfills the abstract idea of what a Substrate hasher (a type
-    /// that produces hashes) is.
-    // Constraits come from the associated Hashing type of `sp_runtime::traits::Header`
-    // See here for more info:
-    // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Hashing
-    type Hasher: HashT<Output = Self::Hash>;
-
-    /// A type that fulfills the abstract idea of what a Substrate header is.
-    // See here for more info:
-    // https://crates.parity.io/sp_runtime/traits/trait.Header.html
-    type Header: Parameter
-        + HeaderT<Number = Self::BlockNumber, Hash = Self::Hash>
-        + MaybeSerializeDeserialize;
-
-    /// Signature type, used on this chain.
-    type Signature: Parameter + Verify;
-}
+use sp_std::vec::Vec;
 
 /// A GRANDPA Justification is a proof that a given header was finalized
 /// at a certain height and with a certain set of authorities.

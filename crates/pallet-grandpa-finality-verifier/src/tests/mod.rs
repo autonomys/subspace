@@ -190,6 +190,13 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
 fn pallet_owner_may_change_owner() {
     run_test(|| {
         let chain_id: ChainId = 1;
+        Chains::<TestRuntime>::insert(
+            chain_id,
+            ChainData {
+                chain_type: ChainType::PolkadotLike,
+                halted: false,
+            },
+        );
         PalletOwner::<TestRuntime>::put(2);
 
         assert_ok!(Pallet::<TestRuntime>::set_owner(Origin::root(), Some(1)));

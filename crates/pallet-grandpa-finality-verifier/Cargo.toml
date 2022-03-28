@@ -25,9 +25,9 @@ sp-finality-grandpa = { git = "https://github.com/paritytech/substrate", rev="c3
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-std = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
+sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 
 [dev-dependencies]
-sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
 sp-io = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
 sp-application-crypto = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998" }
 ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
@@ -47,4 +47,5 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"sp-trie/std",
+	"sp-core/std"
 ]
