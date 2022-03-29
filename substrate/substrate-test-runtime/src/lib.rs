@@ -937,6 +937,10 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
+                fn total_number_of_segments() -> u64 {
+                    <Self as pallet_subspace::Config>::total_number_of_segments()
+                }
+
                 fn recorded_history_segment_size() -> u32 {
                     <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
                 }
@@ -1253,6 +1257,10 @@ cfg_if! {
 
                 fn max_plot_size() -> u64 {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
+                }
+
+                fn total_number_of_segments() -> u64 {
+                    <Self as pallet_subspace::Config>::total_number_of_segments()
                 }
 
                 fn recorded_history_segment_size() -> u32 {

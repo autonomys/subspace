@@ -170,18 +170,10 @@ where
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
-            let total_number_of_pieces = self
-                .subspace_link
-                .root_blocks
-                .lock()
-                .iter()
-                .last()
-                .and_then(|(_block_number, root_blocks)| {
-                    root_blocks
-                        .last()
-                        .map(|root_block| root_block.segment_index() * merkle_num_leaves)
-                })
-                .unwrap_or(0);
+            let total_number_of_pieces = runtime_api
+                .total_number_of_segments(&parent_block_id)
+                .expect("Failed to get total number of segments in blockchain from runtime API")
+                * merkle_num_leaves;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.

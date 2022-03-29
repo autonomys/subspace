@@ -241,6 +241,11 @@ mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Total number of segments in the blockchain
+        fn total_number_of_segments() -> u64 {
+            RecordsRoot::<Self>::count() as u64
+        }
     }
 
     /// Events type.
