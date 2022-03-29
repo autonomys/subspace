@@ -94,15 +94,15 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
-use sp_core::{ExecutionContext, H256};
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_core::H256;
+use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::cmp::Ordering;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
@@ -574,66 +574,22 @@ impl<Block: BlockT> SubspaceLink<Block> {
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
+pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     client: Arc<Client>,
     select_chain: SelectChain,
-    create_inherent_data_providers: CIDP,
-    can_author_with: CAW,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
-    /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     signing_context: SigningContext,
+    block: PhantomData<Block>,
 }
 
-impl<Block, Client, SelectChain, CAW, CIDP> SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
+impl<Block, Client, SelectChain, SN> SubspaceVerifier<Block, Client, SelectChain, SN>
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block> + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
-    CAW: CanAuthorWith<Block>,
-    CIDP: CreateInherentDataProviders<Block, ()>,
 {
-    async fn check_inherents(
-        &self,
-        block: Block,
-        block_id: BlockId<Block>,
-        inherent_data: InherentData,
-        create_inherent_data_providers: CIDP::InherentDataProviders,
-        execution_context: ExecutionContext,
-    ) -> Result<(), Error<Block>> {
-        if let Err(e) = self.can_author_with.can_author_with(&block_id) {
-            debug!(
-                target: "subspace",
-                "Skipping `check_inherents` as authoring version is not compatible: {}",
-                e,
-            );
-
-            return Ok(());
-        }
-
-        let inherent_res = self
-            .client
-            .runtime_api()
-            .check_inherents_with_context(&block_id, execution_context, block, inherent_data)
-            .map_err(Error::RuntimeApi)?;
-
-        if !inherent_res.ok() {
-            for (i, e) in inherent_res.into_errors() {
-                match create_inherent_data_providers
-                    .try_handle_error(&i, &e)
-                    .await
-                {
-                    Some(res) => res.map_err(Error::CheckInherents)?,
-                    None => return Err(Error::CheckInherentsUnhandled(i)),
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     async fn check_and_report_equivocation(
         &self,
         slot_now: Slot,
@@ -694,8 +650,8 @@ type BlockVerificationResult<Block> = Result<
 >;
 
 #[async_trait::async_trait]
-impl<Block, Client, SelectChain, CAW, CIDP> Verifier<Block>
-    for SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
+impl<Block, Client, SelectChain, SN> Verifier<Block>
+    for SubspaceVerifier<Block, Client, SelectChain, SN>
 where
     Block: BlockT,
     Client: HeaderMetadata<Block, Error = sp_blockchain::Error>
@@ -706,9 +662,7 @@ where
         + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+    SN: Fn() -> Slot + Send + Sync + 'static,
 {
     async fn verify(
         &mut self,
@@ -724,17 +678,10 @@ where
         );
 
         let hash = block.header.hash();
-        let parent_hash = *block.header.parent_hash();
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
-        let create_inherent_data_providers = self
-            .create_inherent_data_providers
-            .create_inherent_data_providers(parent_hash, ())
-            .await
-            .map_err(|e| Error::<Block>::Client(sp_consensus::Error::from(e).into()))?;
-
-        let slot_now = create_inherent_data_providers.slot();
+        let slot_now = (self.slot_now)();
 
         // Only stateless checks that rely on the contents already contained in the block header.
         let checked_header = {
@@ -798,37 +745,6 @@ where
                     );
                 }
 
-                // if the body is passed through, we need to use the runtime
-                // to check that the internally-set timestamp in the inherents
-                // actually matches the slot set in the seal.
-                if let Some(inner_body) = block.body {
-                    let mut inherent_data = create_inherent_data_providers
-                        .create_inherent_data()
-                        .map_err(Error::<Block>::CreateInherents)?;
-                    inherent_data.replace_subspace_inherent_data(InherentType {
-                        slot,
-                        root_blocks: self
-                            .root_blocks
-                            .lock()
-                            .peek(block.header.number())
-                            .cloned()
-                            .unwrap_or_default(),
-                    });
-                    let new_block = Block::new(pre_header.clone(), inner_body);
-
-                    self.check_inherents(
-                        new_block.clone(),
-                        BlockId::Hash(parent_hash),
-                        inherent_data,
-                        create_inherent_data_providers,
-                        block.origin.into(),
-                    )
-                    .await?;
-
-                    let (_, inner_body) = new_block.deconstruct();
-                    block.body = Some(inner_body);
-                }
-
                 trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
                 telemetry!(
                     self.telemetry;
@@ -865,67 +781,76 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     inner: I,
     client: Arc<Client>,
-    config: Config,
     imported_block_notification_sender:
         SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
-    /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
-    signing_context: SigningContext,
+    subspace_link: SubspaceLink<Block>,
+    can_author_with: CAW,
+    create_inherent_data_providers: CIDP,
 }
 
-impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
+impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+where
+    Block: BlockT,
+    I: Clone,
+    CAW: Clone,
+    CIDP: Clone,
+{
     fn clone(&self) -> Self {
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
-            root_blocks: Arc::clone(&self.root_blocks),
-            signing_context: self.signing_context.clone(),
+            subspace_link: self.subspace_link.clone(),
+            can_author_with: self.can_author_with.clone(),
+            create_inherent_data_providers: self.create_inherent_data_providers.clone(),
         }
     }
 }
 
-impl<Block, Client, I> SubspaceBlockImport<Block, Client, I>
+impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     fn new(
         client: Arc<Client>,
         block_import: I,
-        config: Config,
         imported_block_notification_sender: SubspaceNotificationSender<(
             NumberFor<Block>,
             mpsc::Sender<RootBlock>,
         )>,
-        root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
-        signing_context: SigningContext,
+        subspace_link: SubspaceLink<Block>,
+        can_author_with: CAW,
+        create_inherent_data_providers: CIDP,
     ) -> Self {
         SubspaceBlockImport {
             client,
             inner: block_import,
-            config,
             imported_block_notification_sender,
-            root_blocks,
-            signing_context,
+            subspace_link,
+            can_author_with,
+            create_inherent_data_providers,
         }
     }
 
-    fn block_import_verification(
+    async fn block_import_verification(
         &self,
-        block: &BlockImportParams<Block, TransactionFor<Client, Block>>,
+        block_hash: Block::Hash,
+        origin: BlockOrigin,
+        header: Block::Header,
+        extrinsics: Option<Vec<Block::Extrinsic>>,
         pre_digest: &PreDigest<FarmerPublicKey>,
     ) -> Result<(), Error<Block>> {
-        let block_hash = block.post_hash();
-        let parent_hash = *block.header.parent_hash();
+        let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
+        // Check if farmer's plot is burned.
         if self
             .client
             .runtime_api()
@@ -947,7 +872,7 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let global_randomness = find_global_randomness_descriptor(&block.header)?
+        let global_randomness = find_global_randomness_descriptor(&header)?
             .ok_or(Error::MissingGlobalRandomness(block_hash))?
             .global_randomness;
         let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
@@ -958,7 +883,7 @@ where
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
-        let solution_range = find_solution_range_descriptor(&block.header)?
+        let solution_range = find_solution_range_descriptor(&header)?
             .ok_or(Error::MissingSolutionRange(block_hash))?
             .solution_range;
         let correct_solution_range =
@@ -967,7 +892,7 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let salt = find_salt_descriptor(&block.header)?
+        let salt = find_salt_descriptor(&header)?
             .ok_or(Error::MissingSalt(block_hash))?
             .salt;
         let correct_salt =
@@ -992,20 +917,18 @@ where
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
-        if maybe_records_root.is_none() && block.header.number().is_one() {
-            maybe_records_root =
-                self.root_blocks
-                    .lock()
-                    .iter()
-                    .find_map(|(_block_number, root_blocks)| {
-                        root_blocks.iter().find_map(|root_block| {
-                            if root_block.segment_index() == segment_index {
-                                Some(root_block.records_root())
-                            } else {
-                                None
-                            }
-                        })
-                    });
+        if maybe_records_root.is_none() && header.number().is_one() {
+            maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+                |(_block_number, root_blocks)| {
+                    root_blocks.iter().find_map(|root_block| {
+                        if root_block.segment_index() == segment_index {
+                            Some(root_block.records_root())
+                        } else {
+                            None
+                        }
+                    })
+                },
+            );
         }
 
         let records_root = match maybe_records_root {
@@ -1032,42 +955,45 @@ where
             return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
         }
 
-        // If there are root blocks expected to be included in this block, check them
-        if let Some(correct_root_blocks) = self.root_blocks.lock().peek(block.header.number()) {
-            let mut found = false;
-            for extrinsic in block
-                .body
-                .as_ref()
-                .expect("Light client or fast sync is unsupported; qed")
-            {
-                if let Some(found_root_blocks) = self
-                    .client
-                    .runtime_api()
-                    .extract_root_blocks(&parent_block_id, extrinsic)?
-                {
-                    if correct_root_blocks == &found_root_blocks {
-                        found = true;
-                        break;
-                    } else {
-                        warn!(
-                            target: "subspace",
-                            "Found root blocks: {:?}",
-                            found_root_blocks
-                        );
-                        warn!(
-                            target: "subspace",
-                            "Correct root blocks: {:?}",
-                            correct_root_blocks
-                        );
-                        return Err(Error::InvalidSetOfRootBlocks);
+        // If the body is passed through, we need to use the runtime to check that the
+        // internally-set timestamp in the inherents actually matches the slot set in the seal
+        // and root blocks in the inherents are set correctly.
+        if let Some(extrinsics) = extrinsics {
+            if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
+                debug!(
+                    target: "subspace",
+                    "Skipping `check_inherents` as authoring version is not compatible: {}",
+                    error,
+                );
+            } else {
+                let create_inherent_data_providers = self
+                    .create_inherent_data_providers
+                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                    .await
+                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+
+                let inherent_data = create_inherent_data_providers
+                    .create_inherent_data()
+                    .map_err(Error::CreateInherents)?;
+
+                let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                    &parent_block_id,
+                    origin.into(),
+                    Block::new(header, extrinsics),
+                    inherent_data,
+                )?;
+
+                if !inherent_res.ok() {
+                    for (i, e) in inherent_res.into_errors() {
+                        match create_inherent_data_providers
+                            .try_handle_error(&i, &e)
+                            .await
+                        {
+                            Some(res) => res.map_err(Error::CheckInherents)?,
+                            None => return Err(Error::CheckInherentsUnhandled(i)),
+                        }
                     }
                 }
-            }
-
-            if !found {
-                return Err(Error::RootBlocksExtrinsicNotFound(
-                    correct_root_blocks.clone(),
-                ));
             }
         }
 
@@ -1076,7 +1002,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner> BlockImport<Block> for SubspaceBlockImport<Block, Client, Inner>
+impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
+    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
 where
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
@@ -1089,7 +1016,9 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync,
-    Client::Api: SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1120,9 +1049,16 @@ where
             .map_err(subspace_err)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        self.block_import_verification(&block, &pre_digest)
-            .map_err(subspace_err)
-            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        self.block_import_verification(
+            block_hash,
+            block.origin,
+            block.header.clone(),
+            block.body.clone(),
+            &pre_digest,
+        )
+        .await
+        .map_err(subspace_err)
+        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         let parent_weight = if block_number.is_one() {
             0
@@ -1184,7 +1120,8 @@ where
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 
         if !root_blocks.is_empty() {
-            self.root_blocks
+            self.subspace_link
+                .root_blocks
                 .lock()
                 .put(block_number + One::one(), root_blocks);
         }
@@ -1204,17 +1141,26 @@ where
 /// import-queue.
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
-pub fn block_import<Client, Block: BlockT, I>(
+#[allow(clippy::type_complexity)]
+pub fn block_import<Client, Block, I, CAW, CIDP>(
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
-) -> ClientResult<(SubspaceBlockImport<Block, Client, I>, SubspaceLink<Block>)>
+    can_author_with: CAW,
+    create_inherent_data_providers: CIDP,
+) -> ClientResult<(
+    SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
+    SubspaceLink<Block>,
+)>
 where
+    Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
@@ -1238,7 +1184,7 @@ where
     });
 
     let link = SubspaceLink {
-        config: config.clone(),
+        config,
         new_slot_notification_sender,
         new_slot_notification_stream,
         block_signing_notification_sender,
@@ -1252,11 +1198,10 @@ where
     let import = SubspaceBlockImport::new(
         client,
         wrapped_block_import,
-        config,
         imported_block_notification_sender,
-        Arc::clone(&link.root_blocks),
-        // TODO: Figure out how to remove explicit schnorrkel dependency
-        schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        link.clone(),
+        can_author_with,
+        create_inherent_data_providers,
     );
 
     Ok((import, link))
@@ -1273,16 +1218,14 @@ where
 /// of it, otherwise crucial import logic will be omitted.
 // TODO: Create a struct for these parameters
 #[allow(clippy::too_many_arguments)]
-pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
-    subspace_link: &SubspaceLink<Block>,
+pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
     client: Arc<Client>,
     select_chain: SelectChain,
-    create_inherent_data_providers: CIDP,
+    slot_now: SN,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
-    can_author_with: CAW,
     telemetry: Option<TelemetryHandle>,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
@@ -1299,19 +1242,16 @@ where
         + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+    SN: Fn() -> Slot + Send + Sync + 'static,
 {
     let verifier = SubspaceVerifier {
         select_chain,
-        create_inherent_data_providers,
-        can_author_with,
-        root_blocks: Arc::clone(&subspace_link.root_blocks),
+        slot_now,
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        block: PhantomData::default(),
     };
 
     Ok(BasicQueue::new(
