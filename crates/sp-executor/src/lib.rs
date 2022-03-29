@@ -177,19 +177,18 @@ impl ExecutionPhase {
     pub fn decode_execution_result<Header: HeaderT>(
         &self,
         execution_result: Vec<u8>,
-    ) -> Header::Hash {
+    ) -> Result<Header::Hash, VerificationError> {
         match self {
             ExecutionPhase::InitializeBlock { .. } | ExecutionPhase::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
-                    .expect("The return value of verifying `initialize_block` and `apply_extrinsic` must be an encoded storage root; qed");
+                    .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
-                    .expect("storage root must use the same Header Hash type; qed")
+                    .map_err(VerificationError::StorageRootDecode)
             }
             ExecutionPhase::FinalizeBlock => {
-                let new_header = Header::decode(&mut execution_result.as_slice()).expect(
-                    "The return value of `BlockBuilder_finalize_block` must be a Header; qed",
-                );
-                *new_header.state_root()
+                let new_header = Header::decode(&mut execution_result.as_slice())
+                    .map_err(VerificationError::HeaderDecode)?;
+                Ok(*new_header.state_root())
             }
         }
     }
@@ -206,6 +205,12 @@ pub enum VerificationError {
     BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
     /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
     BadPostStateRoot { expected: H256, got: H256 },
+    /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
+    InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
+    /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
+    StorageRootDecode(parity_scale_codec::Error),
+    /// Failed to decode the header produced by `finalize_block`.
+    HeaderDecode(parity_scale_codec::Error),
 }
 
 /// Fraud proof for the state computation.

@@ -196,7 +196,8 @@ async fn execution_proof_creation_and_verification_should_work() {
 	)
 	.expect("Check `initialize_block` proof");
 
-	let post_execution_root = execution_phase.decode_execution_result::<Header>(execution_result);
+	let post_execution_root =
+		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
 
 	// Test extrinsic execution.
@@ -237,7 +238,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		.expect("Check extrinsic execution proof");
 
 		let post_execution_root =
-			execution_phase.decode_execution_result::<Header>(execution_result);
+			execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
 	}
 
@@ -274,7 +275,8 @@ async fn execution_proof_creation_and_verification_should_work() {
 	)
 	.expect("Check `finalize_block` proof");
 
-	let post_execution_root = execution_phase.decode_execution_result::<Header>(execution_result);
+	let post_execution_root =
+		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, *header.state_root());
 }
 

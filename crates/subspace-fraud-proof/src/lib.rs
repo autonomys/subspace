@@ -217,6 +217,7 @@ impl<
                 .expect("Block Hash must be H256; qed"),
         );
 
+        // TODO: ensure the fetched runtime code works as expected.
         let state = self
             .backend
             .state_at(at)
@@ -244,7 +245,7 @@ impl<
         .map_err(VerificationError::BadProof)?;
 
         let new_post_state_root =
-            execution_phase.decode_execution_result::<Block::Header>(execution_result);
+            execution_phase.decode_execution_result::<Block::Header>(execution_result)?;
         let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())
             .expect("Block Hash must be H256; qed");
 
