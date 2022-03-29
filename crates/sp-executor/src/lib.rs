@@ -130,24 +130,24 @@ impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
 ///
 /// Each execution phase has a different method for the runtime call.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub enum ExecutionArguments {
+pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock(Vec<u8>),
+    InitializeBlock { call_data: Vec<u8> },
     /// Executes some extrinsic.
     /// TODO: maybe optimized to not include the whole extrinsic blob in the future.
-    ApplyExtrinsic(Vec<u8>),
+    ApplyExtrinsic { call_data: Vec<u8> },
     /// Executes the `finalize_block` hook.
     FinalizeBlock,
 }
 
-impl ExecutionArguments {
+impl ExecutionPhase {
     /// Returns the method for generating the proof.
     pub fn proving_method(&self) -> &'static str {
         match self {
             // TODO: Replace `SecondaryApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock(_) => "SecondaryApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
+            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
@@ -159,8 +159,8 @@ impl ExecutionArguments {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock(_) => "SecondaryApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "SecondaryApi_apply_extrinsic_with_post_state_root",
+            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "SecondaryApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
@@ -168,7 +168,7 @@ impl ExecutionArguments {
     /// Returns the call data used to generate and verify the proof.
     pub fn call_data(&self) -> &[u8] {
         match self {
-            Self::InitializeBlock(call_data) | Self::ApplyExtrinsic(call_data) => call_data,
+            Self::InitializeBlock { call_data } | Self::ApplyExtrinsic { call_data } => call_data,
             Self::FinalizeBlock => Default::default(),
         }
     }
@@ -179,13 +179,13 @@ impl ExecutionArguments {
         execution_result: Vec<u8>,
     ) -> Header::Hash {
         match self {
-            ExecutionArguments::InitializeBlock(_) | ExecutionArguments::ApplyExtrinsic(_) => {
+            ExecutionPhase::InitializeBlock { .. } | ExecutionPhase::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .expect("The return value of verifying `initialize_block` and `apply_extrinsic` must be an encoded storage root; qed");
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .expect("storage root must use the same Header Hash type; qed")
             }
-            ExecutionArguments::FinalizeBlock => {
+            ExecutionPhase::FinalizeBlock => {
                 let new_header = Header::decode(&mut execution_result.as_slice()).expect(
                     "The return value of `BlockBuilder_finalize_block` must be a Header; qed",
                 );
@@ -221,8 +221,8 @@ pub struct FraudProof {
     pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
-    /// Execution arguments.
-    pub execution_args: ExecutionArguments,
+    /// Execution phase.
+    pub execution_phase: ExecutionPhase,
 }
 
 impl PassBy for FraudProof {

@@ -16,9 +16,7 @@ use sp_core::{
     traits::{CodeExecutor, SpawnNamed},
     H256,
 };
-use sp_executor::{
-    fraud_proof_ext::FraudProofExt, ExecutionArguments, FraudProof, VerificationError,
-};
+use sp_executor::{fraud_proof_ext::FraudProofExt, ExecutionPhase, FraudProof, VerificationError};
 use sp_externalities::Extensions;
 use sp_runtime::{
     generic::BlockId,
@@ -42,7 +40,7 @@ pub fn prove_execution<
     executor: &Exec,
     spawn_handle: Spawn,
     at: &BlockId<Block>,
-    execution_args: &ExecutionArguments,
+    execution_phase: &ExecutionPhase,
     delta_changes: Option<(DB, Block::Hash)>,
 ) -> sp_blockchain::Result<StorageProof> {
     let state = backend.state_at(*at)?;
@@ -64,8 +62,8 @@ pub fn prove_execution<
             &mut Default::default(),
             executor,
             spawn_handle,
-            execution_args.proving_method(),
-            execution_args.call_data(),
+            execution_phase.proving_method(),
+            execution_phase.call_data(),
             &runtime_code,
         )
         .map(|(_ret, proof)| proof)
@@ -76,8 +74,8 @@ pub fn prove_execution<
             &mut Default::default(),
             executor,
             spawn_handle,
-            execution_args.proving_method(),
-            execution_args.call_data(),
+            execution_phase.proving_method(),
+            execution_phase.call_data(),
             &runtime_code,
         )
         .map(|(_ret, proof)| proof)
@@ -100,7 +98,7 @@ pub fn check_execution_proof<
     executor: &Exec,
     spawn_handle: Spawn,
     at: &BlockId<Block>,
-    execution_args: &ExecutionArguments,
+    execution_phase: &ExecutionPhase,
     pre_execution_root: H256,
     proof: StorageProof,
 ) -> sp_blockchain::Result<Vec<u8>> {
@@ -122,8 +120,8 @@ pub fn check_execution_proof<
         &mut Default::default(),
         executor,
         spawn_handle,
-        execution_args.verifying_method(),
-        execution_args.call_data(),
+        execution_phase.verifying_method(),
+        execution_phase.call_data(),
         &runtime_code,
     )
     .map_err(Into::into)
@@ -211,7 +209,7 @@ impl<
             pre_state_root,
             post_state_root,
             proof,
-            execution_args,
+            execution_phase,
         } = proof;
 
         let at = BlockId::Hash(
@@ -239,14 +237,14 @@ impl<
             &mut Default::default(),
             &self.executor,
             self.spawn_handle.clone(),
-            execution_args.verifying_method(),
-            execution_args.call_data(),
+            execution_phase.verifying_method(),
+            execution_phase.call_data(),
             &runtime_code,
         )
         .map_err(VerificationError::BadProof)?;
 
         let new_post_state_root =
-            execution_args.decode_execution_result::<Block::Header>(execution_result);
+            execution_phase.decode_execution_result::<Block::Header>(execution_result);
         let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())
             .expect("Block Hash must be H256; qed");
 
