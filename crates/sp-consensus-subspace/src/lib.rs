@@ -193,6 +193,9 @@ sp_api::decl_runtime_apis! {
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         fn recorded_history_segment_size() -> u32;
 
+        /// Maximum number of pieces in each plot
+        fn max_plot_size() -> u64;
+
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> Duration;
 

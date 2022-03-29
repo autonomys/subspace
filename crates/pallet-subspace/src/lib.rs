@@ -211,6 +211,10 @@ mod pallet {
         #[pallet::constant]
         type RecordSize: Get<u32>;
 
+        /// Maximum number of pieces in each plot
+        #[pallet::constant]
+        type MaxPlotSize: Get<u64>;
+
         // TODO: This will probably become configurable later
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         #[pallet::constant]

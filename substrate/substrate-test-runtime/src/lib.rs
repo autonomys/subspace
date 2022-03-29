@@ -665,6 +665,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
+    type MaxPlotSize = ConstU64<{ u64::MAX }>;
     type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -926,6 +927,10 @@ cfg_if! {
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
+                }
+
+                fn max_plot_size() -> u64 {
+                    <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
                 fn record_size() -> u32 {
@@ -1244,6 +1249,10 @@ cfg_if! {
 
                 fn record_size() -> u32 {
                     <Self as pallet_subspace::Config>::RecordSize::get()
+                }
+
+                fn max_plot_size() -> u64 {
+                    <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
                 fn recorded_history_segment_size() -> u32 {

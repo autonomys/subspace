@@ -45,6 +45,7 @@ async fn plotting_happy_path() {
         confirmation_depth_k: 0,
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
+        max_plot_size: u64::MAX,
     };
 
     client.send_metadata(farmer_metadata).await;
@@ -151,6 +152,7 @@ async fn plotting_continue() {
         confirmation_depth_k: 0,
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
+        max_plot_size: u64::MAX,
     };
 
     client.send_metadata(farmer_metadata).await;
@@ -348,6 +350,7 @@ async fn plotting_piece_eviction() {
         confirmation_depth_k: 0,
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
+        max_plot_size: u64::MAX,
     };
 
     client.send_metadata(farmer_metadata).await;

@@ -163,6 +163,7 @@ where
             let recorded_history_segment_size = runtime_api
                 .recorded_history_segment_size(&parent_block_id)
                 .ok()?;
+            let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
             let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
             let segment_index = solution.piece_index / merkle_num_leaves;
             let position = solution.piece_index % merkle_num_leaves;
@@ -210,6 +211,7 @@ where
                     position,
                     record_size,
                     signing_context: &self.signing_context,
+                    max_plot_size,
                 },
             ) {
                 Ok(_) => {

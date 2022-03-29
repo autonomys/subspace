@@ -52,6 +52,8 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) record_size: u32,
     /// Signing context for verifying signatures
     pub(super) signing_context: &'a SigningContext,
+    /// Maximum number of pieces in each plot
+    pub(super) max_plot_size: u64,
 }
 
 /// Check a header has been signed by the right key. If the slot is too far in
@@ -76,6 +78,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         position,
         record_size,
         signing_context,
+        max_plot_size,
     } = params;
 
     trace!(target: "subspace", "Checking header");
@@ -119,6 +122,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
             position,
             record_size,
             signing_context,
+            max_plot_size,
         },
     )?;
 
@@ -211,6 +215,7 @@ pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) position: u64,
     pub(crate) record_size: u32,
     pub(crate) signing_context: &'a SigningContext,
+    pub(super) max_plot_size: u64,
 }
 
 pub(crate) fn verify_solution<B: BlockT>(
@@ -226,6 +231,7 @@ pub(crate) fn verify_solution<B: BlockT>(
         position,
         record_size,
         signing_context,
+        max_plot_size,
     } = params;
 
     if let Err(error) = is_local_challenge_valid(

@@ -141,6 +141,7 @@ parameter_types! {
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
+    pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);
 }
 
 impl Config for Test {
@@ -152,6 +153,7 @@ impl Config for Test {
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;
+    type MaxPlotSize = MaxPlotSize;
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
