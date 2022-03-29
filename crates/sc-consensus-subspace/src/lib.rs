@@ -81,7 +81,7 @@ use sc_consensus_slots::{
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
@@ -212,6 +212,12 @@ pub enum Error<B: BlockT> {
     /// Block has invalid associated salt
     #[error("Invalid salt for block {0}")]
     InvalidSalt(B::Hash),
+    /// Invalid set of root blocks
+    #[error("Invalid set of root blocks")]
+    InvalidSetOfRootBlocks,
+    /// Stored root block extrinsic was not found
+    #[error("Stored root block extrinsic was not found: {0:?}")]
+    RootBlocksExtrinsicNotFound(Vec<RootBlock>),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
@@ -229,10 +235,10 @@ pub enum Error<B: BlockT> {
     CreateInherents(sp_inherents::Error),
     /// Client error
     #[error(transparent)]
-    Client(sp_blockchain::Error),
+    Client(#[from] sp_blockchain::Error),
     /// Runtime Api error.
     #[error(transparent)]
-    RuntimeApi(sp_api::ApiError),
+    RuntimeApi(#[from] ApiError),
 }
 
 impl<B: BlockT> std::convert::From<Error<B>> for String {
@@ -369,13 +375,9 @@ where
     Client::Api: SubspaceApi<Block>,
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
-    E::Proposer:
-        Proposer<Block, Error = Error, Transaction = sp_api::TransactionFor<Client, Block>>,
-    I: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-        > + Send
+    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
+    I: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+        + Send
         + Sync
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
@@ -452,12 +454,12 @@ pub fn find_pre_digest<B: BlockT>(
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(subspace_err(Error::MultiplePreRuntimeDigests)),
+            (Some(_), true) => return Err(Error::MultiplePreRuntimeDigests),
             (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }
-    pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
+    pre_digest.ok_or(Error::NoPreRuntimeDigest)
 }
 
 /// Extract the Subspace global randomness descriptor from the given header.
@@ -735,7 +737,7 @@ where
         let slot_now = create_inherent_data_providers.slot();
 
         let checked_header = {
-            let pre_digest = find_pre_digest::<Block>(&block.header)?;
+            let pre_digest = find_pre_digest::<Block>(&block.header).map_err(subspace_err)?;
 
             let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
                 .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
@@ -971,7 +973,12 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
     }
 }
 
-impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
+impl<Block, Client, I> SubspaceBlockImport<Block, Client, I>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block> + ApiExt<Block>,
+{
     fn new(
         client: Arc<Client>,
         block_import: I,
@@ -990,17 +997,79 @@ impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
             root_blocks,
         }
     }
+
+    fn block_import_verification(
+        &self,
+        block: &BlockImportParams<Block, TransactionFor<Client, Block>>,
+        pre_digest: &PreDigest<FarmerPublicKey>,
+    ) -> Result<(), Error<Block>> {
+        let block_hash = block.post_hash();
+        let parent_hash = *block.header.parent_hash();
+
+        let parent_header = self
+            .client
+            .header(BlockId::Hash(parent_hash))?
+            .ok_or(Error::<Block>::ParentUnavailable(parent_hash, block_hash))?;
+
+        let parent_slot = find_pre_digest::<Block>(&parent_header).map(|d| d.slot)?;
+
+        // Make sure that slot number is strictly increasing
+        if pre_digest.slot <= parent_slot {
+            return Err(Error::<Block>::SlotMustIncrease(
+                parent_slot,
+                pre_digest.slot,
+            ));
+        }
+
+        // If there are root blocks expected to be included in this block, check them
+        if let Some(correct_root_blocks) = self.root_blocks.lock().peek(block.header.number()) {
+            let mut found = false;
+            for extrinsic in block
+                .body
+                .as_ref()
+                .expect("Light client or fast sync is unsupported; qed")
+            {
+                if let Some(found_root_blocks) = self
+                    .client
+                    .runtime_api()
+                    .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)?
+                {
+                    if correct_root_blocks == &found_root_blocks {
+                        found = true;
+                        break;
+                    } else {
+                        warn!(
+                            target: "subspace",
+                            "Found root blocks: {:?}",
+                            found_root_blocks
+                        );
+                        warn!(
+                            target: "subspace",
+                            "Correct root blocks: {:?}",
+                            correct_root_blocks
+                        );
+                        return Err(Error::<Block>::InvalidSetOfRootBlocks);
+                    }
+                }
+            }
+
+            if !found {
+                return Err(Error::<Block>::RootBlocksExtrinsicNotFound(
+                    correct_root_blocks.clone(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
 impl<Block, Client, Inner> BlockImport<Block> for SubspaceBlockImport<Block, Client, Inner>
 where
     Block: BlockT,
-    Inner: BlockImport<
-            Block,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-            Error = ConsensusError,
-        > + Send
+    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
+        + Send
         + Sync,
     Inner::Error: Into<ConsensusError>,
     Client: HeaderBackend<Block>
@@ -1012,7 +1081,7 @@ where
     Client::Api: SubspaceApi<Block> + ApiExt<Block>,
 {
     type Error = ConsensusError;
-    type Transaction = sp_api::TransactionFor<Client, Block>;
+    type Transaction = TransactionFor<Client, Block>;
 
     async fn import_block(
         &mut self,
@@ -1022,8 +1091,7 @@ where
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
-        // early exit if block already in chain, otherwise the check for
-        // epoch changes will error when trying to re-import an epoch change
+        // Early exit if block already in chain
         match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
@@ -1037,41 +1105,18 @@ where
             Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
         }
 
-        let pre_digest = find_pre_digest::<Block>(&block.header).expect(
-            "valid Subspace headers must contain a predigest; header has been already verified; \
-            qed",
-        );
-        let slot = pre_digest.slot;
+        let pre_digest = find_pre_digest::<Block>(&block.header)
+            .map_err(subspace_err)
+            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        let parent_hash = *block.header.parent_hash();
-        let parent_header = self
-            .client
-            .header(BlockId::Hash(parent_hash))
-            .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
-            .ok_or_else(|| {
-                ConsensusError::ChainLookup(
-                    subspace_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
-                )
-            })?;
+        self.block_import_verification(&block, &pre_digest)
+            .map_err(subspace_err)
+            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        let parent_slot = find_pre_digest::<Block>(&parent_header)
-            .map(|d| d.slot)
-            .expect(
-                "parent is non-genesis; valid Subspace headers contain a pre-digest; header has \
-                already been verified; qed",
-            );
-
-        // Make sure that slot number is strictly increasing
-        if slot <= parent_slot {
-            return Err(ConsensusError::ClientImport(
-                subspace_err(Error::<Block>::SlotMustIncrease(parent_slot, slot)).into(),
-            ));
-        }
-
-        let parent_weight = if *parent_header.number() == Zero::zero() {
+        let parent_weight = if block_number.is_one() {
             0
         } else {
-            aux_schema::load_block_weight(&*self.client, parent_hash)
+            aux_schema::load_block_weight(&*self.client, block.header.parent_hash())
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
@@ -1118,59 +1163,6 @@ where
                 },
             ))
         };
-
-        // If there are root blocks expected to be included in this block, check them
-        if let Some(correct_root_blocks) = self.root_blocks.lock().peek(&block_number) {
-            let mut found = false;
-            for extrinsic in block
-                .body
-                .as_ref()
-                .expect("Light client or fast sync is unsupported; qed")
-            {
-                match self
-                    .client
-                    .runtime_api()
-                    .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)
-                {
-                    Ok(Some(found_root_blocks)) => {
-                        if correct_root_blocks == &found_root_blocks {
-                            found = true;
-                            break;
-                        } else {
-                            warn!(
-                                target: "subspace",
-                                "Found root blocks: {:?}",
-                                found_root_blocks
-                            );
-                            warn!(
-                                target: "subspace",
-                                "Correct root blocks: {:?}",
-                                correct_root_blocks
-                            );
-                            return Err(ConsensusError::ClientImport(
-                                "Found incorrect set of root blocks".to_string(),
-                            ));
-                        }
-                    }
-                    Ok(None) => {
-                        // Some other extrinsic, ignore
-                    }
-                    Err(error) => {
-                        return Err(ConsensusError::ClientImport(format!(
-                            "Failed to make runtime API call: {:?}",
-                            error
-                        )));
-                    }
-                }
-            }
-
-            if !found {
-                return Err(ConsensusError::ClientImport(format!(
-                    "Stored root block extrinsics were not found: {:?}",
-                    correct_root_blocks,
-                )));
-            }
-        }
 
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
@@ -1281,11 +1273,8 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
     telemetry: Option<TelemetryHandle>,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
-    Inner: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-        > + Send
+    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+        + Send
         + Sync
         + 'static,
     Client: ProvideRuntimeApi<Block>

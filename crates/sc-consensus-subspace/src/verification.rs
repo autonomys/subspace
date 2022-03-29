@@ -96,7 +96,8 @@ pub(super) fn check_header<B: BlockT + Sized>(
         return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
     }
 
-    debug!(target: "subspace",
+    debug!(
+        target: "subspace",
         "Verifying primary block #{} at slot: {}",
         header.number(),
         pre_digest.slot,
