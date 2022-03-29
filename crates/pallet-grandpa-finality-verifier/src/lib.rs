@@ -41,6 +41,9 @@ use frame_support::dispatch::DispatchResult;
 use grandpa::{find_forced_change, find_scheduled_change, AuthoritySet};
 use pallet_feeds::FeedValidator;
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+use sp_finality_grandpa::{AuthorityList, SetId};
 use sp_runtime::traits::{BadOrigin, Zero};
 use sp_std::{fmt::Debug, vec::Vec};
 
@@ -53,6 +56,22 @@ pub use pallet::*;
 struct ChainData {
     chain_type: ChainType,
     halted: bool,
+}
+
+/// Data required to initialize a Chain
+#[derive(Default, Debug, Encode, Decode, Clone, PartialEq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct InitializationData<ChainId> {
+    /// Unique chain ID
+    pub chain_id: ChainId,
+    /// Type of Chain
+    pub chain_type: ChainType,
+    /// Scale encoded header from which we should start syncing.
+    pub header: Vec<u8>,
+    /// The initial authorities of the pallet.
+    pub authority_list: AuthorityList,
+    /// The ID of the initial authority set.
+    pub set_id: SetId,
 }
 
 #[frame_support::pallet]
@@ -77,6 +96,30 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        /// Bootstrap the chain to start importing valid finalized blocks
+        ///
+        /// The initial configuration provided does not need to be the genesis header of the bridged
+        /// chain, it can be any arbitrary header. You can also provide the next scheduled set
+        /// change if it is already know.
+        ///
+        /// This function is only allowed to be called from a trusted origin and writes to storage
+        /// with practically no checks in terms of the validity of the data. It is important that
+        /// you ensure that valid data is being passed in.
+        #[pallet::weight((T::DbWeight::get().reads_writes(2, 3), DispatchClass::Operational))]
+        pub fn initialize(
+            origin: OriginFor<T>,
+            init_data: InitializationData<T::ChainId>,
+        ) -> DispatchResult {
+            ensure_owner_or_root::<T>(origin)?;
+
+            ensure!(
+                !BestFinalized::<T>::contains_key(init_data.chain_id),
+                Error::<T>::AlreadyInitialized
+            );
+            initialize_chain::<T>(init_data);
+            Ok(())
+        }
+
         /// Change `PalletOwner`.
         ///
         /// May only be called either by root, or by `PalletOwner`.
@@ -144,6 +187,8 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
+        /// Chain already initialized
+        AlreadyInitialized,
         /// Unknown chain
         ChainUnknown,
         /// All feed operations are halted.
@@ -198,6 +243,29 @@ pub mod pallet {
                 }
             }
         }
+    }
+
+    pub(crate) fn initialize_chain<T: Config>(init_params: InitializationData<T::ChainId>) {
+        let InitializationData {
+            chain_id,
+            chain_type,
+            header,
+            authority_list,
+            set_id,
+        } = init_params;
+        BestFinalized::<T>::insert(chain_id, header);
+        Chains::<T>::insert(
+            chain_id,
+            ChainData {
+                chain_type,
+                halted: false,
+            },
+        );
+        let authority_set = AuthoritySet {
+            authorities: authority_list,
+            set_id,
+        };
+        CurrentAuthoritySet::<T>::insert(chain_id, authority_set)
     }
 
     pub(crate) fn validate_finalized_block<T: Config, C: Chain>(

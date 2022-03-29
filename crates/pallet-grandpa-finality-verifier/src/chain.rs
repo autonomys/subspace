@@ -13,9 +13,16 @@ use sp_runtime::{generic, OpaqueExtrinsic};
 use sp_std::{hash::Hash, str::FromStr, vec::Vec};
 
 // ChainType represents the kind of the Chain type we are verifying the GRANDPA finality for
-#[derive(Encode, Decode, TypeInfo)]
-pub(crate) enum ChainType {
+#[derive(Encode, Debug, Decode, Clone, PartialEq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub enum ChainType {
     PolkadotLike,
+}
+
+impl Default for ChainType {
+    fn default() -> Self {
+        Self::PolkadotLike
+    }
 }
 
 /// Polkadot-like chain.
@@ -45,7 +52,7 @@ pub(crate) struct FinalityProof<Header: HeaderT> {
 /// Minimal Substrate-based chain representation that may be used from no_std environment.
 pub(crate) trait Chain {
     /// A type that fulfills the abstract idea of what a Substrate block number is.
-    // Constraits come from the associated Number type of `sp_runtime::traits::Header`
+    // Constraints come from the associated Number type of `sp_runtime::traits::Header`
     // See here for more info:
     // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Number
     //
@@ -69,7 +76,7 @@ pub(crate) trait Chain {
         + Into<u64>;
 
     /// A type that fulfills the abstract idea of what a Substrate hash is.
-    // Constraits come from the associated Hash type of `sp_runtime::traits::Header`
+    // Constraints come from the associated Hash type of `sp_runtime::traits::Header`
     // See here for more info:
     // https://crates.parity.io/sp_runtime/traits/trait.Header.html#associatedtype.Hash
     type Hash: Parameter
