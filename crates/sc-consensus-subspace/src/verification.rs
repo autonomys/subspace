@@ -38,20 +38,8 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) pre_digest: PreDigest<FarmerPublicKey>,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
-    /// Global randomness used for driving local slot challenges.
-    pub(super) global_randomness: &'a Randomness,
-    /// Solution range corresponding to this block.
-    pub(super) solution_range: u64,
-    /// Salt corresponding to this block.
-    pub(super) salt: Salt,
-    /// Merkle Root hash for pieces in the segment to which solution in `pre_digest` belongs to
-    pub(super) records_root: &'a Sha256Hash,
-    /// Position within segment of a piece from solution in `pre_digest`
-    pub(super) position: u64,
-    /// Record size for a segment to which solution in `pre_digest` belongs to
-    pub(super) record_size: u32,
-    /// Signing context for verifying signatures
-    pub(super) signing_context: &'a SigningContext,
+    /// Parameters for solution verification
+    pub(super) verify_solution_params: VerifySolutionParams<'a>,
 }
 
 /// Check a header has been signed by the right key. If the slot is too far in
@@ -69,13 +57,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         mut header,
         pre_digest,
         slot_now,
-        global_randomness,
-        solution_range,
-        salt,
-        records_root,
-        position,
-        record_size,
-        signing_context,
+        verify_solution_params,
     } = params;
 
     trace!(target: "subspace", "Checking header");
@@ -109,19 +91,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
     }
 
     // Verify that solution is valid
-    verify_solution(
-        &pre_digest.solution,
-        VerifySolutionParams {
-            global_randomness,
-            solution_range,
-            slot: pre_digest.slot,
-            salt,
-            records_root,
-            position,
-            record_size,
-            signing_context,
-        },
-    )?;
+    verify_solution(&pre_digest.solution, verify_solution_params)?;
 
     Ok(CheckedHeader::Checked(
         header,
@@ -158,16 +128,15 @@ fn check_piece_tag<B: BlockT>(
 }
 
 /// Check piece validity.
-fn check_piece<B: BlockT>(
+///
+/// If `records_root` is `None`, piece validity check will be skipped.
+pub(crate) fn check_piece<B: BlockT>(
     slot: Slot,
-    salt: Salt,
-    records_root: &Sha256Hash,
+    records_root: Sha256Hash,
     position: u64,
     record_size: u32,
     solution: &Solution<FarmerPublicKey>,
 ) -> Result<(), Error<B>> {
-    check_piece_tag(slot, salt, solution)?;
-
     let mut piece = solution.encoding;
 
     // Ensure piece is decodable.
@@ -178,7 +147,7 @@ fn check_piece<B: BlockT>(
 
     if !archiver::is_piece_valid(
         &piece,
-        *records_root,
+        records_root,
         position as usize,
         record_size as usize,
     ) {
@@ -203,14 +172,19 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
     }
 }
 
+pub(crate) struct PieceCheckParams {
+    pub(crate) records_root: Sha256Hash,
+    pub(crate) position: u64,
+    pub(crate) record_size: u32,
+}
+
+/// If `piece_check_params` is `None`, piece validity check will be skipped.
 pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) global_randomness: &'a Randomness,
     pub(crate) solution_range: u64,
     pub(crate) slot: Slot,
     pub(crate) salt: Salt,
-    pub(crate) records_root: &'a Sha256Hash,
-    pub(crate) position: u64,
-    pub(crate) record_size: u32,
+    pub(crate) piece_check_params: Option<PieceCheckParams>,
     pub(crate) signing_context: &'a SigningContext,
 }
 
@@ -223,9 +197,7 @@ pub(crate) fn verify_solution<B: BlockT>(
         solution_range,
         slot,
         salt,
-        records_root,
-        position,
-        record_size,
+        piece_check_params,
         signing_context,
     } = params;
 
@@ -243,7 +215,16 @@ pub(crate) fn verify_solution<B: BlockT>(
 
     check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
 
-    check_piece(slot, salt, records_root, position, record_size, solution)?;
+    check_piece_tag(slot, salt, solution)?;
+
+    if let Some(PieceCheckParams {
+        records_root,
+        position,
+        record_size,
+    }) = piece_check_params
+    {
+        check_piece(slot, records_root, position, record_size, solution)?;
+    }
 
     Ok(())
 }

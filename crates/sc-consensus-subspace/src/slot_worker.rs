@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::verification::PieceCheckParams;
 use crate::{
     find_pre_digest, subspace_err, verification, BlockSigningNotification, NewSlotInfo,
     NewSlotNotification, SubspaceLink,
@@ -206,9 +207,11 @@ where
                     solution_range,
                     slot,
                     salt,
-                    records_root: &records_root,
-                    position,
-                    record_size,
+                    piece_check_params: Some(PieceCheckParams {
+                        records_root,
+                        position,
+                        record_size,
+                    }),
                     signing_context: &self.signing_context,
                 },
             ) {

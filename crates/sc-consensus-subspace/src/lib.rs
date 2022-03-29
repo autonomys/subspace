@@ -59,6 +59,7 @@ mod verification;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
+use crate::verification::VerifySolutionParams;
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -473,7 +474,7 @@ fn find_global_randomness_descriptor<B: BlockT>(
             log.as_global_randomness_descriptor(),
             global_randomness_descriptor.is_some(),
         ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleGlobalRandomnessDigests)),
+            (Some(_), true) => return Err(Error::MultipleGlobalRandomnessDigests),
             (Some(global_randomness), false) => {
                 global_randomness_descriptor = Some(global_randomness)
             }
@@ -495,7 +496,7 @@ fn find_solution_range_descriptor<B: BlockT>(
             log.as_solution_range_descriptor(),
             solution_range_descriptor.is_some(),
         ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleSolutionRangeDigests)),
+            (Some(_), true) => return Err(Error::MultipleSolutionRangeDigests),
             (Some(solution_range), false) => solution_range_descriptor = Some(solution_range),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -510,7 +511,7 @@ fn find_salt_descriptor<B: BlockT>(header: &B::Header) -> Result<Option<SaltDesc
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         match (log.as_salt_descriptor(), salt_descriptor.is_some()) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleSaltDigests)),
+            (Some(_), true) => return Err(Error::MultipleSaltDigests),
             (Some(salt), false) => salt_descriptor = Some(salt),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -724,7 +725,6 @@ where
 
         let hash = block.header.hash();
         let parent_hash = *block.header.parent_hash();
-        let parent_block_id = BlockId::Hash(parent_hash);
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
@@ -736,127 +736,42 @@ where
 
         let slot_now = create_inherent_data_providers.slot();
 
+        // Only stateless checks that rely on the contents already contained in the block header.
         let checked_header = {
             let pre_digest = find_pre_digest::<Block>(&block.header).map_err(subspace_err)?;
 
-            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
+            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
                 .global_randomness;
-            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                self.client.as_ref(),
-                &parent_block_id,
-            )
-            .map_err(Error::<Block>::RuntimeApi)?;
-            if global_randomness != correct_global_randomness {
-                return Err(Error::<Block>::InvalidGlobalRandomness(hash).into());
-            }
 
-            let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
+            let solution_range = find_solution_range_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
-            let correct_solution_range = slot_worker::extract_solution_range_for_block(
-                self.client.as_ref(),
-                &parent_block_id,
-            )
-            .map_err(Error::<Block>::RuntimeApi)?;
-            if solution_range != correct_solution_range {
-                return Err(Error::<Block>::InvalidSolutionRange(hash).into());
-            }
 
-            let salt = find_salt_descriptor::<Block>(&block.header)?
+            let salt = find_salt_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
-            let correct_salt =
-                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)
-                    .map_err(Error::<Block>::RuntimeApi)?
-                    .0;
-            if salt != correct_salt {
-                return Err(Error::<Block>::InvalidSalt(hash).into());
-            }
-
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)
-                .map_err(Error::<Block>::RuntimeApi)?
-            {
-                warn!(
-                    target: "subspace",
-                    "Ignoring block with solution provided by farmer in block list: {}",
-                    pre_digest.solution.public_key
-                );
-
-                return Err(
-                    Error::<Block>::FarmerInBlockList(pre_digest.solution.public_key).into(),
-                );
-            }
-
-            // TODO: This assumes fixed size segments, which might not be the case
-            let record_size = self
-                .client
-                .runtime_api()
-                .record_size(&parent_block_id)
-                .expect("Failed to get `record_size` from runtime API");
-            let recorded_history_segment_size = self
-                .client
-                .runtime_api()
-                .recorded_history_segment_size(&parent_block_id)
-                .expect("Failed to get `recorded_history_segment_size` from runtime API");
-            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-            let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
-            let position = pre_digest.solution.piece_index % merkle_num_leaves;
-            let mut maybe_records_root = self
-                .client
-                .runtime_api()
-                .records_root(&parent_block_id, segment_index)
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "Failed to get Merkle Root for segment {} from runtime API: {}",
-                        segment_index, error
-                    );
-                });
-
-            // This is not a very nice hack due to the fact that at the time first block is produced
-            // extrinsics with root blocks are not yet in runtime.
-            if maybe_records_root.is_none() && block.header.number().is_one() {
-                maybe_records_root =
-                    self.root_blocks
-                        .lock()
-                        .iter()
-                        .find_map(|(_block_number, root_blocks)| {
-                            root_blocks.iter().find_map(|root_block| {
-                                if root_block.segment_index() == segment_index {
-                                    Some(root_block.records_root())
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-            }
-
-            let records_root = match maybe_records_root {
-                Some(records_root) => records_root,
-                None => {
-                    return Err(Error::<Block>::RecordsRootNotFound(segment_index).into());
-                }
-            };
 
             // We add one to the current slot to allow for some small drift.
-            // FIXME #1019 in the future, alter this queue to allow deferring of headers
-            let v_params = verification::VerificationParams {
+            // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
+            //  queue to allow deferring of headers
+            let slot = pre_digest.slot;
+            verification::check_header::<Block>(verification::VerificationParams {
                 header: block.header.clone(),
                 pre_digest,
                 slot_now: slot_now + 1,
-                global_randomness: &global_randomness,
-                solution_range,
-                salt,
-                records_root: &records_root,
-                position,
-                record_size,
-                signing_context: &self.signing_context,
-            };
-
-            verification::check_header::<Block>(v_params)?
+                verify_solution_params: VerifySolutionParams {
+                    global_randomness: &global_randomness,
+                    solution_range,
+                    slot,
+                    salt,
+                    piece_check_params: None,
+                    signing_context: &self.signing_context,
+                },
+            })?
         };
 
         match checked_header {
@@ -959,6 +874,7 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
     /// validation
     root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    signing_context: SigningContext,
 }
 
 impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
@@ -969,6 +885,7 @@ impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Clien
             config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
             root_blocks: Arc::clone(&self.root_blocks),
+            signing_context: self.signing_context.clone(),
         }
     }
 }
@@ -988,6 +905,7 @@ where
             mpsc::Sender<RootBlock>,
         )>,
         root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+        signing_context: SigningContext,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -995,6 +913,7 @@ where
             config,
             imported_block_notification_sender,
             root_blocks,
+            signing_context,
         }
     }
 
@@ -1005,20 +924,112 @@ where
     ) -> Result<(), Error<Block>> {
         let block_hash = block.post_hash();
         let parent_hash = *block.header.parent_hash();
+        let parent_block_id = BlockId::Hash(parent_hash);
+
+        if self
+            .client
+            .runtime_api()
+            .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)?
+        {
+            warn!(
+                target: "subspace",
+                "Ignoring block with solution provided by farmer in block list: {}",
+                pre_digest.solution.public_key
+            );
+
+            return Err(Error::FarmerInBlockList(
+                pre_digest.solution.public_key.clone(),
+            ));
+        }
 
         let parent_header = self
             .client
-            .header(BlockId::Hash(parent_hash))?
-            .ok_or(Error::<Block>::ParentUnavailable(parent_hash, block_hash))?;
+            .header(parent_block_id)?
+            .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let parent_slot = find_pre_digest::<Block>(&parent_header).map(|d| d.slot)?;
+        let global_randomness = find_global_randomness_descriptor(&block.header)?
+            .ok_or(Error::MissingGlobalRandomness(block_hash))?
+            .global_randomness;
+        let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+            self.client.as_ref(),
+            &parent_block_id,
+        )?;
+        if global_randomness != correct_global_randomness {
+            return Err(Error::InvalidGlobalRandomness(block_hash));
+        }
+
+        let solution_range = find_solution_range_descriptor(&block.header)?
+            .ok_or(Error::MissingSolutionRange(block_hash))?
+            .solution_range;
+        let correct_solution_range =
+            slot_worker::extract_solution_range_for_block(self.client.as_ref(), &parent_block_id)?;
+        if solution_range != correct_solution_range {
+            return Err(Error::InvalidSolutionRange(block_hash));
+        }
+
+        let salt = find_salt_descriptor(&block.header)?
+            .ok_or(Error::MissingSalt(block_hash))?
+            .salt;
+        let correct_salt =
+            slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
+        if salt != correct_salt {
+            return Err(Error::InvalidSalt(block_hash));
+        }
+
+        // TODO: This assumes fixed size segments, which might not be the case
+        let record_size = self.client.runtime_api().record_size(&parent_block_id)?;
+        let recorded_history_segment_size = self
+            .client
+            .runtime_api()
+            .recorded_history_segment_size(&parent_block_id)?;
+        let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+        let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
+        let position = pre_digest.solution.piece_index % merkle_num_leaves;
+        let mut maybe_records_root = self
+            .client
+            .runtime_api()
+            .records_root(&parent_block_id, segment_index)?;
+
+        // This is not a very nice hack due to the fact that at the time first block is produced
+        // extrinsics with root blocks are not yet in runtime.
+        if maybe_records_root.is_none() && block.header.number().is_one() {
+            maybe_records_root =
+                self.root_blocks
+                    .lock()
+                    .iter()
+                    .find_map(|(_block_number, root_blocks)| {
+                        root_blocks.iter().find_map(|root_block| {
+                            if root_block.segment_index() == segment_index {
+                                Some(root_block.records_root())
+                            } else {
+                                None
+                            }
+                        })
+                    });
+        }
+
+        let records_root = match maybe_records_root {
+            Some(records_root) => records_root,
+            None => {
+                return Err(Error::RecordsRootNotFound(segment_index));
+            }
+        };
+
+        // Piece is not checked during initial block verification because it requires access to
+        // root block, check it now.
+        verification::check_piece(
+            pre_digest.slot,
+            records_root,
+            position,
+            record_size,
+            &pre_digest.solution,
+        )?;
+
+        let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot <= parent_slot {
-            return Err(Error::<Block>::SlotMustIncrease(
-                parent_slot,
-                pre_digest.slot,
-            ));
+            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
         }
 
         // If there are root blocks expected to be included in this block, check them
@@ -1032,7 +1043,7 @@ where
                 if let Some(found_root_blocks) = self
                     .client
                     .runtime_api()
-                    .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)?
+                    .extract_root_blocks(&parent_block_id, extrinsic)?
                 {
                     if correct_root_blocks == &found_root_blocks {
                         found = true;
@@ -1048,13 +1059,13 @@ where
                             "Correct root blocks: {:?}",
                             correct_root_blocks
                         );
-                        return Err(Error::<Block>::InvalidSetOfRootBlocks);
+                        return Err(Error::InvalidSetOfRootBlocks);
                     }
                 }
             }
 
             if !found {
-                return Err(Error::<Block>::RootBlocksExtrinsicNotFound(
+                return Err(Error::RootBlocksExtrinsicNotFound(
                     correct_root_blocks.clone(),
                 ));
             }
@@ -1244,6 +1255,8 @@ where
         config,
         imported_block_notification_sender,
         Arc::clone(&link.root_blocks),
+        // TODO: Figure out how to remove explicit schnorrkel dependency
+        schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
     );
 
     Ok((import, link))
