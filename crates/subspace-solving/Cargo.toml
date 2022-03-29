@@ -19,6 +19,7 @@ schnorrkel = "0.9.1"
 sloth256-189 = "0.2.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.30"
+uint = "0.9"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]

@@ -24,10 +24,29 @@ mod codec;
 pub use codec::SubspaceCodec;
 use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
-use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};
+use subspace_core_primitives::{
+    crypto, LocalChallenge, Piece, PieceIndexHash, PublicKey, Randomness, Salt, Tag, TAG_SIZE,
+};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
+
+uint::construct_uint! {
+    /// Distance to piece index hash from farmer identity
+    pub struct PieceDistance(4);
+}
+
+impl PieceDistance {
+    /// Calculates the xor distance metric between piece index hash and farmer address.
+    pub fn xor_distance(PieceIndexHash(piece): &PieceIndexHash, address: &PublicKey) -> Self {
+        Self::from_big_endian(piece) ^ Self::from_big_endian(address.as_ref())
+    }
+
+    /// Convert piece distance to big endian bytes
+    pub fn as_bytes(self) -> [u8; 32] {
+        self.into()
+    }
+}
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication

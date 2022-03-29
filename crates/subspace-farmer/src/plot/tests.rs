@@ -1,9 +1,10 @@
-use crate::plot::{xor_distance, Plot};
+use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
 };
+use subspace_solving::PieceDistance;
 use tempfile::TempDir;
 
 fn init() {
@@ -121,7 +122,7 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes.sort_by_key(|i| xor_distance((*i).into(), address));
+    piece_indexes.sort_by_key(|i| PieceDistance::xor_distance(&(*i).into(), &address));
 
     // First pieces should be present and equal
     for &i in &piece_indexes[..max_plot_pieces as usize] {
