@@ -185,6 +185,9 @@ pub enum Error<B: BlockT> {
     /// Solution is outside of solution range
     #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
+    /// Solution is outside of max plot size
+    #[error("Solution is outside of max plot size {0}")]
+    OutsideOfMaxPlot(Slot),
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
@@ -818,6 +821,17 @@ where
                         segment_index, error
                     );
                 });
+            let total_number_of_pieces = self
+                .root_blocks
+                .lock()
+                .iter()
+                .last()
+                .and_then(|(_block_number, root_blocks)| {
+                    root_blocks
+                        .last()
+                        .map(|root_block| root_block.segment_index() * merkle_num_leaves)
+                })
+                .unwrap_or(0);
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -858,6 +872,7 @@ where
                 record_size,
                 signing_context: &self.signing_context,
                 max_plot_size,
+                total_number_of_pieces,
             };
 
             verification::check_header::<Block>(v_params)?

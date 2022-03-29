@@ -27,8 +27,10 @@ use sp_core::crypto::ByteArray;
 use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
-use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
-use subspace_solving::{derive_global_challenge, is_local_challenge_valid, SubspaceCodec};
+use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution};
+use subspace_solving::{
+    derive_global_challenge, is_local_challenge_valid, PieceDistance, SubspaceCodec,
+};
 
 /// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -54,6 +56,8 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
     pub(super) signing_context: &'a SigningContext,
     /// Maximum number of pieces in each plot
     pub(super) max_plot_size: u64,
+    /// Total number of pieces in the blockchain
+    pub(super) total_number_of_pieces: u64,
 }
 
 /// Check a header has been signed by the right key. If the slot is too far in
@@ -79,6 +83,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
         record_size,
         signing_context,
         max_plot_size,
+        total_number_of_pieces,
     } = params;
 
     trace!(target: "subspace", "Checking header");
@@ -123,6 +128,7 @@ pub(super) fn check_header<B: BlockT + Sized>(
             record_size,
             signing_context,
             max_plot_size,
+            total_number_of_pieces,
         },
     )?;
 
@@ -206,6 +212,20 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
     }
 }
 
+/// Returns true if piece index is within farmer sector
+fn is_within_max_plot(
+    piece_index: PieceIndex,
+    key: &FarmerPublicKey,
+    total_number_of_pieces: u64,
+    max_plot_size: u64,
+) -> bool {
+    if total_number_of_pieces < max_plot_size {
+        return true;
+    }
+    let max_distance = PieceDistance::MAX / total_number_of_pieces * max_plot_size;
+    PieceDistance::xor_distance(&piece_index.into(), key) < max_distance
+}
+
 pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) global_randomness: &'a Randomness,
     pub(crate) solution_range: u64,
@@ -216,6 +236,7 @@ pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) record_size: u32,
     pub(crate) signing_context: &'a SigningContext,
     pub(super) max_plot_size: u64,
+    pub(super) total_number_of_pieces: u64,
 }
 
 pub(crate) fn verify_solution<B: BlockT>(
@@ -232,6 +253,7 @@ pub(crate) fn verify_solution<B: BlockT>(
         record_size,
         signing_context,
         max_plot_size,
+        total_number_of_pieces,
     } = params;
 
     if let Err(error) = is_local_challenge_valid(
@@ -244,6 +266,15 @@ pub(crate) fn verify_solution<B: BlockT>(
 
     if !is_within_solution_range(solution, solution_range) {
         return Err(Error::OutsideOfSolutionRange(slot));
+    }
+
+    if !is_within_max_plot(
+        solution.piece_index,
+        &solution.public_key,
+        total_number_of_pieces,
+        max_plot_size,
+    ) {
+        return Err(Error::OutsideOfMaxPlot(slot));
     }
 
     check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
