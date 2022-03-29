@@ -61,8 +61,8 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    opaque, AccountId, Balance, BlockNumber, FeedId, Hash, Index, Moment, Signature,
+    CONFIRMATION_DEPTH_K, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
     STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -478,6 +478,12 @@ impl pallet_rewards::Config for Runtime {
 
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
+    type FeedId = FeedId;
+    type Validator = GrandpaFinalityVerifier;
+}
+
+impl pallet_grandpa_finality_verifier::Config for Runtime {
+    type ChainId = FeedId;
 }
 
 impl pallet_object_store::Config for Runtime {
@@ -518,6 +524,7 @@ construct_runtime!(
         Utility: pallet_utility = 8,
 
         Feeds: pallet_feeds = 6,
+        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
         ObjectStore: pallet_object_store = 10,
         Executor: pallet_executor = 11,
 

@@ -42,7 +42,7 @@ use grandpa::{find_forced_change, find_scheduled_change, AuthoritySet};
 use pallet_feeds::FeedValidator;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{BadOrigin, Zero};
-use sp_std::fmt::Debug;
+use sp_std::{fmt::Debug, vec::Vec};
 
 // Re-export in crate namespace for `construct_runtime!`
 use crate::chain::{Chain, PolkadotLike};

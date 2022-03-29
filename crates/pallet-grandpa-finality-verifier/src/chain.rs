@@ -10,7 +10,7 @@ use sp_runtime::traits::{
     MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
 };
 use sp_runtime::{generic, OpaqueExtrinsic};
-use sp_std::{hash::Hash, str::FromStr};
+use sp_std::{hash::Hash, str::FromStr, vec::Vec};
 
 // ChainType represents the kind of the Chain type we are verifying the GRANDPA finality for
 #[derive(Encode, Decode, TypeInfo)]
