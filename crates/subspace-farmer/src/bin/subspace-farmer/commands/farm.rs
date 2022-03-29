@@ -37,20 +37,33 @@ pub(crate) async fn farm(
 
     let reward_address = reward_address.unwrap_or(address);
 
+    info!("Connecting to node at {}", node_rpc_url);
+    let client = WsRpc::new(&node_rpc_url).await?;
+
+    let farmer_metadata = client
+        .farmer_metadata()
+        .await
+        .map_err(|error| anyhow::Error::msg(error.to_string()))?;
+
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
     info!("Opening plot");
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
+        let plot_size = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
+
+        match plot_size {
+            Some(plot_size) if plot_size > farmer_metadata.max_plot_size => {
+                return Err(anyhow!(
+                    "Plot size ({plot_size}) is too large. Maximum plot size is {}",
+                    farmer_metadata.max_plot_size,
+                ))
+            }
+            _ => (),
+        }
 
         // TODO: Piece count should account for database overhead of various additional databases
-        move || {
-            Plot::open_or_create(
-                &base_directory,
-                address,
-                plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64),
-            )
-        }
+        move || Plot::open_or_create(&base_directory, address, plot_size)
     });
     let plot = plot_fut.await.unwrap()?;
 
@@ -69,14 +82,6 @@ pub(crate) async fn farm(
         move || ObjectMappings::open_or_create(&base_directory)
     })
     .await??;
-
-    info!("Connecting to node at {}", node_rpc_url);
-    let client = WsRpc::new(&node_rpc_url).await?;
-
-    let farmer_metadata = client
-        .farmer_metadata()
-        .await
-        .map_err(|error| anyhow::Error::msg(error.to_string()))?;
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
