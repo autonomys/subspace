@@ -22,29 +22,38 @@
 mod codec;
 
 pub use codec::SubspaceCodec;
+pub use construct_uint::*;
 use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
-use subspace_core_primitives::{
-    crypto, LocalChallenge, Piece, PieceIndexHash, Randomness, Salt, Tag, TAG_SIZE,
-};
+use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
 
-uint::construct_uint! {
-    /// Distance to piece index hash from farmer identity
-    pub struct PieceDistance(4);
-}
+#[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
+mod construct_uint {
+    //! This module is needed to scope clippy allows
 
-impl PieceDistance {
-    /// Calculates the xor distance metric between piece index hash and farmer address.
-    pub fn xor_distance(PieceIndexHash(piece): &PieceIndexHash, address: impl AsRef<[u8]>) -> Self {
-        Self::from_big_endian(piece) ^ Self::from_big_endian(address.as_ref())
+    use subspace_core_primitives::PieceIndexHash;
+
+    uint::construct_uint! {
+        /// Distance to piece index hash from farmer identity
+        pub struct PieceDistance(4);
     }
 
-    /// Convert piece distance to big endian bytes
-    pub fn as_bytes(self) -> [u8; 32] {
-        self.into()
+    impl PieceDistance {
+        /// Calculates the xor distance metric between piece index hash and farmer address.
+        pub fn xor_distance(
+            PieceIndexHash(piece): &PieceIndexHash,
+            address: impl AsRef<[u8]>,
+        ) -> Self {
+            Self::from_big_endian(piece) ^ Self::from_big_endian(address.as_ref())
+        }
+
+        /// Convert piece distance to big endian bytes
+        pub fn as_bytes(self) -> [u8; 32] {
+            self.into()
+        }
     }
 }
 
