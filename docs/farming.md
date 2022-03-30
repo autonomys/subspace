@@ -27,8 +27,11 @@ The address of your account will be necessary at the last step.
 ## 🖼️ Windows Instructions
 
 <details>
-
-### 📝 Windows Installation
+<summary>
+Details
+</summary>
+<p>
+**📝 Windows Installation**
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
@@ -80,14 +83,18 @@ The address of your account will be necessary at the last step.
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS
 ```
-
+</p>
 </details>
 
 ## 🐧 Linux Instructions
 
 <details>
+<summary>
+Details
+</summary>
+<p>
 
-### 📝 Linux Installation
+**📝 Linux Installation**
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -144,8 +151,12 @@ The address of your account will be necessary at the last step.
 ## 🍎 macOS Instructions
 
 <details>
+<summary>
+Details
+</summary>
+<p>
 
-### 📝 macOS Installation
+**📝 macOS Installation**
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab and extract binaries from ZIP archives.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -202,7 +213,9 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
+</p>
 </details>
+
 
 # 🤔Notes
 
@@ -226,19 +239,31 @@ Does not matter if the node/farmer executable is the previous one or from the ne
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
 
-## Glossary for useful farmer commands
+## Farmer Commands
 
-Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
+Structure -> `./FARMER_FILE_NAME <COMMAND> <SUBCOMMAND>`
 
-- `farm --reward-address WALLET_ADDRESS` : starts background plotting and farming together, farmed testnet coins will be sent to `WALLET_ADDRESS`
-- `farm` : starts background plotting and farming together, rewards are sent to auto-generated wallet (see `identity` commands below)
-- `wipe` : erases the plot and identity (including plot, commitment, object mappings and identity files)
-- `identity import-from-mnemonic "spell out your seed phrase here"` : imports your existing identity from your seed phrase (not recommended! use `--reward-address` instead)
-- `identity view` : displays SS58 address (this is the same as `identity view --address`) where farmed testnet coins will be sent
-- `identity view --mnemonic` : displays mnemonic phrase of auto-generated wallet (sensitive information, keep this private, not very useful if `--reward-address` was used)
+- `erase-plot`: Erase existing plot (doesn't touch identity)
+  - `--custom-path <CUSTOM_PATH>`: Use custom path for data storage instead of platform-specific default.
+- `farm`: Start a farmer using previously created plot
+  - `--bootstrap-node <BOOTSTRAP_NODE>`: Multiaddrs of bootstrap node to connect to on startup, multiple are supported
+  - `--custom-path <CUSTOM_PATH>`: Custom path for data storage instead of platform-specific default
+  - `--listen-on <LISTEN_ON>`: Multiaddrs to listen on for subspace network, for instance '/ip4/0.0.0.0/tcp/0', multiple are supported, subspace networking is disabled when non is specified.
+  - `--node-rpc-url <NODE_RPC_URL>`: WebSocket RPC URL of the Subspace node to connect to (default: ws://127.0.0.1:9944)
+  - `--reward-address <REWARD_ADDRESS>`: Address for farming rewards
+  - `-w`, `--ws-server-listen-addr <WS_SERVER_LISTEN_ADDR>`: Host & Port where built-in WebSocket RPC server should listen for incoming connections (default: 127.0.0.1:9955)
+- `help`: Print this message or the help of the given subcommand(s)
+- `identity`: Identity management
+  - `import-from-mnemonic <PHRASE>`: Import identity from BIP39 mnemonic phrase
+  - `view`: View identity information
+    - `-a`, `--address`: Print SS58 address (default if no other option is specified)
+    - `-m`, `--mnemonic`: Print Mnemonic (NOTE: never share this with ANYONE!)
+    - `-p`, `--public-key`: Print public key (hex)
+- `wipe`: Wipes plot and identity
+  - `--custom-path <CUSTOM_PATH>`: Use custom path for data storage instead of platform-specific default.
 
 An example command:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
-``./FARMER_FILE_NAME wipe
+./FARMER_FILE_NAME farm --reward-address 5GCE4PdEXmZwi5Km7a9stqsKhUim2HxEaJTCRH4vZWzzBURH
 ```
