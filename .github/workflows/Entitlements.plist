@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- required for incoming connections -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- required for outgoing connections -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- required for read/write access to files -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- without this, it is crashing during sync/plot, idk why -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>
