@@ -21,8 +21,9 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
+use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -125,15 +126,112 @@ impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
     }
 }
 
+/// Execution phase along with an optional encoded call data.
+///
+/// Each execution phase has a different method for the runtime call.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub enum ExecutionPhase {
+    /// Executes the `initialize_block` hook.
+    InitializeBlock { call_data: Vec<u8> },
+    /// Executes some extrinsic.
+    /// TODO: maybe optimized to not include the whole extrinsic blob in the future.
+    ApplyExtrinsic { call_data: Vec<u8> },
+    /// Executes the `finalize_block` hook.
+    FinalizeBlock,
+}
+
+impl ExecutionPhase {
+    /// Returns the method for generating the proof.
+    pub fn proving_method(&self) -> &'static str {
+        match self {
+            // TODO: Replace `SecondaryApi_initialize_block_with_post_state_root` with `Core_initalize_block`
+            // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
+            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+        }
+    }
+
+    /// Returns the method for verifying the proof.
+    ///
+    /// The difference with [`Self::proving_method`] is that the return value of verifying method
+    /// must contain the post state root info so that it can be used to compare whether the
+    /// result of execution reported in [`FraudProof`] is expected or not.
+    pub fn verifying_method(&self) -> &'static str {
+        match self {
+            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "SecondaryApi_apply_extrinsic_with_post_state_root",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+        }
+    }
+
+    /// Returns the call data used to generate and verify the proof.
+    pub fn call_data(&self) -> &[u8] {
+        match self {
+            Self::InitializeBlock { call_data } | Self::ApplyExtrinsic { call_data } => call_data,
+            Self::FinalizeBlock => Default::default(),
+        }
+    }
+
+    /// Returns the post state root for the given execution result.
+    pub fn decode_execution_result<Header: HeaderT>(
+        &self,
+        execution_result: Vec<u8>,
+    ) -> Result<Header::Hash, VerificationError> {
+        match self {
+            ExecutionPhase::InitializeBlock { .. } | ExecutionPhase::ApplyExtrinsic { .. } => {
+                let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
+                    .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
+                Header::Hash::decode(&mut encoded_storage_root.as_slice())
+                    .map_err(VerificationError::StorageRootDecode)
+            }
+            ExecutionPhase::FinalizeBlock => {
+                let new_header = Header::decode(&mut execution_result.as_slice())
+                    .map_err(VerificationError::HeaderDecode)?;
+                Ok(*new_header.state_root())
+            }
+        }
+    }
+}
+
+/// Error type of fraud proof verification on primary node.
+#[derive(RuntimeDebug)]
+pub enum VerificationError {
+    /// Runtime code backend unavailable.
+    RuntimeCodeBackend,
+    /// Runtime code can not be fetched from the backend.
+    RuntimeCode(&'static str),
+    /// Failed to pass the execution proof check.
+    BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
+    /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
+    BadPostStateRoot { expected: H256, got: H256 },
+    /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
+    InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
+    /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
+    StorageRootDecode(parity_scale_codec::Error),
+    /// Failed to decode the header produced by `finalize_block`.
+    HeaderDecode(parity_scale_codec::Error),
+}
+
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct FraudProof {
+    /// Parent hash of the block at which the invalid execution occurred.
+    ///
+    /// Runtime code for this block's execution is retrieved on top of the parent block.
+    pub parent_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.
     pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
+    /// Execution phase.
+    pub execution_phase: ExecutionPhase,
+}
+
+impl PassBy for FraudProof {
+    type PassBy = sp_runtime_interface::pass_by::Codec<Self>;
 }
 
 /// Represents a bundle equivocation proof. An equivocation happens when an executor
@@ -211,5 +309,39 @@ sp_api::decl_runtime_apis! {
 
         /// WASM bundle for execution runtime.
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
+    }
+}
+
+pub mod fraud_proof_ext {
+    use sp_externalities::ExternalitiesExt;
+    use sp_runtime_interface::runtime_interface;
+
+    /// Externalities for verifying fraud proof.
+    pub trait Externalities: Send {
+        /// Returns `true` when the proof is valid.
+        fn verify_fraud_proof(&self, proof: &crate::FraudProof) -> bool;
+    }
+
+    #[cfg(feature = "std")]
+    sp_externalities::decl_extension! {
+        /// An extension to verify the fraud proof.
+        pub struct FraudProofExt(Box<dyn Externalities>);
+    }
+
+    #[cfg(feature = "std")]
+    impl FraudProofExt {
+        pub fn new<E: Externalities + 'static>(fraud_proof: E) -> Self {
+            Self(Box::new(fraud_proof))
+        }
+    }
+
+    #[runtime_interface]
+    pub trait FraudProof {
+        /// Verify fraud proof.
+        fn verify(&mut self, proof: &crate::FraudProof) -> bool {
+            self.extension::<FraudProofExt>()
+                .expect("No `FraudProof` associated for the current context!")
+                .verify_fraud_proof(proof)
+        }
     }
 }
