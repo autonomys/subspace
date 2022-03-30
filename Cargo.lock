@@ -8920,6 +8920,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
