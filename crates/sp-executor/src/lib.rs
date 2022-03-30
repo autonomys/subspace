@@ -23,6 +23,7 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
+use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::{Randomness, Sha256Hash};
@@ -207,5 +208,8 @@ sp_api::decl_runtime_apis! {
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
+
+        /// WASM bundle for execution runtime.
+        fn execution_wasm_bundle() -> Cow<'static, [u8]>;
     }
 }
