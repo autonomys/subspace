@@ -28,16 +28,19 @@ use polkadot_overseer::{
     OverseerConnector, KNOWN_LEAVES_CACHE_SIZE,
 };
 use sc_client_api::ExecutorProvider;
+use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
     notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
+    SubspaceLink,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::ConstructRuntimeApi;
+use sp_api::{ConstructRuntimeApi, TransactionFor};
 use sp_blockchain::HeaderBackend;
-use sp_consensus::SelectChain;
+use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError, SelectChain};
+use sp_consensus_slots::Slot;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use subspace_runtime_primitives::{
@@ -133,12 +136,12 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         (
-            sc_consensus_subspace::SubspaceBlockImport<
+            impl BlockImport<
                 Block,
-                FullClient<RuntimeApi, ExecutorDispatch>,
-                Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+                Error = ConsensusError,
+                Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
             >,
-            sc_consensus_subspace::SubspaceLink<Block>,
+            SubspaceLink<Block>,
             Option<Telemetry>,
         ),
     >,
@@ -200,6 +203,39 @@ where
         sc_consensus_subspace::Config::get(&*client)?,
         client.clone(),
         client.clone(),
+        CanAuthorWithNativeVersion::new(client.executor().clone()),
+        {
+            let client = client.clone();
+
+            move |parent_hash, subspace_link: SubspaceLink<Block>| {
+                let client = client.clone();
+
+                async move {
+                    let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+
+                    // TODO: Would be nice if the whole header was passed in here
+                    let parent_block_number = client
+                        .header(&BlockId::Hash(parent_hash))
+                        .expect("Parent header must always exist when block is created; qed")
+                        .expect("Parent header must always exist when block is created; qed")
+                        .number;
+
+                    let subspace_inherents =
+                        sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+                            *timestamp,
+                            subspace_link.config().slot_duration(),
+                            subspace_link.root_blocks_for_block(parent_block_number + 1),
+                        );
+
+                    let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
+                        &*client,
+                        parent_hash,
+                    )?;
+
+                    Ok((timestamp, subspace_inherents, uncles))
+                }
+            }
+        },
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(
@@ -210,29 +246,17 @@ where
 
     let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
-        &subspace_link,
         block_import.clone(),
         None,
         client.clone(),
         select_chain.clone(),
-        move |_, ()| async move {
+        move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-            let subspace_inherents =
-                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-                    *timestamp,
-                    slot_duration,
-                    vec![],
-                );
-
-            let uncles =
-                sp_authorship::InherentDataProvider::<<Block as BlockT>::Header>::check_inherents();
-
-            Ok((timestamp, subspace_inherents, uncles))
+            Slot::from_timestamp(*timestamp, slot_duration)
         },
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-        sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone()),
         telemetry.as_ref().map(|x| x.handle()),
     )?;
 
@@ -470,9 +494,6 @@ where
             telemetry.as_ref().map(|x| x.handle()),
         );
 
-        let can_author_with =
-            sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone());
-
         let subspace_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
             select_chain,
@@ -484,7 +505,7 @@ where
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
 
-                move |parent, ()| {
+                move |parent_hash, ()| {
                     let client = client.clone();
                     let subspace_link = subspace_link.clone();
 
@@ -492,8 +513,8 @@ where
                         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                         // TODO: Would be nice if the whole header was passed in here
-                        let block_number = client
-                            .header(&BlockId::Hash(parent))
+                        let parent_block_number = client
+                            .header(&BlockId::Hash(parent_hash))
                             .expect("Parent header must always exist when block is created; qed")
                             .expect("Parent header must always exist when block is created; qed")
                             .number;
@@ -502,11 +523,12 @@ where
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                 *timestamp,
                                 subspace_link.config().slot_duration(),
-                                subspace_link.root_blocks_for_block(block_number + 1),
+                                subspace_link.root_blocks_for_block(parent_block_number + 1),
                             );
 
                         let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
-                            &*client, parent,
+                            &*client,
+                            parent_hash,
                         )?;
 
                         Ok((timestamp, subspace_inherents, uncles))
@@ -516,7 +538,7 @@ where
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link,
-            can_author_with,
+            can_author_with: CanAuthorWithNativeVersion::new(client.executor().clone()),
             block_proposal_slot_portion: SlotProportion::new(2f32 / 3f32),
             max_block_proposal_slot_portion: None,
             telemetry: None,
