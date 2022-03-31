@@ -54,6 +54,7 @@ use sp_core::traits::SpawnNamed;
 use sp_executor::OpaqueBundle;
 use sp_runtime::OpaqueExtrinsic;
 use std::{
+	borrow::Cow,
 	collections::{hash_map::Entry, HashMap},
 	convert::TryFrom,
 	fmt,
@@ -186,6 +187,7 @@ macro_rules! specialize_requests {
 specialize_requests! {
 	fn request_extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>; ExtractBundles;
 	fn request_extrinsics_shuffling_seed(header: Header) -> Randomness; ExtrinsicsShufflingSeed;
+	fn request_execution_wasm_bundle() -> Cow<'static, [u8]>; ExecutionWasmBundle;
 }
 
 struct AbortOnDrop(future::AbortHandle);
