@@ -21,6 +21,7 @@
 use futures::future::Future;
 use polkadot_overseer::Handle;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_executor::NativeElseWasmExecutor;
 use sc_network::{
     config::{NetworkConfiguration, TransportConfig},
     multiaddr,
@@ -36,7 +37,7 @@ use sp_runtime::{codec::Encode, generic, traits::IdentifyAccount, MultiSigner};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use subspace_service::NewFull;
-use subspace_test_client::{chain_spec, start_farmer, Client, TestExecutorDispatch};
+use subspace_test_client::{chain_spec, start_farmer, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{
     BlockHashCount, Runtime, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
@@ -50,7 +51,16 @@ pub fn new_full(
     config: Configuration,
     enable_rpc_extensions: bool,
     run_farmer: bool,
-) -> NewFull<Arc<Client>> {
+) -> (
+    NewFull<Arc<Client>>,
+    NativeElseWasmExecutor<TestExecutorDispatch>,
+) {
+    let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
+        config.wasm_method,
+        config.default_heap_pages,
+        config.max_runtime_instances,
+        config.runtime_cache_size,
+    );
     let new_full = futures::executor::block_on(subspace_service::new_full::<
         subspace_test_runtime::RuntimeApi,
         TestExecutorDispatch,
@@ -59,7 +69,7 @@ pub fn new_full(
     if run_farmer {
         start_farmer(&new_full);
     }
-    new_full
+    (new_full, executor)
 }
 
 /// Create a Subspace `Configuration`.
@@ -165,14 +175,18 @@ pub fn run_validator_node(
 ) -> SubspaceTestNode {
     let config = node_config(tokio_handle, key, boot_nodes, is_validator);
     let multiaddr = config.network.listen_addresses[0].clone();
-    let NewFull {
-        task_manager,
-        client,
-        network,
-        rpc_handlers,
-        overseer_handle,
-        ..
-    } = new_full(config, is_validator, true);
+    let (
+        NewFull {
+            task_manager,
+            client,
+            backend,
+            network,
+            rpc_handlers,
+            overseer_handle,
+            ..
+        },
+        executor,
+    ) = new_full(config, is_validator, true);
 
     let peer_id = *network.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
@@ -180,6 +194,8 @@ pub fn run_validator_node(
     SubspaceTestNode {
         task_manager,
         client,
+        backend,
+        executor,
         overseer_handle,
         addr,
         rpc_handlers,
@@ -192,6 +208,10 @@ pub struct SubspaceTestNode {
     pub task_manager: TaskManager,
     /// Client's instance.
     pub client: Arc<Client>,
+    /// Backend.
+    pub backend: Arc<Backend>,
+    /// Code executor.
+    pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// A handle to Overseer.
     pub overseer_handle: Option<Handle>,
     /// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node" to other nodes.

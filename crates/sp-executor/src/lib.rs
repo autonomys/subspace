@@ -197,10 +197,6 @@ impl ExecutionPhase {
 /// Error type of fraud proof verification on primary node.
 #[derive(RuntimeDebug)]
 pub enum VerificationError {
-    /// Runtime code backend unavailable.
-    RuntimeCodeBackend,
-    /// Runtime code can not be fetched from the backend.
-    RuntimeCode(&'static str),
     /// Failed to pass the execution proof check.
     BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
     /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
@@ -312,6 +308,7 @@ sp_api::decl_runtime_apis! {
     }
 }
 
+// TODO: remove once the fraud proof verification is moved into the client.
 pub mod fraud_proof_ext {
     use sp_externalities::ExternalitiesExt;
     use sp_runtime_interface::runtime_interface;

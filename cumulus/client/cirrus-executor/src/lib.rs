@@ -314,6 +314,7 @@ where
 		extrinsic_index: usize,
 		parent_header: &Block::Header,
 		current_hash: Block::Hash,
+		prover: &subspace_fraud_proof::ExecutionProver<Block, Backend, E>,
 	) -> Result<(StorageProof, ExecutionPhase), GossipMessageError> {
 		let extrinsics = self.block_body(current_hash)?;
 
@@ -340,13 +341,8 @@ where
 
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
-		// TODO: way to call some runtime api against any specific state instead of having
-		// to work with String API directly.
-		let execution_proof = subspace_fraud_proof::prove_execution(
-			&self.backend,
-			&*self.code_executor,
-			self.spawner.clone() as Box<dyn SpawnNamed>,
-			&BlockId::Hash(parent_header.hash()),
+		let execution_proof = prover.prove_execution(
+			BlockId::Hash(parent_header.hash()),
 			&execution_phase,
 			Some((delta, post_delta_root)),
 		)?;
@@ -594,6 +590,12 @@ where
 					.map_err(|_| Self::Error::InvalidStateRootType)
 			};
 
+			let prover = subspace_fraud_proof::ExecutionProver::new(
+				self.backend.clone(),
+				self.code_executor.clone(),
+				self.spawner.clone() as Box<dyn SpawnNamed>,
+			);
+
 			// TODO: abstract the execution proof impl to be reusable in the test.
 			let fraud_proof = if local_trace_idx == 0 {
 				// `initialize_block` execution proof.
@@ -610,19 +612,8 @@ where
 				let execution_phase =
 					ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
 
-				// TODO: way to call some runtime api against any specific state instead of having
-				// to work with String API directly.
-				let proof = subspace_fraud_proof::prove_execution::<
-					_,
-					_,
-					_,
-					_,
-					TransactionFor<Backend, Block>,
-				>(
-					&self.backend,
-					&*self.code_executor,
-					self.spawner.clone() as Box<dyn SpawnNamed>,
-					&BlockId::Hash(parent_header.hash()),
+				let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
+					BlockId::Hash(parent_header.hash()),
 					&execution_phase,
 					None,
 				)?;
@@ -655,13 +646,8 @@ where
 				let delta = storage_changes.transaction;
 				let post_delta_root = storage_changes.transaction_storage_root;
 
-				// TODO: way to call some runtime api against any specific state instead of having
-				// to work with String API directly.
-				let proof = subspace_fraud_proof::prove_execution(
-					&self.backend,
-					&*self.code_executor,
-					self.spawner.clone() as Box<dyn SpawnNamed>,
-					&BlockId::Hash(parent_header.hash()),
+				let proof = prover.prove_execution(
+					BlockId::Hash(parent_header.hash()),
 					&execution_phase,
 					Some((delta, post_delta_root)),
 				)?;
@@ -682,6 +668,7 @@ where
 					local_trace_idx - 1,
 					&parent_header,
 					execution_receipt.secondary_hash,
+					&prover,
 				)?;
 
 				// TODO: proof should be a CompactProof.
