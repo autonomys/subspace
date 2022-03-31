@@ -8,7 +8,7 @@ use cirrus_test_service::{
 use codec::Encode;
 use sc_client_api::{HeaderBackend, StorageProof};
 use sp_api::ProvideRuntimeApi;
-use sp_executor::ExecutionPhase;
+use sp_executor::{ExecutionPhase, FraudProof};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Header as HeaderT},
@@ -185,6 +185,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	)
 	.expect("Create `initialize_block` proof");
 
+	// Test `initialize_block` verification on executor.
 	let execution_result = subspace_fraud_proof::check_execution_proof(
 		&charlie.backend,
 		&*charlie.code_executor,
@@ -192,13 +193,32 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&BlockId::Hash(parent_header.hash()),
 		&execution_phase,
 		*parent_header.state_root(),
-		storage_proof,
+		storage_proof.clone(),
 	)
 	.expect("Check `initialize_block` proof");
-
 	let post_execution_root =
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
+
+	// Test `initialize_block` verification on farmer.
+	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+		alice.client.clone(),
+		alice.backend.clone(),
+		alice.executor.clone(),
+		alice.task_manager.spawn_handle(),
+	);
+
+	// Incorrect but it's fine for the test purpose.
+	let parent_hash_alice = alice.client.info().best_hash;
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: *parent_header.state_root(),
+		post_state_root: intermediate_roots[0].into(),
+		proof: storage_proof,
+		execution_phase,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
 	// Test extrinsic execution.
 	for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
@@ -226,6 +246,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let target_trace_root: Hash = intermediate_roots[target_extrinsic_index].into();
 		assert_eq!(target_trace_root, post_delta_root);
 
+		// Test `apply_extrinsic` verification on executor.
 		let execution_result = subspace_fraud_proof::check_execution_proof(
 			&charlie.backend,
 			&*charlie.code_executor,
@@ -233,13 +254,22 @@ async fn execution_proof_creation_and_verification_should_work() {
 			&BlockId::Hash(parent_header.hash()),
 			&execution_phase,
 			post_delta_root,
-			storage_proof,
+			storage_proof.clone(),
 		)
 		.expect("Check extrinsic execution proof");
-
 		let post_execution_root =
 			execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
+
+		// Test `apply_extrinsic` verification on farmer.
+		let fraud_proof = FraudProof {
+			parent_hash: parent_hash_alice,
+			pre_state_root: intermediate_roots[target_extrinsic_index].into(),
+			post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
+			proof: storage_proof,
+			execution_phase,
+		};
+		assert!(proof_verifier.verify(&fraud_proof).is_ok());
 	}
 
 	// Test `finalize_block`
@@ -264,6 +294,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	)
 	.expect("Create `finalize_block` proof");
 
+	// Test `finalize_block` verification on executor.
 	let execution_result = subspace_fraud_proof::check_execution_proof(
 		&charlie.backend,
 		&*charlie.code_executor,
@@ -271,13 +302,22 @@ async fn execution_proof_creation_and_verification_should_work() {
 		&BlockId::Hash(parent_header.hash()),
 		&execution_phase,
 		post_delta_root,
-		storage_proof,
+		storage_proof.clone(),
 	)
 	.expect("Check `finalize_block` proof");
-
 	let post_execution_root =
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, *header.state_root());
+
+	// Test `finalize_block` verification on farmer.
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: intermediate_roots.last().unwrap().into(),
+		post_state_root: post_execution_root.into(),
+		proof: storage_proof,
+		execution_phase,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
 #[substrate_test_utils::test]
@@ -377,13 +417,13 @@ async fn invalid_execution_proof_should_not_work() {
 		)
 		.expect("Create extrinsic execution proof");
 
-		(proof, delta, post_delta_root)
+		(proof, post_delta_root, execution_phase)
 	};
 
-	let (proof0, _delta0, post_delta_root0) = create_extrinsic_proof(0);
-	let (proof1, _delta1, post_delta_root1) = create_extrinsic_proof(1);
+	let (proof0, post_delta_root0, execution_phase0) = create_extrinsic_proof(0);
+	let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
-	let check_proof = |post_delta_root: Hash, proof: StorageProof| {
+	let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
 		let execution_phase =
 			ExecutionPhase::ApplyExtrinsic { call_data: transfer_to_charlie_again.encode() };
 		subspace_fraud_proof::check_execution_proof(
@@ -397,8 +437,45 @@ async fn invalid_execution_proof_should_not_work() {
 		)
 	};
 
-	assert!(check_proof(post_delta_root1, proof0.clone()).is_err());
-	assert!(check_proof(post_delta_root0, proof1.clone()).is_err());
-	assert!(check_proof(post_delta_root0, proof0).is_ok());
-	assert!(check_proof(post_delta_root1, proof1).is_ok());
+	assert!(check_proof_executor(post_delta_root1, proof0.clone()).is_err());
+	assert!(check_proof_executor(post_delta_root0, proof1.clone()).is_err());
+	assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
+	assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
+
+	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+		alice.client.clone(),
+		alice.backend.clone(),
+		alice.executor.clone(),
+		alice.task_manager.spawn_handle(),
+	);
+
+	// Incorrect but it's fine for the test purpose.
+	let parent_hash_alice = alice.client.info().best_hash;
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof1,
+		execution_phase: execution_phase0.clone(),
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_err());
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof0.clone(),
+		execution_phase: execution_phase1,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_err());
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof0,
+		execution_phase: execution_phase0,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
