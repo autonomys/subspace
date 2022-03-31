@@ -181,7 +181,10 @@ where
             executor.clone(),
         )?;
 
+    let client = Arc::new(client);
+
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        client.clone(),
         backend.clone(),
         executor,
         task_manager.spawn_handle(),
@@ -189,8 +192,6 @@ where
     client
         .execution_extensions()
         .set_extensions_factory(Box::new(proof_verifier));
-
-    let client = Arc::new(client);
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager

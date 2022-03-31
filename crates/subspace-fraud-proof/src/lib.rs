@@ -11,12 +11,14 @@ use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sp_api::{StateBackend, StorageProof};
+use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
 use sp_core::{
-    traits::{CodeExecutor, SpawnNamed},
+    traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed},
     H256,
 };
-use sp_executor::{fraud_proof_ext::FraudProofExt, ExecutionPhase, FraudProof, VerificationError};
+use sp_executor::{
+    fraud_proof_ext::FraudProofExt, ExecutionPhase, ExecutorApi, FraudProof, VerificationError,
+};
 use sp_externalities::Extensions;
 use sp_runtime::{
     generic::BlockId,
@@ -167,17 +169,38 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
     }
 }
 
+struct RuntimCodeFetcher<Block: BlockT, C> {
+    client: Arc<C>,
+    at: Block::Hash,
+}
+
+impl<Block, C> FetchRuntimeCode for RuntimCodeFetcher<Block, C>
+where
+    Block: BlockT,
+    C: ProvideRuntimeApi<Block> + Send + Sync,
+    C::Api: ExecutorApi<Block>,
+{
+    fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
+        self.client
+            .runtime_api()
+            .execution_wasm_bundle(&BlockId::Hash(self.at))
+            .ok()
+    }
+}
+
 /// Fraud proof verifier.
-pub struct ProofVerifier<Block, B, Exec, Spawn> {
+pub struct ProofVerifier<Block, C, B, Exec, Spawn> {
+    client: Arc<C>,
     backend: Arc<B>,
     executor: Exec,
     spawn_handle: Spawn,
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, B, Exec: Clone, Spawn: Clone> Clone for ProofVerifier<Block, B, Exec, Spawn> {
+impl<Block, C, B, Exec: Clone, Spawn: Clone> Clone for ProofVerifier<Block, C, B, Exec, Spawn> {
     fn clone(&self) -> Self {
         Self {
+            client: self.client.clone(),
             backend: self.backend.clone(),
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
@@ -186,16 +209,19 @@ impl<Block, B, Exec: Clone, Spawn: Clone> Clone for ProofVerifier<Block, B, Exec
     }
 }
 
-impl<
-        Block: BlockT,
-        B: backend::Backend<Block>,
-        Exec: CodeExecutor + Clone + 'static,
-        Spawn: SpawnNamed + Clone + Send + 'static,
-    > ProofVerifier<Block, B, Exec, Spawn>
+impl<Block, C, B, Exec, Spawn> ProofVerifier<Block, C, B, Exec, Spawn>
+where
+    Block: BlockT,
+    C: ProvideRuntimeApi<Block> + Send + Sync,
+    C::Api: ExecutorApi<Block>,
+    B: backend::Backend<Block>,
+    Exec: CodeExecutor + Clone + 'static,
+    Spawn: SpawnNamed + Clone + Send + 'static,
 {
     /// Constructs a new instance of [`ProofVerifier`].
-    pub fn new(backend: Arc<B>, executor: Exec, spawn_handle: Spawn) -> Self {
+    pub fn new(client: Arc<C>, backend: Arc<B>, executor: Exec, spawn_handle: Spawn) -> Self {
         Self {
+            client,
             backend,
             executor,
             spawn_handle,
@@ -212,25 +238,18 @@ impl<
             execution_phase,
         } = proof;
 
-        let at = BlockId::Hash(
-            Block::Hash::decode(&mut parent_hash.encode().as_slice())
+        let code_fetcher = RuntimCodeFetcher {
+            client: self.client.clone(),
+            at: Block::Hash::decode(&mut parent_hash.encode().as_slice())
                 .expect("Block Hash must be H256; qed"),
-        );
+        };
 
-        // TODO: ensure the fetched runtime code works as expected.
-        let state = self
-            .backend
-            .state_at(at)
-            .map_err(|_| VerificationError::RuntimeCodeBackend)?;
-
-        let trie_backend = state
-            .as_trie_backend()
-            .ok_or(VerificationError::RuntimeCodeBackend)?;
-
-        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
-        let runtime_code = state_runtime_code
-            .runtime_code()
-            .map_err(VerificationError::RuntimeCode)?;
+        let runtime_code = RuntimeCode {
+            code_fetcher: &code_fetcher,
+            hash: b"Hash of the code does not matter in terms of the execution proof check"
+                .to_vec(),
+            heap_pages: None,
+        };
 
         let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
             *pre_state_root,
@@ -260,12 +279,15 @@ impl<
     }
 }
 
-impl<
-        Block: BlockT,
-        B: backend::Backend<Block>,
-        Exec: CodeExecutor + Clone + 'static,
-        Spawn: SpawnNamed + Clone + Send + 'static,
-    > sp_executor::fraud_proof_ext::Externalities for ProofVerifier<Block, B, Exec, Spawn>
+impl<Block, C, B, Exec, Spawn> sp_executor::fraud_proof_ext::Externalities
+    for ProofVerifier<Block, C, B, Exec, Spawn>
+where
+    Block: BlockT,
+    C: ProvideRuntimeApi<Block> + Send + Sync,
+    C::Api: ExecutorApi<Block>,
+    B: backend::Backend<Block>,
+    Exec: CodeExecutor + Clone + 'static,
+    Spawn: SpawnNamed + Clone + Send + 'static,
 {
     fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> bool {
         match self.verify(proof) {
@@ -278,12 +300,14 @@ impl<
     }
 }
 
-impl<
-        Block: BlockT,
-        B: backend::Backend<Block> + 'static,
-        Exec: CodeExecutor + Clone + Send + Sync,
-        Spawn: SpawnNamed + Clone + Send + Sync + 'static,
-    > ExtensionsFactory for ProofVerifier<Block, B, Exec, Spawn>
+impl<Block, C, B, Exec, Spawn> ExtensionsFactory for ProofVerifier<Block, C, B, Exec, Spawn>
+where
+    Block: BlockT,
+    C: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+    C::Api: ExecutorApi<Block>,
+    B: backend::Backend<Block> + 'static,
+    Exec: CodeExecutor + Clone + Send + Sync,
+    Spawn: SpawnNamed + Clone + Send + Sync + 'static,
 {
     fn extensions_for(&self, _: sp_core::offchain::Capabilities) -> Extensions {
         let mut exts = Extensions::new();
