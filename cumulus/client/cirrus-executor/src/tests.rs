@@ -168,34 +168,30 @@ async fn execution_proof_creation_and_verification_should_work() {
 	);
 	let execution_phase = ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
 
+	let prover = subspace_fraud_proof::ExecutionProver::new(
+		charlie.backend.clone(),
+		charlie.code_executor.clone(),
+		Box::new(charlie.task_manager.spawn_handle()),
+	);
+
 	// Test `initialize_block`.
-	let storage_proof = subspace_fraud_proof::prove_execution::<
-		_,
-		_,
-		_,
-		_,
-		sp_trie::PrefixedMemoryDB<BlakeTwo256>,
-	>(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		&execution_phase,
-		None,
-	)
-	.expect("Create `initialize_block` proof");
+	let storage_proof = prover
+		.prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			None,
+		)
+		.expect("Create `initialize_block` proof");
 
 	// Test `initialize_block` verification on executor.
-	let execution_result = subspace_fraud_proof::check_execution_proof(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		&execution_phase,
-		*parent_header.state_root(),
-		storage_proof.clone(),
-	)
-	.expect("Check `initialize_block` proof");
+	let execution_result = prover
+		.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			*parent_header.state_root(),
+			storage_proof.clone(),
+		)
+		.expect("Check `initialize_block` proof");
 	let post_execution_root =
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
@@ -233,30 +229,26 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 		let execution_phase = ExecutionPhase::ApplyExtrinsic { call_data: xt.encode() };
 
-		let storage_proof = subspace_fraud_proof::prove_execution(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			&execution_phase,
-			Some((delta, post_delta_root)),
-		)
-		.expect("Create extrinsic execution proof");
+		let storage_proof = prover
+			.prove_execution(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				Some((delta, post_delta_root)),
+			)
+			.expect("Create extrinsic execution proof");
 
 		let target_trace_root: Hash = intermediate_roots[target_extrinsic_index].into();
 		assert_eq!(target_trace_root, post_delta_root);
 
 		// Test `apply_extrinsic` verification on executor.
-		let execution_result = subspace_fraud_proof::check_execution_proof(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			&execution_phase,
-			post_delta_root,
-			storage_proof.clone(),
-		)
-		.expect("Check extrinsic execution proof");
+		let execution_result = prover
+			.check_execution_proof(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				post_delta_root,
+				storage_proof.clone(),
+			)
+			.expect("Check extrinsic execution proof");
 		let post_execution_root =
 			execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
@@ -284,27 +276,23 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	let execution_phase = ExecutionPhase::FinalizeBlock;
 
-	let storage_proof = subspace_fraud_proof::prove_execution(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		&execution_phase,
-		Some((delta, post_delta_root)),
-	)
-	.expect("Create `finalize_block` proof");
+	let storage_proof = prover
+		.prove_execution(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			Some((delta, post_delta_root)),
+		)
+		.expect("Create `finalize_block` proof");
 
 	// Test `finalize_block` verification on executor.
-	let execution_result = subspace_fraud_proof::check_execution_proof(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		&execution_phase,
-		post_delta_root,
-		storage_proof.clone(),
-	)
-	.expect("Check `finalize_block` proof");
+	let execution_result = prover
+		.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			post_delta_root,
+			storage_proof.clone(),
+		)
+		.expect("Check `finalize_block` proof");
 	let post_execution_root =
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, *header.state_root());
@@ -396,6 +384,12 @@ async fn invalid_execution_proof_should_not_work() {
 		.unwrap()
 	};
 
+	let prover = subspace_fraud_proof::ExecutionProver::new(
+		charlie.backend.clone(),
+		charlie.code_executor.clone(),
+		Box::new(charlie.task_manager.spawn_handle()),
+	);
+
 	let create_extrinsic_proof = |extrinsic_index: usize| {
 		let storage_changes = create_block_builder()
 			.prepare_storage_changes_before(extrinsic_index)
@@ -407,15 +401,13 @@ async fn invalid_execution_proof_should_not_work() {
 		let execution_phase =
 			ExecutionPhase::ApplyExtrinsic { call_data: test_txs[extrinsic_index].encode() };
 
-		let proof = subspace_fraud_proof::prove_execution(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			&execution_phase,
-			Some((delta.clone(), post_delta_root.clone())),
-		)
-		.expect("Create extrinsic execution proof");
+		let proof = prover
+			.prove_execution(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				Some((delta.clone(), post_delta_root.clone())),
+			)
+			.expect("Create extrinsic execution proof");
 
 		(proof, post_delta_root, execution_phase)
 	};
@@ -426,11 +418,8 @@ async fn invalid_execution_proof_should_not_work() {
 	let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
 		let execution_phase =
 			ExecutionPhase::ApplyExtrinsic { call_data: transfer_to_charlie_again.encode() };
-		subspace_fraud_proof::check_execution_proof(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
+		prover.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
 			&execution_phase,
 			post_delta_root,
 			proof,

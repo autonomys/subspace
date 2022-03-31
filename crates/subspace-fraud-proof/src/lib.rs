@@ -29,104 +29,116 @@ use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-/// Returns a storage proof which can be used to reconstruct a partial state trie to re-run
-/// the execution by someone who does not own the whole state.
-pub fn prove_execution<
-    Block: BlockT,
-    B: backend::Backend<Block>,
-    Exec: CodeExecutor + 'static,
-    Spawn: SpawnNamed + Send + 'static,
-    DB: HashDB<HashFor<Block>, DBValue>,
->(
-    backend: &Arc<B>,
-    executor: &Exec,
-    spawn_handle: Spawn,
-    at: &BlockId<Block>,
-    execution_phase: &ExecutionPhase,
-    delta_changes: Option<(DB, Block::Hash)>,
-) -> sp_blockchain::Result<StorageProof> {
-    let state = backend.state_at(*at)?;
-
-    let trie_backend = state.as_trie_backend().ok_or_else(|| {
-        Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
-            as Box<dyn sp_state_machine::Error>
-    })?;
-
-    let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
-    let runtime_code = state_runtime_code
-        .runtime_code()
-        .map_err(sp_blockchain::Error::RuntimeCode)?;
-
-    if let Some((delta, post_delta_root)) = delta_changes {
-        let delta_backend = create_delta_backend(trie_backend, delta, post_delta_root);
-        sp_state_machine::prove_execution_on_trie_backend(
-            &delta_backend,
-            &mut Default::default(),
-            executor,
-            spawn_handle,
-            execution_phase.proving_method(),
-            execution_phase.call_data(),
-            &runtime_code,
-        )
-        .map(|(_ret, proof)| proof)
-        .map_err(Into::into)
-    } else {
-        sp_state_machine::prove_execution_on_trie_backend(
-            trie_backend,
-            &mut Default::default(),
-            executor,
-            spawn_handle,
-            execution_phase.proving_method(),
-            execution_phase.call_data(),
-            &runtime_code,
-        )
-        .map(|(_ret, proof)| proof)
-        .map_err(Into::into)
-    }
+/// Creates storage proof for verifying an execution without owning the whole state.
+pub struct ExecutionProver<Block, B, Exec> {
+    backend: Arc<B>,
+    executor: Arc<Exec>,
+    spawn_handle: Box<dyn SpawnNamed>,
+    _phantom: PhantomData<Block>,
 }
 
-/// Runs the execution using the partial state constructed from the given storage proof and
-/// returns the execution result.
-///
-/// The execution result contains the information of state root after applying the execution
-/// so that it can be used to compare with the one specified in the fraud proof.
-pub fn check_execution_proof<
+impl<Block, B, Exec> ExecutionProver<Block, B, Exec>
+where
     Block: BlockT,
     B: backend::Backend<Block>,
     Exec: CodeExecutor + 'static,
-    Spawn: SpawnNamed + Send + 'static,
->(
-    backend: &Arc<B>,
-    executor: &Exec,
-    spawn_handle: Spawn,
-    at: &BlockId<Block>,
-    execution_phase: &ExecutionPhase,
-    pre_execution_root: H256,
-    proof: StorageProof,
-) -> sp_blockchain::Result<Vec<u8>> {
-    let state = backend.state_at(*at)?;
+{
+    /// Constructs a new instance of [`ExecutionProver`].
+    pub fn new(backend: Arc<B>, executor: Arc<Exec>, spawn_handle: Box<dyn SpawnNamed>) -> Self {
+        Self {
+            backend,
+            executor,
+            spawn_handle,
+            _phantom: PhantomData::<Block>,
+        }
+    }
 
-    let trie_backend = state.as_trie_backend().ok_or_else(|| {
-        Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
-            as Box<dyn sp_state_machine::Error>
-    })?;
+    /// Returns a storage proof which can be used to reconstruct a partial state trie to re-run
+    /// the execution by someone who does not own the whole state.
+    pub fn prove_execution<DB: HashDB<HashFor<Block>, DBValue>>(
+        &self,
+        at: BlockId<Block>,
+        execution_phase: &ExecutionPhase,
+        delta_changes: Option<(DB, Block::Hash)>,
+    ) -> sp_blockchain::Result<StorageProof> {
+        // TODO: fetch the runtime code properly.
+        let state = self.backend.state_at(at)?;
 
-    let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
-    let runtime_code = state_runtime_code
-        .runtime_code()
-        .map_err(sp_blockchain::Error::RuntimeCode)?;
+        let trie_backend = state.as_trie_backend().ok_or_else(|| {
+            Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
+                as Box<dyn sp_state_machine::Error>
+        })?;
 
-    sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
-        pre_execution_root,
-        proof,
-        &mut Default::default(),
-        executor,
-        spawn_handle,
-        execution_phase.verifying_method(),
-        execution_phase.call_data(),
-        &runtime_code,
-    )
-    .map_err(Into::into)
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let runtime_code = state_runtime_code
+            .runtime_code()
+            .map_err(sp_blockchain::Error::RuntimeCode)?;
+
+        if let Some((delta, post_delta_root)) = delta_changes {
+            let delta_backend = create_delta_backend(trie_backend, delta, post_delta_root);
+            sp_state_machine::prove_execution_on_trie_backend(
+                &delta_backend,
+                &mut Default::default(),
+                &*self.executor,
+                self.spawn_handle.clone(),
+                execution_phase.proving_method(),
+                execution_phase.call_data(),
+                &runtime_code,
+            )
+            .map(|(_ret, proof)| proof)
+            .map_err(Into::into)
+        } else {
+            sp_state_machine::prove_execution_on_trie_backend(
+                trie_backend,
+                &mut Default::default(),
+                &*self.executor,
+                self.spawn_handle.clone(),
+                execution_phase.proving_method(),
+                execution_phase.call_data(),
+                &runtime_code,
+            )
+            .map(|(_ret, proof)| proof)
+            .map_err(Into::into)
+        }
+    }
+
+    /// Runs the execution using the partial state constructed from the given storage proof and
+    /// returns the execution result.
+    ///
+    /// The execution result contains the information of state root after applying the execution
+    /// so that it can be used to compare with the one specified in the fraud proof.
+    pub fn check_execution_proof(
+        &self,
+        at: BlockId<Block>,
+        execution_phase: &ExecutionPhase,
+        pre_execution_root: H256,
+        proof: StorageProof,
+    ) -> sp_blockchain::Result<Vec<u8>> {
+        // TODO: fetch the runtime code properly.
+        let state = self.backend.state_at(at)?;
+
+        let trie_backend = state.as_trie_backend().ok_or_else(|| {
+            Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
+                as Box<dyn sp_state_machine::Error>
+        })?;
+
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let runtime_code = state_runtime_code
+            .runtime_code()
+            .map_err(sp_blockchain::Error::RuntimeCode)?;
+
+        sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
+            pre_execution_root,
+            proof,
+            &mut Default::default(),
+            &*self.executor,
+            self.spawn_handle.clone(),
+            execution_phase.verifying_method(),
+            execution_phase.call_data(),
+            &runtime_code,
+        )
+        .map_err(Into::into)
+    }
 }
 
 /// Create a new trie backend with memory DB delta changes.
