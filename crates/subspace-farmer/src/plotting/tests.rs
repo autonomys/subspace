@@ -35,7 +35,7 @@ async fn plotting_happy_path() {
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
     let address = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -142,7 +142,7 @@ async fn plotting_continue() {
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
     let address = identity.public_key().to_bytes().into();
 
-    let plot = Plot::open_or_create(&base_directory, address, None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -336,7 +336,7 @@ async fn plotting_piece_eviction() {
 
     let address = identity.public_key().to_bytes().into();
     let salt = Salt::default();
-    let plot = Plot::open_or_create(&base_directory, address, Some(5)).unwrap();
+    let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 

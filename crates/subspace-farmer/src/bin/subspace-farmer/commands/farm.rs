@@ -50,15 +50,15 @@ pub(crate) async fn farm(
     info!("Opening plot");
     let plot_fut = tokio::task::spawn_blocking({
         let base_directory = base_directory.clone();
-        let plot_size = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
+        let plot_size = plot_size / PIECE_SIZE as u64;
 
-        if let Some(plot_size) = plot_size {
-            if plot_size > farmer_metadata.max_plot_size {
-                log::debug!(
-                    "Plot size ({plot_size}) is too large. Maximum plot size is {}",
-                    farmer_metadata.max_plot_size,
-                );
-            }
+        // TODO: This should be removed once multi replica is merged, as all the disk space will be
+        // used for plotting.
+        if plot_size > farmer_metadata.max_plot_size {
+            log::debug!(
+                "Plot size ({plot_size}) is too large. Maximum plot size is {}",
+                farmer_metadata.max_plot_size,
+            );
         }
 
         // TODO: Piece count should account for database overhead of various additional databases

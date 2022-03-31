@@ -150,13 +150,10 @@ impl Plot {
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: PublicKey,
-        max_piece_count: Option<u64>,
+        max_piece_count: u64,
     ) -> Result<Plot, PlotError> {
-        let plot_worker = PlotWorker::from_base_directory(
-            base_directory.as_ref(),
-            address,
-            max_piece_count.unwrap_or(u64::MAX),
-        )?;
+        let plot_worker =
+            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))

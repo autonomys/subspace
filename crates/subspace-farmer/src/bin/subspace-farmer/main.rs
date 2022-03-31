@@ -66,7 +66,7 @@ struct FarmingArgs {
     // TODO: Should we require user to always set plot size?
     /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
     #[clap(long, parse(try_from_str = parse_human_readable))]
-    plot_size: Option<u64>,
+    plot_size: u64,
 }
 
 #[derive(Debug, Parser)]
