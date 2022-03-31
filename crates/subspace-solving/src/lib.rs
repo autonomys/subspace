@@ -22,7 +22,7 @@
 mod codec;
 
 pub use codec::SubspaceCodec;
-pub use construct_uint::*;
+pub use construct_uint::PieceDistance;
 use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
 use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};

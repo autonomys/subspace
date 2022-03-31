@@ -241,11 +241,6 @@ mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
-
-        /// Total number of segments in the blockchain
-        fn total_number_of_segments() -> u64 {
-            RecordsRoot::<Self>::count() as u64
-        }
     }
 
     /// Events type.
@@ -431,6 +426,13 @@ impl<T: Config> Pallet<T> {
         // we double the minimum block-period so each author can always propose within
         // the majority of their slot.
         <T as pallet_timestamp::Config>::MinimumPeriod::get().saturating_mul(2u32.into())
+    }
+
+    /// Total number of pieces in the blockchain
+    pub fn total_pieces() -> u64 {
+        // TODO: This assumes fixed size segments, which might not be the case
+        let merkle_num_leaves = T::RecordedHistorySegmentSize::get() / T::RecordSize::get() * 2;
+        u64::from(RecordsRoot::<T>::count()) * u64::from(merkle_num_leaves)
     }
 
     /// Determine whether a randomness update should take place at this block.

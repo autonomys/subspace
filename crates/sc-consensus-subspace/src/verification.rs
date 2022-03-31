@@ -178,14 +178,14 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
 fn is_within_max_plot(
     piece_index: PieceIndex,
     key: &FarmerPublicKey,
-    total_number_of_pieces: u64,
+    total_pieces: u64,
     max_plot_size: u64,
 ) -> bool {
-    if total_number_of_pieces < max_plot_size {
+    if total_pieces < max_plot_size {
         return true;
     }
-    let max_distance = PieceDistance::MAX / total_number_of_pieces * max_plot_size;
-    PieceDistance::xor_distance(&piece_index.into(), key) < max_distance
+    let max_distance = PieceDistance::MAX / total_pieces * max_plot_size;
+    PieceDistance::xor_distance(&piece_index.into(), key) <= max_distance
 }
 
 pub(crate) struct PieceCheckParams {
@@ -193,7 +193,7 @@ pub(crate) struct PieceCheckParams {
     pub(crate) position: u64,
     pub(crate) record_size: u32,
     pub(super) max_plot_size: u64,
-    pub(super) total_number_of_pieces: u64,
+    pub(super) total_pieces: u64,
 }
 
 /// If `piece_check_params` is `None`, piece validity check will be skipped.
@@ -240,13 +240,13 @@ pub(crate) fn verify_solution<B: BlockT>(
         position,
         record_size,
         max_plot_size,
-        total_number_of_pieces,
+        total_pieces,
     }) = piece_check_params
     {
         if !is_within_max_plot(
             solution.piece_index,
             &solution.public_key,
-            total_number_of_pieces,
+            total_pieces,
             max_plot_size,
         ) {
             return Err(Error::OutsideOfMaxPlot(slot));

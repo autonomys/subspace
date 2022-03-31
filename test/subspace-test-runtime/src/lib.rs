@@ -803,8 +803,8 @@ impl_runtime_apis! {
             <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
 
-        fn total_number_of_segments() -> u64 {
-            <Self as pallet_subspace::Config>::total_number_of_segments()
+        fn total_pieces() -> u64 {
+            <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
         fn record_size() -> u32 {

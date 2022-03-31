@@ -30,6 +30,7 @@ use sp_std::{marker::PhantomData, prelude::*};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 use sp_core::{offchain::KeyTypeId, OpaqueMetadata, RuntimeDebug};
 use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
+use subspace_core_primitives::PIECE_SIZE;
 use trie_db::{Trie, TrieMut};
 
 use cfg_if::cfg_if;
@@ -665,7 +666,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
-    type MaxPlotSize = ConstU64<{ u64::MAX }>;
+    type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 / PIECE_SIZE as u64 }>;
     type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -937,8 +938,8 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
-                fn total_number_of_segments() -> u64 {
-                    <Self as pallet_subspace::Config>::total_number_of_segments()
+                fn total_pieces() -> u64 {
+                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
 
                 fn recorded_history_segment_size() -> u32 {
@@ -1259,8 +1260,8 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
-                fn total_number_of_segments() -> u64 {
-                    <Self as pallet_subspace::Config>::total_number_of_segments()
+                fn total_pieces() -> u64 {
+                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
 
                 fn recorded_history_segment_size() -> u32 {

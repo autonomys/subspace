@@ -171,10 +171,7 @@ where
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
-            let total_number_of_pieces = runtime_api
-                .total_number_of_segments(&parent_block_id)
-                .ok()?
-                * merkle_num_leaves;
+            let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -217,7 +214,7 @@ where
                         position,
                         record_size,
                         max_plot_size,
-                        total_number_of_pieces,
+                        total_pieces,
                     }),
                     signing_context: &self.signing_context,
                 },

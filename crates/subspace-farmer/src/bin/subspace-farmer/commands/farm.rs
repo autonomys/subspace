@@ -52,14 +52,13 @@ pub(crate) async fn farm(
         let base_directory = base_directory.clone();
         let plot_size = plot_size.map(|plot_size| plot_size / PIECE_SIZE as u64);
 
-        match plot_size {
-            Some(plot_size) if plot_size > farmer_metadata.max_plot_size => {
-                return Err(anyhow!(
+        if let Some(plot_size) = plot_size {
+            if plot_size > farmer_metadata.max_plot_size {
+                log::debug!(
                     "Plot size ({plot_size}) is too large. Maximum plot size is {}",
                     farmer_metadata.max_plot_size,
-                ))
+                );
             }
-            _ => (),
         }
 
         // TODO: Piece count should account for database overhead of various additional databases
