@@ -57,6 +57,9 @@ impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
 /// The client type being used by the test service.
 pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
+/// The backend type being used by the test service.
+pub type Backend = sc_service::TFullBackend<Block>;
+
 /// Run a farmer.
 pub fn start_farmer(new_full: &NewFull<Arc<Client>>) {
     let client = new_full.client.clone();

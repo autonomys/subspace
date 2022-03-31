@@ -9035,6 +9035,7 @@ dependencies = [
  "rand 0.8.5",
  "sc-cli",
  "sc-client-api",
+ "sc-executor",
  "sc-network",
  "sc-service",
  "sc-tracing",

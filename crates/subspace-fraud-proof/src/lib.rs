@@ -229,7 +229,8 @@ where
         }
     }
 
-    fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
+    /// Verifies the fraud proof.
+    pub fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
         let FraudProof {
             parent_hash,
             pre_state_root,
