@@ -4,13 +4,14 @@ mod mock;
 
 use super::*;
 use crate::chain::FinalityProof;
-use crate::grandpa::{verify_justification, Error, GrandpaJustification};
+use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
 use crate::Error as ErrorP;
+use crate::{initialize, validate};
+use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_noop, assert_ok};
 use justification::*;
 use keyring::*;
-use mock::{run_test, ChainId, Origin, TestRuntime};
-use pallet_feeds::FeedValidator;
+use mock::{run_test, ChainId, TestRuntime};
 use sp_finality_grandpa::{ConsensusLog, GRANDPA_ENGINE_ID};
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::BlakeTwo256;
@@ -191,62 +192,17 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
     );
 }
 
-#[test]
-fn pallet_owner_may_change_owner() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        Chains::<TestRuntime>::insert(
-            chain_id,
-            ChainData {
-                chain_type: ChainType::PolkadotLike,
-                halted: false,
-            },
-        );
-        PalletOwner::<TestRuntime>::put(2);
-
-        assert_ok!(Pallet::<TestRuntime>::set_owner(Origin::root(), Some(1)));
-        assert_noop!(
-            Pallet::<TestRuntime>::set_operational(Origin::signed(2), chain_id, false),
-            DispatchError::BadOrigin,
-        );
-        assert_ok!(Pallet::<TestRuntime>::set_operational(
-            Origin::root(),
-            chain_id,
-            false
-        ));
-
-        assert_ok!(Pallet::<TestRuntime>::set_owner(Origin::signed(1), None));
-        assert_noop!(
-            Pallet::<TestRuntime>::set_operational(Origin::signed(1), chain_id, true),
-            DispatchError::BadOrigin,
-        );
-        assert_noop!(
-            Pallet::<TestRuntime>::set_operational(Origin::signed(2), chain_id, true),
-            DispatchError::BadOrigin,
-        );
-        assert_ok!(Pallet::<TestRuntime>::set_operational(
-            Origin::root(),
-            chain_id,
-            true
-        ));
-    });
-}
-
-fn init_with_origin(
-    chain_id: ChainId,
-    origin: Origin,
-) -> Result<InitializationData<ChainId>, DispatchError> {
+fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchError> {
     let genesis = test_header::<TestHeader>(0);
 
     let init_data = crate::InitializationData {
-        chain_id,
         chain_type: ChainType::PolkadotLike,
         header: genesis.encode(),
         authority_list: authority_list(),
         set_id: 1,
     };
 
-    Pallet::<TestRuntime>::initialize(origin, init_data.clone())?;
+    initialize::<TestRuntime>(chain_id, init_data.encode().as_slice())?;
     Ok(init_data)
 }
 
@@ -275,7 +231,7 @@ fn submit_finality_proof(
         unknown_headers: vec![],
     };
 
-    <Pallet<TestRuntime> as FeedValidator<ChainId>>::validate(
+    validate::<TestRuntime>(
         chain_id,
         block.encode().as_slice(),
         finality_proof.encode().as_slice(),
@@ -286,14 +242,13 @@ fn submit_finality_proof(
 fn init_storage_entries_are_correctly_initialized() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let init_data = init_with_origin(chain_id, Origin::root()).unwrap();
+        let init_data = init_with_origin(chain_id).unwrap();
         assert_eq!(
-            BestFinalized::<TestRuntime>::get(init_data.chain_id)
-                .expect("should hold the encoded header"),
+            BestFinalized::<TestRuntime>::get(chain_id).expect("should hold the encoded header"),
             init_data.header
         );
         assert_eq!(
-            CurrentAuthoritySet::<TestRuntime>::get(init_data.chain_id).authorities,
+            CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
             init_data.authority_list
         );
     })
@@ -303,36 +258,11 @@ fn init_storage_entries_are_correctly_initialized() {
 fn init_can_only_initialize_pallet_once() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
         assert_noop!(
-            init_with_origin(chain_id, Origin::root()),
+            init_with_origin(chain_id),
             <ErrorP<TestRuntime>>::AlreadyInitialized
         );
-    })
-}
-
-#[test]
-fn pallet_rejects_headers_if_halted() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
-
-        assert_ok!(Pallet::<TestRuntime>::set_operational(
-            Origin::root(),
-            chain_id,
-            false
-        ));
-        assert_noop!(
-            submit_valid_finality_proof(chain_id, 1),
-            ErrorP::<TestRuntime>::Halted
-        );
-
-        assert_ok!(Pallet::<TestRuntime>::set_operational(
-            Origin::root(),
-            chain_id,
-            true
-        ));
-        assert_ok!(submit_valid_finality_proof(chain_id, 1));
     })
 }
 
@@ -351,7 +281,7 @@ fn pallet_rejects_header_if_not_initialized_yet() {
 fn succesfully_imports_header_with_valid_finality() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
 
         let header = test_header::<TestHeader>(1);
@@ -366,7 +296,7 @@ fn succesfully_imports_header_with_valid_finality() {
 fn rejects_justification_that_skips_authority_set_transition() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
         let header = test_header::<TestHeader>(1);
 
         let params = JustificationGeneratorParams::<TestHeader> {
@@ -386,7 +316,7 @@ fn rejects_justification_that_skips_authority_set_transition() {
 fn does_not_import_header_with_invalid_finality_proof() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
 
         let header = test_header(1);
         let mut justification = make_default_justification(&header);
@@ -407,14 +337,16 @@ fn disallows_invalid_authority_set() {
 
         let invalid_authority_list = vec![(ALICE.into(), u64::MAX), (BOB.into(), u64::MAX)];
         let init_data = InitializationData {
-            chain_id,
             chain_type: ChainType::PolkadotLike,
             header: genesis.encode(),
             authority_list: invalid_authority_list,
             set_id: 1,
         };
 
-        assert_ok!(Pallet::<TestRuntime>::initialize(Origin::root(), init_data));
+        assert_ok!(initialize::<TestRuntime>(
+            chain_id,
+            init_data.encode().as_slice()
+        ));
 
         let header = test_header::<TestHeader>(1);
         let justification = make_default_justification(&header);
@@ -430,7 +362,7 @@ fn disallows_invalid_authority_set() {
 fn importing_header_ensures_that_chain_is_extended() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
         assert_ok!(submit_valid_finality_proof(chain_id, 4));
         assert_err!(
             submit_valid_finality_proof(chain_id, 3),
@@ -459,7 +391,7 @@ fn change_log(delay: u32) -> Digest {
 fn importing_header_enacts_new_authority_set() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
 
         let next_set_id = 2;
         let next_authorities = vec![(ALICE.into(), 1), (BOB.into(), 1)];
@@ -500,7 +432,7 @@ fn importing_header_enacts_new_authority_set() {
 fn importing_header_rejects_header_with_scheduled_change_delay() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
 
         // Need to update the header digest to indicate that our header signals an authority set
         // change. However, the change doesn't happen until the next block.
@@ -539,7 +471,7 @@ fn forced_change_log(delay: u32) -> Digest {
 fn importing_header_rejects_header_with_forced_changes() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, Origin::root()));
+        assert_ok!(init_with_origin(chain_id));
 
         // Need to update the header digest to indicate that it signals a forced authority set
         // change.

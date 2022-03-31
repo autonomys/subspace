@@ -33,7 +33,7 @@ use sp_std::vec::Vec;
 ///
 /// This particular proof is used to prove that headers on a bridged chain
 /// (so not our chain) have been finalized correctly.
-#[derive(Encode, Decode, RuntimeDebug, Clone, PartialEq, Eq, TypeInfo)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo)]
 pub struct GrandpaJustification<Header: HeaderT> {
     /// The round (voting period) this justification is valid for.
     pub round: u64,

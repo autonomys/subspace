@@ -37,33 +37,25 @@ mod tests;
 
 use chain::ChainType;
 use codec::{Decode, Encode};
-use frame_support::dispatch::DispatchResult;
-use grandpa::{find_forced_change, find_scheduled_change, AuthoritySet};
-use pallet_feeds::FeedValidator;
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_finality_grandpa::{AuthorityList, SetId};
-use sp_runtime::traits::{BadOrigin, Zero};
 use sp_std::{fmt::Debug, vec::Vec};
 
 // Re-export in crate namespace for `construct_runtime!`
-use crate::chain::{Chain, PolkadotLike};
 pub use pallet::*;
 
 // ChainData holds the type of the Chain and if its operational
 #[derive(Encode, Decode, TypeInfo)]
 struct ChainData {
     chain_type: ChainType,
-    halted: bool,
 }
 
 /// Data required to initialize a Chain
 #[derive(Default, Debug, Encode, Decode, Clone, PartialEq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct InitializationData<ChainId> {
-    /// Unique chain ID
-    pub chain_id: ChainId,
+pub struct InitializationData {
     /// Type of Chain
     pub chain_type: ChainType,
     /// Scale encoded header from which we should start syncing.
@@ -76,13 +68,16 @@ pub struct InitializationData<ChainId> {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::*;
-    use crate::grandpa::verify_justification;
+    use crate::chain::{Chain, PolkadotLike};
+    use crate::grandpa::{
+        find_forced_change, find_scheduled_change, verify_justification, AuthoritySet,
+    };
+    use crate::{ChainData, ChainType, InitializationData};
     use finality_grandpa::voter_set::VoterSet;
-    use frame_support::dispatch::RawOrigin;
     use frame_support::pallet_prelude::*;
-    use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Header;
+    use sp_runtime::traits::Zero;
+    use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -93,82 +88,6 @@ pub mod pallet {
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(PhantomData<T>);
-
-    #[pallet::call]
-    impl<T: Config> Pallet<T> {
-        /// Bootstrap the chain to start importing valid finalized blocks
-        ///
-        /// The initial configuration provided does not need to be the genesis header of the bridged
-        /// chain, it can be any arbitrary header. You can also provide the next scheduled set
-        /// change if it is already know.
-        ///
-        /// This function is only allowed to be called from a trusted origin and writes to storage
-        /// with practically no checks in terms of the validity of the data. It is important that
-        /// you ensure that valid data is being passed in.
-        #[pallet::weight((T::DbWeight::get().reads_writes(2, 3), DispatchClass::Operational))]
-        pub fn initialize(
-            origin: OriginFor<T>,
-            init_data: InitializationData<T::ChainId>,
-        ) -> DispatchResult {
-            ensure_owner_or_root::<T>(origin)?;
-
-            ensure!(
-                !BestFinalized::<T>::contains_key(init_data.chain_id),
-                Error::<T>::AlreadyInitialized
-            );
-            initialize_chain::<T>(init_data);
-            Ok(())
-        }
-
-        /// Change `PalletOwner`.
-        ///
-        /// May only be called either by root, or by `PalletOwner`.
-        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Operational))]
-        pub fn set_owner(
-            origin: OriginFor<T>,
-            new_owner: Option<T::AccountId>,
-        ) -> DispatchResultWithPostInfo {
-            ensure_owner_or_root::<T>(origin)?;
-            match new_owner {
-                Some(new_owner) => {
-                    PalletOwner::<T>::put(&new_owner);
-                    log::info!(target: "runtime::grandpa-finality-verifier", "Setting pallet Owner to: {:?}", new_owner);
-                }
-                None => {
-                    PalletOwner::<T>::kill();
-                    log::info!(target: "runtime::grandpa-finality-verifier", "Removed Owner of pallet.");
-                }
-            }
-
-            Ok(().into())
-        }
-
-        /// Halt or resume all pallet operations.
-        ///
-        /// May only be called either by root, or by `PalletOwner`.
-        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Operational))]
-        pub fn set_operational(
-            origin: OriginFor<T>,
-            chain_id: T::ChainId,
-            operational: bool,
-        ) -> DispatchResult {
-            ensure_owner_or_root::<T>(origin)?;
-            Chains::<T>::try_mutate(chain_id, |maybe_data| -> DispatchResult {
-                let data = maybe_data.as_mut().ok_or(Error::<T>::ChainUnknown)?;
-                data.halted = !operational;
-                Ok(())
-            })
-        }
-    }
-
-    /// Optional pallet owner.
-    ///
-    /// Pallet owner has a right to halt all pallet operations and then resume it. If it is
-    /// `None`, then there are no direct ways to halt/resume pallet operations, but other
-    /// runtime methods may still be used to do that (i.e. democracy::referendum to update halt
-    /// flag directly or call the `halt_operations`).
-    #[pallet::storage]
-    pub type PalletOwner<T: Config> = StorageValue<_, T::AccountId, OptionQuery>;
 
     /// Best finalized header of a Chain
     #[pallet::storage]
@@ -197,6 +116,8 @@ pub mod pallet {
         InvalidAuthoritySet,
         /// The given justification is invalid for the given header.
         InvalidJustification,
+        /// Failed to decode initialization data
+        FailedDecodingInitData,
         /// Failed to Decode header
         FailedDecodingHeader,
         /// Failed to Decode block
@@ -215,19 +136,6 @@ pub mod pallet {
         UnsupportedScheduledChange,
     }
 
-    /// Ensure that the origin is either root, or `PalletOwner`.
-    fn ensure_owner_or_root<T: Config>(origin: T::Origin) -> Result<(), BadOrigin> {
-        match origin.into() {
-            Ok(RawOrigin::Root) => Ok(()),
-            Ok(RawOrigin::Signed(ref signer))
-                if Some(signer) == <PalletOwner<T>>::get().as_ref() =>
-            {
-                Ok(())
-            }
-            _ => Err(BadOrigin),
-        }
-    }
-
     /// Ensure that the pallet is in operational mode (not halted).
     pub(crate) fn ensure_operational<T: Config>(
         chain_id: T::ChainId,
@@ -235,37 +143,33 @@ pub mod pallet {
         let data = Chains::<T>::get(chain_id);
         match data {
             None => Err(Error::<T>::ChainUnknown),
-            Some(data) => {
-                if data.halted {
-                    Err(Error::<T>::Halted)
-                } else {
-                    Ok(data.chain_type)
-                }
-            }
+            Some(data) => Ok(data.chain_type),
         }
     }
 
-    pub(crate) fn initialize_chain<T: Config>(init_params: InitializationData<T::ChainId>) {
+    pub(crate) fn initialize_chain<T: Config>(
+        chain_id: T::ChainId,
+        init_params: InitializationData,
+    ) -> DispatchResult {
+        ensure!(
+            !BestFinalized::<T>::contains_key(chain_id),
+            Error::<T>::AlreadyInitialized
+        );
+
         let InitializationData {
-            chain_id,
             chain_type,
             header,
             authority_list,
             set_id,
         } = init_params;
         BestFinalized::<T>::insert(chain_id, header);
-        Chains::<T>::insert(
-            chain_id,
-            ChainData {
-                chain_type,
-                halted: false,
-            },
-        );
+        Chains::<T>::insert(chain_id, ChainData { chain_type });
         let authority_set = AuthoritySet {
             authorities: authority_list,
             set_id,
         };
-        CurrentAuthoritySet::<T>::insert(chain_id, authority_set)
+        CurrentAuthoritySet::<T>::insert(chain_id, authority_set);
+        Ok(())
     }
 
     pub(crate) fn validate_finalized_block<T: Config, C: Chain>(
@@ -336,7 +240,7 @@ pub mod pallet {
             Error::<T>::UnsupportedScheduledChange
         );
 
-        if let Some(change) = super::find_scheduled_change(header) {
+        if let Some(change) = find_scheduled_change(header) {
             // GRANDPA only includes a `delay` for forced changes, so this isn't valid.
             ensure!(
                 change.delay == Zero::zero(),
@@ -363,10 +267,31 @@ pub mod pallet {
 
         Ok(())
     }
-}
 
-impl<T: Config> FeedValidator<T::ChainId> for Pallet<T> {
-    fn validate(chain_id: T::ChainId, object: &[u8], proof: &[u8]) -> DispatchResult {
+    /// Bootstrap the chain to start importing valid finalized blocks
+    ///
+    /// The initial configuration provided does not need to be the genesis header of the bridged
+    /// chain, it can be any arbitrary header. You can also provide the next scheduled set
+    /// change if it is already know.
+    ///
+    /// This function is only allowed to be called from a trusted origin and writes to storage
+    /// with practically no checks in terms of the validity of the data. It is important that
+    /// you ensure that valid data is being passed in.
+    pub fn initialize<T: Config>(chain_id: T::ChainId, init_data: &[u8]) -> DispatchResult {
+        let data = InitializationData::decode(&mut &*init_data).map_err(|error| {
+            log::error!("Cannot decode init data, error: {:?}", error);
+            Error::<T>::FailedDecodingInitData
+        })?;
+
+        initialize_chain::<T>(chain_id, data)?;
+        Ok(())
+    }
+
+    pub fn validate<T: Config>(
+        chain_id: T::ChainId,
+        object: &[u8],
+        proof: &[u8],
+    ) -> DispatchResult {
         let chain_type = ensure_operational::<T>(chain_id)?;
         match chain_type {
             ChainType::PolkadotLike => {

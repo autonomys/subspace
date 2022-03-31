@@ -67,8 +67,10 @@ mod pallet {
     pub(super) type Object = Vec<u8>;
     /// User-provided object metadata (not addressable directly, but available in an even)
     pub(super) type ObjectMetadata = Vec<u8>;
-    /// Optional user provided proof for validation
-    pub(super) type Proof = Option<Vec<u8>>;
+    /// User provided proof for validation
+    pub(super) type Proof = Vec<u8>;
+    /// User provided initial data for validation
+    pub(super) type InitialValidation = Vec<u8>;
 
     /// Total amount of data and number of objects stored in a feed
     #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
@@ -130,7 +132,10 @@ mod pallet {
         // TODO: add proper weights
         /// Create a new feed
         #[pallet::weight(10_000)]
-        pub fn create(origin: OriginFor<T>, should_validate: bool) -> DispatchResult {
+        pub fn create(
+            origin: OriginFor<T>,
+            initial_validation: Option<InitialValidation>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let feed_id = Self::current_feed_id();
@@ -138,6 +143,12 @@ mod pallet {
             let next_feed_id = feed_id
                 .checked_add(&T::FeedId::one())
                 .ok_or(ArithmeticError::Overflow)?;
+            let mut should_validate = false;
+            if let Some(init_data) = initial_validation {
+                should_validate = true;
+                T::Validator::initialize(feed_id, init_data.as_slice())?;
+            }
+
             CurrentFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
             ShouldValidate::<T>::mutate(feed_id, |validate| *validate = should_validate);
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
@@ -156,7 +167,7 @@ mod pallet {
             feed_id: T::FeedId,
             object: Object,
             metadata: ObjectMetadata,
-            proof: Proof,
+            proof: Option<Proof>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -219,5 +230,6 @@ impl<T: Config> Call<T> {
 
 /// FeedValidator validates a given feed before accepting the feed
 pub trait FeedValidator<FeedId> {
+    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult;
     fn validate(feed_id: FeedId, object: &[u8], proof: &[u8]) -> DispatchResult;
 }

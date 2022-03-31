@@ -27,8 +27,6 @@ sp-std = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da84
 sp-trie = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 
-# our pallets
-pallet-feeds = { path = "../pallet-feeds", default-features = false }
 
 [dev-dependencies]
 ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
@@ -46,10 +44,9 @@ std = [
 	"num-traits/std",
 	"scale-info/std",
 	"serde",
+	"sp-core/std",
 	"sp-finality-grandpa/std",
 	"sp-runtime/std",
 	"sp-std/std",
 	"sp-trie/std",
-	"sp-core/std",
-	"pallet-feeds/std"
 ]

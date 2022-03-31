@@ -1,6 +1,3 @@
-// From construct_runtime macro
-#![allow(clippy::from_over_into)]
-
 use frame_support::{construct_runtime, parameter_types, weights::Weight};
 use sp_runtime::{
     testing::{Header, H256},

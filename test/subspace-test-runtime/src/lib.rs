@@ -28,6 +28,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
+use frame_support::dispatch::DispatchResult;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -40,6 +41,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
+use pallet_feeds::FeedValidator;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
@@ -61,8 +63,8 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, FeedId, Hash, Index, Moment, Signature,
-    CONFIRMATION_DEPTH_K, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
+    MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
     STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -473,10 +475,24 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
+/// Type used to represent a FeedId or ChainId
+pub type FeedId = u64;
+pub struct GrandpaValidator;
+
+impl FeedValidator<FeedId> for GrandpaValidator {
+    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult {
+        pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
+    }
+
+    fn validate(feed_id: FeedId, object: &[u8], proof: &[u8]) -> DispatchResult {
+        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object, proof)
+    }
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
-    type Validator = GrandpaFinalityVerifier;
+    type Validator = GrandpaValidator;
 }
 
 impl pallet_grandpa_finality_verifier::Config for Runtime {

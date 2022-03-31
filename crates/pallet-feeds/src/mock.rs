@@ -56,6 +56,10 @@ parameter_types! {
 }
 
 impl FeedValidator<FeedId> for () {
+    fn initialize(_feed_id: FeedId, _data: &[u8]) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
     fn validate(_feed_id: FeedId, _object: &[u8], _proof: &[u8]) -> DispatchResult {
         Ok(())
     }
