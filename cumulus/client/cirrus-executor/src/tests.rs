@@ -183,7 +183,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		)
 		.expect("Create `initialize_block` proof");
 
-	// Test `initialize_block` verification on executor.
+	// Test `initialize_block` verification.
 	let execution_result = prover
 		.check_execution_proof(
 			BlockId::Hash(parent_header.hash()),
@@ -196,7 +196,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-	// Test `initialize_block` verification on farmer.
 	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
 		alice.client.clone(),
 		alice.backend.clone(),
@@ -240,7 +239,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let target_trace_root: Hash = intermediate_roots[target_extrinsic_index].into();
 		assert_eq!(target_trace_root, post_delta_root);
 
-		// Test `apply_extrinsic` verification on executor.
+		// Test `apply_extrinsic` verification.
 		let execution_result = prover
 			.check_execution_proof(
 				BlockId::Hash(parent_header.hash()),
@@ -253,7 +252,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 			execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
 
-		// Test `apply_extrinsic` verification on farmer.
 		let fraud_proof = FraudProof {
 			parent_hash: parent_hash_alice,
 			pre_state_root: intermediate_roots[target_extrinsic_index].into(),
@@ -284,7 +282,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		)
 		.expect("Create `finalize_block` proof");
 
-	// Test `finalize_block` verification on executor.
+	// Test `finalize_block` verification.
 	let execution_result = prover
 		.check_execution_proof(
 			BlockId::Hash(parent_header.hash()),
@@ -297,7 +295,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, *header.state_root());
 
-	// Test `finalize_block` verification on farmer.
 	let fraud_proof = FraudProof {
 		parent_hash: parent_hash_alice,
 		pre_state_root: intermediate_roots.last().unwrap().into(),

@@ -61,7 +61,7 @@ where
         execution_phase: &ExecutionPhase,
         delta_changes: Option<(DB, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
-        // TODO: fetch the runtime code properly.
+        // TODO: fetch the runtime code from the primary chain instead of the local state.
         let state = self.backend.state_at(at)?;
 
         let trie_backend = state.as_trie_backend().ok_or_else(|| {
@@ -74,6 +74,8 @@ where
             .runtime_code()
             .map_err(sp_blockchain::Error::RuntimeCode)?;
 
+        // TODO: avoid using the String API specified by `proving_method()`
+        // https://github.com/paritytech/substrate/discussions/11095
         if let Some((delta, post_delta_root)) = delta_changes {
             let delta_backend = create_delta_backend(trie_backend, delta, post_delta_root);
             sp_state_machine::prove_execution_on_trie_backend(
@@ -114,7 +116,7 @@ where
         pre_execution_root: H256,
         proof: StorageProof,
     ) -> sp_blockchain::Result<Vec<u8>> {
-        // TODO: fetch the runtime code properly.
+        // TODO: fetch the runtime code from the primary chain instead of the local state.
         let state = self.backend.state_at(at)?;
 
         let trie_backend = state.as_trie_backend().ok_or_else(|| {

@@ -341,8 +341,6 @@ where
 
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
-		// TODO: way to call some runtime api against any specific state instead of having
-		// to work with String API directly.
 		let execution_proof = prover.prove_execution(
 			BlockId::Hash(parent_header.hash()),
 			&execution_phase,
@@ -614,8 +612,6 @@ where
 				let execution_phase =
 					ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
 
-				// TODO: way to call some runtime api against any specific state instead of having
-				// to work with String API directly.
 				let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
 					BlockId::Hash(parent_header.hash()),
 					&execution_phase,
@@ -650,8 +646,6 @@ where
 				let delta = storage_changes.transaction;
 				let post_delta_root = storage_changes.transaction_storage_root;
 
-				// TODO: way to call some runtime api against any specific state instead of having
-				// to work with String API directly.
 				let proof = prover.prove_execution(
 					BlockId::Hash(parent_header.hash()),
 					&execution_phase,
