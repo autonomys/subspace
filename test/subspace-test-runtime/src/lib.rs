@@ -19,6 +19,9 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+// Make execution WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
+
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -50,6 +53,7 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
+use sp_std::borrow::Cow;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -895,6 +899,10 @@ impl_runtime_apis! {
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             extrinsics_shuffling_seed::<Block>(header)
+        }
+
+        fn execution_wasm_bundle() -> Cow<'static, [u8]> {
+            EXECUTION_WASM_BUNDLE.into()
         }
     }
 
