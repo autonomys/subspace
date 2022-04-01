@@ -127,6 +127,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
+        ..
     } = farmer_data.metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case

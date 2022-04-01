@@ -8950,6 +8950,7 @@ dependencies = [
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
+ "uint",
 ]
 
 [[package]]

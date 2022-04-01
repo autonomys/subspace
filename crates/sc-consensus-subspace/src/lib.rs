@@ -186,6 +186,9 @@ pub enum Error<B: BlockT> {
     /// Solution is outside of solution range
     #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
+    /// Solution is outside of max plot size
+    #[error("Solution is outside of max plot size {0}")]
+    OutsideOfMaxPlot(Slot),
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),

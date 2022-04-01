@@ -27,8 +27,10 @@ use sp_core::crypto::ByteArray;
 use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
-use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
-use subspace_solving::{derive_global_challenge, is_local_challenge_valid, SubspaceCodec};
+use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution};
+use subspace_solving::{
+    derive_global_challenge, is_local_challenge_valid, PieceDistance, SubspaceCodec,
+};
 
 /// Subspace verification parameters
 pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
@@ -172,10 +174,26 @@ fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range
     }
 }
 
+/// Returns true if piece index is within farmer sector
+fn is_within_max_plot(
+    piece_index: PieceIndex,
+    key: &FarmerPublicKey,
+    total_pieces: u64,
+    max_plot_size: u64,
+) -> bool {
+    if total_pieces < max_plot_size {
+        return true;
+    }
+    let max_distance = PieceDistance::MAX / total_pieces * max_plot_size;
+    PieceDistance::xor_distance(&piece_index.into(), key) <= max_distance
+}
+
 pub(crate) struct PieceCheckParams {
     pub(crate) records_root: Sha256Hash,
     pub(crate) position: u64,
     pub(crate) record_size: u32,
+    pub(super) max_plot_size: u64,
+    pub(super) total_pieces: u64,
 }
 
 /// If `piece_check_params` is `None`, piece validity check will be skipped.
@@ -221,8 +239,19 @@ pub(crate) fn verify_solution<B: BlockT>(
         records_root,
         position,
         record_size,
+        max_plot_size,
+        total_pieces,
     }) = piece_check_params
     {
+        if !is_within_max_plot(
+            solution.piece_index,
+            &solution.public_key,
+            total_pieces,
+            max_plot_size,
+        ) {
+            return Err(Error::OutsideOfMaxPlot(slot));
+        }
+
         check_piece(slot, records_root, position, record_size, solution)?;
     }
 
