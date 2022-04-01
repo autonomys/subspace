@@ -67,8 +67,6 @@ mod pallet {
     pub(super) type Object = Vec<u8>;
     /// User-provided object metadata (not addressable directly, but available in an even)
     pub(super) type ObjectMetadata = Vec<u8>;
-    /// User provided proof for validation
-    pub(super) type Proof = Vec<u8>;
     /// User provided initial data for validation
     pub(super) type InitialValidation = Vec<u8>;
 
@@ -122,9 +120,6 @@ mod pallet {
     pub enum Error<T> {
         /// `FeedId` doesn't exist
         UnknownFeedId,
-
-        /// Proof is empty and is required for a feed that needs to be validated
-        ProofEmpty,
     }
 
     #[pallet::call]
@@ -167,7 +162,6 @@ mod pallet {
             feed_id: T::FeedId,
             object: Object,
             metadata: ObjectMetadata,
-            proof: Option<Proof>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -180,8 +174,7 @@ mod pallet {
 
             ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
             if ShouldValidate::<T>::get(feed_id) {
-                let proof = proof.ok_or(Error::<T>::ProofEmpty)?;
-                T::Validator::validate(feed_id, object.as_slice(), proof.as_slice())?
+                T::Validator::validate(feed_id, object.as_slice())?
             }
 
             Metadata::<T>::insert(feed_id, metadata.clone());
@@ -231,5 +224,5 @@ impl<T: Config> Call<T> {
 /// FeedValidator validates a given feed before accepting the feed
 pub trait FeedValidator<FeedId> {
     fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult;
-    fn validate(feed_id: FeedId, object: &[u8], proof: &[u8]) -> DispatchResult;
+    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult;
 }

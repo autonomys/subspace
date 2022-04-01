@@ -36,8 +36,7 @@ fn can_do_put() {
             Origin::signed(ACCOUNT_ID),
             FEED_ID,
             object,
-            object_metadata.clone(),
-            None
+            object_metadata.clone()
         ));
 
         // check Metadata hashmap for updated metadata
@@ -74,7 +73,6 @@ fn cannot_do_put_with_wrong_feed_id() {
                 wrong_feed_id,
                 object,
                 object_metadata,
-                None
             ),
             Error::<Test>::UnknownFeedId
         );

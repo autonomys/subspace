@@ -75,6 +75,7 @@ pub mod pallet {
     use crate::{ChainData, ChainType, InitializationData};
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
+    use sp_finality_grandpa::GRANDPA_ENGINE_ID;
     use sp_runtime::traits::Header;
     use sp_runtime::traits::Zero;
     use sp_std::{fmt::Debug, vec::Vec};
@@ -114,6 +115,8 @@ pub mod pallet {
         Halted,
         /// The authority set from the underlying header chain is invalid.
         InvalidAuthoritySet,
+        /// Justification is missing..
+        MissingJustification,
         /// The given justification is invalid for the given header.
         InvalidJustification,
         /// Failed to decode initialization data
@@ -175,12 +178,14 @@ pub mod pallet {
     pub(crate) fn validate_finalized_block<T: Config, C: Chain>(
         chain_id: T::ChainId,
         object: &[u8],
-        proof: &[u8],
     ) -> DispatchResult {
         let block = C::decode_block::<T>(object)?;
-        let finality_proof = C::decode_finality_proof::<T>(proof)?;
-        let justifications =
-            C::decode_grandpa_justifications::<T>(finality_proof.justification.as_slice())?;
+        let justification = block
+            .justifications
+            .ok_or(Error::<T>::MissingJustification)?
+            .into_justification(GRANDPA_ENGINE_ID)
+            .ok_or(Error::<T>::MissingJustification)?;
+        let justification = C::decode_grandpa_justifications::<T>(justification.as_slice())?;
         let best_finalized = {
             let data =
                 BestFinalized::<T>::get(chain_id).ok_or(Error::<T>::FinalizedHeaderNotFound)?;
@@ -191,12 +196,6 @@ pub mod pallet {
         let (number, hash) = (block.block.header.number(), block.block.header.hash());
         ensure!(best_finalized.number() < number, Error::<T>::OldHeader);
 
-        // ensure block and finality points to same block hash
-        ensure!(
-            hash == finality_proof.block,
-            Error::<T>::InvalidJustification
-        );
-
         // fetch current authority set
         let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);
         let voter_set =
@@ -204,7 +203,7 @@ pub mod pallet {
         let set_id = authority_set.set_id;
 
         // verify justification
-        verify_justification::<C::Header>((hash, *number), set_id, &voter_set, &justifications)
+        verify_justification::<C::Header>((hash, *number), set_id, &voter_set, &justification)
             .map_err(|e| {
                 log::error!(
                     target: "runtime::grandpa-finality-verifier",
@@ -287,15 +286,11 @@ pub mod pallet {
         Ok(())
     }
 
-    pub fn validate<T: Config>(
-        chain_id: T::ChainId,
-        object: &[u8],
-        proof: &[u8],
-    ) -> DispatchResult {
+    pub fn validate<T: Config>(chain_id: T::ChainId, object: &[u8]) -> DispatchResult {
         let chain_type = ensure_operational::<T>(chain_id)?;
         match chain_type {
             ChainType::PolkadotLike => {
-                validate_finalized_block::<T, PolkadotLike>(chain_id, object, proof)
+                validate_finalized_block::<T, PolkadotLike>(chain_id, object)
             }
         }
     }

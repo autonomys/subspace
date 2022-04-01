@@ -10,7 +10,7 @@ use sp_runtime::traits::{
     MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
 };
 use sp_runtime::{generic, OpaqueExtrinsic};
-use sp_std::{hash::Hash, str::FromStr, vec::Vec};
+use sp_std::{hash::Hash, str::FromStr};
 
 // ChainType represents the kind of the Chain type we are verifying the GRANDPA finality for
 #[derive(Encode, Debug, Decode, Clone, PartialEq, TypeInfo)]
@@ -35,19 +35,6 @@ impl Chain for PolkadotLike {
 }
 
 type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;
-
-/// Finality for block B is proved by providing:
-/// 1) the justification for the descendant block F;
-/// 2) headers sub-chain (B; F] if B != F;
-#[derive(Debug, PartialEq, Encode, Decode, Clone)]
-pub(crate) struct FinalityProof<Header: HeaderT> {
-    /// The hash of block F for which justification is provided.
-    pub block: Header::Hash,
-    /// Justification of the block F.
-    pub justification: Vec<u8>,
-    /// The set of headers in the range (B; F] that we believe are unknown to the caller. Ordered.
-    pub unknown_headers: Vec<Header>,
-}
 
 /// Minimal Substrate-based chain representation that may be used from no_std environment.
 pub(crate) trait Chain {
@@ -137,15 +124,6 @@ pub(crate) trait Chain {
         Self::Header::decode(&mut &*header).map_err(|error| {
             log::error!("Cannot decode header, error: {:?}", error);
             Error::<T>::FailedDecodingHeader
-        })
-    }
-
-    fn decode_finality_proof<T: Config>(
-        proof: &[u8],
-    ) -> Result<FinalityProof<Self::Header>, Error<T>> {
-        FinalityProof::<Self::Header>::decode(&mut &*proof).map_err(|error| {
-            log::error!("Cannot decode finality proof, error: {:?}", error);
-            Error::<T>::FailedDecodingFinalityProof
         })
     }
 

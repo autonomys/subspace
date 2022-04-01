@@ -60,7 +60,7 @@ impl FeedValidator<FeedId> for () {
         Ok(())
     }
 
-    fn validate(_feed_id: FeedId, _object: &[u8], _proof: &[u8]) -> DispatchResult {
+    fn validate(_feed_id: FeedId, _object: &[u8]) -> DispatchResult {
         Ok(())
     }
 }

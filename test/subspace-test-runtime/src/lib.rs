@@ -484,8 +484,8 @@ impl FeedValidator<FeedId> for GrandpaValidator {
         pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
     }
 
-    fn validate(feed_id: FeedId, object: &[u8], proof: &[u8]) -> DispatchResult {
-        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object, proof)
+    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult {
+        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object)
     }
 }
 

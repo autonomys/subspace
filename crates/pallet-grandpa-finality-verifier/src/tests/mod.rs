@@ -3,7 +3,6 @@ mod keyring;
 mod mock;
 
 use super::*;
-use crate::chain::FinalityProof;
 use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
 use crate::Error as ErrorP;
 use crate::{initialize, validate};
@@ -222,20 +221,10 @@ fn submit_finality_proof(
             header: header.clone(),
             extrinsics: vec![],
         },
-        justifications: None,
+        justifications: Some((GRANDPA_ENGINE_ID, justification.encode()).into()),
     };
 
-    let finality_proof = FinalityProof::<TestHeader> {
-        block: header.hash(),
-        justification: justification.encode(),
-        unknown_headers: vec![],
-    };
-
-    validate::<TestRuntime>(
-        chain_id,
-        block.encode().as_slice(),
-        finality_proof.encode().as_slice(),
-    )
+    validate::<TestRuntime>(chain_id, block.encode().as_slice())
 }
 
 #[test]
