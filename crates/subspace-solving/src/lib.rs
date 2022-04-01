@@ -51,7 +51,7 @@ mod construct_uint {
         }
 
         /// Convert piece distance to big endian bytes
-        pub fn as_bytes(self) -> [u8; 32] {
+        pub fn to_bytes(self) -> [u8; 32] {
             self.into()
         }
     }

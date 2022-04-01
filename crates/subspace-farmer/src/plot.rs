@@ -394,7 +394,7 @@ impl IndexHashToOffsetDB {
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .get(&distance.as_bytes())
+            .get(&distance.to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -423,12 +423,12 @@ impl IndexHashToOffsetDB {
         };
         let result = self
             .inner
-            .get(&max_distance.as_bytes())
+            .get(&max_distance.to_bytes())
             .map_err(io::Error::other)?
             .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
             .map(PieceOffset::from_le_bytes);
         self.inner
-            .delete(&max_distance.as_bytes())
+            .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
 
         let mut iter = self.inner.raw_iterator();
@@ -441,7 +441,7 @@ impl IndexHashToOffsetDB {
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
         let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .put(&distance.as_bytes(), offset.to_le_bytes())
+            .put(&distance.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
         match self.max_distance {
