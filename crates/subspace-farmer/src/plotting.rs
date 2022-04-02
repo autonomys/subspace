@@ -17,7 +17,6 @@ use subspace_core_primitives::{PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
-use tokio::sync::oneshot::Receiver;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -120,7 +119,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     client: T,
     mut subspace_codec: SubspaceCodec,
     best_block_number_check_interval: Duration,
-    mut stop_receiver: Receiver<()>,
+    mut stop_receiver: oneshot::Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
@@ -141,7 +140,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     .await
     .unwrap()?;
 
-    let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
+    let archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
         if farmer_data.plot.is_empty() {
             return Err(PlottingError::ContinueError);
@@ -187,15 +186,32 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =
         std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
 
-    // Process blocks since last fully archived block (or genesis) up to the current head minus K
-    let mut blocks_to_archive_from = archiver
-        .last_archived_block_number()
-        .map(|n| n + 1)
-        .unwrap_or_default();
+    let (archived_block_sender, mut archived_block_receiver) =
+        tokio::sync::broadcast::channel::<ArchivedBlock>(1);
 
-    // Erasure coding in archiver and piece encoding are CPU-intensive operations.
+    // Object mapping reads data on disk which uses synchronous IO
+    tokio::task::spawn_blocking({
+        let archived_block_receiver = archived_block_sender.subscribe();
+        move || {
+            background_object_mapping(merkle_num_leaves, archived_block_receiver, object_mappings)
+        }
+    });
+
+    // Erasure coding in archiver is CPU-intensive operations.
     tokio::task::spawn_blocking({
         let client = client.clone();
+        move || {
+            background_block_archiving(
+                archiver,
+                client,
+                archived_block_sender,
+                new_block_to_archive_receiver,
+            )
+        }
+    });
+
+    // Piece encoding is CPU-intensive operations.
+    tokio::task::spawn_blocking({
         let weak_plot = weak_plot.clone();
 
         #[allow(clippy::mut_range_bound)]
@@ -203,117 +219,74 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             let runtime_handle = tokio::runtime::Handle::current();
             info!("Plotting new blocks in the background");
 
-            'outer: for blocks_to_archive_to in new_block_to_archive_receiver.into_iter() {
-                let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
-                if blocks_to_archive_to >= blocks_to_archive_from {
-                    debug!(
-                        "Archiving blocks {}..={}",
-                        blocks_to_archive_from, blocks_to_archive_to,
-                    );
-                }
-
-                for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                    let EncodedBlockWithObjectMapping {
-                        block,
+            let mut last_root_block = None;
+            while let Ok(ArchivedBlock { number, segments }) =
+                runtime_handle.block_on(archived_block_receiver.recv())
+            {
+                for archived_segment in segments {
+                    let ArchivedSegment {
+                        root_block,
+                        mut pieces,
                         object_mapping,
-                    } = match runtime_handle.block_on(client.block_by_number(block_to_archive)) {
-                        Ok(Some(block)) => block,
-                        Ok(None) => {
-                            error!(
-                                "Failed to get block #{} from RPC: Block not found",
-                                block_to_archive,
-                            );
+                    } = archived_segment;
+                    let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
-                            blocks_to_archive_from = block_to_archive;
-                            continue 'outer;
+                    let object_mapping =
+                        create_global_object_mapping(piece_index_offset, object_mapping);
+
+                    // TODO: Batch encoding with more than 1 archived segment worth of data
+                    if let Some(plot) = weak_plot.upgrade() {
+                        let piece_indexes = (piece_index_offset..)
+                            .take(pieces.count())
+                            .collect::<Vec<PieceIndex>>();
+
+                        if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes)
+                        {
+                            error!("Failed to encode a piece: error: {}", error);
+                            continue;
                         }
-                        Err(error) => {
-                            error!(
-                                "Failed to get block #{} from RPC: {}",
-                                block_to_archive, error,
-                            );
+                        let pieces = Arc::new(pieces);
 
-                            blocks_to_archive_from = block_to_archive;
-                            continue 'outer;
-                        }
-                    };
-
-                    let mut last_root_block = None;
-                    for archived_segment in archiver.add_block(block, object_mapping) {
-                        let ArchivedSegment {
-                            root_block,
-                            mut pieces,
-                            object_mapping,
-                        } = archived_segment;
-                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
-
-                        let object_mapping =
-                            create_global_object_mapping(piece_index_offset, object_mapping);
-
-                        // TODO: Batch encoding with more than 1 archived segment worth of data
-                        if let Some(plot) = weak_plot.upgrade() {
-                            let piece_indexes = (piece_index_offset..)
-                                .take(pieces.count())
-                                .collect::<Vec<PieceIndex>>();
-
-                            if let Err(error) =
-                                subspace_codec.batch_encode(&mut pieces, &piece_indexes)
-                            {
-                                error!("Failed to encode a piece: error: {}", error);
-                                continue;
-                            }
-                            let pieces = Arc::new(pieces);
-
-                            match plot.write_many(Arc::clone(&pieces), piece_indexes) {
-                                Ok(write_result) => {
-                                    if let Err(error) = farmer_data
-                                        .commitments
-                                        .remove_pieces(write_result.evicted_pieces())
-                                    {
-                                        error!(
-                                            "Failed to remove old commitments for pieces: {}",
-                                            error
-                                        );
-                                    }
-
-                                    // TODO: This will not create commitments properly if pieces are
-                                    //  evicted during plotting
-                                    if let Err(error) =
-                                        farmer_data.commitments.create_for_pieces(|| {
-                                            write_result.to_recommitment_iterator()
-                                        })
-                                    {
-                                        error!(
-                                            "Failed to create commitments for pieces: {}",
-                                            error
-                                        );
-                                    }
+                        match plot.write_many(Arc::clone(&pieces), piece_indexes) {
+                            Ok(write_result) => {
+                                if let Err(error) = farmer_data
+                                    .commitments
+                                    .remove_pieces(write_result.evicted_pieces())
+                                {
+                                    error!(
+                                        "Failed to remove old commitments for pieces: {}",
+                                        error
+                                    );
                                 }
-                                Err(error) => error!("Failed to write encoded pieces: {}", error),
-                            }
-                            if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
-                                error!("Failed to store object mappings for pieces: {}", error);
-                            }
-                            let segment_index = root_block.segment_index();
-                            last_root_block.replace(root_block);
 
-                            info!(
-                                "Archived segment {} at block {}",
-                                segment_index, block_to_archive
-                            );
-                        }
-                    }
-
-                    if let Some(last_root_block) = last_root_block {
-                        if let Some(plot) = weak_plot.upgrade() {
-                            if let Err(error) = plot.set_last_root_block(&last_root_block) {
-                                error!("Failed to store last root block: {}", error);
+                                // TODO: This will not create commitments properly if pieces are
+                                //  evicted during plotting
+                                if let Err(error) = farmer_data
+                                    .commitments
+                                    .create_for_pieces(|| write_result.to_recommitment_iterator())
+                                {
+                                    error!("Failed to create commitments for pieces: {}", error);
+                                }
                             }
+                            Err(error) => error!("Failed to write encoded pieces: {}", error),
                         }
+                        if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
+                            error!("Failed to store object mappings for pieces: {}", error);
+                        }
+                        let segment_index = root_block.segment_index();
+                        last_root_block.replace(root_block);
+
+                        info!("Archived segment {} at block {}", segment_index, number,);
                     }
                 }
 
-                blocks_to_archive_from = blocks_to_archive_to + 1;
+                if let Some(last_root_block) = last_root_block {
+                    if let Some(plot) = weak_plot.upgrade() {
+                        if let Err(error) = plot.set_last_root_block(&last_root_block) {
+                            error!("Failed to store last root block: {}", error);
+                        }
+                    }
+                }
             }
         }
     });
@@ -426,6 +399,78 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     }
 
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct ArchivedBlock {
+    number: u32,
+    segments: Vec<ArchivedSegment>,
+}
+
+fn background_block_archiving(
+    mut archiver: Archiver,
+    client: impl RpcClient + Clone + Send + Sync + 'static,
+    archived_block_sender: tokio::sync::broadcast::Sender<ArchivedBlock>,
+    new_block_to_archive_receiver: std::sync::mpsc::Receiver<Arc<AtomicU32>>,
+) {
+    let runtime_handle = tokio::runtime::Handle::current();
+    info!("Plotting new blocks in the background");
+
+    // Process blocks since last fully archived block (or genesis) up to the current head minus K
+    let mut blocks_to_archive_from = archiver
+        .last_archived_block_number()
+        .map(|n| n + 1)
+        .unwrap_or_default();
+
+    'outer: for blocks_to_archive_to in new_block_to_archive_receiver.into_iter() {
+        let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
+        if blocks_to_archive_to >= blocks_to_archive_from {
+            debug!(
+                "Archiving blocks {}..={}",
+                blocks_to_archive_from, blocks_to_archive_to,
+            );
+        }
+
+        for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
+            let EncodedBlockWithObjectMapping {
+                block,
+                object_mapping,
+            } = match runtime_handle.block_on(client.block_by_number(block_to_archive)) {
+                Ok(Some(block)) => block,
+                Ok(None) => {
+                    error!(
+                        "Failed to get block #{} from RPC: Block not found",
+                        block_to_archive,
+                    );
+
+                    blocks_to_archive_from = block_to_archive;
+                    continue 'outer;
+                }
+                Err(error) => {
+                    error!(
+                        "Failed to get block #{} from RPC: {}",
+                        block_to_archive, error,
+                    );
+
+                    blocks_to_archive_from = block_to_archive;
+                    continue 'outer;
+                }
+            };
+
+            if archived_block_sender
+                .send(ArchivedBlock {
+                    number: block_to_archive,
+                    segments: archiver.add_block(block, object_mapping),
+                })
+                .is_err()
+            {
+                debug!("All archived block receivers are dropped. Stopping archiving");
+                return;
+            }
+        }
+
+        blocks_to_archive_from = blocks_to_archive_to + 1;
+    }
 }
 
 fn create_global_object_mapping(
