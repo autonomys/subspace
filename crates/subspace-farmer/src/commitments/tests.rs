@@ -1,5 +1,4 @@
-use crate::commitments::Commitments;
-use crate::plot::SinglePlot;
+use crate::{commitments::Commitments, MultiPlot};
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
@@ -20,11 +19,11 @@ async fn create() {
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
-    let plot = SinglePlot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let (plot, _) = MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot.plots[0].clone()).unwrap();
 
     let (tag, _) = commitments
         .find_by_range(correct_tag, solution_range, salt)
@@ -40,7 +39,7 @@ async fn find_by_tag() {
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
 
-    let plot = SinglePlot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let (plot, _) = MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     // Generate deterministic pieces, such that we don't have random errors in CI
@@ -50,7 +49,7 @@ async fn find_by_tag() {
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
 
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot.plots[0].clone()).unwrap();
 
     {
         let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
@@ -122,18 +121,18 @@ async fn remove_commitments() {
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
-    let plot = SinglePlot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let (plot, _) = MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.plots[0].clone()).unwrap();
 
     let (_, offset) = commitments
         .find_by_range(correct_tag, solution_range, salt)
         .unwrap();
 
     commitments
-        .remove_pieces(&[plot.read_piece_with_index(offset).unwrap().0])
+        .remove_pieces(&[plot.plots[0].read_piece_with_index(offset).unwrap().0])
         .unwrap();
 
     assert!(commitments

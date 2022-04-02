@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use subspace_core_primitives::{FlatPieces, PieceIndex, PublicKey, RootBlock};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PublicKey, RootBlock};
 use thiserror::Error;
 
 mod single_plot;

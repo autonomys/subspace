@@ -54,7 +54,7 @@ async fn plotting_happy_path() {
 
     let farmer_data = FarmerData::new(
         multiplot.clone(),
-        commitments,
+        vec![commitments],
         farmer_metadata,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
@@ -167,7 +167,7 @@ async fn plotting_continue() {
 
     let farmer_data = FarmerData::new(
         plot.clone(),
-        commitments.clone(),
+        vec![commitments.clone()],
         farmer_metadata.clone(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
@@ -225,7 +225,7 @@ async fn plotting_continue() {
 
     let farmer_data = FarmerData::new(
         plot.clone(),
-        commitments.clone(),
+        vec![commitments.clone()],
         farmer_metadata.clone(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
@@ -338,7 +338,7 @@ async fn plotting_piece_eviction() {
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.plots[0].clone()).unwrap();
 
     let client = MockRpc::new();
 
@@ -360,7 +360,7 @@ async fn plotting_piece_eviction() {
 
     let farmer_data = FarmerData::new(
         plot.clone(),
-        commitments.clone(),
+        vec![commitments.clone()],
         farmer_metadata,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
@@ -414,6 +414,7 @@ async fn plotting_piece_eviction() {
     }
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let plot = plot.plots[0].clone();
 
     for encoded_block in encoded_blocks {
         for archived_segment in

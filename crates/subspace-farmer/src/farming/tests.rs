@@ -1,8 +1,7 @@
 use crate::commitments::{CommitmentStatusChange, Commitments};
 use crate::farming::Farming;
-use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
-use crate::plot::SinglePlot;
+use crate::MultiPlot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -20,29 +19,27 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let base_directory = TempDir::new().unwrap();
 
-    let identity =
-        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
-
     let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
+    let (plot, identity) =
+        MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
     let address = identity.public_key().to_bytes().into();
-    let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX).unwrap();
 
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.plots[0].clone()).unwrap();
 
     let client = MockRpc::new();
 
     // start the farming task
     let farming_instance = Farming::start(
         plot.clone(),
-        commitments.clone(),
+        vec![commitments.clone()],
         client.clone(),
-        identity.clone(),
+        vec![identity],
         address,
     );
 

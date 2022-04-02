@@ -51,7 +51,7 @@ pub struct Plotting {
 
 pub struct FarmerData {
     multi_plot: MultiPlot,
-    commitments: Commitments,
+    commitments: Vec<Commitments>,
     metadata: FarmerMetadata,
     best_block_number_check_interval: Duration,
 }
@@ -59,7 +59,7 @@ pub struct FarmerData {
 impl FarmerData {
     pub fn new(
         multi_plot: MultiPlot,
-        commitments: Commitments,
+        commitments: Vec<Commitments>,
         metadata: FarmerMetadata,
         best_block_number_check_interval: Duration,
     ) -> Self {
@@ -132,17 +132,18 @@ impl Plotting {
             .plots
             .iter()
             .cloned()
+            .zip(farmer_data.commitments.clone())
             .map({
                 let client = &client;
                 let archived_block_sender = &archived_block_sender;
-                move |plot| {
+                move |(plot, commitments)| {
                     // Oneshot channels, that will be used for interrupt/stop the process
                     let (stop_sender, stop_receiver) = oneshot::channel();
 
                     let subspace_codec = SubspaceCodec::new(&plot.address());
                     let farmer_data = SingleFarmerData {
                         plot,
-                        commitments: farmer_data.commitments.clone(),
+                        commitments,
                         subspace_codec,
                         metadata,
                         best_block_number_check_interval: farmer_data

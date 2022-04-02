@@ -3,10 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::SinglePlot;
 use crate::rpc::RpcClient;
+use crate::{commitments::Commitments, MultiPlot};
+use futures::stream::{FuturesUnordered, StreamExt};
 use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
@@ -38,10 +39,10 @@ pub struct Farming {
 impl Farming {
     /// Returns an instance of farming, and also starts a concurrent background farming task
     pub fn start<T: RpcClient + Sync + Send + 'static>(
-        plot: SinglePlot,
-        commitments: Commitments,
+        plot: MultiPlot,
+        commitments: Vec<Commitments>,
         client: T,
-        identity: Identity,
+        identities: Vec<Identity>,
         reward_adress: PublicKey,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
@@ -53,8 +54,8 @@ impl Farming {
                 Box::pin(subscribe_to_slot_info(
                     &client,
                     &plot,
-                    &commitments,
-                    &identity,
+                    commitments,
+                    identities,
                     reward_adress,
                 )),
                 stop_receiver,
@@ -107,9 +108,9 @@ struct Salts {
 /// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
     client: &T,
-    plot: &SinglePlot,
-    commitments: &Commitments,
-    identity: &Identity,
+    multiplot: &MultiPlot,
+    commitments: Vec<Commitments>,
+    identities: Vec<Identity>,
     reward_address: PublicKey,
 ) -> Result<(), FarmingError> {
     info!("Subscribing to slot info notifications");
@@ -123,90 +124,103 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     while let Some(slot_info) = slot_info_notifications.recv().await {
         debug!("New slot: {:?}", slot_info);
 
-        update_commitments(plot, commitments, &mut salts, &slot_info);
+        multiplot
+            .plots
+            .iter()
+            .zip(&commitments)
+            .for_each(|(plot, commitments)| {
+                update_commitments(plot, commitments, &mut salts, &slot_info)
+            });
 
-        let maybe_solution_handle = tokio::task::spawn_blocking({
-            let identity = identity.clone();
-            let commitments = commitments.clone();
-            let plot = plot.clone();
+        let mut maybe_solution_handles = multiplot
+            .plots
+            .clone()
+            .into_iter()
+            .zip(identities.clone())
+            .zip(commitments.clone())
+            .map(|((plot, identity), commitments)| {
+                move || {
+                    let local_challenge =
+                        derive_local_challenge(slot_info.global_challenge, &identity);
+                    match commitments.find_by_range(
+                        local_challenge.derive_target(),
+                        slot_info.solution_range,
+                        slot_info.salt,
+                    ) {
+                        Some((tag, piece_offset)) => {
+                            let (encoding, piece_index) = plot
+                                .read_piece_with_index(piece_offset)
+                                .map_err(FarmingError::PlotRead)?;
+                            let solution = Solution {
+                                public_key: identity.public_key().to_bytes().into(),
+                                reward_address,
+                                piece_index,
+                                encoding,
+                                signature: identity.sign_farmer_solution(&tag).to_bytes().into(),
+                                local_challenge,
+                                tag,
+                            };
+                            debug!("Solution found");
+                            trace!("Solution found: {:?}", solution);
 
-            move || {
-                let local_challenge = derive_local_challenge(slot_info.global_challenge, &identity);
-                match commitments.find_by_range(
-                    local_challenge.derive_target(),
-                    slot_info.solution_range,
-                    slot_info.salt,
-                ) {
-                    Some((tag, piece_offset)) => {
-                        let (encoding, piece_index) = plot
-                            .read_piece_with_index(piece_offset)
-                            .map_err(FarmingError::PlotRead)?;
-                        let solution = Solution {
-                            public_key: identity.public_key().to_bytes().into(),
-                            reward_address,
-                            piece_index,
-                            encoding,
-                            signature: identity.sign_farmer_solution(&tag).to_bytes().into(),
-                            local_challenge,
-                            tag,
-                        };
-                        debug!("Solution found");
-                        trace!("Solution found: {:?}", solution);
-
-                        Ok(Some(solution))
-                    }
-                    None => {
-                        debug!("Solution not found");
-                        Ok(None)
-                    }
-                }
-            }
-        });
-
-        let maybe_solution = maybe_solution_handle.await.unwrap()?;
-
-        // When solution is found, wait for block signing request.
-        if maybe_solution.is_some() {
-            debug!("Subscribing to sign block notifications");
-            let mut block_signing_info_notifications = client
-                .subscribe_block_signing()
-                .await
-                .map_err(FarmingError::RpcError)?;
-
-            tokio::spawn({
-                let identity = identity.clone();
-                let client = client.clone();
-
-                async move {
-                    if let Some(BlockSigningInfo { header_hash }) =
-                        block_signing_info_notifications.recv().await
-                    {
-                        let signature = identity.block_signing(&header_hash);
-
-                        match client
-                            .submit_block_signature(BlockSignature {
-                                header_hash,
-                                signature: Some(signature.to_bytes().into()),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                info!(
-                                    "Successfully signed block 0x{} and sent signature to node",
-                                    hex::encode(header_hash)
-                                );
-                            }
-                            Err(error) => {
-                                warn!(
-                                    "Failed to send signature for block 0x{}: {}",
-                                    hex::encode(header_hash),
-                                    error
-                                );
-                            }
+                            Ok(Some((solution, identity)))
+                        }
+                        None => {
+                            debug!("Solution not found");
+                            Ok(None)
                         }
                     }
                 }
-            });
+            })
+            .map(tokio::task::spawn_blocking)
+            .collect::<FuturesUnordered<_>>();
+
+        let mut maybe_solution = None;
+        for maybe_solution_result in maybe_solution_handles.next().await {
+            // When solution is found, wait for block signing request.
+            if let Some((solution, identity)) = maybe_solution_result.unwrap()? {
+                debug!("Subscribing to sign block notifications");
+                let mut block_signing_info_notifications = client
+                    .subscribe_block_signing()
+                    .await
+                    .map_err(FarmingError::RpcError)?;
+
+                tokio::spawn({
+                    let client = client.clone();
+
+                    async move {
+                        if let Some(BlockSigningInfo { header_hash }) =
+                            block_signing_info_notifications.recv().await
+                        {
+                            let signature = identity.block_signing(&header_hash);
+
+                            match client
+                                .submit_block_signature(BlockSignature {
+                                    header_hash,
+                                    signature: Some(signature.to_bytes().into()),
+                                })
+                                .await
+                            {
+                                Ok(_) => {
+                                    info!(
+                                        "Successfully signed block 0x{} and sent signature to node",
+                                        hex::encode(header_hash)
+                                    );
+                                }
+                                Err(error) => {
+                                    warn!(
+                                        "Failed to send signature for block 0x{}: {}",
+                                        hex::encode(header_hash),
+                                        error
+                                    );
+                                }
+                            }
+                        }
+                    }
+                });
+                maybe_solution = Some(solution);
+                break;
+            }
         }
 
         client
