@@ -84,7 +84,9 @@ async fn plotting_happy_path() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -192,7 +194,9 @@ async fn plotting_continue() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -259,7 +263,9 @@ async fn plotting_continue() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -390,7 +396,9 @@ async fn plotting_piece_eviction() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time

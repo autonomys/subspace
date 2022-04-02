@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
 use std::mem;
@@ -168,7 +168,9 @@ pub(crate) async fn farm(
         client,
         subspace_codec,
         best_block_number_check_interval,
-    );
+    )
+    .await
+    .context("Failed to start plotting")?;
 
     tokio::select! {
         res = plotting_instance.wait() => if let Err(error) = res {
