@@ -159,11 +159,12 @@ pub(crate) async fn farm(
         reward_address,
     );
 
-    let farmer_data = FarmerData::new(plot, commitments, object_mappings, farmer_metadata);
+    let farmer_data = FarmerData::new(plot, commitments, farmer_metadata);
 
     // start the background plotting
     let plotting_instance = Plotting::start(
         farmer_data,
+        object_mappings,
         client,
         subspace_codec,
         best_block_number_check_interval,

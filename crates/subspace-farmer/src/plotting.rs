@@ -48,21 +48,14 @@ pub struct Plotting {
 pub struct FarmerData {
     plot: SinglePlot,
     commitments: Commitments,
-    object_mappings: ObjectMappings,
     metadata: FarmerMetadata,
 }
 
 impl FarmerData {
-    pub fn new(
-        plot: SinglePlot,
-        commitments: Commitments,
-        object_mappings: ObjectMappings,
-        metadata: FarmerMetadata,
-    ) -> Self {
+    pub fn new(plot: SinglePlot, commitments: Commitments, metadata: FarmerMetadata) -> Self {
         Self {
             plot,
             commitments,
-            object_mappings,
             metadata,
         }
     }
@@ -73,6 +66,7 @@ impl Plotting {
     /// Returns an instance of plotting, and also starts a concurrent background plotting task
     pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
         farmer_data: FarmerData,
+        object_mappings: ObjectMappings,
         client: T,
         subspace_codec: SubspaceCodec,
         best_block_number_check_interval: Duration,
@@ -83,6 +77,7 @@ impl Plotting {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(background_plotting(
             farmer_data,
+            object_mappings,
             client,
             subspace_codec,
             best_block_number_check_interval,
@@ -116,6 +111,7 @@ impl Drop for Plotting {
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     farmer_data: FarmerData,
+    object_mappings: ObjectMappings,
     client: T,
     mut subspace_codec: SubspaceCodec,
     best_block_number_check_interval: Duration,
@@ -197,6 +193,14 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     });
 
+    // Object mapping calls does disk which are synchronous
+    tokio::task::spawn_blocking({
+        let archived_block_receiver = archived_block_sender.subscribe();
+        move || {
+            background_object_mapping(merkle_num_leaves, archived_block_receiver, object_mappings)
+        }
+    });
+
     // Erasure coding in archiver is CPU-intensive operations.
     tokio::task::spawn_blocking({
         let client = client.clone();
@@ -227,12 +231,9 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                     let ArchivedSegment {
                         root_block,
                         mut pieces,
-                        object_mapping,
+                        ..
                     } = archived_segment;
                     let piece_index_offset = merkle_num_leaves * root_block.segment_index();
-
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
 
                     // TODO: Batch encoding with more than 1 archived segment worth of data
                     if let Some(plot) = weak_plot.upgrade() {
@@ -269,9 +270,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                 }
                             }
                             Err(error) => error!("Failed to write encoded pieces: {}", error),
-                        }
-                        if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
-                            error!("Failed to store object mappings for pieces: {}", error);
                         }
                         let segment_index = root_block.segment_index();
                         last_root_block.replace(root_block);
@@ -470,6 +468,31 @@ fn background_block_archiving(
         }
 
         blocks_to_archive_from = blocks_to_archive_to + 1;
+    }
+}
+
+fn background_object_mapping(
+    merkle_num_leaves: u64,
+    mut archived_block_receiver: tokio::sync::broadcast::Receiver<ArchivedBlock>,
+    object_mappings: ObjectMappings,
+) {
+    let runtime_handle = tokio::runtime::Handle::current();
+    while let Ok(ArchivedBlock { segments, .. }) =
+        runtime_handle.block_on(archived_block_receiver.recv())
+    {
+        for archived_segment in segments {
+            let ArchivedSegment {
+                root_block,
+                object_mapping,
+                ..
+            } = archived_segment;
+            let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+            let object_mapping = create_global_object_mapping(piece_index_offset, object_mapping);
+            if let Err(error) = object_mappings.store(&object_mapping) {
+                error!("Failed to store object mappings for pieces: {}", error);
+            }
+        }
     }
 }
 

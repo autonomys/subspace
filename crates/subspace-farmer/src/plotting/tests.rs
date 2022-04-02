@@ -57,7 +57,7 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(plot.clone(), commitments, object_mappings, farmer_metadata);
+    let farmer_data = FarmerData::new(plot.clone(), commitments, farmer_metadata);
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -80,6 +80,7 @@ async fn plotting_happy_path() {
 
     let plotting_instance = Plotting::start(
         farmer_data,
+        object_mappings,
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
@@ -164,12 +165,7 @@ async fn plotting_continue() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -192,6 +188,7 @@ async fn plotting_continue() {
 
     let plotting_instance = Plotting::start(
         farmer_data,
+        object_mappings.clone(),
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
@@ -225,12 +222,7 @@ async fn plotting_continue() {
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
 
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
@@ -263,6 +255,7 @@ async fn plotting_continue() {
 
     let plotting_instance = Plotting::start(
         farmer_data,
+        object_mappings.clone(),
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
@@ -362,12 +355,7 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings,
-        farmer_metadata,
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata);
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: {
@@ -398,6 +386,7 @@ async fn plotting_piece_eviction() {
 
     let plotting_instance = Plotting::start(
         farmer_data,
+        object_mappings,
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
