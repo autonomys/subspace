@@ -35,7 +35,7 @@ pub use farming::Farming;
 pub use identity::Identity;
 pub use jsonrpsee;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
-pub use plot::{Error as PlotError, SinglePlot};
+pub use plot::{Error as PlotError, MultiPlot, SinglePlot};
 pub use plotting::{FarmerData, Plotting};
 pub use rpc::RpcClient;
 pub use ws_rpc::WsRpc;
