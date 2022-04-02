@@ -13,24 +13,10 @@ use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, PIECE_SIZE,
 };
 use subspace_solving::PieceDistance;
-use thiserror::Error;
+
+use super::{Error, PieceOffset, Result};
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
-
-/// Index of piece on disk
-pub(crate) type PieceOffset = u64;
-
-#[derive(Debug, Error)]
-pub enum PlotError {
-    #[error("Plot open error: {0}")]
-    PlotOpen(io::Error),
-    #[error("Metadata DB open error: {0}")]
-    MetadataDbOpen(rocksdb::Error),
-    #[error("Index DB open error: {0}")]
-    IndexDbOpen(rocksdb::Error),
-    #[error("Offset DB open error: {0}")]
-    OffsetDbOpen(io::Error),
-}
 
 #[derive(Debug, Default)]
 pub struct WriteResult {
@@ -130,7 +116,7 @@ impl Drop for Inner {
     }
 }
 
-/// `Plot` struct is an abstraction on top of both plot and tags database.
+/// `SinglePlot` struct is an abstraction on top of both single repica plot and tags database.
 ///
 /// It converts requests to internal reads/writes to the plot and tags database. It
 /// prioritizes reads over writes by having separate queues for reads and writes requests, read
@@ -138,23 +124,26 @@ impl Drop for Inner {
 /// cycle repeats. This allows finding solution with as little delay as possible while introducing
 /// changes to the plot at the same time (re-plotting on salt changes or extending plot size).
 #[derive(Clone)]
-pub struct Plot {
+pub struct SinglePlot {
     inner: Arc<Inner>,
 }
 
-impl Plot {
+impl SinglePlot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: PublicKey,
         max_piece_count: u64,
-    ) -> Result<Plot, PlotError> {
-        let plot_worker =
-            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
+    ) -> Result<Self> {
+        let plot_worker = SinglePlotWorker::from_base_directory(
+            base_directory.as_ref(),
+            address,
+            max_piece_count,
+        )?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
-                .map_err(PlotError::MetadataDbOpen)?,
+                .map_err(Error::MetadataDbOpen)?,
         );
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
@@ -169,7 +158,7 @@ impl Plot {
             piece_count,
         };
 
-        Ok(Plot {
+        Ok(Self {
             inner: Arc::new(inner),
         })
     }
@@ -277,8 +266,8 @@ impl Plot {
             .put(LAST_ROOT_BLOCK_KEY, last_root_block)
     }
 
-    pub(crate) fn downgrade(&self) -> WeakPlot {
-        WeakPlot {
+    pub(crate) fn downgrade(&self) -> WeakSinglePlot {
+        WeakSinglePlot {
             inner: Arc::downgrade(&self.inner),
         }
     }
@@ -356,13 +345,13 @@ impl Plot {
 }
 
 #[derive(Clone)]
-pub(crate) struct WeakPlot {
+pub(crate) struct WeakSinglePlot {
     inner: Weak<Inner>,
 }
 
-impl WeakPlot {
-    pub(crate) fn upgrade(&self) -> Option<Plot> {
-        self.inner.upgrade().map(|inner| Plot { inner })
+impl WeakSinglePlot {
+    pub(crate) fn upgrade(&self) -> Option<SinglePlot> {
+        self.inner.upgrade().map(|inner| SinglePlot { inner })
     }
 }
 
@@ -374,8 +363,8 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
-    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
+    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self> {
+        let inner = DB::open_default(path.as_ref()).map_err(Error::IndexDbOpen)?;
         let max_distance = {
             let mut iter = inner.raw_iterator();
             iter.seek_to_last();
@@ -456,7 +445,7 @@ impl IndexHashToOffsetDB {
     }
 }
 
-struct PlotWorker {
+struct SinglePlotWorker {
     plot: File,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: File,
@@ -464,23 +453,23 @@ struct PlotWorker {
     max_piece_count: u64,
 }
 
-impl PlotWorker {
+impl SinglePlotWorker {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
         address: PublicKey,
         max_piece_count: u64,
-    ) -> Result<Self, PlotError> {
+    ) -> Result<Self> {
         let plot = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(base_directory.as_ref().join("plot.bin"))
-            .map_err(PlotError::PlotOpen)?;
+            .map_err(Error::PlotOpen)?;
 
         let plot_size = plot
             .metadata()
             .map(|metadata| metadata.len())
-            .map_err(PlotError::PlotOpen)?;
+            .map_err(Error::PlotOpen)?;
 
         let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
 
@@ -489,7 +478,7 @@ impl PlotWorker {
             .write(true)
             .create(true)
             .open(base_directory.as_ref().join("plot-offset-to-index.bin"))
-            .map_err(PlotError::OffsetDbOpen)?;
+            .map_err(Error::OffsetDbOpen)?;
 
         // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
         //  here

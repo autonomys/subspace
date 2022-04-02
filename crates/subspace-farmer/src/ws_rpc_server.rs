@@ -1,5 +1,5 @@
 use crate::object_mappings::ObjectMappings;
-use crate::plot::Plot;
+use crate::plot::SinglePlot;
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
@@ -127,7 +127,7 @@ pub trait Rpc {
 /// ```rust
 /// # async fn f() -> anyhow::Result<()> {
 /// use jsonrpsee::ws_server::WsServerBuilder;
-/// use subspace_farmer::{Identity, ObjectMappings, Plot};
+/// use subspace_farmer::{Identity, ObjectMappings, SinglePlot};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
 ///
@@ -136,7 +136,7 @@ pub trait Rpc {
 ///
 /// let identity = Identity::open_or_create(base_directory)?;
 /// let address = identity.public_key().to_bytes().into();
-/// let plot = Plot::open_or_create(&base_directory, address, u64::MAX)?;
+/// let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX)?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
@@ -154,7 +154,7 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    plot: Plot,
+    plot: SinglePlot,
     object_mappings: ObjectMappings,
     subspace_codec: SubspaceCodec,
 }
@@ -163,7 +163,7 @@ impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        plot: Plot,
+        plot: SinglePlot,
         object_mappings: ObjectMappings,
         subspace_codec: SubspaceCodec,
     ) -> Self {

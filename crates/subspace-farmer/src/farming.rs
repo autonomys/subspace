@@ -5,7 +5,7 @@ mod tests;
 
 use crate::commitments::Commitments;
 use crate::identity::Identity;
-use crate::plot::Plot;
+use crate::plot::SinglePlot;
 use crate::rpc::RpcClient;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
@@ -38,7 +38,7 @@ pub struct Farming {
 impl Farming {
     /// Returns an instance of farming, and also starts a concurrent background farming task
     pub fn start<T: RpcClient + Sync + Send + 'static>(
-        plot: Plot,
+        plot: SinglePlot,
         commitments: Commitments,
         client: T,
         identity: Identity,
@@ -107,7 +107,7 @@ struct Salts {
 /// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
     client: &T,
-    plot: &Plot,
+    plot: &SinglePlot,
     commitments: &Commitments,
     identity: &Identity,
     reward_address: PublicKey,
@@ -224,7 +224,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 /// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
 /// accordingly if necessary (in background)
 fn update_commitments(
-    plot: &Plot,
+    plot: &SinglePlot,
     commitments: &Commitments,
     salts: &mut Salts,
     slot_info: &SlotInfo,

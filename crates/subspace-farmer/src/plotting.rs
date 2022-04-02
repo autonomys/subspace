@@ -3,7 +3,7 @@ mod tests;
 
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
-use crate::plot::Plot;
+use crate::plot::SinglePlot;
 use crate::rpc::RpcClient;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
@@ -47,7 +47,7 @@ pub struct Plotting {
 }
 
 pub struct FarmerData {
-    plot: Plot,
+    plot: SinglePlot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
     metadata: FarmerMetadata,
@@ -55,7 +55,7 @@ pub struct FarmerData {
 
 impl FarmerData {
     pub fn new(
-        plot: Plot,
+        plot: SinglePlot,
         commitments: Commitments,
         object_mappings: ObjectMappings,
         metadata: FarmerMetadata,

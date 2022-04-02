@@ -7,7 +7,8 @@ use std::time::Duration;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plotting, RpcClient, SinglePlot,
+    WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::multimess::MultihashCode;
@@ -62,7 +63,7 @@ pub(crate) async fn farm(
         }
 
         // TODO: Piece count should account for database overhead of various additional databases
-        move || Plot::open_or_create(&base_directory, address, plot_size)
+        move || SinglePlot::open_or_create(&base_directory, address, plot_size)
     });
     let plot = plot_fut.await.unwrap()?;
 

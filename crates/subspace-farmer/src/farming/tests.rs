@@ -2,7 +2,7 @@ use crate::commitments::{CommitmentStatusChange, Commitments};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
-use crate::plot::Plot;
+use crate::plot::SinglePlot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -27,7 +27,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
     let address = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX).unwrap();
 
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 

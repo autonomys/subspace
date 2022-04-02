@@ -2,7 +2,7 @@ mod commitment_databases;
 #[cfg(test)]
 mod tests;
 
-use crate::plot::{PieceOffset, Plot};
+use crate::plot::{PieceOffset, SinglePlot};
 use arc_swap::ArcSwapOption;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
@@ -81,7 +81,7 @@ impl Commitments {
     }
 
     /// Create commitments for all pieces for a given salt
-    pub(crate) fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
+    pub(crate) fn create(&self, salt: Salt, plot: SinglePlot) -> Result<(), CommitmentError> {
         let mut commitment_databases = self.inner.commitment_databases.lock();
 
         let db_entry = match commitment_databases.create_db_entry(salt)? {

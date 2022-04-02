@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rand::prelude::*;
 use subspace_core_primitives::PIECE_SIZE;
-use subspace_farmer::Plot;
+use subspace_farmer::SinglePlot;
 use tempfile::TempDir;
 
 #[tokio::main]
@@ -16,7 +16,7 @@ async fn main() {
     rand::thread_rng().fill(&mut pieces[..]);
     let pieces = Arc::new(pieces.try_into().unwrap());
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), piece_count).unwrap();
+    let plot = SinglePlot::open_or_create(&base_directory, [0; 32].into(), piece_count).unwrap();
 
     let start = std::time::Instant::now();
 
