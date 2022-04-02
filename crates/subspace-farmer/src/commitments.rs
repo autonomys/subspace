@@ -2,7 +2,10 @@ mod commitment_databases;
 #[cfg(test)]
 mod tests;
 
-use crate::plot::{PieceOffset, SinglePlot};
+use crate::{
+    plot::{PieceOffset, SinglePlot},
+    MultiPlot,
+};
 use arc_swap::ArcSwapOption;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
@@ -61,6 +64,16 @@ pub struct Commitments {
 }
 
 impl Commitments {
+    /// Creates commitments database for each `SinglePlot` in `MultiPlot`
+    pub fn from_multiplot(multiplot: &MultiPlot) -> Result<Vec<Self>, CommitmentError> {
+        multiplot
+            .plots
+            .iter()
+            .map(|plot| plot.base_directory().as_ref().join("commitments"))
+            .map(Self::new)
+            .collect()
+    }
+
     /// Creates new commitments database
     pub fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
         let mut commitment_databases = CommitmentDatabases::new(base_directory.clone())?;

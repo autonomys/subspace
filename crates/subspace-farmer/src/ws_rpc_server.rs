@@ -1,5 +1,4 @@
-use crate::object_mappings::ObjectMappings;
-use crate::plot::SinglePlot;
+use crate::{object_mappings::ObjectMappings, MultiPlot};
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
@@ -127,16 +126,14 @@ pub trait Rpc {
 /// ```rust
 /// # async fn f() -> anyhow::Result<()> {
 /// use jsonrpsee::ws_server::WsServerBuilder;
-/// use subspace_farmer::{Identity, ObjectMappings, SinglePlot};
+/// use subspace_farmer::{Identity, ObjectMappings, MultiPlot};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
 ///
 /// let base_directory = "/path/to/base/dir";
 /// let ws_server_listen_addr = "127.0.0.1:0";
 ///
-/// let identity = Identity::open_or_create(base_directory)?;
-/// let address = identity.public_key().to_bytes().into();
-/// let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX)?;
+/// let (plot, _) = MultiPlot::open_or_create(&base_directory, vec![u64::MAX])?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
@@ -144,7 +141,6 @@ pub trait Rpc {
 ///     3480 * 128,
 ///     plot,
 ///     object_mappings,
-///     SubspaceCodec::new(&[0]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -154,25 +150,22 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    plot: SinglePlot,
+    multiplot: MultiPlot,
     object_mappings: ObjectMappings,
-    subspace_codec: SubspaceCodec,
 }
 
 impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        plot: SinglePlot,
+        multiplot: MultiPlot,
         object_mappings: ObjectMappings,
-        subspace_codec: SubspaceCodec,
     ) -> Self {
         Self {
             record_size,
             merkle_num_leaves: recorded_history_segment_size / record_size * 2,
-            plot,
+            multiplot,
             object_mappings,
-            subspace_codec,
         }
     }
 
@@ -430,17 +423,17 @@ impl RpcServerImpl {
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
+            let plot = self.multiplot.clone();
 
             move || plot.read(piece_index)
         });
-        let mut piece = piece_fut.await.unwrap().map_err(|error| {
-            debug!("Failed to read piece with index {}: {}", piece_index, error);
+        let (address, mut piece) = piece_fut.await.unwrap().ok_or_else(|| {
+            debug!("Failed to read piece with index {piece_index}");
 
             Error::Custom("Object mapping found, but reading piece failed".to_string())
         })?;
 
-        self.subspace_codec
+        SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(
@@ -459,20 +452,20 @@ impl RpcServerImpl {
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
+            let plot = self.multiplot.clone();
 
             move || plot.read(piece_index)
         });
-        let mut piece = match piece_fut.await.unwrap() {
-            Ok(encoding) => encoding,
-            Err(error) => {
-                debug!("Failed to find piece with index {}: {}", piece_index, error);
+        let (address, mut piece) = match piece_fut.await.unwrap() {
+            Some(encoding) => encoding,
+            None => {
+                debug!("Failed to find piece with index {piece_index}");
 
                 return Ok(None);
             }
         };
 
-        self.subspace_codec
+        SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(

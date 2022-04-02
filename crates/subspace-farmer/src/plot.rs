@@ -1,6 +1,8 @@
 use std::{path::Path, sync::Arc};
 
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PublicKey, RootBlock};
+use subspace_core_primitives::{
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock,
+};
 use thiserror::Error;
 
 mod single_plot;
@@ -110,5 +112,14 @@ impl MultiPlot {
             .iter()
             .map(|plot| plot.write_many(encodings.clone(), piece_indexes.clone()))
             .collect()
+    }
+
+    /// Tries to find piece in any plot. Also returns plot's address so that piece could be decoded
+    pub fn read(&self, piece_index: PieceIndex) -> Option<(PublicKey, Piece)> {
+        self.plots.iter().find_map(|plot| {
+            plot.read(piece_index)
+                .ok()
+                .map(|piece| (plot.address(), piece))
+        })
     }
 }

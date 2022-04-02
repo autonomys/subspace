@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
@@ -97,6 +97,7 @@ struct Inner {
     plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
     address: PublicKey,
+    base_directory: PathBuf,
 }
 
 impl Drop for Inner {
@@ -158,6 +159,7 @@ impl SinglePlot {
             plot_metadata_db,
             piece_count,
             address,
+            base_directory: base_directory.as_ref().into(),
         };
 
         Ok(Self {
@@ -168,6 +170,11 @@ impl SinglePlot {
     /// Returns address for which pieces are plotted
     pub(crate) fn address(&self) -> PublicKey {
         self.inner.address
+    }
+
+    /// Returns base directory for plot
+    pub(crate) fn base_directory(&'_ self) -> impl AsRef<Path> + '_ {
+        &self.inner.base_directory
     }
 
     /// How many pieces are there in the plot
