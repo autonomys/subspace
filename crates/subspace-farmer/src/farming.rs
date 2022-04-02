@@ -176,7 +176,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             .collect::<FuturesUnordered<_>>();
 
         let mut maybe_solution = None;
-        for maybe_solution_result in maybe_solution_handles.next().await {
+        while let Some(maybe_solution_result) = maybe_solution_handles.next().await {
             // When solution is found, wait for block signing request.
             if let Some((solution, identity)) = maybe_solution_result.unwrap()? {
                 debug!("Subscribing to sign block notifications");

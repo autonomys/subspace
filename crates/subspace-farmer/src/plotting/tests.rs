@@ -168,7 +168,7 @@ async fn plotting_continue() {
     let farmer_data = FarmerData::new(
         plot.clone(),
         vec![commitments.clone()],
-        farmer_metadata.clone(),
+        farmer_metadata,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 
@@ -226,7 +226,7 @@ async fn plotting_continue() {
     let farmer_data = FarmerData::new(
         plot.clone(),
         vec![commitments.clone()],
-        farmer_metadata.clone(),
+        farmer_metadata,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
     );
 

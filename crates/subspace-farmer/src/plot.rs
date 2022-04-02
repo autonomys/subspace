@@ -1,8 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock,
-};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PublicKey, RootBlock};
 use thiserror::Error;
 
 mod single_plot;
@@ -69,6 +67,7 @@ impl MultiPlot {
         Ok((Self { plots }, identities))
     }
 
+    #[cfg(test)]
     pub(crate) fn open_or_create_single_plot(
         base_directory: impl AsRef<Path>,
         max_piece_count: u64,
@@ -77,6 +76,7 @@ impl MultiPlot {
         Ok((multiplot, identities.into_iter().next().unwrap()))
     }
 
+    #[cfg(test)]
     pub(crate) fn open_or_create_single_plot_with_address(
         base_directory: impl AsRef<Path>,
         address: PublicKey,

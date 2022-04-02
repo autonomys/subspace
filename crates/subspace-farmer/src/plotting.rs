@@ -111,7 +111,7 @@ impl Plotting {
         .await
         .unwrap()?;
 
-        // Object mapping calls does disk which are synchronous
+        // Object mapping accesses rocksdb via synchronous IO
         let object_mapping_handle = tokio::task::spawn_blocking({
             let archived_block_receiver = archived_block_sender.subscribe();
 
@@ -165,7 +165,7 @@ impl Plotting {
             })
             .unzip();
 
-        // Erasure coding in archiver is CPU-intensive operations.
+        // Erasure coding in archiver is CPU-intensive operation
         let archiving_handle = tokio::task::spawn_blocking({
             let client = client.clone();
 
@@ -249,9 +249,9 @@ impl Plotting {
 
 impl Drop for Plotting {
     fn drop(&mut self) {
-        std::mem::take(&mut self.stop_senders)
-            .into_iter()
-            .for_each(|sender| drop(sender.send(())));
+        for sender in std::mem::take(&mut self.stop_senders) {
+            let _ = sender.send(());
+        }
     }
 }
 
@@ -290,11 +290,10 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     .await
     .unwrap()?;
 
-    // Piece encoding is CPU-intensive operations.
+    // Piece encoding is CPU-intensive operation
     tokio::task::spawn_blocking({
         let weak_plot = weak_plot.clone();
 
-        #[allow(clippy::mut_range_bound)]
         move || {
             let runtime_handle = tokio::runtime::Handle::current();
             info!("Plotting new blocks in the background");
@@ -494,6 +493,7 @@ fn background_block_archiving(
         .map(|n| n + 1)
         .unwrap_or_default();
 
+    #[allow(clippy::mut_range_bound)]
     'outer: for blocks_to_archive_to in new_block_to_archive_receiver.into_iter() {
         let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
         if blocks_to_archive_to >= blocks_to_archive_from {
