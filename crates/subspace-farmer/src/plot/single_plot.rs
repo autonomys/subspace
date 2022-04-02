@@ -96,6 +96,7 @@ struct Inner {
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
+    address: PublicKey,
 }
 
 impl Drop for Inner {
@@ -156,11 +157,17 @@ impl SinglePlot {
             requests_sender,
             plot_metadata_db,
             piece_count,
+            address,
         };
 
         Ok(Self {
             inner: Arc::new(inner),
         })
+    }
+
+    /// Returns address for which pieces are plotted
+    pub(crate) fn address(&self) -> PublicKey {
+        self.inner.address
     }
 
     /// How many pieces are there in the plot

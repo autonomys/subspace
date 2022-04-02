@@ -34,7 +34,7 @@ pub struct EncodedBlockWithObjectMapping {
 }
 
 /// Metadata necessary for farmer operation
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerMetadata {
     /// Depth `K` after which a block enters the recorded history (a global constant, as opposed

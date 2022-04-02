@@ -5,6 +5,7 @@ use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::SinglePlot;
 use crate::rpc::RpcClient;
+use crate::MultiPlot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
@@ -36,31 +37,47 @@ pub enum PlottingError {
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
 }
+
 /// `Plotting` struct is the abstraction of the plotting process
 ///
 /// Plotting Instance that stores a channel to stop/pause the background farming task
 /// and a handle to make it possible to wait on this background task
 pub struct Plotting {
-    stop_sender: Option<oneshot::Sender<()>>,
-    plotting_handle: Option<JoinHandle<Result<(), PlottingError>>>,
+    stop_senders: Vec<oneshot::Sender<()>>,
+    plotting_handles: Vec<JoinHandle<Result<(), PlottingError>>>,
     archiving_handle: Option<JoinHandle<()>>,
     object_mapping_handle: Option<JoinHandle<()>>,
 }
 
 pub struct FarmerData {
-    plot: SinglePlot,
+    multi_plot: MultiPlot,
     commitments: Commitments,
     metadata: FarmerMetadata,
+    best_block_number_check_interval: Duration,
 }
 
 impl FarmerData {
-    pub fn new(plot: SinglePlot, commitments: Commitments, metadata: FarmerMetadata) -> Self {
+    pub fn new(
+        multi_plot: MultiPlot,
+        commitments: Commitments,
+        metadata: FarmerMetadata,
+        best_block_number_check_interval: Duration,
+    ) -> Self {
         Self {
-            plot,
+            multi_plot,
             commitments,
             metadata,
+            best_block_number_check_interval,
         }
     }
+}
+
+struct SingleFarmerData {
+    plot: SinglePlot,
+    commitments: Commitments,
+    metadata: FarmerMetadata,
+    best_block_number_check_interval: Duration,
+    subspace_codec: SubspaceCodec,
 }
 
 /// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
@@ -70,14 +87,11 @@ impl Plotting {
         farmer_data: FarmerData,
         object_mappings: ObjectMappings,
         client: T,
-        subspace_codec: SubspaceCodec,
-        best_block_number_check_interval: Duration,
     ) -> Result<Self, PlottingError> {
         let (new_block_to_archive_sender, new_block_to_archive_receiver) =
             std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
 
-        let (archived_block_sender, archived_block_receiver) =
-            tokio::sync::broadcast::channel::<ArchivedBlock>(1);
+        let (archived_block_sender, _) = tokio::sync::broadcast::channel::<ArchivedBlock>(1);
 
         let FarmerMetadata {
             record_size,
@@ -86,9 +100,13 @@ impl Plotting {
         } = farmer_data.metadata;
 
         let maybe_last_root_block = tokio::task::spawn_blocking({
-            let plot = farmer_data.plot.clone();
+            let multi_plot = farmer_data.multi_plot.clone();
 
-            move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
+            move || {
+                multi_plot
+                    .get_last_root_block()
+                    .map_err(PlottingError::LastBlock)
+            }
         })
         .await
         .unwrap()?;
@@ -108,13 +126,51 @@ impl Plotting {
             }
         });
 
+        let metadata = farmer_data.metadata;
+        let (stop_senders, plotting_handles) = farmer_data
+            .multi_plot
+            .plots
+            .iter()
+            .cloned()
+            .map({
+                let client = &client;
+                let archived_block_sender = &archived_block_sender;
+                move |plot| {
+                    // Oneshot channels, that will be used for interrupt/stop the process
+                    let (stop_sender, stop_receiver) = oneshot::channel();
+
+                    let subspace_codec = SubspaceCodec::new(&plot.address());
+                    let farmer_data = SingleFarmerData {
+                        plot,
+                        commitments: farmer_data.commitments.clone(),
+                        subspace_codec,
+                        metadata,
+                        best_block_number_check_interval: farmer_data
+                            .best_block_number_check_interval,
+                    };
+                    let archived_block_receiver = archived_block_sender.subscribe();
+
+                    // Get a handle for the background task, so that we can wait on it later if we want to
+                    let plotting_handle = tokio::spawn(background_plotting(
+                        farmer_data,
+                        client.clone(),
+                        stop_receiver,
+                        new_block_to_archive_sender.clone(),
+                        archived_block_receiver,
+                    ));
+
+                    (stop_sender, plotting_handle)
+                }
+            })
+            .unzip();
+
         // Erasure coding in archiver is CPU-intensive operations.
         let archiving_handle = tokio::task::spawn_blocking({
             let client = client.clone();
 
             let archiver = if let Some(last_root_block) = maybe_last_root_block {
                 // Continuing from existing initial state
-                if farmer_data.plot.is_empty() {
+                if farmer_data.multi_plot.is_empty() {
                     return Err(PlottingError::ContinueError);
                 }
 
@@ -144,7 +200,7 @@ impl Plotting {
                 }
             } else {
                 // Starting from genesis
-                if !farmer_data.plot.is_empty() {
+                if !farmer_data.multi_plot.is_empty() {
                     // Restart before first block was archived, erase the plot
                     // TODO: Erase plot
                 }
@@ -163,23 +219,9 @@ impl Plotting {
             }
         });
 
-        // Oneshot channels, that will be used for interrupt/stop the process
-        let (stop_sender, stop_receiver) = oneshot::channel();
-
-        // Get a handle for the background task, so that we can wait on it later if we want to
-        let plotting_handle = tokio::spawn(background_plotting(
-            farmer_data,
-            client,
-            subspace_codec,
-            best_block_number_check_interval,
-            stop_receiver,
-            new_block_to_archive_sender,
-            archived_block_receiver,
-        ));
-
         Ok(Self {
-            stop_sender: Some(stop_sender),
-            plotting_handle: Some(plotting_handle),
+            stop_senders,
+            plotting_handles,
             archiving_handle: Some(archiving_handle),
             object_mapping_handle: Some(object_mapping_handle),
         })
@@ -197,17 +239,18 @@ impl Plotting {
             .unwrap()
             .await
             .map_err(PlottingError::JoinTask)?;
-        self.plotting_handle
-            .take()
-            .unwrap()
-            .await
-            .map_err(PlottingError::JoinTask)?
+        for handle in std::mem::take(&mut self.plotting_handles) {
+            handle.await.map_err(PlottingError::JoinTask)??;
+        }
+        Ok(())
     }
 }
 
 impl Drop for Plotting {
     fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
+        std::mem::take(&mut self.stop_senders)
+            .into_iter()
+            .for_each(|sender| drop(sender.send(())));
     }
 }
 
@@ -215,27 +258,31 @@ impl Drop for Plotting {
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
 async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
-    farmer_data: FarmerData,
+    SingleFarmerData {
+        plot,
+        commitments,
+        metadata:
+            FarmerMetadata {
+                confirmation_depth_k,
+                record_size,
+                recorded_history_segment_size,
+                ..
+            },
+        best_block_number_check_interval,
+        mut subspace_codec,
+    }: SingleFarmerData,
     client: T,
-    mut subspace_codec: SubspaceCodec,
-    best_block_number_check_interval: Duration,
     mut stop_receiver: oneshot::Receiver<()>,
     new_block_to_archive_sender: std::sync::mpsc::SyncSender<Arc<AtomicU32>>,
     mut archived_block_receiver: tokio::sync::broadcast::Receiver<ArchivedBlock>,
 ) -> Result<(), PlottingError> {
-    let weak_plot = farmer_data.plot.downgrade();
-    let FarmerMetadata {
-        confirmation_depth_k,
-        record_size,
-        recorded_history_segment_size,
-        ..
-    } = farmer_data.metadata;
+    let weak_plot = plot.downgrade();
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let maybe_last_root_block = tokio::task::spawn_blocking({
-        let plot = farmer_data.plot.clone();
+        let plot = plot.clone();
 
         move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
     })
@@ -278,9 +325,8 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                         match plot.write_many(Arc::clone(&pieces), piece_indexes) {
                             Ok(write_result) => {
-                                if let Err(error) = farmer_data
-                                    .commitments
-                                    .remove_pieces(write_result.evicted_pieces())
+                                if let Err(error) =
+                                    commitments.remove_pieces(write_result.evicted_pieces())
                                 {
                                     error!(
                                         "Failed to remove old commitments for pieces: {}",
@@ -290,8 +336,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                                 // TODO: This will not create commitments properly if pieces are
                                 //  evicted during plotting
-                                if let Err(error) = farmer_data
-                                    .commitments
+                                if let Err(error) = commitments
                                     .create_for_pieces(|| write_result.to_recommitment_iterator())
                                 {
                                     error!("Failed to create commitments for pieces: {}", error);

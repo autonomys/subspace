@@ -2,7 +2,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::object_mappings::ObjectMappings;
-use crate::plot::SinglePlot;
+use crate::plot::MultiPlot;
 use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
 use rand::prelude::*;
@@ -31,11 +31,8 @@ async fn plotting_happy_path() {
 
     let base_directory = TempDir::new().unwrap();
 
-    let identity =
-        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
+    let (multiplot, _) = MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
 
-    let address = identity.public_key().to_bytes().into();
-    let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -55,9 +52,12 @@ async fn plotting_happy_path() {
         .await
         .expect("Could not retrieve farmer_metadata");
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    let farmer_data = FarmerData::new(plot.clone(), commitments, farmer_metadata);
+    let farmer_data = FarmerData::new(
+        multiplot.clone(),
+        commitments,
+        farmer_metadata,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+    );
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -78,15 +78,9 @@ async fn plotting_happy_path() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        object_mappings,
-        client.clone(),
-        subspace_codec,
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    )
-    .await
-    .unwrap();
+    let plotting_instance = Plotting::start(farmer_data, object_mappings, client.clone())
+        .await
+        .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -98,7 +92,11 @@ async fn plotting_happy_path() {
     }
 
     assert_eq!(
-        plot.get_last_root_block().unwrap().unwrap().records_root(),
+        multiplot
+            .get_last_root_block()
+            .unwrap()
+            .unwrap()
+            .records_root(),
         [
             128, 88, 79, 62, 14, 50, 76, 101, 5, 140, 34, 124, 28, 140, 2, 80, 84, 108, 192, 253,
             210, 159, 59, 132, 116, 250, 177, 226, 192, 188, 79, 230
@@ -106,7 +104,7 @@ async fn plotting_happy_path() {
     );
 
     assert_eq!(
-        plot.get_last_root_block().unwrap().unwrap().hash(),
+        multiplot.get_last_root_block().unwrap().unwrap().hash(),
         [
             229, 128, 200, 204, 79, 205, 9, 80, 237, 216, 133, 217, 228, 30, 8, 241, 142, 197, 74,
             127, 148, 245, 255, 254, 179, 108, 138, 16, 180, 92, 31, 140
@@ -114,11 +112,16 @@ async fn plotting_happy_path() {
     );
 
     assert_eq!(
-        plot.get_last_root_block().unwrap().unwrap().segment_index(),
+        multiplot
+            .get_last_root_block()
+            .unwrap()
+            .unwrap()
+            .segment_index(),
         0
     );
     assert_eq!(
-        plot.get_last_root_block()
+        multiplot
+            .get_last_root_block()
             .unwrap()
             .unwrap()
             .last_archived_block()
@@ -141,11 +144,8 @@ async fn plotting_continue() {
     init();
 
     let base_directory = TempDir::new().unwrap();
-    let identity =
-        Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
-    let address = identity.public_key().to_bytes().into();
 
-    let plot = SinglePlot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let (plot, _) = MultiPlot::open_or_create_single_plot(&base_directory, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -165,9 +165,12 @@ async fn plotting_continue() {
         .await
         .expect("Could not retrieve farmer_metadata");
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        farmer_metadata.clone(),
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+    );
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -188,15 +191,9 @@ async fn plotting_continue() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        object_mappings.clone(),
-        client.clone(),
-        subspace_codec,
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    )
-    .await
-    .unwrap();
+    let plotting_instance = Plotting::start(farmer_data, object_mappings.clone(), client.clone())
+        .await
+        .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -226,7 +223,12 @@ async fn plotting_continue() {
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
 
-    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        farmer_metadata.clone(),
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+    );
 
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
@@ -257,15 +259,9 @@ async fn plotting_continue() {
     // putting 250 milliseconds here to give plotter some time
     sleep(Duration::from_millis(250)).await;
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        object_mappings.clone(),
-        client.clone(),
-        subspace_codec,
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    )
-    .await
-    .unwrap();
+    let plotting_instance = Plotting::start(farmer_data, object_mappings.clone(), client.clone())
+        .await
+        .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -331,11 +327,12 @@ async fn plotting_piece_eviction() {
         panther kick estate three noodle monkey vintage silk harsh spider cross license";
     let identity = Identity::import_from_mnemonic(&base_directory, mnemonic_phrase)
         .expect("Could not open/create identity!");
+    let address = identity.public_key().to_bytes().into();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let address = identity.public_key().to_bytes().into();
     let salt = Salt::default();
-    let plot = SinglePlot::open_or_create(&base_directory, address, 5).unwrap();
+    let plot =
+        MultiPlot::open_or_create_single_plot_with_address(&base_directory, address, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
@@ -361,7 +358,12 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata);
+    let farmer_data = FarmerData::new(
+        plot.clone(),
+        commitments.clone(),
+        farmer_metadata,
+        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+    );
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: {
@@ -390,15 +392,9 @@ async fn plotting_piece_eviction() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        object_mappings,
-        client.clone(),
-        subspace_codec,
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    )
-    .await
-    .unwrap();
+    let plotting_instance = Plotting::start(farmer_data, object_mappings, client.clone())
+        .await
+        .unwrap();
 
     for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
