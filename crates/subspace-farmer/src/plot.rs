@@ -113,6 +113,7 @@ struct Inner {
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
+    address: PublicKey,
 }
 
 impl Drop for Inner {
@@ -205,6 +206,7 @@ impl Plot {
             requests_sender,
             plot_metadata_db,
             piece_count,
+            address,
         };
 
         Ok(Plot {
@@ -215,6 +217,11 @@ impl Plot {
     /// How many pieces are there in the plot
     pub(crate) fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
+    }
+
+    /// Address for which pieces were plotted
+    pub fn address(&self) -> PublicKey {
+        self.inner.address
     }
 
     /// Whether plot doesn't have anything in it

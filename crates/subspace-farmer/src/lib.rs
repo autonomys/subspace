@@ -31,11 +31,11 @@ pub mod ws_rpc_server;
 mod mock_rpc;
 
 pub use commitments::{CommitmentError, Commitments};
-pub use farming::Farming;
+pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{Plot, PlotError};
-pub use plotting::{FarmerData, Plotting};
+pub use plotting::{FarmerData, Plotting, PlottingError};
 pub use rpc::RpcClient;
 pub use ws_rpc::WsRpc;

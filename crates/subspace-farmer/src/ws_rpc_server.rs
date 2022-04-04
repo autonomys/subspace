@@ -142,9 +142,8 @@ pub trait Rpc {
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
-///     plot,
+///     vec![plot],
 ///     object_mappings,
-///     SubspaceCodec::new(&[0]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -154,25 +153,22 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    plot: Plot,
+    plots: Vec<Plot>,
     object_mappings: ObjectMappings,
-    subspace_codec: SubspaceCodec,
 }
 
 impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        plot: Plot,
+        plots: Vec<Plot>,
         object_mappings: ObjectMappings,
-        subspace_codec: SubspaceCodec,
     ) -> Self {
         Self {
             record_size,
             merkle_num_leaves: recorded_history_segment_size / record_size * 2,
-            plot,
+            plots,
             object_mappings,
-            subspace_codec,
         }
     }
 
@@ -430,17 +426,23 @@ impl RpcServerImpl {
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
+            let plots = self.plots.clone();
 
-            move || plot.read(piece_index)
+            move || {
+                plots.iter().find_map(|plot| {
+                    plot.read(piece_index)
+                        .ok()
+                        .map(|piece| (piece, plot.address()))
+                })
+            }
         });
-        let mut piece = piece_fut.await.unwrap().map_err(|error| {
-            debug!("Failed to read piece with index {}: {}", piece_index, error);
+        let (mut piece, address) = piece_fut.await.unwrap().ok_or_else(|| {
+            debug!("Failed to read piece with index {}", piece_index);
 
             Error::Custom("Object mapping found, but reading piece failed".to_string())
         })?;
 
-        self.subspace_codec
+        SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(
@@ -459,20 +461,26 @@ impl RpcServerImpl {
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
+            let plots = self.plots.clone();
 
-            move || plot.read(piece_index)
+            move || {
+                plots.iter().find_map(|plot| {
+                    plot.read(piece_index)
+                        .ok()
+                        .map(|piece| (piece, plot.address()))
+                })
+            }
         });
-        let mut piece = match piece_fut.await.unwrap() {
-            Ok(encoding) => encoding,
-            Err(error) => {
-                debug!("Failed to find piece with index {}: {}", piece_index, error);
+        let (mut piece, address) = match piece_fut.await.unwrap() {
+            Some(encoding) => encoding,
+            None => {
+                debug!("Failed to find piece with index {}", piece_index);
 
                 return Ok(None);
             }
         };
 
-        self.subspace_codec
+        SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
                 debug!(
