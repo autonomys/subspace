@@ -137,6 +137,7 @@ fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> parachain_template_runti
 				.expect("WASM binary was not build, please build it!")
 				.to_vec(),
 		},
+		transaction_payment: Default::default(),
 		balances: parachain_template_runtime::BalancesConfig {
 			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 		},

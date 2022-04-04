@@ -313,12 +313,12 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		// System support stuff.
-		System: frame_system::{Pallet, Call, Config, Storage, Event<T>} = 0,
-		ExecutivePallet: cirrus_pallet_executive::{Pallet, Storage} = 1,
+		System: frame_system,
+		ExecutivePallet: cirrus_pallet_executive,
 
 		// Monetary stuff.
-		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>} = 10,
-		TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 11,
+		Balances: pallet_balances,
+		TransactionPayment: pallet_transaction_payment,
 	}
 );
 
