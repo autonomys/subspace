@@ -129,8 +129,6 @@ pub fn new_partial(
 
 	let import_queue = cumulus_client_consensus_relay_chain::import_queue(
 		client.clone(),
-		client.clone(),
-		|_relay_parent, _validation_data| async { Ok(()) },
 		&task_manager.spawn_essential_handle(),
 		registry,
 	)?;
@@ -245,7 +243,6 @@ where
 
 		Box::new(PrimaryChainConsensus::new(
 			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
 			client.clone(),
 			primary_chain_full_node.client.clone(),
 			primary_chain_full_node.backend.clone(),

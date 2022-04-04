@@ -286,7 +286,6 @@ where
 
 		Box::new(PrimaryChainConsensus::new(
 			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
 			client.clone(),
 			primary_chain_full_node.client.clone(),
 			primary_chain_full_node.backend.clone(),
@@ -329,12 +328,8 @@ pub fn parachain_build_import_queue(
 	>,
 	sc_service::Error,
 > {
-	let block_import = client.clone();
-	let create_inherent_data_providers = |_, _| async move { Ok(()) };
 	cumulus_client_consensus_relay_chain::import_queue(
 		client,
-		block_import,
-		create_inherent_data_providers,
 		&task_manager.spawn_essential_handle(),
 		None,
 	)

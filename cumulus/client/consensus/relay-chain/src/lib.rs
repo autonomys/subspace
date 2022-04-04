@@ -35,42 +35,36 @@
 
 #![allow(clippy::all)]
 
-use cirrus_node_primitives::PersistedValidationData;
 use cumulus_client_consensus_common::{ParachainBlockImport, ParachainConsensus};
 use parking_lot::Mutex;
 use sc_client_api::{Backend, HeaderBackend};
 use sc_consensus::BlockImport;
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::{EnableProofRecording, Environment, ProofRecording, Proposer};
-use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, NumberFor},
 };
 use std::{marker::PhantomData, sync::Arc};
-use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
+use subspace_runtime_primitives::opaque::Block as PBlock;
 
 mod import_queue;
 pub use import_queue::{import_queue, Verifier};
 
 /// The implementation of the relay-chain provided consensus for parachains.
-pub struct PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP> {
+pub struct PrimaryChainConsensus<B, PF, BI, RClient, RBackend> {
 	_phantom: PhantomData<B>,
 	proposer_factory: Arc<Mutex<PF>>,
-	create_inherent_data_providers: Arc<CIDP>,
 	block_import: Arc<futures::lock::Mutex<ParachainBlockImport<BI>>>,
 	relay_chain_client: Arc<RClient>,
 	relay_chain_backend: Arc<RBackend>,
 }
 
-impl<B, PF, BI, RClient, RBackend, CIDP> Clone
-	for PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
-{
+impl<B, PF, BI, RClient, RBackend> Clone for PrimaryChainConsensus<B, PF, BI, RClient, RBackend> {
 	fn clone(&self) -> Self {
 		Self {
 			_phantom: PhantomData,
 			proposer_factory: self.proposer_factory.clone(),
-			create_inherent_data_providers: self.create_inherent_data_providers.clone(),
 			block_import: self.block_import.clone(),
 			relay_chain_backend: self.relay_chain_backend.clone(),
 			relay_chain_client: self.relay_chain_client.clone(),
@@ -78,24 +72,21 @@ impl<B, PF, BI, RClient, RBackend, CIDP> Clone
 	}
 }
 
-impl<B, PF, BI, RClient, RBackend, CIDP> PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
+impl<B, PF, BI, RClient, RBackend> PrimaryChainConsensus<B, PF, BI, RClient, RBackend>
 where
 	B: BlockT,
 	RClient: ProvideRuntimeApi<PBlock> + HeaderBackend<PBlock>,
 	RBackend: Backend<PBlock>,
-	CIDP: CreateInherentDataProviders<B, (PHash, PersistedValidationData)>,
 {
 	/// Create a new instance of relay-chain provided consensus.
 	pub fn new(
 		proposer_factory: PF,
-		create_inherent_data_providers: CIDP,
 		block_import: BI,
 		polkadot_client: Arc<RClient>,
 		polkadot_backend: Arc<RBackend>,
 	) -> Self {
 		Self {
 			proposer_factory: Arc::new(Mutex::new(proposer_factory)),
-			create_inherent_data_providers: Arc::new(create_inherent_data_providers),
 			block_import: Arc::new(futures::lock::Mutex::new(ParachainBlockImport::new(
 				block_import,
 			))),
@@ -107,8 +98,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<B, PF, BI, RClient, RBackend, CIDP> ParachainConsensus
-	for PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
+impl<B, PF, BI, RClient, RBackend> ParachainConsensus
+	for PrimaryChainConsensus<B, PF, BI, RClient, RBackend>
 where
 	B: BlockT,
 	RClient: ProvideRuntimeApi<PBlock> + HeaderBackend<PBlock> + Send + Sync,
@@ -121,7 +112,6 @@ where
 		ProofRecording = EnableProofRecording,
 		Proof = <EnableProofRecording as ProofRecording>::Proof,
 	>,
-	CIDP: CreateInherentDataProviders<B, (PHash, PersistedValidationData)>,
 {
 	fn block_number_from_id(
 		&self,
