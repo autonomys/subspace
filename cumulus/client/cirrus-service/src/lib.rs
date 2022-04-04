@@ -33,12 +33,11 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, CIDP, E> {
+pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
 	pub client: Arc<Client>,
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub spawner: Box<Spawner>,
@@ -48,13 +47,12 @@ pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, 
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
-	pub create_inherent_data_providers: Arc<CIDP>,
 	pub code_executor: Arc<E>,
 	pub is_authority: bool,
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, CIDP, E>(
+pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>(
 	StartExecutorParams {
 		client,
 		announce_block,
@@ -65,10 +63,9 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, CI
 		transaction_pool,
 		network,
 		backend,
-		create_inherent_data_providers,
 		code_executor,
 		is_authority,
-	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, TP, Backend, CIDP, E>,
+	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, TP, Backend, E>,
 ) -> sc_service::error::Result<cirrus_client_executor::Executor<Block, Client, TP, Backend, E>>
 where
 	Block: BlockT,
@@ -100,7 +97,6 @@ where
 		sp_api::HashFor<Block>,
 	>>::Transaction: sp_trie::HashDBT<sp_api::HashFor<Block>, sp_trie::DBValue>,
 	TP: TransactionPool<Block = Block> + 'static,
-	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash> + 'static,
 	E: CodeExecutor,
 {
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
@@ -131,7 +127,6 @@ where
 			bundle_sender,
 			execution_receipt_sender,
 			backend,
-			create_inherent_data_providers,
 			code_executor,
 			is_authority,
 		})

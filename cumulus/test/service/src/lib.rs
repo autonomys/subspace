@@ -66,7 +66,6 @@ pub type Executor = cirrus_client_executor::Executor<
 	Client,
 	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
 	Backend,
-	Box<dyn sp_inherents::CreateInherentDataProviders<Block, Hash, InherentDataProviders = ()>>,
 	CodeExecutor,
 >;
 
@@ -274,16 +273,6 @@ where
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),
-		create_inherent_data_providers: Arc::new(Box::new(
-			move |_, _relay_parent| async move { Ok(()) },
-		)
-			as Box<
-				dyn sp_inherents::CreateInherentDataProviders<
-					Block,
-					Hash,
-					InherentDataProviders = (),
-				>,
-			>),
 		code_executor: code_executor.clone(),
 		is_authority: validator,
 	};

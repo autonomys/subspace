@@ -310,7 +310,6 @@ where
 		transaction_pool,
 		network,
 		backend,
-		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
 		code_executor: Arc::new(code_executor),
 		is_authority: validator,
 	};
