@@ -37,8 +37,6 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
-use cumulus_client_consensus_common::RelaychainClient;
-
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, CIDP, E> {
 	pub client: Arc<Client>,
@@ -90,7 +88,7 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	RClient: RelaychainClient + Clone + Send + Sync + 'static,
+	RClient: Clone + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,
@@ -107,7 +105,6 @@ where
 {
 	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
 		client.clone(),
-		primary_chain_full_node.client.clone(),
 		announce_block.clone(),
 	);
 	task_manager

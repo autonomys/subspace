@@ -25,7 +25,7 @@ use sp_runtime::{
 use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 mod parachain_consensus;
-pub use parachain_consensus::{run_parachain_consensus, RelaychainClient};
+pub use parachain_consensus::run_parachain_consensus;
 
 /// The result of [`ParachainConsensus::produce_candidate`].
 pub struct ParachainCandidate<B> {
