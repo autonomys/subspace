@@ -51,17 +51,47 @@ pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::Origin;
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
-	use frame_support::pallet_prelude::*;
+	use frame_support::{
+		pallet_prelude::*, traits::UnfilteredDispatchable, weights::GetDispatchInfo,
+	};
 	use frame_system::pallet_prelude::*;
-	use sp_std::vec::Vec;
+	use sp_std::{boxed::Box, vec::Vec};
 
 	#[pallet::config]
-	pub trait Config: frame_system::Config {}
+	pub trait Config: frame_system::Config {
+		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+		type Call: Parameter + UnfilteredDispatchable<Origin = Self::Origin> + GetDispatchInfo;
+	}
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
+
+	#[pallet::call]
+	impl<T: Config> Pallet<T> {
+		// TODO: this call may be moved to other places if this pallet is no longer necessary.
+		/// Unsigned version of `frame_sudo::sudo_unchecked_weight`.
+		#[allow(clippy::boxed_local)]
+		#[pallet::weight((*_weight, call.get_dispatch_info().class, Pays::No))]
+		pub fn sudo_unchecked_weight_unsigned(
+			origin: OriginFor<T>,
+			call: Box<<T as Config>::Call>,
+			_weight: Weight,
+		) -> DispatchResult {
+			ensure_none(origin)?;
+			let res = call.dispatch_bypass_filter(frame_system::RawOrigin::Root.into());
+			Self::deposit_event(Event::Sudid { sudo_result: res.map(|_| ()).map_err(|e| e.error) });
+			Ok(())
+		}
+	}
+
+	#[pallet::event]
+	#[pallet::generate_deposit(pub(super) fn deposit_event)]
+	pub enum Event<T: Config> {
+		/// A sudo just took place.
+		Sudid { sudo_result: DispatchResult },
+	}
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {

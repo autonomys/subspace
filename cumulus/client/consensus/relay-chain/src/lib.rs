@@ -36,28 +36,22 @@
 #![allow(clippy::all)]
 
 use cirrus_node_primitives::PersistedValidationData;
-use cumulus_client_consensus_common::{
-	ParachainBlockImport, ParachainCandidate, ParachainConsensus,
-};
+use cumulus_client_consensus_common::{ParachainBlockImport, ParachainConsensus};
 use parking_lot::Mutex;
 use sc_client_api::{Backend, HeaderBackend};
-use sc_consensus::{BlockImport, BlockImportParams};
+use sc_consensus::BlockImport;
 use sp_api::ProvideRuntimeApi;
-use sp_consensus::{
-	BlockOrigin, EnableProofRecording, Environment, ProofRecording, Proposal, Proposer,
-};
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_consensus::{EnableProofRecording, Environment, ProofRecording, Proposer};
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, NumberFor},
+	traits::{Block as BlockT, NumberFor},
 };
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc};
 use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 mod import_queue;
 pub use import_queue::{import_queue, Verifier};
-
-const LOG_TARGET: &str = "cirrus::consensus::relay-chain";
 
 /// The implementation of the relay-chain provided consensus for parachains.
 pub struct PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP> {
@@ -110,42 +104,10 @@ where
 			_phantom: PhantomData,
 		}
 	}
-
-	/// Get the inherent data with validation function parameters injected
-	async fn inherent_data(
-		&self,
-		parent: B::Hash,
-		validation_data: &PersistedValidationData,
-		relay_parent: PHash,
-	) -> Option<InherentData> {
-		let inherent_data_providers = self
-			.create_inherent_data_providers
-			.create_inherent_data_providers(parent, (relay_parent, validation_data.clone()))
-			.await
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data providers.",
-				)
-			})
-			.ok()?;
-
-		inherent_data_providers
-			.create_inherent_data()
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to create inherent data.",
-				)
-			})
-			.ok()
-	}
 }
 
 #[async_trait::async_trait]
-impl<B, PF, BI, RClient, RBackend, CIDP> ParachainConsensus<B>
+impl<B, PF, BI, RClient, RBackend, CIDP> ParachainConsensus
 	for PrimaryChainConsensus<B, PF, BI, RClient, RBackend, CIDP>
 where
 	B: BlockT,
@@ -161,71 +123,6 @@ where
 	>,
 	CIDP: CreateInherentDataProviders<B, (PHash, PersistedValidationData)>,
 {
-	async fn produce_candidate(
-		&mut self,
-		parent: &B::Header,
-		relay_parent: PHash,
-		validation_data: &PersistedValidationData,
-	) -> Option<ParachainCandidate<B>> {
-		tracing::debug!(
-			target: LOG_TARGET,
-			?parent,
-			"[produce_candidate] initializing proposer_factory",
-		);
-		let proposer_future = self.proposer_factory.lock().init(&parent);
-
-		let proposer = proposer_future
-			.await
-			.map_err(
-				|e| tracing::error!(target: LOG_TARGET, error = ?e, "Could not create proposer."),
-			)
-			.ok()?;
-
-		let inherent_data =
-			self.inherent_data(parent.hash(), &validation_data, relay_parent).await?;
-
-		let Proposal { block, storage_changes, proof } = proposer
-			.propose(
-				inherent_data,
-				Default::default(),
-				//TODO: Fix this.
-				Duration::from_millis(500),
-				None,
-			)
-			.await
-			.map_err(|e| tracing::error!(target: LOG_TARGET, error = ?e, "Proposing failed."))
-			.ok()?;
-
-		tracing::debug!(target: LOG_TARGET, ?block, "Proposed block");
-
-		let (header, extrinsics) = block.clone().deconstruct();
-
-		let mut block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
-		block_import_params.body = Some(extrinsics);
-		block_import_params.state_action = sc_consensus::StateAction::ApplyChanges(
-			sc_consensus::StorageChanges::Changes(storage_changes),
-		);
-
-		if let Err(err) = self
-			.block_import
-			.lock()
-			.await
-			.import_block(block_import_params, Default::default())
-			.await
-		{
-			tracing::error!(
-				target: LOG_TARGET,
-				at = ?parent.hash(),
-				error = ?err,
-				"Error importing build block.",
-			);
-
-			return None
-		}
-
-		Some(ParachainCandidate { block, proof })
-	}
-
 	fn block_number_from_id(
 		&self,
 		id: &BlockId<PBlock>,

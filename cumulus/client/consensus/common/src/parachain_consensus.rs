@@ -18,39 +18,20 @@ use sc_client_api::{
 	Backend, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, UsageProvider,
 };
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy};
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::{Error as ClientError, HeaderBackend};
+use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, BlockStatus};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
 };
 
-use codec::Decode;
-use futures::{future, select, FutureExt, Stream, StreamExt};
+use futures::{select, StreamExt};
 
-use std::{pin::Pin, sync::Arc};
-
-use subspace_runtime_primitives::opaque::Block as PBlock;
-
-/// Helper for the relay chain client. This is expected to be a lightweight handle like an `Arc`.
-pub trait RelaychainClient: Clone + 'static {
-	/// The error type for interacting with the Polkadot client.
-	type Error: std::fmt::Debug + Send;
-
-	/// A stream that yields head-data for a parachain.
-	type HeadStream: Stream<Item = Vec<u8>> + Send + Unpin;
-
-	/// Get a stream of new best heads for the given parachain.
-	fn new_best_heads<Block: BlockT, SecondaryClient: HeaderBackend<Block> + 'static>(
-		&self,
-		client: Arc<SecondaryClient>,
-	) -> Self::HeadStream;
-}
+use std::sync::Arc;
 
 /// Run the parachain consensus.
 ///
-/// This will follow the given `relay_chain` to act as consesus for the parachain that corresponds
+/// This will follow the given `relay_chain` to act as consensus for the parachain that corresponds
 /// to the given `para_id`. It will set the new best block of the parachain as it gets aware of it.
 /// The same happens for the finalized block.
 ///
@@ -58,11 +39,8 @@ pub trait RelaychainClient: Clone + 'static {
 ///
 /// This will access the backend of the parachain and thus, this future should be spawned as blocking
 /// task.
-pub async fn run_parachain_consensus<P, R, Block, B>(
-	parachain: Arc<P>,
-	relay_chain: R,
-	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-) where
+pub async fn run_parachain_consensus<P, Block, B>(parachain: Arc<P>)
+where
 	Block: BlockT,
 	P: Finalizer<Block, B>
 		+ UsageProvider<Block>
@@ -73,36 +51,8 @@ pub async fn run_parachain_consensus<P, R, Block, B>(
 		+ HeaderBackend<Block>
 		+ BlockchainEvents<Block>,
 	for<'a> &'a P: BlockImport<Block>,
-	R: RelaychainClient,
 	B: Backend<Block>,
 {
-	let follow_new_best = follow_new_best(parachain.clone(), relay_chain.clone(), announce_block);
-
-	select! {
-		_ = follow_new_best.fuse() => {},
-	}
-}
-
-/// Follow the relay chain new best head, to update the Parachain new best head.
-async fn follow_new_best<P, R, Block, B>(
-	parachain: Arc<P>,
-	relay_chain: R,
-	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-) where
-	Block: BlockT,
-	P: Finalizer<Block, B>
-		+ UsageProvider<Block>
-		+ Send
-		+ Sync
-		+ 'static
-		+ BlockBackend<Block>
-		+ HeaderBackend<Block>
-		+ BlockchainEvents<Block>,
-	for<'a> &'a P: BlockImport<Block>,
-	R: RelaychainClient,
-	B: Backend<Block>,
-{
-	let mut new_best_heads = relay_chain.new_best_heads(parachain.clone()).fuse();
 	let mut imported_blocks = parachain.import_notification_stream().fuse();
 	// The unset best header of the parachain. Will be `Some(_)` when we have imported a relay chain
 	// block before the parachain block it included. In this case we need to wait for this block to
@@ -111,29 +61,12 @@ async fn follow_new_best<P, R, Block, B>(
 
 	loop {
 		select! {
-			h = new_best_heads.next() => {
-				match h {
-					Some(h) => handle_new_best_parachain_head_subspace(
-						h,
-						&*parachain,
-						&mut unset_best_header,
-					).await,
-					None => {
-						tracing::debug!(
-							target: "cirrus::consensus",
-							"Stopping following new best.",
-						);
-						return
-					}
-				}
-			},
 			i = imported_blocks.next() => {
 				match i {
 					Some(i) => handle_new_block_imported(
 						i,
 						&mut unset_best_header,
 						&*parachain,
-						&*announce_block,
 					).await,
 					None => {
 						tracing::debug!(
@@ -153,19 +86,11 @@ async fn handle_new_block_imported<Block, P>(
 	notification: BlockImportNotification<Block>,
 	unset_best_header_opt: &mut Option<Block::Header>,
 	parachain: &P,
-	announce_block: &(dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync),
 ) where
 	Block: BlockT,
 	P: UsageProvider<Block> + Send + Sync + BlockBackend<Block>,
 	for<'a> &'a P: BlockImport<Block>,
 {
-	// HACK
-	//
-	// Remove after https://github.com/paritytech/substrate/pull/8052 or similar is merged
-	if notification.origin != BlockOrigin::Own {
-		announce_block(notification.hash, None);
-	}
-
 	let unset_best_header = match (notification.is_new_best, &unset_best_header_opt) {
 		// If this is the new best block or we don't have any unset block, we can end it here.
 		(true, _) | (_, None) => return,
@@ -204,96 +129,6 @@ async fn handle_new_block_imported<Block, P>(
 	}
 }
 
-/// Handle the new best parachain head as extracted from the new best relay chain.
-async fn handle_new_best_parachain_head_subspace<Block, P>(
-	encoded_head_hash: Vec<u8>,
-	parachain: &P,
-	unset_best_header: &mut Option<Block::Header>,
-) where
-	Block: BlockT,
-	P: UsageProvider<Block> + Send + Sync + BlockBackend<Block> + HeaderBackend<Block>,
-	for<'a> &'a P: BlockImport<Block>,
-{
-	let parachain_head_hash =
-		match <<<Block as BlockT>::Header as HeaderT>::Hash>::decode(&mut &encoded_head_hash[..]) {
-			Ok(header) => header,
-			Err(err) => {
-				tracing::debug!(
-					target: "cirrus::consensus",
-					error = ?err,
-					"Could not decode Parachain header while following best heads.",
-				);
-				return
-			},
-		};
-
-	let parachain_head = match parachain.header(BlockId::Hash(parachain_head_hash)) {
-		Ok(Some(head)) => head,
-		Ok(None) => {
-			tracing::error!(
-				target: "cirrus::consensus",
-				?parachain_head_hash,
-				"Parachain header does not exist",
-			);
-			return
-		},
-		Err(e) => {
-			tracing::error!(
-				target: "cirrus::consensus",
-				?parachain_head_hash,
-				error = ?e,
-				"Could not fetch Parachain header",
-			);
-			return
-		},
-	};
-
-	let hash = parachain_head.hash();
-
-	if parachain.usage_info().chain.best_hash == hash {
-		tracing::debug!(
-			target: "cirrus::consensus",
-			block_hash = ?hash,
-			usage_info = ?parachain.usage_info(),
-			"Skipping set new best block, because block is already the best.",
-		)
-	} else {
-		// Make sure the block is already known or otherwise we skip setting new best.
-		match parachain.block_status(&BlockId::Hash(hash)) {
-			Ok(BlockStatus::InChainWithState) => {
-				unset_best_header.take();
-
-				import_block_as_new_best(hash, parachain_head, parachain).await;
-			},
-			Ok(BlockStatus::InChainPruned) => {
-				tracing::error!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					"Trying to set pruned block as new best!",
-				);
-			},
-			Ok(BlockStatus::Unknown) => {
-				*unset_best_header = Some(parachain_head);
-
-				tracing::debug!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					"Parachain block not yet imported, waiting for import to enact as best block.",
-				);
-			},
-			Err(e) => {
-				tracing::error!(
-					target: "cirrus::consensus",
-					block_hash = ?hash,
-					error = ?e,
-					"Failed to get block status of block.",
-				);
-			},
-			_ => {},
-		}
-	}
-}
-
 async fn import_block_as_new_best<Block, P>(hash: Block::Hash, header: Block::Header, parachain: &P)
 where
 	Block: BlockT,
@@ -324,33 +159,5 @@ where
 			error = ?err,
 			"Failed to set new best block.",
 		);
-	}
-}
-
-impl<T> RelaychainClient for Arc<T>
-where
-	T: sc_client_api::BlockchainEvents<PBlock> + ProvideRuntimeApi<PBlock> + 'static + Send + Sync,
-{
-	type Error = ClientError;
-
-	type HeadStream = Pin<Box<dyn Stream<Item = Vec<u8>> + Send>>;
-
-	fn new_best_heads<
-		Block: BlockT,
-		SecondaryClient: sp_blockchain::HeaderBackend<Block> + 'static,
-	>(
-		&self,
-		_client: Arc<SecondaryClient>,
-	) -> Self::HeadStream {
-		self.import_notification_stream()
-			.filter_map(move |n| {
-				future::ready(if n.is_new_best {
-					// Executor node no longer relays on the relay chain block import.
-					None
-				} else {
-					None
-				})
-			})
-			.boxed()
 	}
 }

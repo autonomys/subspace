@@ -61,4 +61,5 @@ pub(crate) enum RequestResult {
 	SubmitInvalidTransactionProof(Hash),
 	ExtractBundles(Hash),
 	ExtrinsicsShufflingSeed(Hash),
+	ExecutionWasmBundle(Hash),
 }
