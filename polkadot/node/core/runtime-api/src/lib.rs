@@ -117,6 +117,7 @@ where
 			SubmitInvalidTransactionProof(..) => {},
 			ExtractBundles(..) => {},
 			ExtrinsicsShufflingSeed(..) => {},
+			ExecutionWasmBundle(..) => {},
 		}
 	}
 
@@ -155,6 +156,7 @@ where
 			Request::SubmitInvalidTransactionProof(..) => None,
 			Request::ExtractBundles(..) => None,
 			Request::ExtrinsicsShufflingSeed(..) => None,
+			Request::ExecutionWasmBundle(..) => None,
 		}
 	}
 
@@ -329,6 +331,17 @@ where
 			let _ = sender.send(res.clone());
 
 			res.ok().map(|_res| RequestResult::ExtrinsicsShufflingSeed(relay_parent));
+		},
+		Request::ExecutionWasmBundle(sender) => {
+			let api = client.runtime_api();
+			let res = api
+				.execution_wasm_bundle(&BlockId::Hash(relay_parent))
+				.map_err(|e| RuntimeApiError::from(e.to_string()));
+			metrics.on_request(res.is_ok());
+
+			let _ = sender.send(res.clone());
+
+			res.ok().map(|_res| RequestResult::ExecutionWasmBundle(relay_parent));
 		},
 	}
 

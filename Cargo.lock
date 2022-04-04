@@ -871,6 +871,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
+ "sp-state-machine",
  "sp-trie",
  "subspace-core-primitives",
  "subspace-fraud-proof",
@@ -1019,6 +1020,7 @@ name = "cirrus-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cirrus-client-executor",
  "cirrus-client-service",
  "cirrus-node-primitives",
  "cirrus-test-runtime",
@@ -1040,6 +1042,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-inherents",
  "sp-keyring",
  "sp-runtime",
  "sp-timestamp",
@@ -5723,6 +5726,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-maybe-compressed-blob",
+ "sp-runtime",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",

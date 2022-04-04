@@ -6,12 +6,13 @@ use cirrus_test_service::{
 	Keyring::{Alice, Charlie, Dave},
 };
 use codec::Encode;
-use sc_client_api::{HeaderBackend, StorageProof};
+use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
 use sp_api::ProvideRuntimeApi;
+use sp_core::traits::FetchRuntimeCode;
 use sp_executor::{ExecutionPhase, FraudProof};
 use sp_runtime::{
-	generic::BlockId,
-	traits::{BlakeTwo256, Header as HeaderT},
+	generic::{BlockId, DigestItem},
+	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
 };
 
 #[substrate_test_utils::test]
@@ -464,4 +465,48 @@ async fn invalid_execution_proof_should_not_work() {
 		execution_phase: execution_phase0,
 	};
 	assert!(proof_verifier.verify(&fraud_proof).is_ok());
+}
+
+#[substrate_test_utils::test]
+async fn set_new_code_should_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// start alice
+	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	// run cirrus charlie (a secondary chain authority node)
+	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
+		.connect_to_relay_chain_node(&alice)
+		.build()
+		.await;
+
+	charlie.wait_for_blocks(3).await;
+
+	let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
+
+	charlie
+		.executor
+		.clone()
+		.process_bundles(
+			Default::default(),
+			Default::default(),
+			BlakeTwo256::hash_of(&[1u8; 64]).into(),
+			Some(new_runtime_wasm_blob.clone().into()),
+		)
+		.await;
+
+	let best_hash = charlie.client.info().best_hash;
+	let state = charlie.backend.state_at(BlockId::Hash(best_hash)).expect("Get state");
+	let trie_backend = state.as_trie_backend().unwrap();
+	let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+	let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
+	assert_eq!(runtime_code, new_runtime_wasm_blob);
+	assert_eq!(
+		charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
+		vec![DigestItem::RuntimeEnvironmentUpdated]
+	);
 }

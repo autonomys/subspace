@@ -61,7 +61,6 @@ where
         execution_phase: &ExecutionPhase,
         delta_changes: Option<(DB, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
-        // TODO: fetch the runtime code from the primary chain instead of the local state.
         let state = self.backend.state_at(at)?;
 
         let trie_backend = state.as_trie_backend().ok_or_else(|| {
@@ -116,7 +115,6 @@ where
         pre_execution_root: H256,
         proof: StorageProof,
     ) -> sp_blockchain::Result<Vec<u8>> {
-        // TODO: fetch the runtime code from the primary chain instead of the local state.
         let state = self.backend.state_at(at)?;
 
         let trie_backend = state.as_trie_backend().ok_or_else(|| {

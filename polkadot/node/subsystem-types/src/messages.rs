@@ -22,6 +22,8 @@
 //!
 //! Subsystems' APIs are defined separately from their implementation, leading to easier mocking.
 
+use std::borrow::Cow;
+
 use futures::channel::oneshot;
 
 pub use sc_network::IfDisconnected;
@@ -122,6 +124,8 @@ pub enum RuntimeApiRequest {
 	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<OpaqueBundle>>),
 	/// Get the randomness seed for extrinsics shuffling.
 	ExtrinsicsShufflingSeed(BlockHeader, RuntimeApiSender<Randomness>),
+	/// Get the execution runtime blob.
+	ExecutionWasmBundle(RuntimeApiSender<Cow<'static, [u8]>>),
 }
 
 /// A message to the Runtime API subsystem.

@@ -93,7 +93,7 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, IQ, TP
 		code_executor,
 		is_authority,
 	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, IQ, TP, Backend, CIDP, E>,
-) -> sc_service::error::Result<()>
+) -> sc_service::error::Result<cirrus_client_executor::Executor<Block, Client, TP, Backend, CIDP, E>>
 where
 	Block: BlockT,
 	Client: Finalizer<Block, Backend>
@@ -166,7 +166,7 @@ where
 	let executor_gossip = cirrus_client_executor_gossip::start_gossip_worker(
 		cirrus_client_executor_gossip::ExecutorGossipParams {
 			network,
-			executor,
+			executor: executor.clone(),
 			bundle_receiver,
 			execution_receipt_receiver,
 		},
@@ -177,7 +177,7 @@ where
 
 	task_manager.add_child(primary_chain_full_node.task_manager);
 
-	Ok(())
+	Ok(executor)
 }
 
 /// Parameters given to [`start_full_node`].
