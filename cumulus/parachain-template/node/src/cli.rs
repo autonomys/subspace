@@ -11,14 +11,6 @@ use std::{net::SocketAddr, path::PathBuf};
 /// Sub-commands supported by the collator.
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
-	/// Export the genesis state of the parachain.
-	#[clap(name = "export-genesis-state")]
-	ExportGenesisState(ExportGenesisStateCommand),
-
-	/// Export the genesis wasm of the parachain.
-	#[clap(name = "export-genesis-wasm")]
-	ExportGenesisWasm(ExportGenesisWasmCommand),
-
 	/// Build a chain specification.
 	BuildSpec(sc_cli::BuildSpecCmd),
 

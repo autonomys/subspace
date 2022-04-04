@@ -46,8 +46,6 @@ use std::sync::Arc;
 
 use cumulus_client_consensus_common::RelaychainClient;
 
-pub mod genesis;
-
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<
 	'a,
