@@ -2,10 +2,10 @@
 mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
-use log::{error, info};
+use log::error;
 use rocksdb::DB;
 use std::collections::VecDeque;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -147,41 +147,6 @@ pub struct Plot {
 }
 
 impl Plot {
-    /// Helper function for ignoring the error that given file/directory does not exist.
-    fn try_remove<P: AsRef<Path>>(
-        path: P,
-        remove: impl FnOnce(P) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if path.as_ref().exists() {
-            remove(path)?;
-        }
-        Ok(())
-    }
-
-    /// Erases plot in specific directory
-    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
-        info!("Erasing the plot");
-        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
-        info!("Erasing the plot offset to index db");
-        Self::try_remove(
-            path.as_ref().join("plot-offset-to-index.bin"),
-            fs::remove_file,
-        )?;
-        info!("Erasing the plot index to offset db");
-        Self::try_remove(
-            path.as_ref().join("plot-index-to-offset"),
-            fs::remove_dir_all,
-        )?;
-        info!("Erasing plot metadata");
-        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
-        info!("Erasing plot commitments");
-        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
-        info!("Erasing object mappings");
-        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
-
-        Ok(())
-    }
-
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
