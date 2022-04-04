@@ -36,8 +36,9 @@ use polkadot_node_subsystem::{
 };
 use polkadot_node_subsystem_util::{
 	metrics::{self, prometheus},
-	request_extract_bundles, request_extrinsics_shuffling_seed,
+	request_execution_wasm_bundle, request_extract_bundles, request_extrinsics_shuffling_seed,
 };
+use sp_runtime::generic::DigestItem;
 use std::sync::Arc;
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
@@ -292,12 +293,23 @@ async fn process_primary_block<Context: SubsystemContext>(
 		}
 	};
 
+	let maybe_new_runtime = if header
+		.digest
+		.logs
+		.iter()
+		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+	{
+		Some(request_execution_wasm_bundle(block_hash, ctx.sender()).await.await??)
+	} else {
+		None
+	};
+
 	let shuffling_seed = request_extrinsics_shuffling_seed(block_hash, header, ctx.sender())
 		.await
 		.await??;
 
 	let opaque_execution_receipt =
-		match (config.processor)(block_hash, bundles, shuffling_seed).await {
+		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
 			Some(processor_result) => processor_result.to_opaque_execution_receipt(),
 			None => {
 				tracing::debug!(

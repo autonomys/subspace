@@ -60,7 +60,7 @@ use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
 use futures::FutureExt;
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 use tracing::Instrument;
 
 /// The logging target.
@@ -404,8 +404,12 @@ where
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
+		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Option<ProcessorResult> {
-		match self.process_bundles_impl(primary_hash, bundles, shuffling_seed).await {
+		match self
+			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+			.await
+		{
 			Ok(res) => res,
 			Err(err) => {
 				tracing::error!(
@@ -782,10 +786,10 @@ where
 		processor: {
 			let executor = executor.clone();
 
-			Box::new(move |primary_hash, bundles, shuffling_seed| {
+			Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
 				let executor = executor.clone();
 				executor
-					.process_bundles(primary_hash, bundles, shuffling_seed)
+					.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
 					.instrument(span.clone())
 					.boxed()
 			})

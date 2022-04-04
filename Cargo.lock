@@ -5723,6 +5723,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-maybe-compressed-blob",
+ "sp-runtime",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",

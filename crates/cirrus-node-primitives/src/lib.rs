@@ -25,7 +25,7 @@ use sp_consensus_slots::Slot;
 use sp_core::bytes;
 use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
-use std::pin::Pin;
+use std::{borrow::Cow, pin::Pin};
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::{BlockNumber, Hash};
 
@@ -126,6 +126,7 @@ pub type ProcessorFn = Box<
             Hash,
             Vec<OpaqueBundle>,
             Randomness,
+            Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Option<ProcessorResult>> + Send>>
         + Send
         + Sync,

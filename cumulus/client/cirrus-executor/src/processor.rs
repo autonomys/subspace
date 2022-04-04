@@ -12,6 +12,7 @@ use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT},
 };
 use std::{
+	borrow::Cow,
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
 };
@@ -98,6 +99,7 @@ where
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
+		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Result<Option<ProcessorResult>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
@@ -114,6 +116,10 @@ where
 		let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
 
 		let mut final_extrinsics = block_builder.create_inherents(inherent_data)?;
+
+		if let Some(_new_runtime) = maybe_new_runtime {
+			// TODO craft a SetCode extrinsic to mimic the regular runtime upgrade.
+		}
 
 		let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 		final_extrinsics.extend(extrinsics);
