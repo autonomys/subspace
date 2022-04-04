@@ -399,7 +399,8 @@ where
 		self.produce_bundle_impl(primary_hash, slot_info).await
 	}
 
-	async fn process_bundles(
+	/// Processes the bundles extracted from the primary block.
+	pub async fn process_bundles(
 		self,
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
