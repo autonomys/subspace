@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use subspace_core_primitives::PublicKey;
+use subspace_farmer::Plot;
 use subspace_networking::libp2p::Multiaddr;
 
 const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
@@ -115,8 +116,7 @@ async fn main() -> Result<()> {
             commands::identity(identity_command)?;
         }
         Command::ErasePlot { custom_path } => {
-            let path = utils::get_path(custom_path);
-            commands::erase_plot(&path)?;
+            Plot::erase(utils::get_path(custom_path))?;
             info!("Done");
         }
         Command::Wipe { custom_path } => {
