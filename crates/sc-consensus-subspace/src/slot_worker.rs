@@ -164,12 +164,14 @@ where
             let recorded_history_segment_size = runtime_api
                 .recorded_history_segment_size(&parent_block_id)
                 .ok()?;
+            let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
             let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
             let segment_index = solution.piece_index / merkle_num_leaves;
             let position = solution.piece_index % merkle_num_leaves;
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
+            let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -211,6 +213,8 @@ where
                         records_root,
                         position,
                         record_size,
+                        max_plot_size,
+                        total_pieces,
                     }),
                     signing_context: &self.signing_context,
                 },
