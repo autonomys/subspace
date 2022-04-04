@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 # Substrate deps
-sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
@@ -17,7 +16,5 @@ sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7d
 # Other deps
 async-trait = "0.1.52"
 dyn-clone = "1.0.5"
-futures = { version = "0.3.21", features = ["compat"] }
-tracing = "0.1.32"
 
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

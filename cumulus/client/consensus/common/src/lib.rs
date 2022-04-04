@@ -23,9 +23,6 @@ use sp_runtime::{
 };
 use subspace_runtime_primitives::opaque::Block as PBlock;
 
-mod parachain_consensus;
-pub use parachain_consensus::run_parachain_consensus;
-
 // TODO: this is no longer _parachain consensus related_, it might evolve as a
 // `PrimaryChainInterface` in the future. But we don't have to refactor it right now,
 // particularlly we'll have a major upgrade once https://github.com/paritytech/cumulus/issues/545

@@ -97,11 +97,6 @@ where
 	TP: TransactionPool<Block = Block> + 'static,
 	E: CodeExecutor,
 {
-	let consensus = cumulus_client_consensus_common::run_parachain_consensus(client.clone());
-	task_manager
-		.spawn_essential_handle()
-		.spawn("cumulus-consensus", None, consensus);
-
 	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
 	let (execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
