@@ -21,11 +21,11 @@ serde = { version = "1.0", optional = true }
 
 frame-support = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 frame-system = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
+sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-finality-grandpa = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-std = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
-sp-core = { git = "https://github.com/paritytech/substrate", rev="c364008a6c7da8456e17967f55edf51e45146998", default-features = false }
 
 
 [dev-dependencies]

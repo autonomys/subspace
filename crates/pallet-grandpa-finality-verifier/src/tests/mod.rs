@@ -2,10 +2,10 @@ mod justification;
 mod keyring;
 mod mock;
 
-use super::*;
 use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
-use crate::Error as ErrorP;
 use crate::{initialize, validate};
+use crate::{BestFinalized, ChainType, CurrentAuthoritySet, Error as ErrorP, InitializationData};
+use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_noop, assert_ok};
 use justification::*;

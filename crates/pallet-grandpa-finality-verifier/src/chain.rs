@@ -1,8 +1,12 @@
-use super::*;
 use crate::grandpa::{verify_justification, AuthoritySet, GrandpaJustification};
+use crate::{Config, Error};
+use codec::{Decode, Encode};
 use finality_grandpa::voter_set::VoterSet;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
+use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_core::Hasher as HasherT;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::{
