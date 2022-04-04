@@ -117,8 +117,14 @@ where
 
 		let mut final_extrinsics = block_builder.create_inherents(inherent_data)?;
 
-		if let Some(_new_runtime) = maybe_new_runtime {
-			// TODO craft a SetCode extrinsic to mimic the regular runtime upgrade.
+		if let Some(new_runtime) = maybe_new_runtime {
+			let encoded_set_code = self
+				.client
+				.runtime_api()
+				.construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
+			let set_code_extrinsic =
+				Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
+			final_extrinsics.push(set_code_extrinsic);
 		}
 
 		let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;

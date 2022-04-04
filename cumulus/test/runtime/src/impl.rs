@@ -303,7 +303,10 @@ impl pallet_transaction_payment::Config for Runtime {
 	type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
-impl cirrus_pallet_executive::Config for Runtime {}
+impl cirrus_pallet_executive::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+}
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
@@ -434,6 +437,18 @@ impl_runtime_apis! {
 		fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8> {
 			let _ = Executive::apply_extrinsic(extrinsic);
 			Executive::storage_root()
+		}
+
+		fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
+			use codec::Encode;
+			// Use `set_code_without_checks` instead of `set_code` in the test environment.
+			let set_code_call = frame_system::Call::set_code_without_checks { code };
+			UncheckedExtrinsic::new_unsigned(
+				cirrus_pallet_executive::Call::sudo_unchecked_weight_unsigned {
+					call: Box::new(set_code_call.into()),
+					weight: 0
+				}.into()
+			).encode()
 		}
 	}
 }
