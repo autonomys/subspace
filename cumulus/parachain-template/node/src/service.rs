@@ -201,8 +201,8 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	// Disable the default announcement of Substrate in favor of the one of Cumulus.
-	parachain_config.announce_block = false;
+	// TODO: Do we even need block announcement on secondary node?
+	// parachain_config.announce_block = false;
 
 	parachain_config
 		.network
@@ -272,11 +272,6 @@ where
 		telemetry: telemetry.as_mut(),
 	})?;
 
-	let announce_block = {
-		let network = network.clone();
-		Arc::new(move |hash, data| network.announce_block(hash, data))
-	};
-
 	// Basically, all the executor nodes run all the components, the
 	// difference is that only the authority node will try to win the
 	// election for producing bundle and execution receipt.
@@ -301,7 +296,6 @@ where
 	let spawner = task_manager.spawn_handle();
 
 	let params = cirrus_client_service::StartExecutorParams {
-		announce_block,
 		client: client.clone(),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,

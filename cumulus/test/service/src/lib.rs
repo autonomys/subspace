@@ -157,7 +157,6 @@ async fn start_node_impl<RB>(
 	mut parachain_config: Configuration,
 	_collator_key: Option<CollatorPair>,
 	relay_chain_config: Configuration,
-	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	rpc_ext_builder: RB,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -177,8 +176,8 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	// Disable the default announcement of Substrate in favor of the one of Cumulus.
-	parachain_config.announce_block = false;
+	// TODO: Do we even need block announcement on secondary node?
+	// parachain_config.announce_block = false;
 
 	let params = new_partial(&mut parachain_config)?;
 
@@ -235,15 +234,6 @@ where
 		telemetry: None,
 	})?;
 
-	let announce_block = {
-		let network = network.clone();
-		Arc::new(move |hash, data| network.announce_block(hash, data))
-	};
-
-	let announce_block = wrap_announce_block
-		.map(|w| (w)(announce_block.clone()))
-		.unwrap_or_else(|| announce_block);
-
 	let parachain_consensus = {
 		let proposer_factory = ProposerFactory::with_proof_recording(
 			task_manager.spawn_handle(),
@@ -264,7 +254,6 @@ where
 
 	let code_executor = Arc::new(params.other);
 	let params = StartExecutorParams {
-		announce_block,
 		client: client.clone(),
 		spawner: Box::new(task_manager.spawn_handle()),
 		task_manager: &mut task_manager,
@@ -313,7 +302,6 @@ pub struct TestNodeBuilder {
 	parachain_nodes: Vec<MultiaddrWithPeerId>,
 	parachain_nodes_exclusive: bool,
 	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
-	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	storage_update_func_parachain: Option<Box<dyn Fn()>>,
 	storage_update_func_relay_chain: Option<Box<dyn Fn()>>,
 }
@@ -332,7 +320,6 @@ impl TestNodeBuilder {
 			parachain_nodes: Vec::new(),
 			parachain_nodes_exclusive: false,
 			relay_chain_nodes: Vec::new(),
-			wrap_announce_block: None,
 			storage_update_func_parachain: None,
 			storage_update_func_relay_chain: None,
 		}
@@ -399,15 +386,6 @@ impl TestNodeBuilder {
 		self
 	}
 
-	/// Wrap the announce block function of this node.
-	pub fn wrap_announce_block(
-		mut self,
-		wrap: impl FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn + 'static,
-	) -> Self {
-		self.wrap_announce_block = Some(Box::new(wrap));
-		self
-	}
-
 	/// Allows accessing the parachain storage before the test node is built.
 	pub fn update_storage_parachain(mut self, updater: impl Fn() + 'static) -> Self {
 		self.storage_update_func_parachain = Some(Box::new(updater));
@@ -443,13 +421,9 @@ impl TestNodeBuilder {
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(
-				parachain_config,
-				self.collator_key,
-				relay_chain_config,
-				self.wrap_announce_block,
-				|_| Ok(Default::default()),
-			)
+			start_node_impl(parachain_config, self.collator_key, relay_chain_config, |_| {
+				Ok(Default::default())
+			})
 			.await
 			.expect("could not create Cumulus test service");
 

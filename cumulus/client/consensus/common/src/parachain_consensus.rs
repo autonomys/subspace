@@ -39,10 +39,8 @@ use std::sync::Arc;
 ///
 /// This will access the backend of the parachain and thus, this future should be spawned as blocking
 /// task.
-pub async fn run_parachain_consensus<P, Block, B>(
-	parachain: Arc<P>,
-	announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
-) where
+pub async fn run_parachain_consensus<P, Block, B>(parachain: Arc<P>)
+where
 	Block: BlockT,
 	P: Finalizer<Block, B>
 		+ UsageProvider<Block>
@@ -69,7 +67,6 @@ pub async fn run_parachain_consensus<P, Block, B>(
 						i,
 						&mut unset_best_header,
 						&*parachain,
-						&*announce_block,
 					).await,
 					None => {
 						tracing::debug!(
@@ -89,19 +86,11 @@ async fn handle_new_block_imported<Block, P>(
 	notification: BlockImportNotification<Block>,
 	unset_best_header_opt: &mut Option<Block::Header>,
 	parachain: &P,
-	announce_block: &(dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync),
 ) where
 	Block: BlockT,
 	P: UsageProvider<Block> + Send + Sync + BlockBackend<Block>,
 	for<'a> &'a P: BlockImport<Block>,
 {
-	// HACK
-	//
-	// Remove after https://github.com/paritytech/substrate/pull/8052 or similar is merged
-	if notification.origin != BlockOrigin::Own {
-		announce_block(notification.hash, None);
-	}
-
 	let unset_best_header = match (notification.is_new_best, &unset_best_header_opt) {
 		// If this is the new best block or we don't have any unset block, we can end it here.
 		(true, _) | (_, None) => return,

@@ -39,7 +39,6 @@ use std::sync::Arc;
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
 	pub client: Arc<Client>,
-	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<RClient>,
 	pub task_manager: &'a mut TaskManager,
@@ -55,7 +54,6 @@ pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, 
 pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>(
 	StartExecutorParams {
 		client,
-		announce_block,
 		spawner,
 		task_manager,
 		primary_chain_full_node,
@@ -99,10 +97,7 @@ where
 	TP: TransactionPool<Block = Block> + 'static,
 	E: CodeExecutor,
 {
-	let consensus = cumulus_client_consensus_common::run_parachain_consensus(
-		client.clone(),
-		announce_block.clone(),
-	);
+	let consensus = cumulus_client_consensus_common::run_parachain_consensus(client.clone());
 	task_manager
 		.spawn_essential_handle()
 		.spawn("cumulus-consensus", None, consensus);
@@ -119,7 +114,6 @@ where
 	let executor =
 		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
 			client,
-			announce_block,
 			overseer_handle,
 			spawner,
 			parachain_consensus,

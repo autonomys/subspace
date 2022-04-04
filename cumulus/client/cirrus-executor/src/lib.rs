@@ -691,7 +691,6 @@ where
 /// Parameters for [`start_executor`].
 pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, E> {
 	pub client: Arc<Client>,
-	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Box<Spawner>,
 	pub parachain_consensus: Box<dyn ParachainConsensus>,
@@ -707,7 +706,6 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, E>(
 	StartExecutorParams {
 		client,
-		announce_block: _,
 		mut overseer_handle,
 		spawner,
 		parachain_consensus,
