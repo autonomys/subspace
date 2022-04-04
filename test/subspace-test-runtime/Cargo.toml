@@ -26,6 +26,7 @@ orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https:/
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 pallet-executor = { version = "0.1.0", default-features = false, path = "../../crates/pallet-executor" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crates/pallet-feeds" }
+pallet-grandpa-finality-verifier = { version = "1.0.0", default-features = false, path = "../../crates/pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../../crates/pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../../crates/pallet-rewards" }
@@ -74,6 +75,7 @@ std = [
 	"pallet-balances/std",
 	"pallet-executor/std",
 	"pallet-feeds/std",
+	"pallet-grandpa-finality-verifier/std",
 	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
 	"pallet-rewards/std",

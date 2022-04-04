@@ -40,6 +40,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
+use pallet_feeds::FeedValidator;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
@@ -51,8 +52,8 @@ use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispa
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
+use sp_runtime::{DispatchResult, OpaqueExtrinsic};
 use sp_std::borrow::Cow;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -477,8 +478,29 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
+/// Type used to represent a FeedId or ChainId
+pub type FeedId = u64;
+
+pub struct GrandpaValidator;
+
+impl FeedValidator<FeedId> for GrandpaValidator {
+    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult {
+        pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
+    }
+
+    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult {
+        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object)
+    }
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
+    type FeedId = FeedId;
+    type Validator = GrandpaValidator;
+}
+
+impl pallet_grandpa_finality_verifier::Config for Runtime {
+    type ChainId = FeedId;
 }
 
 impl pallet_object_store::Config for Runtime {
@@ -519,6 +541,7 @@ construct_runtime!(
         Utility: pallet_utility = 8,
 
         Feeds: pallet_feeds = 6,
+        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
         ObjectStore: pallet_object_store = 10,
         Executor: pallet_executor = 11,
 

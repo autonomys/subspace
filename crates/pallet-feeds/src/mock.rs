@@ -1,4 +1,6 @@
 use crate as pallet_feeds;
+use crate::FeedValidator;
+use frame_support::dispatch::DispatchResult;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use sp_core::H256;
@@ -9,6 +11,7 @@ use sp_runtime::{
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+type FeedId = u64;
 
 frame_support::construct_runtime!(
     pub enum Test where
@@ -52,8 +55,20 @@ parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
+impl FeedValidator<FeedId> for () {
+    fn initialize(_feed_id: FeedId, _data: &[u8]) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn validate(_feed_id: FeedId, _object: &[u8]) -> DispatchResult {
+        Ok(())
+    }
+}
+
 impl pallet_feeds::Config for Test {
     type Event = Event;
+    type FeedId = FeedId;
+    type Validator = ();
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
