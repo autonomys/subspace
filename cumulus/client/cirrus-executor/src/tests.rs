@@ -129,7 +129,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
-		BlockBuilder::with_extrinsics(
+		BlockBuilder::new(
 			&*charlie.client,
 			parent_header.hash(),
 			*parent_header.number(),
@@ -370,7 +370,7 @@ async fn invalid_execution_proof_should_not_work() {
 		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
-		BlockBuilder::with_extrinsics(
+		BlockBuilder::new(
 			&*charlie.client,
 			parent_header.hash(),
 			*parent_header.number(),
