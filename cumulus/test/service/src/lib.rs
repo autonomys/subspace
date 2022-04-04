@@ -43,7 +43,7 @@ use substrate_test_client::{
 	BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
-use cirrus_client_service::{prepare_node_config, start_executor, StartExecutorParams};
+use cirrus_client_service::{start_executor, StartExecutorParams};
 use cirrus_node_primitives::CollatorPair;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
@@ -155,7 +155,7 @@ pub fn new_partial(
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
 async fn start_node_impl<RB>(
-	parachain_config: Configuration,
+	mut parachain_config: Configuration,
 	_collator_key: Option<CollatorPair>,
 	relay_chain_config: Configuration,
 	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
@@ -178,7 +178,8 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	let mut parachain_config = prepare_node_config(parachain_config);
+	// Disable the default announcement of Substrate in favor of the one of Cumulus.
+	parachain_config.announce_block = false;
 
 	let params = new_partial(&mut parachain_config)?;
 
@@ -205,14 +206,13 @@ where
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	let import_queue = cirrus_client_service::SharedImportQueue::new(params.import_queue);
 	let (network, system_rpc_tx, start_network) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &parachain_config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
-			import_queue: import_queue.clone(),
+			import_queue: params.import_queue,
 			block_announce_validator_builder: None,
 			warp_sync: None,
 		})?;
@@ -271,7 +271,6 @@ where
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
 		parachain_consensus,
-		import_queue,
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),
