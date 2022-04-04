@@ -22,7 +22,6 @@ pub mod chain_spec;
 
 use std::{future::Future, sync::Arc};
 
-use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -46,7 +45,6 @@ use substrate_test_client::{
 use cirrus_client_service::{start_executor, StartExecutorParams};
 use cirrus_node_primitives::CollatorPair;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
-use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 pub use cirrus_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
@@ -180,7 +178,6 @@ where
 	let params = new_partial(&mut parachain_config)?;
 
 	let validator = parachain_config.role.is_authority();
-	let prometheus_registry = parachain_config.prometheus_registry().cloned();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
 
@@ -232,30 +229,12 @@ where
 		telemetry: None,
 	})?;
 
-	let parachain_consensus = {
-		let proposer_factory = ProposerFactory::with_proof_recording(
-			task_manager.spawn_handle(),
-			client.clone(),
-			transaction_pool.clone(),
-			prometheus_registry.as_ref(),
-			None,
-		);
-
-		Box::new(PrimaryChainConsensus::new(
-			proposer_factory,
-			client.clone(),
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.backend.clone(),
-		))
-	};
-
 	let code_executor = Arc::new(params.other);
 	let params = StartExecutorParams {
 		client: client.clone(),
 		spawner: Box::new(task_manager.spawn_handle()),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
-		parachain_consensus,
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),

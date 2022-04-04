@@ -5,9 +5,6 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-# Cumulus dependencies
-cumulus-client-consensus-common = { path = "../consensus/common" }
-
 # Substrate dependencies
 sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
@@ -36,4 +33,5 @@ cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
 
 # Subspace
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../../crates/subspace-service" }

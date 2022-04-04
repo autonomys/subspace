@@ -41,8 +41,6 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 
-use cumulus_client_consensus_common::ParachainConsensus;
-
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
@@ -56,7 +54,7 @@ use sp_executor::{
 	InvalidTransactionProof, OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Hash as PHash;
+use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 use futures::FutureExt;
 use std::{borrow::Cow, sync::Arc};
@@ -68,7 +66,7 @@ const LOG_TARGET: &str = "cirrus::executor";
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	parachain_consensus: Box<dyn ParachainConsensus>,
+	primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
@@ -85,7 +83,7 @@ impl<Block: BlockT, Client, TransactionPool, Backend, E> Clone
 {
 	fn clone(&self) -> Self {
 		Self {
-			parachain_consensus: self.parachain_consensus.clone(),
+			primary_chain_client: self.primary_chain_client.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
@@ -127,7 +125,7 @@ where
 {
 	/// Create a new instance.
 	fn new(
-		parachain_consensus: Box<dyn ParachainConsensus>,
+		primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
@@ -139,7 +137,7 @@ where
 		is_authority: bool,
 	) -> Self {
 		Self {
-			parachain_consensus,
+			primary_chain_client,
 			client,
 			spawner,
 			overseer_handle,
@@ -519,7 +517,7 @@ where
 
 		let block_hash = execution_receipt.secondary_hash;
 		let block_number = self
-			.parachain_consensus
+			.primary_chain_client
 			.block_number_from_id(&BlockId::Hash(execution_receipt.primary_hash))?
 			.ok_or(sp_blockchain::Error::Backend(format!(
 				"Primary block number not found for {:?}",
@@ -693,7 +691,7 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub client: Arc<Client>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Box<Spawner>,
-	pub parachain_consensus: Box<dyn ParachainConsensus>,
+	pub primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
@@ -708,7 +706,7 @@ pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, E>
 		client,
 		mut overseer_handle,
 		spawner,
-		parachain_consensus,
+		primary_chain_client,
 		transaction_pool,
 		bundle_sender,
 		execution_receipt_sender,
@@ -745,7 +743,7 @@ where
 	E: CodeExecutor,
 {
 	let executor = Executor::new(
-		parachain_consensus,
+		primary_chain_client,
 		client,
 		spawner,
 		overseer_handle.clone(),

@@ -29,9 +29,9 @@ pub struct Verifier<Block> {
 	_marker: PhantomData<Block>,
 }
 
-impl<Block> Verifier<Block> {
+impl<Block> Default for Verifier<Block> {
 	/// Create a new instance.
-	pub fn new() -> Self {
+	fn default() -> Self {
 		Self { _marker: PhantomData }
 	}
 }
@@ -61,10 +61,8 @@ where
 	I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
 	I::Transaction: Send,
 {
-	let verifier = Verifier::new();
-
 	Ok(BasicQueue::new(
-		verifier,
+		Verifier::default(),
 		Box::new(cumulus_client_consensus_common::ParachainBlockImport::new(block_import)),
 		None,
 		spawner,

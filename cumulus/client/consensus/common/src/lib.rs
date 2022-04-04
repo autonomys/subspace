@@ -17,32 +17,7 @@
 #![allow(clippy::all)]
 
 use sc_consensus::BlockImport;
-use sp_runtime::{
-	generic::BlockId,
-	traits::{Block as BlockT, NumberFor},
-};
-use subspace_runtime_primitives::opaque::Block as PBlock;
-
-// TODO: this is no longer _parachain consensus related_, it might evolve as a
-// `PrimaryChainInterface` in the future. But we don't have to refactor it right now,
-// particularlly we'll have a major upgrade once https://github.com/paritytech/cumulus/issues/545
-// is resolved.
-/// A specific parachain consensus implementation that can be used by a collator to produce candidates.
-///
-/// The collator will call [`Self::produce_candidate`] every time there is a free core for the parachain
-/// this collator is collating for. It is the job of the consensus implementation to decide if this
-/// specific collator should build a candidate for the given relay chain block. The consensus
-/// implementation could, for example, check whether this specific collator is part of a staked set.
-#[async_trait::async_trait]
-pub trait ParachainConsensus: Send + Sync + dyn_clone::DynClone {
-	/// Convert an arbitrary block ID into a block number.
-	fn block_number_from_id(
-		&self,
-		id: &BlockId<PBlock>,
-	) -> sp_blockchain::Result<Option<NumberFor<PBlock>>>;
-}
-
-dyn_clone::clone_trait_object!(ParachainConsensus);
+use sp_runtime::traits::Block as BlockT;
 
 /// Parachain specific block import.
 ///

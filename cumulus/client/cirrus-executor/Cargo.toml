@@ -19,9 +19,6 @@ sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7d
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
-# Cumulus dependencies
-cumulus-client-consensus-common = { path = "../consensus/common" }
-
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "3.1.2", features = [ "derive" ] }
 crossbeam = "0.8"
