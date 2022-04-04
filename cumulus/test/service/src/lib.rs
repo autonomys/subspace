@@ -60,6 +60,16 @@ pub type Backend = TFullBackend<Block>;
 /// Code executor for the test service.
 pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 
+/// Secondary executor for the test service.
+pub type Executor = cirrus_client_executor::Executor<
+	Block,
+	Client,
+	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
+	Backend,
+	Box<dyn sp_inherents::CreateInherentDataProviders<Block, Hash, InherentDataProviders = ()>>,
+	CodeExecutor,
+>;
+
 /// Native executor instance.
 pub struct RuntimeExecutor;
 
@@ -157,6 +167,7 @@ async fn start_node_impl<RB>(
 	Arc<CodeExecutor>,
 	Arc<NetworkService<Block, H256>>,
 	RpcHandlers,
+	Executor,
 )>
 where
 	RB: Fn(Arc<Client>) -> Result<jsonrpc_core::IoHandler<sc_rpc::Metadata>, sc_service::Error>
@@ -264,16 +275,25 @@ where
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),
-		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
+		create_inherent_data_providers: Arc::new(Box::new(
+			move |_, _relay_parent| async move { Ok(()) },
+		)
+			as Box<
+				dyn sp_inherents::CreateInherentDataProviders<
+					Block,
+					Hash,
+					InherentDataProviders = (),
+				>,
+			>),
 		code_executor: code_executor.clone(),
 		is_authority: validator,
 	};
 
-	start_executor(params).await?;
+	let executor = start_executor(params).await?;
 
 	start_network.start_network();
 
-	Ok((task_manager, client, backend, code_executor, network, rpc_handlers))
+	Ok((task_manager, client, backend, code_executor, network, rpc_handlers, executor))
 }
 
 /// A Cumulus test node instance used for testing.
@@ -293,6 +313,8 @@ pub struct TestNode {
 	pub addr: MultiaddrWithPeerId,
 	/// RPCHandlers to make RPC queries.
 	pub rpc_handlers: RpcHandlers,
+	/// Secondary executor.
+	pub executor: Executor,
 }
 
 /// A builder to create a [`TestNode`].
@@ -432,7 +454,7 @@ impl TestNodeBuilder {
 			format!("{} (primary chain)", relay_chain_config.network.node_name);
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
-		let (task_manager, client, backend, code_executor, network, rpc_handlers) =
+		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
 			start_node_impl(
 				parachain_config,
 				self.collator_key,
@@ -446,7 +468,16 @@ impl TestNodeBuilder {
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
-		TestNode { task_manager, client, backend, code_executor, network, addr, rpc_handlers }
+		TestNode {
+			task_manager,
+			client,
+			backend,
+			code_executor,
+			network,
+			addr,
+			rpc_handlers,
+			executor,
+		}
 	}
 }
 
