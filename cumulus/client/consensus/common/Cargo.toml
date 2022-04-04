@@ -20,5 +20,4 @@ dyn-clone = "1.0.5"
 futures = { version = "0.3.21", features = ["compat"] }
 tracing = "0.1.32"
 
-cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
 subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

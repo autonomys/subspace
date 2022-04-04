@@ -69,7 +69,7 @@ const LOG_TARGET: &str = "cirrus::executor";
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, CIDP, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	parachain_consensus: Box<dyn ParachainConsensus<Block>>,
+	parachain_consensus: Box<dyn ParachainConsensus>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
@@ -131,7 +131,7 @@ where
 {
 	/// Create a new instance.
 	fn new(
-		parachain_consensus: Box<dyn ParachainConsensus<Block>>,
+		parachain_consensus: Box<dyn ParachainConsensus>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
@@ -701,7 +701,7 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub announce_block: Arc<dyn Fn(Block::Hash, Option<Vec<u8>>) + Send + Sync>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Box<Spawner>,
-	pub parachain_consensus: Box<dyn ParachainConsensus<Block>>,
+	pub parachain_consensus: Box<dyn ParachainConsensus>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
