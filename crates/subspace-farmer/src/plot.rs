@@ -143,20 +143,22 @@ pub fn retrieve_piece_from_plots(
     let mut plots = plots.iter().collect::<Vec<_>>();
     plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
 
-    let result = plots.iter().take(2).find_map(|first| {
-        plot.read(piece_index_hash)
-            .map(|piece| (piece, plot.public_key()))
-    });
-
-    let (mut piece, public_key) = match result {
-        Ok(piece) => piece,
-        Err(_) => return Ok(None),
-    };
-
-    SubspaceCodec::new(&public_key)
-        .decode(&mut piece, piece_index)
-        .map_err(|_| io::Error::other("Failed to decode piece"))?;
-    Ok(Some(piece))
+    plots
+        .iter()
+        .take(2)
+        .find_map(|plot| {
+            plot.read(piece_index_hash)
+                .map(|piece| (piece, plot.public_key()))
+                .ok()
+        })
+        .map(|(mut piece, public_key)| {
+            // TODO: Do not recreate codec each time
+            SubspaceCodec::new(&public_key)
+                .decode(&mut piece, piece_index)
+                .map_err(|_| io::Error::other("Failed to decode piece"))
+                .map(move |()| piece)
+        })
+        .transpose()
 }
 
 /// `Plot` struct is an abstraction on top of both plot and tags database.
