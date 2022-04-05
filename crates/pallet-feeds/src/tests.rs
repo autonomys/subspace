@@ -7,17 +7,14 @@ const FEED_ID: u64 = 0;
 const ACCOUNT_ID: u64 = 100;
 
 #[test]
-fn can_create_feed() {
+fn take_available_feed_id() {
     new_test_ext().execute_with(|| {
-        // current feed id is 0 by default
-        assert_eq!(Feeds::next_feed_id(), FEED_ID);
         assert_ok!(Feeds::create(
             Origin::signed(ACCOUNT_ID),
+            FEED_ID,
             FeedProcessorId::default(),
             None
         ));
-        // current feed id value should be incremented after feed is created
-        assert_eq!(Feeds::next_feed_id(), 1);
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
@@ -29,6 +26,28 @@ fn can_create_feed() {
 }
 
 #[test]
+fn cannot_take_unavailable_feed_id() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Feeds::create(
+            Origin::signed(ACCOUNT_ID),
+            FEED_ID,
+            FeedProcessorId::default(),
+            None
+        ));
+
+        assert_noop!(
+            Feeds::create(
+                Origin::signed(ACCOUNT_ID),
+                FEED_ID,
+                FeedProcessorId::default(),
+                None
+            ),
+            Error::<Test>::FeedIdUnavailable
+        );
+    });
+}
+
+#[test]
 fn can_do_put() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
@@ -36,6 +55,7 @@ fn can_do_put() {
         // create feed before putting any data
         assert_ok!(Feeds::create(
             Origin::signed(ACCOUNT_ID),
+            FEED_ID,
             FeedProcessorId::default(),
             None
         ));
@@ -67,22 +87,6 @@ fn can_do_put() {
 }
 
 #[test]
-fn cannot_do_put_with_wrong_feed_id() {
-    new_test_ext().execute_with(|| {
-        // don't care about actual data and metadata, because call is supposed to fail
-        let object: Object = Object::default();
-        let wrong_feed_id = 178;
-
-        assert_noop!(
-            Feeds::put(Origin::signed(ACCOUNT_ID), wrong_feed_id, object),
-            Error::<Test>::UnknownFeedId
-        );
-
-        assert_eq!(System::events().len(), 0);
-    });
-}
-
-#[test]
 fn cannot_do_put_without_creating_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
@@ -102,11 +106,16 @@ fn can_close_open_feed() {
         // create feed before putting any data
         assert_ok!(Feeds::create(
             Origin::signed(ACCOUNT_ID),
+            FEED_ID,
             FeedProcessorId::default(),
             None
         ));
 
-        assert_ok!(Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object));
+        assert_ok!(Feeds::put(
+            Origin::signed(ACCOUNT_ID),
+            FEED_ID,
+            object.clone()
+        ));
 
         assert_ok!(Feeds::close(Origin::signed(ACCOUNT_ID), FEED_ID));
 
@@ -114,6 +123,12 @@ fn can_close_open_feed() {
             feed_id: FEED_ID,
             who: ACCOUNT_ID,
         }));
+
+        // cannot put a closed feed
+        assert_noop!(
+            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object),
+            Error::<Test>::FeedClosed
+        );
     });
 }
 
