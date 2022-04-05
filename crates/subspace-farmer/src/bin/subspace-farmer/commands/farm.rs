@@ -66,7 +66,10 @@ pub(crate) async fn farm(
     .await??;
 
     let (plots, mut farming_plotting): (Arc<Vec<_>>, FuturesUnordered<_>) = {
-        let plot_size = plot_size / PIECE_SIZE as u64;
+        // TODO: Piece count should account for database overhead of various additional databases
+        // For now assume 80% will go for plot itself
+        let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
+
         let single_plot_sizes =
             std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
         let single_plot_sizes = if plot_size % max_plot_size > 0 {
@@ -77,12 +80,11 @@ pub(crate) async fn farm(
             single_plot_sizes.collect()
         };
 
-        let (mut plots, farming_plotting) = <(Vec<_>, FuturesUnordered<_>)>::default();
+        let mut plots = Vec::with_capacity(single_plot_sizes.len());
+        let farming_plotting = FuturesUnordered::new();
 
-        for (base_directory, max_plot_pieces) in (0..)
-            .map(|i| base_directory.join(format!("plot{i}")))
-            .zip(single_plot_sizes)
-        {
+        for (plot_index, max_plot_pieces) in single_plot_sizes.into_iter().enumerate() {
+            let base_directory = base_directory.join(format!("plot{plot_index}"));
             let (plot, plotting, farming) = farm_single_plot(
                 base_directory,
                 reward_address,
@@ -117,7 +119,7 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        Vec::clone(&*plots),
+        Arc::clone(&plots),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
@@ -158,10 +160,7 @@ pub(crate) async fn farm(
 
     // Wait for any incoming error from farming or plotting
     while let Some(res) = farming_plotting.next().await {
-        match res {
-            Ok(()) => (),
-            Err(_) => return res,
-        }
+        res?;
     }
 
     Ok(())
@@ -177,7 +176,7 @@ pub(crate) async fn farm_single_plot(
     best_block_number_check_interval: Duration,
 ) -> Result<(Plot, Plotting, Farming), anyhow::Error> {
     let identity = Identity::open_or_create(&base_directory)?;
-    let address = identity.public_key().to_bytes().into();
+    let public_key = identity.public_key().to_bytes().into();
 
     // TODO: This doesn't account for the fact that node can
     // have a completely different history to what farmer expects
@@ -185,8 +184,7 @@ pub(crate) async fn farm_single_plot(
     let plot = tokio::task::spawn_blocking({
         let base_directory = base_directory.as_ref().to_owned();
 
-        // TODO: Piece count should account for database overhead of various additional databases
-        move || Plot::open_or_create(&base_directory, address, max_plot_pieces)
+        move || Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
     })
     .await
     .unwrap()?;
@@ -240,13 +238,14 @@ fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
 
     let piece_index = u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
 
-    let (mut piece, address) = plots.iter().find_map(|plot| {
+    let (mut piece, public_key) = plots.iter().find_map(|plot| {
         plot.read_piece(piece_index)
             .ok()
             .map(|piece| (piece, plot.address()))
     })?;
 
-    SubspaceCodec::new(&address)
+    // TODO: Do not create codec each time
+    SubspaceCodec::new(&public_key)
         .decode(&mut piece, piece_index)
         .expect("Decoding of local pieces must never fail");
     Some(piece)

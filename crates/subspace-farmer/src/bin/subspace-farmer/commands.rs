@@ -9,7 +9,7 @@ use std::{fs, io};
 
 pub(crate) fn erase(path: impl AsRef<Path>) -> io::Result<()> {
     (0..)
-        .map(|i| path.as_ref().join(format!("replica{i}")))
+        .map(|i| path.as_ref().join(format!("plot{i}")))
         .take_while(|path| path.is_dir())
         .try_for_each(|replica_path| {
             info!("Erasing plot replica at path `{replica_path:?}'");

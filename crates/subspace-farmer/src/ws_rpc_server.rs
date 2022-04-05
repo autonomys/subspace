@@ -7,7 +7,10 @@ use jsonrpsee::proc_macros::rpc;
 use log::{debug, error};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
@@ -126,6 +129,7 @@ pub trait Rpc {
 /// Usage example:
 /// ```rust
 /// # async fn f() -> anyhow::Result<()> {
+/// use std::sync::Arc;
 /// use jsonrpsee::ws_server::WsServerBuilder;
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
@@ -142,7 +146,7 @@ pub trait Rpc {
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
-///     vec![plot],
+///     Arc::new(vec![plot]),
 ///     object_mappings,
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
@@ -153,7 +157,7 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    plots: Vec<Plot>,
+    plots: Arc<Vec<Plot>>,
     object_mappings: ObjectMappings,
 }
 
@@ -161,7 +165,7 @@ impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        plots: Vec<Plot>,
+        plots: Arc<Vec<Plot>>,
         object_mappings: ObjectMappings,
     ) -> Self {
         Self {
@@ -426,7 +430,7 @@ impl RpcServerImpl {
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plots = self.plots.clone();
+            let plots = Arc::clone(&self.plots);
 
             move || {
                 plots.iter().find_map(|plot| {
@@ -442,6 +446,7 @@ impl RpcServerImpl {
             Error::Custom("Object mapping found, but reading piece failed".to_string())
         })?;
 
+        // TODO: Do not create codec each time
         SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
@@ -461,7 +466,7 @@ impl RpcServerImpl {
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_fut = tokio::task::spawn_blocking({
-            let plots = self.plots.clone();
+            let plots = Arc::clone(&self.plots);
 
             move || {
                 plots.iter().find_map(|plot| {
@@ -480,6 +485,7 @@ impl RpcServer for RpcServerImpl {
             }
         };
 
+        // TODO: Do not create codec each time
         SubspaceCodec::new(&address)
             .decode(&mut piece, piece_index)
             .map_err(|error| {
