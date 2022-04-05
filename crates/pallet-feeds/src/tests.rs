@@ -10,14 +10,14 @@ const ACCOUNT_ID: u64 = 100;
 fn can_create_feed() {
     new_test_ext().execute_with(|| {
         // current feed id is 0 by default
-        assert_eq!(Feeds::current_feed_id(), FEED_ID);
+        assert_eq!(Feeds::next_feed_id(), FEED_ID);
         assert_ok!(Feeds::create(
             Origin::signed(ACCOUNT_ID),
             FeedProcessorId::default(),
             None
         ));
         // current feed id value should be incremented after feed is created
-        assert_eq!(Feeds::current_feed_id(), 1);
+        assert_eq!(Feeds::next_feed_id(), 1);
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
@@ -34,7 +34,7 @@ fn can_do_put() {
         let object: Object = vec![1, 2, 3, 4, 5];
         let object_size = object.len() as u64;
         // create feed before putting any data
-        assert_eq!(Feeds::current_feed_id(), FEED_ID);
+        assert_eq!(Feeds::next_feed_id(), FEED_ID);
 
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),

@@ -94,8 +94,8 @@ mod pallet {
         StorageMap<_, Blake2_128Concat, T::FeedId, TotalObjectsAndSize, ValueQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn current_feed_id)]
-    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
+    #[pallet::getter(fn next_feed_id)]
+    pub(super) type NextFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
 
     /// `pallet-feeds` events
     #[pallet::event]
@@ -132,7 +132,7 @@ mod pallet {
             initial_validation: Option<InitialValidation>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let feed_id = Self::current_feed_id();
+            let feed_id = Self::next_feed_id();
             let next_feed_id = feed_id
                 .checked_add(&T::FeedId::one())
                 .ok_or(ArithmeticError::Overflow)?;
@@ -142,7 +142,7 @@ mod pallet {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }
 
-            CurrentFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
+            NextFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
             FeedProcessor::<T>::insert(feed_id, feed_processor_id);
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
@@ -159,10 +159,7 @@ mod pallet {
             let who = ensure_signed(origin)?;
 
             // ensure feed_id is valid
-            ensure!(
-                Self::current_feed_id() >= feed_id,
-                Error::<T>::UnknownFeedId
-            );
+            ensure!(Self::next_feed_id() >= feed_id, Error::<T>::UnknownFeedId);
 
             let object_size = object.len() as u64;
             let feed_processor_id = FeedProcessor::<T>::get(feed_id);
