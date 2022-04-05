@@ -54,7 +54,6 @@
 //!             ..................................................................
 //! ```
 
-// #![deny(unused_results)]
 // unused dependencies can not work for test and examples at the same time
 // yielding false positives
 #![warn(missing_docs)]
@@ -488,8 +487,8 @@ where
 		metronome_metrics.channel_fill_level_snapshot(
 			subsystem_meters
 				.iter()
+				.flatten()
 				.cloned()
-				.filter_map(|x| x)
 				.map(|(name, ref meters)| (name, meters.read())),
 		);
 
@@ -531,7 +530,7 @@ where
 				msg = self.events_rx.select_next_some() => {
 					match msg {
 						Event::MsgToSubsystem { msg, origin } => {
-							self.route_message(msg.into(), origin).await?;
+							self.route_message(msg, origin).await?;
 							self.metrics.on_message_relayed();
 						}
 						Event::Stop => {
@@ -668,7 +667,7 @@ where
 		let span = Arc::new(span);
 		self.span_per_active_leaf.insert(*hash, span.clone());
 
-		let status = if let Some(_) = self.known_leaves.put(*hash, ()) {
+		let status = if self.known_leaves.put(*hash, ()).is_some() {
 			LeafStatus::Stale
 		} else {
 			LeafStatus::Fresh

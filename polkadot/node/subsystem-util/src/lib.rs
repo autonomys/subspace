@@ -24,7 +24,6 @@
 
 #![warn(missing_docs)]
 #![deny(unused_crate_dependencies)]
-#![allow(clippy::all)]
 
 use polkadot_node_subsystem::{
 	errors::{RuntimeApiError, SubsystemError},
@@ -81,9 +80,6 @@ pub const JOB_CHANNEL_CAPACITY: usize = 64;
 /// Utility errors
 #[derive(Debug, Error)]
 pub enum Error {
-	/// Attempted to send or receive on a oneshot channel which had been canceled
-	#[error(transparent)]
-	Oneshot(#[from] oneshot::Canceled),
 	/// Attempted to send on a MPSC channel which has been canceled
 	#[error(transparent)]
 	Mpsc(#[from] mpsc::SendError),
@@ -93,18 +89,6 @@ pub enum Error {
 	/// An error in the Runtime API.
 	#[error(transparent)]
 	RuntimeApi(#[from] RuntimeApiError),
-	/// The type system wants this even though it doesn't make sense
-	#[error(transparent)]
-	Infallible(#[from] std::convert::Infallible),
-	/// Attempted to convert from an `AllMessages` to a `FromJob`, and failed.
-	#[error("AllMessage not relevant to Job")]
-	SenderConversion(String),
-	/// The local node is not a validator.
-	#[error("Node is not a validator")]
-	NotAValidator,
-	/// Already forwarding errors to another sender
-	#[error("AlreadyForwarding")]
-	AlreadyForwarding,
 }
 
 impl From<OverseerError> for Error {
@@ -336,19 +320,6 @@ pub trait JobTrait: Unpin + Sized {
 	) -> Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
 }
 
-/// Error which can be returned by the jobs manager
-///
-/// Wraps the utility error type and the job-specific error
-#[derive(Debug, Error)]
-pub enum JobsError<JobError: std::fmt::Debug + std::error::Error + 'static> {
-	/// utility error
-	#[error("Utility")]
-	Utility(#[source] Error),
-	/// internal job error
-	#[error("Internal")]
-	Job(#[source] JobError),
-}
-
 /// Jobs manager for a subsystem
 ///
 /// - Spawns new jobs for a given relay-parent on demand.
@@ -520,7 +491,7 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 							activated,
 							deactivated,
 						}))) => {
-							for activated in activated {
+							if let Some(activated) = activated {
 								let sender = ctx.sender().clone();
 								jobs.spawn_job::<Job, _>(
 									activated.hash,
