@@ -67,9 +67,7 @@ use std::{
 	time::Duration,
 };
 
-use futures::{
-	channel::oneshot, future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt,
-};
+use futures::{future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt};
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
@@ -128,12 +126,6 @@ impl Handle {
 		self.send_and_log_error(Event::MsgToSubsystem { msg: msg.into(), origin }).await
 	}
 
-	/// Send a message not providing an origin.
-	#[inline(always)]
-	pub async fn send_msg_anon(&mut self, msg: impl Into<AllMessages>) {
-		self.send_msg(msg, "").await
-	}
-
 	/// Inform the `Overseer` that some block was finalized.
 	pub async fn block_finalized(&mut self, block: BlockInfo) {
 		self.send_and_log_error(Event::BlockFinalized(block)).await
@@ -142,24 +134,6 @@ impl Handle {
 	/// Inform the `Overseer` that a new slot was triggered.
 	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
-	/// Wait for a block with the given hash to be in the active-leaves set.
-	///
-	/// The response channel responds if the hash was activated and is closed if the hash was deactivated.
-	/// Note that due the fact the overseer doesn't store the whole active-leaves set, only deltas,
-	/// the response channel may never return if the hash was deactivated before this call.
-	/// In this case, it's the caller's responsibility to ensure a timeout is set.
-	pub async fn wait_for_activation(
-		&mut self,
-		hash: Hash,
-		response_channel: oneshot::Sender<SubsystemResult<()>>,
-	) {
-		self.send_and_log_error(Event::ExternalRequest(ExternalRequest::WaitForActivation {
-			hash,
-			response_channel,
-		}))
-		.await;
 	}
 
 	/// Tell `Overseer` to shutdown.
@@ -219,22 +193,8 @@ pub enum Event {
 		/// The originating subsystem name.
 		origin: &'static str,
 	},
-	/// A request from the outer world.
-	ExternalRequest(ExternalRequest),
 	/// Stop the overseer on i.e. a UNIX signal.
 	Stop,
-}
-
-/// Some request from outer world.
-pub enum ExternalRequest {
-	/// Wait for the activation of a particular hash
-	/// and be notified by means of the return channel.
-	WaitForActivation {
-		/// The relay parent for which activation to wait for.
-		hash: Hash,
-		/// Response channel to await on.
-		response_channel: oneshot::Sender<SubsystemResult<()>>,
-	},
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -407,9 +367,6 @@ pub struct Overseer {
 	#[subsystem(no_dispatch, CollationGenerationMessage)]
 	collation_generation: CollationGeneration,
 
-	/// External listeners waiting for a hash to be in the active-leave set.
-	pub activation_external_listeners: HashMap<Hash, Vec<oneshot::Sender<SubsystemResult<()>>>>,
-
 	/// Stores the [`jaeger::Span`] per active leaf.
 	pub span_per_active_leaf: HashMap<Hash, Arc<jaeger::Span>>,
 
@@ -546,9 +503,6 @@ where
 						Event::NewSlot(slot_info) => {
 							self.on_new_slot(slot_info).await?;
 						}
-						Event::ExternalRequest(request) => {
-							self.handle_external_request(request);
-						}
 					}
 				},
 				msg = self.to_overseer_rx.select_next_some() => {
@@ -651,12 +605,6 @@ where
 		parent_hash: Option<Hash>,
 	) -> Option<(Arc<jaeger::Span>, LeafStatus)> {
 		self.metrics.on_head_activated();
-		if let Some(listeners) = self.activation_external_listeners.remove(hash) {
-			for listener in listeners {
-				// it's fine if the listener is no longer interested
-				let _ = listener.send(Ok(()));
-			}
-		}
 
 		let mut span = jaeger::Span::new(*hash, "leaf-activated");
 
@@ -678,37 +626,10 @@ where
 
 	fn on_head_deactivated(&mut self, hash: &Hash) {
 		self.metrics.on_head_deactivated();
-		self.activation_external_listeners.remove(hash);
 		self.span_per_active_leaf.remove(hash);
 	}
 
-	fn clean_up_external_listeners(&mut self) {
-		self.activation_external_listeners.retain(|_, v| {
-			// remove dead listeners
-			v.retain(|c| !c.is_canceled());
-			!v.is_empty()
-		})
-	}
-
-	fn handle_external_request(&mut self, request: ExternalRequest) {
-		match request {
-			ExternalRequest::WaitForActivation { hash, response_channel } => {
-				// We use known leaves here because the `WaitForActivation` message
-				// is primarily concerned about leaves which subsystems have simply
-				// not been made aware of yet. Anything in the known leaves set,
-				// even if stale, has been activated in the past.
-				if self.known_leaves.peek(&hash).is_some() {
-					// it's fine if the listener is no longer interested
-					let _ = response_channel.send(Ok(()));
-				} else {
-					self.activation_external_listeners
-						.entry(hash)
-						.or_default()
-						.push(response_channel);
-				}
-			},
-		}
-	}
+	fn clean_up_external_listeners(&mut self) {}
 
 	fn spawn_job(
 		&mut self,
