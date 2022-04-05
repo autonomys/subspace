@@ -24,6 +24,7 @@ use frame_support::sp_runtime::DispatchResult;
 pub use pallet::*;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
+pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
 mod mock;
 #[cfg(all(feature = "std", test))]
