@@ -1,6 +1,6 @@
 use crate::feed_processor::FeedProcessorId;
 use crate::mock::{new_test_ext, Event, Feeds, Origin, System, Test};
-use crate::{Error, Object, TotalObjectsAndSize};
+use crate::{Error, FeedConfigs, Metadata, Object, TotalObjectsAndSize, Totals};
 use frame_support::{assert_noop, assert_ok};
 
 const FEED_ID: u64 = 0;
@@ -140,5 +140,25 @@ fn cannot_close_invalid_feed() {
             Feeds::close(Origin::signed(ACCOUNT_ID), feed_id),
             Error::<Test>::UnknownFeedId
         );
+    });
+}
+
+#[test]
+fn delete_feed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Feeds::create(
+            Origin::signed(ACCOUNT_ID),
+            FEED_ID,
+            FeedProcessorId::default(),
+            None
+        ));
+
+        assert!(FeedConfigs::<Test>::contains_key(FEED_ID));
+        assert!(Totals::<Test>::contains_key(FEED_ID));
+
+        assert_ok!(Feeds::delete(Origin::signed(ACCOUNT_ID), FEED_ID));
+        assert!(!FeedConfigs::<Test>::contains_key(FEED_ID));
+        assert!(!Metadata::<Test>::contains_key(FEED_ID));
+        assert!(!Totals::<Test>::contains_key(FEED_ID));
     });
 }

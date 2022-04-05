@@ -7,7 +7,7 @@ use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
-    DispatchError,
+    DispatchError, DispatchResult,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -67,6 +67,10 @@ impl FeedProcessorT<FeedId> for () {
 
     fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
         vec![]
+    }
+
+    fn delete(&self, _feed_id: FeedId) -> DispatchResult {
+        Ok(())
     }
 }
 

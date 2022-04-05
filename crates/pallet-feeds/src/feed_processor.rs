@@ -43,6 +43,9 @@ pub trait FeedProcessor<FeedId> {
 
     /// returns any object mappings inside the given object
     fn object_mappings(&self, feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping>;
+
+    /// signals a delete to any underlying feed data.
+    fn delete(&self, feed_id: FeedId) -> DispatchResult;
 }
 
 /// FeedProcessorId represents the available FeedProcessor impls

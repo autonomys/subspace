@@ -109,6 +109,12 @@ mod pallet {
             feed_id: T::FeedId,
             who: T::AccountId,
         },
+
+        /// Feed is deleted.
+        FeedDeleted {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
     }
 
     /// `pallet-feeds` errors
@@ -194,7 +200,7 @@ mod pallet {
             Ok(())
         }
 
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), Pays::No))]
         pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -205,6 +211,17 @@ mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::FeedClosed { feed_id, who });
+            Ok(())
+        }
+
+        #[pallet::weight((T::DbWeight::get().reads_writes(0, 3), Pays::No))]
+        pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            FeedConfigs::<T>::remove(feed_id);
+            Metadata::<T>::remove(feed_id);
+            Totals::<T>::remove(feed_id);
+            Self::deposit_event(Event::FeedDeleted { feed_id, who });
             Ok(())
         }
     }
@@ -225,6 +242,7 @@ impl<T: Config> Call<T> {
                 // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
                 // enum variant encoding.
                 objects_mappings.iter_mut().for_each(|object_mapping| {
+                    // update the offset to include the absolute offset in the extrinsic
                     object_mapping.offset += 1 + mem::size_of::<T::FeedId>() as u32
                 });
                 objects_mappings
