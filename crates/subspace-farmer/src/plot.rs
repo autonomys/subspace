@@ -15,7 +15,7 @@ use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, PIECE_SIZE,
 };
-use subspace_solving::PieceDistance;
+use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
@@ -134,6 +134,43 @@ impl Drop for Inner {
     }
 }
 
+/// Retrieves and decodes a single piece from multiple plots
+pub fn retrieve_piece_from_plots(
+    plots: &[Plot],
+    piece_index: PieceIndex,
+) -> io::Result<Option<Piece>> {
+    let piece_index_hash = PieceIndexHash::from(piece_index);
+    let mut plots = plots.iter().collect::<Vec<_>>();
+    plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
+
+    let result = match *plots {
+        // Lookup at 2 plots closest to piece index hash, as:
+        // - first might be closest, but it can be only partial replica
+        [first, second, ..] => first
+            .read(piece_index_hash)
+            .map(|piece| (piece, first.public_key()))
+            .or_else(|_| {
+                second
+                    .read(piece_index_hash)
+                    .map(|piece| (piece, first.public_key()))
+            }),
+        [plot] => plot
+            .read(piece_index_hash)
+            .map(|piece| (piece, plot.public_key())),
+        [] => unreachable!("Should have at least one plot"),
+    };
+
+    let (mut piece, public_key) = match result {
+        Ok(piece) => piece,
+        Err(_) => return Ok(None),
+    };
+
+    SubspaceCodec::new(&public_key)
+        .decode(&mut piece, piece_index)
+        .map_err(|_| io::Error::other("Failed to decode piece"))?;
+    Ok(Some(piece))
+}
+
 /// `Plot` struct is an abstraction on top of both plot and tags database.
 ///
 /// It converts requests to internal reads/writes to the plot and tags database. It
@@ -184,8 +221,8 @@ impl Plot {
         self.inner.piece_count.load(Ordering::Acquire)
     }
 
-    /// Address for which pieces were plotted
-    pub fn address(&self) -> PublicKey {
+    /// Public key for which pieces were plotted
+    pub fn public_key(&self) -> PublicKey {
         self.inner.address
     }
 

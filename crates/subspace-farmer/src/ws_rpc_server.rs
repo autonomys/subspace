@@ -1,5 +1,5 @@
-use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::{object_mappings::ObjectMappings, plot};
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
@@ -13,7 +13,6 @@ use std::{
 };
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
-use subspace_solving::{PieceDistance, SubspaceCodec};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
@@ -429,79 +428,28 @@ impl RpcServerImpl {
 
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
-        let piece_fut = tokio::task::spawn_blocking({
-            let plots = Arc::clone(&self.plots);
-
-            move || {
-                let plot = plots
-                    .iter()
-                    .min_by_key(|plot| {
-                        PieceDistance::xor_distance(&piece_index.into(), plot.address())
-                    })
-                    .expect("We always have at least one plot");
-                Some((plot.read(piece_index).ok()?, plot.address()))
-            }
-        });
-        let (mut piece, address) = piece_fut.await.unwrap().ok_or_else(|| {
-            debug!("Failed to read piece with index {}", piece_index);
-
-            Error::Custom("Object mapping found, but reading piece failed".to_string())
-        })?;
-
-        // TODO: Do not create codec each time
-        SubspaceCodec::new(&address)
-            .decode(&mut piece, piece_index)
-            .map_err(|error| {
-                debug!(
-                    "Failed to decode piece with index {}: {}",
-                    piece_index, error
-                );
-
-                Error::Custom("Failed to decode piece".to_string())
-            })?;
-
-        Ok(piece)
+        let plots = Arc::clone(&self.plots);
+        tokio::task::spawn_blocking(move || plot::retrieve_piece_from_plots(&plots, piece_index))
+            .await
+            .unwrap()
+            .map_err(|err| Error::Custom(err.to_string()))
+            .and_then(|maybe_piece| {
+                maybe_piece.ok_or_else(|| {
+                    Error::Custom("Object mapping found, but reading piece failed".to_string())
+                })
+            })
     }
 }
 
 #[async_trait]
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
-        let piece_fut = tokio::task::spawn_blocking({
-            let plots = Arc::clone(&self.plots);
-
-            move || {
-                let plot = plots
-                    .iter()
-                    .min_by_key(|plot| {
-                        PieceDistance::xor_distance(&piece_index.into(), plot.address())
-                    })
-                    .expect("We always have at least one plot");
-                Some((plot.read(piece_index).ok()?, plot.address()))
-            }
-        });
-        let (mut piece, address) = match piece_fut.await.unwrap() {
-            Some(encoding) => encoding,
-            None => {
-                debug!("Failed to find piece with index {}", piece_index);
-
-                return Ok(None);
-            }
-        };
-
-        // TODO: Do not create codec each time
-        SubspaceCodec::new(&address)
-            .decode(&mut piece, piece_index)
-            .map_err(|error| {
-                debug!(
-                    "Failed to decode piece with index {}: {}",
-                    piece_index, error
-                );
-
-                Error::Custom("Failed to decode piece".to_string())
-            })?;
-
-        Ok(Some(piece.into()))
+        let plots = Arc::clone(&self.plots);
+        tokio::task::spawn_blocking(move || plot::retrieve_piece_from_plots(&plots, piece_index))
+            .await
+            .unwrap()
+            .map(|maybe_piece| maybe_piece.map(HexPiece::from))
+            .map_err(|err| Error::Custom(err.to_string()))
     }
 
     /// Find object by its ID

@@ -10,14 +10,15 @@ use std::time::Duration;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    retrieve_piece_from_plots, Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot,
+    Plotting, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
-use subspace_solving::{PieceDistance, SubspaceCodec};
+use subspace_solving::SubspaceCodec;
 
 use crate::FarmingArgs;
 
@@ -238,15 +239,7 @@ fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
 
     let piece_index = u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
 
-    let plot = plots
-        .iter()
-        .min_by_key(|plot| PieceDistance::xor_distance(&piece_index.into(), plot.address()))
-        .expect("We always have at least one plot");
-    let mut piece = plot.read_piece(piece_index).ok()?;
-
-    // TODO: Do not create codec each time
-    SubspaceCodec::new(&plot.address())
-        .decode(&mut piece, piece_index)
-        .expect("Decoding of local pieces must never fail");
-    Some(piece)
+    retrieve_piece_from_plots(plots, piece_index)
+        .expect("Decoding of local pieces must never fail")
+        .map(|piece| piece.to_vec())
 }
