@@ -1,5 +1,5 @@
 use crate as pallet_feeds;
-use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT, FeedProcessorId};
+use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
 use crate::FeedObjectMapping;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
@@ -77,9 +77,10 @@ impl FeedProcessorT<FeedId> for () {
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
+    type FeedProcessorId = ();
 
     fn feed_processor(
-        _feed_processor_id: FeedProcessorId,
+        _feed_processor_id: Self::FeedProcessorId,
     ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
         Box::new(())
     }

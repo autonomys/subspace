@@ -40,10 +40,9 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use pallet_feeds::feed_processor::{
-    FeedMetadata, FeedObjectMapping, FeedProcessor, FeedProcessorId,
-};
+use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
+use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
@@ -526,9 +525,22 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     }
 }
 
+/// FeedProcessorId represents the available FeedProcessor impls
+#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
+pub enum FeedProcessorId {
+    PolkadotLike,
+}
+
+impl Default for FeedProcessorId {
+    fn default() -> Self {
+        FeedProcessorId::PolkadotLike
+    }
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
+    type FeedProcessorId = FeedProcessorId;
 
     fn feed_processor(feed_processor_id: FeedProcessorId) -> Box<dyn FeedProcessor<Self::FeedId>> {
         match feed_processor_id {

@@ -74,7 +74,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         // Chain ID uniquely identifies a substrate based chain
-        type ChainId: Parameter + Member + MaybeSerializeDeserialize + Debug + Default + Copy;
+        type ChainId: Parameter + Member + Debug + Default + Copy;
     }
 
     #[pallet::pallet]

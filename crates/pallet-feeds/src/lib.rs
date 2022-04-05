@@ -30,7 +30,7 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT, FeedProcessorId};
+    use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_std::prelude::*;
@@ -41,10 +41,13 @@ mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         // Feed ID uniquely identifies a Feed
-        type FeedId: Parameter + Member + MaybeSerializeDeserialize + Default + Copy + PartialOrd;
+        type FeedId: Parameter + Member + Default + Copy + PartialOrd;
+
+        // type that represents a feed processor id
+        type FeedProcessorId: Parameter + Member + Default + Copy;
 
         fn feed_processor(
-            feed_processor_id: FeedProcessorId,
+            feed_processor_id: Self::FeedProcessorId,
         ) -> Box<dyn FeedProcessorT<Self::FeedId>>;
     }
 
@@ -69,7 +72,7 @@ mod pallet {
     }
 
     #[derive(Debug, Decode, Encode, TypeInfo, Default)]
-    pub struct FeedConfig {
+    pub struct FeedConfig<FeedProcessorId> {
         pub active: bool,
         pub feed_processor_id: FeedProcessorId,
     }
@@ -82,7 +85,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
     pub(super) type FeedConfigs<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig, OptionQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorId>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -139,7 +142,7 @@ mod pallet {
         pub fn create(
             origin: OriginFor<T>,
             feed_id: T::FeedId,
-            feed_processor_id: FeedProcessorId,
+            feed_processor_id: T::FeedProcessorId,
             initial_validation: Option<InitialValidation>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;

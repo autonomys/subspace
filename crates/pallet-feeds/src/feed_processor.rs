@@ -15,8 +15,6 @@
 
 //! Defines FeedProcessor and its types
 
-use codec::{Decode, Encode};
-use scale_info::TypeInfo;
 use sp_runtime::{DispatchError, DispatchResult};
 use sp_std::vec::Vec;
 use subspace_core_primitives::Sha256Hash;
@@ -47,16 +45,4 @@ pub trait FeedProcessor<FeedId> {
 
     /// signals a delete to any underlying feed data.
     fn delete(&self, feed_id: FeedId) -> DispatchResult;
-}
-
-/// FeedProcessorId represents the available FeedProcessor impls
-#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, PartialEq)]
-pub enum FeedProcessorId {
-    PolkadotLike,
-}
-
-impl Default for FeedProcessorId {
-    fn default() -> Self {
-        FeedProcessorId::PolkadotLike
-    }
 }

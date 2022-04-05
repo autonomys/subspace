@@ -1,4 +1,3 @@
-use crate::feed_processor::FeedProcessorId;
 use crate::mock::{new_test_ext, Event, Feeds, Origin, System, Test};
 use crate::{Error, FeedConfigs, Metadata, Object, TotalObjectsAndSize, Totals};
 use frame_support::{assert_noop, assert_ok};
@@ -9,12 +8,7 @@ const ACCOUNT_ID: u64 = 100;
 #[test]
 fn take_available_feed_id() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            FeedProcessorId::default(),
-            None
-        ));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
@@ -28,20 +22,10 @@ fn take_available_feed_id() {
 #[test]
 fn cannot_take_unavailable_feed_id() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            FeedProcessorId::default(),
-            None
-        ));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
         assert_noop!(
-            Feeds::create(
-                Origin::signed(ACCOUNT_ID),
-                FEED_ID,
-                FeedProcessorId::default(),
-                None
-            ),
+            Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None),
             Error::<Test>::FeedIdUnavailable
         );
     });
@@ -53,12 +37,7 @@ fn can_do_put() {
         let object: Object = vec![1, 2, 3, 4, 5];
         let object_size = object.len() as u64;
         // create feed before putting any data
-        assert_ok!(Feeds::create(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            FeedProcessorId::default(),
-            None
-        ));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),
@@ -104,12 +83,7 @@ fn can_close_open_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         // create feed before putting any data
-        assert_ok!(Feeds::create(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            FeedProcessorId::default(),
-            None
-        ));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),
@@ -146,12 +120,7 @@ fn cannot_close_invalid_feed() {
 #[test]
 fn delete_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            FeedProcessorId::default(),
-            None
-        ));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
         assert!(FeedConfigs::<Test>::contains_key(FEED_ID));
         assert!(Totals::<Test>::contains_key(FEED_ID));
