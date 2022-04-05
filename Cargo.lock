@@ -4341,15 +4341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-lru"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beeb98b3d1ed2c0054bd81b5ba949a0243c3ccad751d45ea898fa8059fa2860a"
-dependencies = [
- "lru 0.6.6",
-]
-
-[[package]]
 name = "memory_units"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5692,8 +5683,6 @@ name = "polkadot-node-core-runtime-api"
 version = "0.9.13"
 dependencies = [
  "futures 0.3.21",
- "memory-lru",
- "parity-util-mem",
  "polkadot-node-subsystem",
  "sp-api",
  "sp-core",
