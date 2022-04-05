@@ -15,6 +15,8 @@
 
 //! Defines FeedProcessor and its types
 
+use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use sp_runtime::{DispatchError, DispatchResult};
 use subspace_core_primitives::Sha256Hash;
 
@@ -33,15 +35,24 @@ pub type FeedMetadata = Vec<u8>;
 /// FeedProcessor dictates a flow import and constituents of a Feed
 pub trait FeedProcessor<FeedId> {
     /// initiates a specific Feed with data transparent to FeedProcessor
-    fn init(feed_id: FeedId, data: &[u8]) -> DispatchResult;
+    fn init(&self, feed_id: FeedId, data: &[u8]) -> DispatchResult;
 
     /// puts a feed and returns the Metadata if any
     /// this is called once per extrinsic that puts a feed into a give feed.
-    fn put(feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError>;
+    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError>;
 
     /// returns any object mappings inside the given object
-    fn object_mappings(
-        feed_id: FeedId,
-        object: &[u8],
-    ) -> Result<Vec<FeedObjectMapping>, DispatchError>;
+    fn object_mappings(&self, feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping>;
+}
+
+/// FeedProcessorId represents the available FeedProcessor impls
+#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, PartialEq)]
+pub enum FeedProcessorId {
+    PolkadotLike,
+}
+
+impl Default for FeedProcessorId {
+    fn default() -> Self {
+        FeedProcessorId::PolkadotLike
+    }
 }

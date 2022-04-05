@@ -1,12 +1,13 @@
 use crate as pallet_feeds;
-use crate::FeedValidator;
-use frame_support::dispatch::DispatchResult;
+use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT, FeedProcessorId};
+use crate::FeedObjectMapping;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
+    DispatchError,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -55,20 +56,29 @@ parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
-impl FeedValidator<FeedId> for () {
-    fn initialize(_feed_id: FeedId, _data: &[u8]) -> sp_runtime::DispatchResult {
+impl FeedProcessorT<FeedId> for () {
+    fn init(&self, _feed_id: FeedId, _data: &[u8]) -> sp_runtime::DispatchResult {
         Ok(())
     }
 
-    fn validate(_feed_id: FeedId, _object: &[u8]) -> DispatchResult {
-        Ok(())
+    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        Ok(Some(FeedMetadata::from(object)))
+    }
+
+    fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
+        vec![]
     }
 }
 
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
-    type Validator = ();
+
+    fn feed_processor(
+        _feed_processor_id: FeedProcessorId,
+    ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
+        Box::new(())
+    }
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
