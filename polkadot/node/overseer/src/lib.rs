@@ -61,7 +61,7 @@
 
 use std::{
 	collections::{hash_map, HashMap},
-	fmt::{self, Debug},
+	fmt::Debug,
 	pin::Pin,
 	sync::Arc,
 	time::Duration,
@@ -77,21 +77,11 @@ use polkadot_node_subsystem_types::messages::{
 };
 pub use polkadot_node_subsystem_types::{
 	errors::{SubsystemError, SubsystemResult},
-	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
+	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
 use cirrus_node_primitives::ExecutorSlotInfo;
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
-
-pub mod metrics;
-pub use self::metrics::Metrics as OverseerMetrics;
-
-pub use polkadot_node_metrics::{
-	metrics::{prometheus, Metrics as MetricsTrait},
-	Metronome,
-};
-
-use parity_util_mem::MemoryAllocationTracker;
 
 pub use polkadot_overseer_gen as gen;
 pub use polkadot_overseer_gen::{
@@ -367,9 +357,6 @@ pub struct Overseer {
 	#[subsystem(no_dispatch, CollationGenerationMessage)]
 	collation_generation: CollationGeneration,
 
-	/// Stores the [`jaeger::Span`] per active leaf.
-	pub span_per_active_leaf: HashMap<Hash, Arc<jaeger::Span>>,
-
 	/// A set of leaves that `Overseer` starts working with.
 	///
 	/// Drained at the beginning of `run` and never used again.
@@ -380,82 +367,6 @@ pub struct Overseer {
 
 	/// An LRU cache for keeping track of relay-chain heads that have already been seen.
 	pub known_leaves: LruCache<Hash, ()>,
-
-	/// Various Prometheus metrics.
-	pub metrics: OverseerMetrics,
-}
-
-/// Spawn the metrics metronome task.
-pub fn spawn_metronome_metrics<S>(
-	overseer: &mut Overseer<S>,
-	metronome_metrics: OverseerMetrics,
-) -> Result<(), SubsystemError>
-where
-	S: SpawnNamed,
-{
-	struct ExtractNameAndMeters;
-
-	impl<'a, T: 'a> MapSubsystem<&'a OverseenSubsystem<T>> for ExtractNameAndMeters {
-		type Output = Option<(&'static str, SubsystemMeters)>;
-
-		fn map_subsystem(&self, subsystem: &'a OverseenSubsystem<T>) -> Self::Output {
-			subsystem
-				.instance
-				.as_ref()
-				.map(|instance| (instance.name, instance.meters.clone()))
-		}
-	}
-	let subsystem_meters = overseer.map_subsystems(ExtractNameAndMeters);
-
-	let collect_memory_stats: Box<dyn Fn(&OverseerMetrics) + Send> =
-		match MemoryAllocationTracker::new() {
-			Ok(memory_stats) =>
-				Box::new(move |metrics: &OverseerMetrics| match memory_stats.snapshot() {
-					Ok(memory_stats_snapshot) => {
-						tracing::trace!(
-							target: LOG_TARGET,
-							"memory_stats: {:?}",
-							&memory_stats_snapshot
-						);
-						metrics.memory_stats_snapshot(memory_stats_snapshot);
-					},
-					Err(e) => tracing::debug!(
-						target: LOG_TARGET,
-						"Failed to obtain memory stats: {:?}",
-						e
-					),
-				}),
-			Err(_) => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Memory allocation tracking is not supported by the allocator.",
-				);
-
-				Box::new(|_| {})
-			},
-		};
-
-	let metronome = Metronome::new(std::time::Duration::from_millis(950)).for_each(move |_| {
-		collect_memory_stats(&metronome_metrics);
-
-		// We combine the amount of messages from subsystems to the overseer
-		// as well as the amount of messages from external sources to the overseer
-		// into one `to_overseer` value.
-		metronome_metrics.channel_fill_level_snapshot(
-			subsystem_meters
-				.iter()
-				.flatten()
-				.cloned()
-				.map(|(name, ref meters)| (name, meters.read())),
-		);
-
-		futures::future::ready(())
-	});
-	overseer
-		.spawner()
-		.spawn("metrics-metronome", Some("overseer"), Box::pin(metronome));
-
-	Ok(())
 }
 
 impl<S> Overseer<S>
@@ -469,15 +380,11 @@ where
 
 	/// Run the `Overseer`.
 	pub async fn run(mut self) -> SubsystemResult<()> {
-		let metrics = self.metrics.clone();
-		spawn_metronome_metrics(&mut self, metrics)?;
-
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			if let Some((span, status)) = self.on_head_activated(&hash, None) {
-				let update =
-					ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number, status, span });
+			if let Some(status) = self.on_head_activated(&hash) {
+				let update = ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number, status });
 				self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
 			}
 		}
@@ -488,7 +395,6 @@ where
 					match msg {
 						Event::MsgToSubsystem { msg, origin } => {
 							self.route_message(msg, origin).await?;
-							self.metrics.on_message_relayed();
 						}
 						Event::Stop => {
 							self.stop().await;
@@ -537,12 +443,11 @@ where
 			},
 		};
 
-		let mut update = match self.on_head_activated(&block.hash, Some(block.parent_hash)) {
-			Some((span, status)) => ActiveLeavesUpdate::start_work(ActivatedLeaf {
+		let mut update = match self.on_head_activated(&block.hash) {
+			Some(status) => ActiveLeavesUpdate::start_work(ActivatedLeaf {
 				hash: block.hash,
 				number: block.number,
 				status,
-				span,
 			}),
 			None => ActiveLeavesUpdate::default(),
 		};
@@ -550,7 +455,6 @@ where
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
 			update.deactivated.push(block.parent_hash);
-			self.on_head_deactivated(&block.parent_hash);
 		}
 
 		self.clean_up_external_listeners();
@@ -575,10 +479,6 @@ where
 			}
 		});
 
-		for deactivated in &update.deactivated {
-			self.on_head_deactivated(deactivated)
-		}
-
 		self.broadcast_signal(OverseerSignal::BlockFinalized(block.hash, block.number))
 			.await?;
 
@@ -599,34 +499,14 @@ where
 
 	/// Handles a header activation. If the header's state doesn't support the parachains API,
 	/// this returns `None`.
-	fn on_head_activated(
-		&mut self,
-		hash: &Hash,
-		parent_hash: Option<Hash>,
-	) -> Option<(Arc<jaeger::Span>, LeafStatus)> {
-		self.metrics.on_head_activated();
-
-		let mut span = jaeger::Span::new(*hash, "leaf-activated");
-
-		if let Some(parent_span) = parent_hash.and_then(|h| self.span_per_active_leaf.get(&h)) {
-			span.add_follows_from(&*parent_span);
-		}
-
-		let span = Arc::new(span);
-		self.span_per_active_leaf.insert(*hash, span.clone());
-
+	fn on_head_activated(&mut self, hash: &Hash) -> Option<LeafStatus> {
 		let status = if self.known_leaves.put(*hash, ()).is_some() {
 			LeafStatus::Stale
 		} else {
 			LeafStatus::Fresh
 		};
 
-		Some((span, status))
-	}
-
-	fn on_head_deactivated(&mut self, hash: &Hash) {
-		self.metrics.on_head_deactivated();
-		self.span_per_active_leaf.remove(hash);
+		Some(status)
 	}
 
 	fn clean_up_external_listeners(&mut self) {}

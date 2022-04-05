@@ -23,7 +23,6 @@
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
-use polkadot_node_subsystem_util::metrics::{self, prometheus};
 use polkadot_subsystem::{
 	errors::RuntimeApiError,
 	messages::{RuntimeApiMessage, RuntimeApiRequest as Request},
@@ -56,7 +55,6 @@ const API_REQUEST_TASK_NAME: &str = "polkadot-runtime-api-request";
 /// The `RuntimeApiSubsystem`. See module docs for more details.
 pub struct RuntimeApiSubsystem<Client> {
 	client: Arc<Client>,
-	metrics: Metrics,
 	spawn_handle: Box<dyn SpawnNamed>,
 	/// If there are [`MAX_PARALLEL_REQUESTS`] requests being executed, we buffer them in here until they can be executed.
 	#[allow(unused)]
@@ -72,15 +70,10 @@ pub struct RuntimeApiSubsystem<Client> {
 }
 
 impl<Client> RuntimeApiSubsystem<Client> {
-	/// Create a new Runtime API subsystem wrapping the given client and metrics.
-	pub fn new(
-		client: Arc<Client>,
-		metrics: Metrics,
-		spawn_handle: impl SpawnNamed + 'static,
-	) -> Self {
+	/// Create a new Runtime API subsystem wrapping the given client.
+	pub fn new(client: Arc<Client>, spawn_handle: impl SpawnNamed + 'static) -> Self {
 		RuntimeApiSubsystem {
 			client,
-			metrics,
 			spawn_handle: Box::new(spawn_handle),
 			waiting_requests: Default::default(),
 			active_requests: Default::default(),
@@ -129,7 +122,6 @@ where
 				let sender = $sender;
 				if let Some(value) = self.requests_cache.$cache_api_name(&relay_parent) {
 					let _ = sender.send(Ok(value.clone()));
-					self.metrics.on_cached_request();
 					None
 				} else {
 					Some(sender)
@@ -139,7 +131,6 @@ where
 			($cache_api_name:ident ($($param:expr),+), $sender:expr) => {{
 				let sender = $sender;
 				if let Some(value) = self.requests_cache.$cache_api_name((relay_parent.clone(), $($param.clone()),+)) {
-					self.metrics.on_cached_request();
 					let _ = sender.send(Ok(value.clone()));
 					None
 				} else {
@@ -165,7 +156,6 @@ where
 	/// If there are already [`MAX_PARALLEL_REQUESTS`] requests being executed, the request will be buffered.
 	fn spawn_request(&mut self, relay_parent: Hash, request: Request) {
 		let client = self.client.clone();
-		let metrics = self.metrics.clone();
 		let (sender, receiver) = oneshot::channel();
 
 		// FIXME: Re-enable the cache
@@ -175,7 +165,7 @@ where
 		// };
 
 		let request = async move {
-			let result = make_runtime_api_request(client, metrics, relay_parent, request);
+			let result = make_runtime_api_request(client, relay_parent, request);
 			let _ = sender.send(result);
 		}
 		.boxed();
@@ -247,7 +237,6 @@ where
 
 fn make_runtime_api_request<Client>(
 	client: Arc<Client>,
-	metrics: Metrics,
 	relay_parent: Hash,
 	request: Request,
 ) -> Option<RequestResult>
@@ -255,8 +244,6 @@ where
 	Client: ProvideRuntimeApi<Block>,
 	Client::Api: ExecutorApi<Block>,
 {
-	let _timer = metrics.time_make_runtime_api_request();
-
 	// TODO: re-enable the marco to reduce the pattern duplication.
 	match request {
 		Request::SubmitExecutionReceipt(opaque_execution_receipt) => {
@@ -267,7 +254,6 @@ where
 					opaque_execution_receipt,
 				)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitExecutionReceipt(relay_parent));
 		},
 		Request::SubmitTransactionBundle(opaque_bundle) => {
@@ -276,7 +262,6 @@ where
 			let res = api
 				.submit_transaction_bundle_unsigned(&BlockId::Hash(relay_parent), opaque_bundle)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 			res.ok()
 				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
 		},
@@ -285,7 +270,6 @@ where
 			let res = api
 				.submit_fraud_proof_unsigned(&BlockId::Hash(relay_parent), fraud_proof)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitFraudProof(relay_parent));
 		},
 		Request::SubmitBundleEquivocationProof(bundle_equivocation_proof) => {
@@ -296,7 +280,6 @@ where
 					bundle_equivocation_proof,
 				)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitBundleEquivocationProof(relay_parent));
 		},
 		Request::SubmitInvalidTransactionProof(invalid_transaction_proof) => {
@@ -307,7 +290,6 @@ where
 					invalid_transaction_proof,
 				)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 			res.ok().map(|_res| RequestResult::SubmitInvalidTransactionProof(relay_parent));
 		},
 		Request::ExtractBundles(extrinsics, sender) => {
@@ -315,7 +297,6 @@ where
 			let res = api
 				.extract_bundles(&BlockId::Hash(relay_parent), extrinsics)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
 
@@ -326,7 +307,6 @@ where
 			let res = api
 				.extrinsics_shuffling_seed(&BlockId::Hash(relay_parent), header)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
 
@@ -337,7 +317,6 @@ where
 			let res = api
 				.execution_wasm_bundle(&BlockId::Hash(relay_parent))
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
-			metrics.on_request(res.is_ok());
 
 			let _ = sender.send(res.clone());
 
@@ -346,65 +325,4 @@ where
 	}
 
 	None
-}
-
-#[derive(Clone)]
-struct MetricsInner {
-	chain_api_requests: prometheus::CounterVec<prometheus::U64>,
-	make_runtime_api_request: prometheus::Histogram,
-}
-
-/// Runtime API metrics.
-#[derive(Default, Clone)]
-pub struct Metrics(Option<MetricsInner>);
-
-impl Metrics {
-	fn on_request(&self, succeeded: bool) {
-		if let Some(metrics) = &self.0 {
-			if succeeded {
-				metrics.chain_api_requests.with_label_values(&["succeeded"]).inc();
-			} else {
-				metrics.chain_api_requests.with_label_values(&["failed"]).inc();
-			}
-		}
-	}
-
-	#[allow(unused)]
-	fn on_cached_request(&self) {
-		self.0
-			.as_ref()
-			.map(|metrics| metrics.chain_api_requests.with_label_values(&["cached"]).inc());
-	}
-
-	/// Provide a timer for `make_runtime_api_request` which observes on drop.
-	fn time_make_runtime_api_request(
-		&self,
-	) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0.as_ref().map(|metrics| metrics.make_runtime_api_request.start_timer())
-	}
-}
-
-impl metrics::Metrics for Metrics {
-	fn try_register(registry: &prometheus::Registry) -> Result<Self, prometheus::PrometheusError> {
-		let metrics = MetricsInner {
-			chain_api_requests: prometheus::register(
-				prometheus::CounterVec::new(
-					prometheus::Opts::new(
-						"parachain_runtime_api_requests_total",
-						"Number of Runtime API requests served.",
-					),
-					&["success"],
-				)?,
-				registry,
-			)?,
-			make_runtime_api_request: prometheus::register(
-				prometheus::Histogram::with_opts(prometheus::HistogramOpts::new(
-					"parachain_runtime_api_make_runtime_api_request",
-					"Time spent within `runtime_api::make_runtime_api_request`",
-				))?,
-				registry,
-			)?,
-		};
-		Ok(Metrics(Some(metrics)))
-	}
 }

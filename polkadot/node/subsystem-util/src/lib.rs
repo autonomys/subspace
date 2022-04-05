@@ -39,8 +39,6 @@ pub use overseer::{
 	Subsystem, TimeoutExt,
 };
 
-pub use polkadot_node_metrics::{metrics, Metronome};
-
 use futures::{
 	channel::{mpsc, oneshot},
 	prelude::*,
@@ -48,7 +46,6 @@ use futures::{
 	stream::{SelectAll, Stream},
 };
 use pin_project::pin_project;
-use polkadot_node_jaeger as jaeger;
 use sp_core::traits::SpawnNamed;
 use sp_executor::OpaqueBundle;
 use sp_runtime::OpaqueExtrinsic;
@@ -59,7 +56,6 @@ use std::{
 	fmt,
 	marker::Unpin,
 	pin::Pin,
-	sync::Arc,
 	task::{Context, Poll},
 	time::Duration,
 };
@@ -271,12 +267,6 @@ pub trait JobTrait: Unpin + Sized {
 	///
 	/// If no extra information is needed, it is perfectly acceptable to set it to `()`.
 	type RunArgs: 'static + Send;
-	/// Subsystem-specific Prometheus metrics.
-	///
-	/// Jobs spawned by one subsystem should share the same
-	/// instance of metrics (use `.clone()`).
-	/// The `delegate_subsystem!` macro should take care of this.
-	type Metrics: 'static + metrics::Metrics + Send;
 
 	/// Name of the job, i.e. `candidate-backing-job`
 	const NAME: &'static str;
@@ -286,9 +276,7 @@ pub trait JobTrait: Unpin + Sized {
 	/// The job should be ended when `receiver` returns `None`.
 	fn run<S: SubsystemSender>(
 		parent: Hash,
-		span: Arc<jaeger::Span>,
 		run_args: Self::RunArgs,
-		metrics: Self::Metrics,
 		receiver: mpsc::Receiver<Self::ToJob>,
 		sender: JobSender<S>,
 	) -> Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
@@ -319,14 +307,8 @@ where
 	}
 
 	/// Spawn a new job for this `parent_hash`, with whatever args are appropriate.
-	fn spawn_job<Job, Sender>(
-		&mut self,
-		parent_hash: Hash,
-		span: Arc<jaeger::Span>,
-		run_args: Job::RunArgs,
-		metrics: Job::Metrics,
-		sender: Sender,
-	) where
+	fn spawn_job<Job, Sender>(&mut self, parent_hash: Hash, run_args: Job::RunArgs, sender: Sender)
+	where
 		Job: JobTrait<ToJob = ToJob>,
 		Sender: SubsystemSender,
 	{
@@ -336,9 +318,7 @@ where
 		let (future, abort_handle) = future::abortable(async move {
 			if let Err(e) = Job::run(
 				parent_hash,
-				span,
 				run_args,
-				metrics,
 				to_job_rx,
 				JobSender { sender, from_job: from_job_tx },
 			)
@@ -409,13 +389,11 @@ where
 }
 
 /// Parameters to a job subsystem.
-pub struct JobSubsystemParams<Spawner, RunArgs, Metrics> {
+pub struct JobSubsystemParams<Spawner, RunArgs> {
 	/// A spawner for sub-tasks.
 	spawner: Spawner,
 	/// Arguments to each job.
 	run_args: RunArgs,
-	/// Metrics for the subsystem.
-	pub metrics: Metrics,
 }
 
 /// A subsystem which wraps jobs.
@@ -428,15 +406,15 @@ pub struct JobSubsystemParams<Spawner, RunArgs, Metrics> {
 /// - On outgoing messages from the jobs, it forwards them to the overseer.
 pub struct JobSubsystem<Job: JobTrait, Spawner> {
 	#[allow(missing_docs)]
-	pub params: JobSubsystemParams<Spawner, Job::RunArgs, Job::Metrics>,
+	pub params: JobSubsystemParams<Spawner, Job::RunArgs>,
 	_marker: std::marker::PhantomData<Job>,
 }
 
 impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 	/// Create a new `JobSubsystem`.
-	pub fn new(spawner: Spawner, run_args: Job::RunArgs, metrics: Job::Metrics) -> Self {
+	pub fn new(spawner: Spawner, run_args: Job::RunArgs) -> Self {
 		JobSubsystem {
-			params: JobSubsystemParams { spawner, run_args, metrics },
+			params: JobSubsystemParams { spawner, run_args },
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -451,9 +429,8 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 		<Job as JobTrait>::RunArgs: Clone + Sync,
 		<Job as JobTrait>::ToJob:
 			Sync + From<<Context as polkadot_overseer::SubsystemContext>::Message>,
-		<Job as JobTrait>::Metrics: Sync,
 	{
-		let JobSubsystem { params: JobSubsystemParams { spawner, run_args, metrics }, .. } = self;
+		let JobSubsystem { params: JobSubsystemParams { spawner, run_args }, .. } = self;
 
 		let mut jobs = Jobs::<Spawner, Job::ToJob>::new(spawner);
 
@@ -469,9 +446,7 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 								let sender = ctx.sender().clone();
 								jobs.spawn_job::<Job, _>(
 									activated.hash,
-									activated.span,
 									run_args.clone(),
-									metrics.clone(),
 									sender,
 								)
 							}
@@ -528,7 +503,6 @@ where
 	Job::RunArgs: Clone + Sync,
 	<Job as JobTrait>::ToJob:
 		Sync + From<<Context as polkadot_overseer::SubsystemContext>::Message>,
-	Job::Metrics: Sync,
 {
 	fn start(self, ctx: Context) -> SpawnedSubsystem {
 		let future = Box::pin(async move {

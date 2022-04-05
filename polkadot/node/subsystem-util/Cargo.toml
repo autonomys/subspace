@@ -13,8 +13,6 @@ thiserror = "1.0.30"
 tracing = "0.1.32"
 
 polkadot-node-subsystem = { package = "polkadot-node-subsystem", path = "../subsystem" }
-polkadot-node-jaeger = { path = "../jaeger" }
-polkadot-node-metrics = { path = "../metrics" }
 polkadot-overseer = { path = "../overseer" }
 
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

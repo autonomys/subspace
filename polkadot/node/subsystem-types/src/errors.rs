@@ -16,8 +16,6 @@
 
 //! Error types for the subsystem requests.
 
-use crate::JaegerError;
-
 /// A description of an error causing the runtime API request to be unservable.
 #[derive(Debug, Clone)]
 pub struct RuntimeApiError(String);
@@ -104,9 +102,6 @@ pub enum SubsystemError {
 
 	#[error(transparent)]
 	Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
-
-	#[error(transparent)]
-	Jaeger(#[from] JaegerError),
 
 	#[error("Failed to {0}")]
 	Context(String),

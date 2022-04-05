@@ -22,11 +22,7 @@ use lru::LruCache;
 use polkadot_node_collation_generation::CollationGenerationSubsystem;
 use polkadot_node_core_chain_api::ChainApiSubsystem;
 use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
-use polkadot_node_subsystem_util::metrics::Metrics;
-use polkadot_overseer::{
-    metrics::Metrics as OverseerMetrics, BlockInfo, Handle, MetricsTrait, Overseer,
-    OverseerConnector, KNOWN_LEAVES_CACHE_SIZE,
-};
+use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -416,18 +412,9 @@ where
         let spawner = task_manager.spawn_handle();
 
         let (overseer, overseer_handle) = Overseer::builder()
-            .chain_api(ChainApiSubsystem::new(
-                client.clone(),
-                Metrics::register(prometheus_registry.as_ref())?,
-            ))
-            .collation_generation(CollationGenerationSubsystem::new(Metrics::register(
-                prometheus_registry.as_ref(),
-            )?))
-            .runtime_api(RuntimeApiSubsystem::new(
-                client.clone(),
-                Metrics::register(prometheus_registry.as_ref())?,
-                spawner.clone(),
-            ))
+            .chain_api(ChainApiSubsystem::new(client.clone()))
+            .collation_generation(CollationGenerationSubsystem::new())
+            .runtime_api(RuntimeApiSubsystem::new(client.clone(), spawner.clone()))
             .leaves(
                 active_leaves
                     .into_iter()
@@ -440,12 +427,8 @@ where
                     )
                     .collect(),
             )
-            .span_per_active_leaf(Default::default())
             .active_leaves(Default::default())
             .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-            .metrics(<OverseerMetrics as MetricsTrait>::register(
-                prometheus_registry.as_ref(),
-            )?)
             .spawner(spawner)
             .build_with_connector(OverseerConnector::default())?;
 
