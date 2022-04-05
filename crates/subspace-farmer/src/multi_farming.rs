@@ -1,6 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
+use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
 use subspace_core_primitives::PublicKey;
 use subspace_solving::SubspaceCodec;
@@ -9,44 +10,76 @@ use crate::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 
-pub async fn create_multi_farming(
-    base_directory: impl AsRef<Path>,
-    client: WsRpc,
-    object_mappings: ObjectMappings,
-    plot_size: u64,
-    max_plot_size: u64,
-    reward_address: PublicKey,
-    best_block_number_check_interval: Duration,
-) -> anyhow::Result<(Vec<Plot>, Vec<(Farming, Plotting)>)> {
-    let single_plot_sizes =
-        std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
-    let single_plot_sizes = if plot_size % max_plot_size > 0 {
-        single_plot_sizes
-            .chain(std::iter::once(plot_size % max_plot_size))
-            .collect::<Vec<_>>()
-    } else {
-        single_plot_sizes.collect()
-    };
+/// Abstraction around having multiple plots, farmings and plottings
+pub struct MultiFarming {
+    pub plots: Arc<Vec<Plot>>,
+    farmings: Vec<Farming>,
+    plottings: Vec<Plotting>,
+}
 
-    let mut plots = Vec::with_capacity(single_plot_sizes.len());
-    let mut farming_plotting = Vec::with_capacity(single_plot_sizes.len());
+impl MultiFarming {
+    /// Starts multiple farmers with any plot sizes which user gives
+    pub async fn new(
+        base_directory: impl AsRef<Path>,
+        client: WsRpc,
+        object_mappings: ObjectMappings,
+        plot_sizes: Vec<u64>,
+        reward_address: PublicKey,
+        best_block_number_check_interval: Duration,
+    ) -> anyhow::Result<Self> {
+        let mut plots = Vec::with_capacity(plot_sizes.len());
+        let mut farmings = Vec::with_capacity(plot_sizes.len());
+        let mut plottings = Vec::with_capacity(plot_sizes.len());
 
-    for (plot_index, max_plot_pieces) in single_plot_sizes.into_iter().enumerate() {
-        let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
-        let (plot, plotting, farming) = farm_single_plot(
-            base_directory,
-            reward_address,
-            client.clone(),
-            object_mappings.clone(),
-            max_plot_pieces,
-            best_block_number_check_interval,
-        )
-        .await?;
-        plots.push(plot);
-        farming_plotting.push((farming, plotting))
+        for (plot_index, max_plot_pieces) in plot_sizes.into_iter().enumerate() {
+            let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
+            std::fs::create_dir_all(&base_directory)?;
+            let (plot, plotting, farming) = farm_single_plot(
+                base_directory,
+                reward_address,
+                client.clone(),
+                object_mappings.clone(),
+                max_plot_pieces,
+                best_block_number_check_interval,
+            )
+            .await?;
+            plots.push(plot);
+            farmings.push(farming);
+            plottings.push(plotting);
+        }
+
+        Ok(Self {
+            plots: Arc::new(plots),
+            farmings,
+            plottings,
+        })
     }
 
-    Ok((plots, farming_plotting))
+    /// Waits for farming and plotting completion (or errors)
+    pub async fn wait(self) -> anyhow::Result<()> {
+        let mut farming_plotting = self
+            .farmings
+            .into_iter()
+            .zip(self.plottings)
+            .into_iter()
+            .map(|(farming, plotting)| async move {
+                tokio::select! {
+                    res = plotting.wait() => if let Err(error) = res {
+                        return Err(anyhow!(error))
+                    },
+                    res = farming.wait() => if let Err(error) = res {
+                        return Err(anyhow!(error))
+                    },
+                }
+                Ok(())
+            })
+            .collect::<FuturesUnordered<_>>();
+
+        while let Some(res) = farming_plotting.next().await {
+            res?;
+        }
+        Ok(())
+    }
 }
 
 /// Starts farming for a single plot in specified base directory.

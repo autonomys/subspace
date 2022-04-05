@@ -1,13 +1,11 @@
 use anyhow::{anyhow, Result};
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PIECE_SIZE;
-use subspace_farmer::multi_farming::create_multi_farming;
+use subspace_farmer::multi_farming::MultiFarming;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     retrieve_piece_from_plots, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
@@ -68,17 +66,24 @@ pub(crate) async fn farm(
     // For now assume 80% will go for plot itself
     let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
 
-    let (plots, farming_plotting) = create_multi_farming(
+    let plot_sizes = std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
+    let plot_sizes = if plot_size % max_plot_size > 0 {
+        plot_sizes
+            .chain(std::iter::once(plot_size % max_plot_size))
+            .collect::<Vec<_>>()
+    } else {
+        plot_sizes.collect()
+    };
+
+    let multi_farming = MultiFarming::new(
         base_directory,
         client,
         object_mappings.clone(),
-        plot_size,
-        max_plot_size,
+        plot_sizes,
         reward_address,
         best_block_number_check_interval,
     )
     .await?;
-    let plots = Arc::new(plots);
 
     // Start RPC server
     let ws_server = WsServerBuilder::default()
@@ -88,7 +93,7 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        Arc::clone(&plots),
+        Arc::clone(&multi_farming.plots),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
@@ -99,7 +104,7 @@ pub(crate) async fn farm(
         bootstrap_nodes,
         listen_on,
         value_getter: Arc::new({
-            let plots = Arc::clone(&plots);
+            let plots = Arc::clone(&multi_farming.plots);
 
             move |key| networking_getter(&plots, key)
         }),
@@ -127,27 +132,7 @@ pub(crate) async fn farm(
         node_runner.run().await;
     });
 
-    // Wait for any incoming error from farming or plotting
-    let mut farming_plotting = farming_plotting
-        .into_iter()
-        .map(|(farming, plotting)| async move {
-            tokio::select! {
-                res = plotting.wait() => if let Err(error) = res {
-                    return Err(anyhow!(error))
-                },
-                res = farming.wait() => if let Err(error) = res {
-                    return Err(anyhow!(error))
-                },
-            }
-            Ok(())
-        })
-        .collect::<FuturesUnordered<_>>();
-
-    while let Some(res) = farming_plotting.next().await {
-        res?;
-    }
-
-    Ok(())
+    multi_farming.wait().await
 }
 
 fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
