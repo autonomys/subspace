@@ -74,7 +74,7 @@ fn cannot_do_put_with_wrong_feed_id() {
         let wrong_feed_id = 178;
 
         assert_noop!(
-            Feeds::put(Origin::signed(ACCOUNT_ID), wrong_feed_id, object,),
+            Feeds::put(Origin::signed(ACCOUNT_ID), wrong_feed_id, object),
             Error::<Test>::UnknownFeedId
         );
 
@@ -87,10 +87,43 @@ fn cannot_do_put_without_creating_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         assert_noop!(
-            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object.clone()),
+            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object),
             Error::<Test>::UnknownFeedId
         );
 
         assert_eq!(System::events().len(), 0);
+    });
+}
+
+#[test]
+fn can_close_open_feed() {
+    new_test_ext().execute_with(|| {
+        let object: Object = vec![1, 2, 3, 4, 5];
+        // create feed before putting any data
+        assert_ok!(Feeds::create(
+            Origin::signed(ACCOUNT_ID),
+            FeedProcessorId::default(),
+            None
+        ));
+
+        assert_ok!(Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object));
+
+        assert_ok!(Feeds::close(Origin::signed(ACCOUNT_ID), FEED_ID));
+
+        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedClosed {
+            feed_id: FEED_ID,
+            who: ACCOUNT_ID,
+        }));
+    });
+}
+
+#[test]
+fn cannot_close_invalid_feed() {
+    new_test_ext().execute_with(|| {
+        let feed_id = 10; // invalid
+        assert_noop!(
+            Feeds::close(Origin::signed(ACCOUNT_ID), feed_id),
+            Error::<Test>::UnknownFeedId
+        );
     });
 }

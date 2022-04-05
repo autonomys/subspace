@@ -118,6 +118,12 @@ mod pallet {
             feed_id: T::FeedId,
             who: T::AccountId,
         },
+
+        /// Feed is closed.
+        FeedClosed {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
     }
 
     /// `pallet-feeds` errors
@@ -126,8 +132,8 @@ mod pallet {
         /// `FeedId` doesn't exist
         UnknownFeedId,
 
-        /// Feed is inactive
-        FeedInactive,
+        /// Feed is closed
+        FeedClosed,
     }
 
     #[pallet::call]
@@ -178,7 +184,7 @@ mod pallet {
 
             let feed_config = FeedConfigs::<T>::get(feed_id);
             // ensure feed is active
-            ensure!(feed_config.active, Error::<T>::FeedInactive);
+            ensure!(feed_config.active, Error::<T>::FeedClosed);
 
             let object_size = object.len() as u64;
             let feed_processor = T::feed_processor(feed_config.feed_processor_id);
@@ -199,6 +205,17 @@ mod pallet {
                 object_size,
             });
 
+            Ok(())
+        }
+
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            // ensure feed_id is valid
+            ensure!(Self::next_feed_id() > feed_id, Error::<T>::UnknownFeedId);
+
+            FeedConfigs::<T>::mutate(feed_id, |config| config.active = false);
+            Self::deposit_event(Event::FeedClosed { feed_id, who });
             Ok(())
         }
     }
