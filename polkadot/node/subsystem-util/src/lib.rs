@@ -119,58 +119,32 @@ where
 	rx
 }
 
-/// Construct specialized request functions for the runtime.
-///
-/// These would otherwise get pretty repetitive.
-macro_rules! specialize_requests {
-	// expand return type name for documentation purposes
-	(fn $func_name:ident( $( $param_name:ident : $param_ty:ty ),* ) -> $return_ty:ty ; $request_variant:ident;) => {
-		specialize_requests!{
-			named stringify!($request_variant) ; fn $func_name( $( $param_name : $param_ty ),* ) -> $return_ty ; $request_variant;
-		}
-	};
-
-	// create a single specialized request function
-	(named $doc_name:expr ; fn $func_name:ident( $( $param_name:ident : $param_ty:ty ),* ) -> $return_ty:ty ; $request_variant:ident;) => {
-		#[doc = "Request `"]
-		#[doc = $doc_name]
-		#[doc = "` from the runtime"]
-		pub async fn $func_name (
-			parent: Hash,
-			$(
-				$param_name: $param_ty,
-			)*
-			sender: &mut impl SubsystemSender,
-		) -> RuntimeApiReceiver<$return_ty>
-		{
-			request_from_runtime(parent, sender, |tx| RuntimeApiRequest::$request_variant(
-				$( $param_name, )* tx
-			)).await
-		}
-	};
-
-	// recursive decompose
-	(
-		fn $func_name:ident( $( $param_name:ident : $param_ty:ty ),* ) -> $return_ty:ty ; $request_variant:ident;
-		$(
-			fn $t_func_name:ident( $( $t_param_name:ident : $t_param_ty:ty ),* ) -> $t_return_ty:ty ; $t_request_variant:ident;
-		)+
-	) => {
-		specialize_requests!{
-			fn $func_name( $( $param_name : $param_ty ),* ) -> $return_ty ; $request_variant ;
-		}
-		specialize_requests!{
-			$(
-				fn $t_func_name( $( $t_param_name : $t_param_ty ),* ) -> $t_return_ty ; $t_request_variant ;
-			)+
-		}
-	};
+/// Request `ExtractBundles` from the runtime
+pub async fn request_extract_bundles(
+	parent: Hash,
+	extrinsics: Vec<OpaqueExtrinsic>,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Vec<OpaqueBundle>> {
+	request_from_runtime(parent, sender, |tx| RuntimeApiRequest::ExtractBundles(extrinsics, tx))
+		.await
 }
-
-specialize_requests! {
-	fn request_extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>; ExtractBundles;
-	fn request_extrinsics_shuffling_seed(header: Header) -> Randomness; ExtrinsicsShufflingSeed;
-	fn request_execution_wasm_bundle() -> Cow<'static, [u8]>; ExecutionWasmBundle;
+/// Request `ExtrinsicsShufflingSeed "` from the runtime
+pub async fn request_extrinsics_shuffling_seed(
+	parent: Hash,
+	header: Header,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Randomness> {
+	request_from_runtime(parent, sender, |tx| {
+		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, tx)
+	})
+	.await
+}
+/// Rquest `ExecutionWasmBundle` from the runtime
+pub async fn request_execution_wasm_bundle(
+	parent: Hash,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Cow<'static, [u8]>> {
+	request_from_runtime(parent, sender, RuntimeApiRequest::ExecutionWasmBundle).await
 }
 
 struct AbortOnDrop(future::AbortHandle);
