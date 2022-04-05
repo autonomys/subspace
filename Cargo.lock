@@ -5685,7 +5685,6 @@ dependencies = [
  "sc-client-api",
  "sp-blockchain",
  "subspace-runtime-primitives",
- "tracing",
 ]
 
 [[package]]
