@@ -131,8 +131,6 @@ impl fmt::Debug for ActiveLeavesUpdate {
 pub enum OverseerSignal {
 	/// Subsystems should adjust their jobs to start and stop work on appropriate block hashes.
 	ActiveLeaves(ActiveLeavesUpdate),
-	/// `Subsystem` is informed of a finalized block by its block hash and number.
-	BlockFinalized(Hash, BlockNumber),
 	/// `Subsystem` is informed of a new slot.
 	NewSlot(ExecutorSlotInfo),
 	/// Conclude the work of the `Overseer` and all `Subsystem`s.

@@ -168,8 +168,6 @@ impl<ToJob> JobHandle<ToJob> {
 pub enum FromJobCommand {
 	/// Spawn a child task on the executor.
 	Spawn(&'static str, Pin<Box<dyn Future<Output = ()> + Send>>),
-	/// Spawn a blocking child task on the executor's dedicated thread pool.
-	SpawnBlocking(&'static str, Pin<Box<dyn Future<Output = ()> + Send>>),
 }
 
 /// A sender for messages from jobs, as well as commands to the overseer.
@@ -215,11 +213,6 @@ impl<S: SubsystemSender> JobSender<S> {
 	pub fn send_unbounded_message(&mut self, msg: impl Into<AllMessages>) {
 		self.sender.send_unbounded_message(msg.into())
 	}
-
-	/// Send a command to the subsystem, to be relayed onwards to the overseer.
-	pub async fn send_command(&mut self, msg: FromJobCommand) -> Result<(), mpsc::SendError> {
-		self.from_job.send(msg).await
-	}
 }
 
 #[async_trait::async_trait]
@@ -249,7 +242,6 @@ impl fmt::Debug for FromJobCommand {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Self::Spawn(name, _) => write!(fmt, "FromJobCommand::Spawn({})", name),
-			Self::SpawnBlocking(name, _) => write!(fmt, "FromJobCommand::SpawnBlocking({})", name),
 		}
 	}
 }
@@ -459,7 +451,6 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 							jobs.running.clear();
 							break;
 						}
-						Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => {}
 						Ok(FromOverseer::Signal(OverseerSignal::NewSlot(..))) => {}
 						Ok(FromOverseer::Communication { msg }) => {
 							if let Ok(to_job) = <<Context as SubsystemContext>::Message>::try_from(msg) {
@@ -482,7 +473,6 @@ impl<Job: JobTrait, Spawner> JobSubsystem<Job, Spawner> {
 					// TODO but not for anything beyond that
 					let res = match outgoing.expect("the Jobs stream never ends; qed") {
 						FromJobCommand::Spawn(name, task) => ctx.spawn(name, task),
-						FromJobCommand::SpawnBlocking(name, task) => ctx.spawn_blocking(name, task),
 					};
 
 					if let Err(e) = res {

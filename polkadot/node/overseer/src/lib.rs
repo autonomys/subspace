@@ -116,11 +116,6 @@ impl Handle {
 		self.send_and_log_error(Event::MsgToSubsystem { msg: msg.into(), origin }).await
 	}
 
-	/// Inform the `Overseer` that some block was finalized.
-	pub async fn block_finalized(&mut self, block: BlockInfo) {
-		self.send_and_log_error(Event::BlockFinalized(block)).await
-	}
-
 	/// Inform the `Overseer` that a new slot was triggered.
 	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
@@ -172,8 +167,6 @@ impl From<FinalityNotification<Block>> for BlockInfo {
 pub enum Event {
 	/// A new block was imported.
 	BlockImported(BlockInfo),
-	/// A block was finalized with i.e. babe or another consensus algorithm.
-	BlockFinalized(BlockInfo),
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
@@ -194,19 +187,10 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: Handle,
 ) {
-	let mut finality = client.finality_notification_stream();
 	let mut imports = client.import_notification_stream();
 
 	loop {
 		select! {
-			f = finality.next() => {
-				match f {
-					Some(block) => {
-						handle.block_finalized(block.into()).await;
-					}
-					None => break,
-				}
-			},
 			i = imports.next() => {
 				match i {
 					Some(block) => {
@@ -403,9 +387,6 @@ where
 						Event::BlockImported(block) => {
 							self.block_imported(block).await?;
 						}
-						Event::BlockFinalized(block) => {
-							self.block_finalized(block).await?;
-						}
 						Event::NewSlot(slot_info) => {
 							self.on_new_slot(slot_info).await?;
 						}
@@ -415,9 +396,6 @@ where
 					match msg {
 						ToOverseer::SpawnJob { name, subsystem, s } => {
 							self.spawn_job(name, subsystem, s);
-						}
-						ToOverseer::SpawnBlockingJob { name, subsystem, s } => {
-							self.spawn_blocking_job(name, subsystem, s);
 						}
 					}
 				},
@@ -465,33 +443,6 @@ where
 		Ok(())
 	}
 
-	async fn block_finalized(&mut self, block: BlockInfo) -> SubsystemResult<()> {
-		let mut update = ActiveLeavesUpdate::default();
-
-		self.active_leaves.retain(|h, n| {
-			// prune all orphaned leaves, but don't prune
-			// the finalized block if it is itself a leaf.
-			if *n <= block.number && *h != block.hash {
-				update.deactivated.push(*h);
-				false
-			} else {
-				true
-			}
-		});
-
-		self.broadcast_signal(OverseerSignal::BlockFinalized(block.hash, block.number))
-			.await?;
-
-		// If there are no leaves being deactivated, we don't need to send an update.
-		//
-		// Our peers will be informed about our finalized block the next time we activating/deactivating some leaf.
-		if !update.is_empty() {
-			self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
-		}
-
-		Ok(())
-	}
-
 	async fn on_new_slot(&mut self, slot_info: ExecutorSlotInfo) -> SubsystemResult<()> {
 		self.broadcast_signal(OverseerSignal::NewSlot(slot_info)).await?;
 		Ok(())
@@ -518,14 +469,5 @@ where
 		j: BoxFuture<'static, ()>,
 	) {
 		self.spawner.spawn(task_name, subsystem_name, j);
-	}
-
-	fn spawn_blocking_job(
-		&mut self,
-		task_name: &'static str,
-		subsystem_name: Option<&'static str>,
-		j: BoxFuture<'static, ()>,
-	) {
-		self.spawner.spawn_blocking(task_name, subsystem_name, j);
 	}
 }

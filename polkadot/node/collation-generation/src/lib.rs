@@ -183,7 +183,6 @@ impl CollationGenerationSubsystem {
 				}
 				false
 			},
-			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
 					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await {

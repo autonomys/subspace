@@ -222,7 +222,6 @@ where
 			req = ctx.recv().fuse() => match req? {
 				FromOverseer::Signal(OverseerSignal::Conclude) => return Ok(()),
 				FromOverseer::Signal(OverseerSignal::ActiveLeaves(_)) => {},
-				FromOverseer::Signal(OverseerSignal::BlockFinalized(..)) => {},
 				FromOverseer::Signal(OverseerSignal::NewSlot(..)) => {},
 				FromOverseer::Communication { msg } => match msg {
 					RuntimeApiMessage::Request(relay_parent, request) => {

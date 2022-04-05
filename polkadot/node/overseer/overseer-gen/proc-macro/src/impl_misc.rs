@@ -241,17 +241,6 @@ pub(crate) fn impl_misc(info: &OverseerInfo) -> proc_macro2::TokenStream {
 				}).map_err(|_| #support_crate ::OverseerError::TaskSpawn(name))?;
 				Ok(())
 			}
-
-			fn spawn_blocking(&mut self, name: &'static str, s: Pin<Box<dyn Future<Output = ()> + Send>>)
-				-> ::std::result::Result<(), #error_ty>
-			{
-				self.to_overseer.unbounded_send(#support_crate ::ToOverseer::SpawnBlockingJob {
-					name,
-					subsystem: Some(self.name()),
-					s,
-				}).map_err(|_| #support_crate ::OverseerError::TaskSpawn(name))?;
-				Ok(())
-			}
 		}
 	};
 
