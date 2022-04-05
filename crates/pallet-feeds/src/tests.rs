@@ -34,7 +34,11 @@ fn can_do_put() {
         let object: Object = vec![1, 2, 3, 4, 5];
         let object_size = object.len() as u64;
         // create feed before putting any data
-        assert_eq!(Feeds::next_feed_id(), FEED_ID);
+        assert_ok!(Feeds::create(
+            Origin::signed(ACCOUNT_ID),
+            FeedProcessorId::default(),
+            None
+        ));
 
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),
@@ -71,6 +75,19 @@ fn cannot_do_put_with_wrong_feed_id() {
 
         assert_noop!(
             Feeds::put(Origin::signed(ACCOUNT_ID), wrong_feed_id, object,),
+            Error::<Test>::UnknownFeedId
+        );
+
+        assert_eq!(System::events().len(), 0);
+    });
+}
+
+#[test]
+fn cannot_do_put_without_creating_feed() {
+    new_test_ext().execute_with(|| {
+        let object: Object = vec![1, 2, 3, 4, 5];
+        assert_noop!(
+            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object.clone()),
             Error::<Test>::UnknownFeedId
         );
 

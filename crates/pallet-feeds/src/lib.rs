@@ -78,15 +78,21 @@ mod pallet {
         pub count: u64,
     }
 
+    #[derive(Debug, Decode, Encode, TypeInfo, Default)]
+    pub struct FeedConfig {
+        pub active: bool,
+        pub feed_processor_id: FeedProcessorId,
+    }
+
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
     pub(super) type Metadata<T: Config> =
         StorageMap<_, Blake2_128Concat, T::FeedId, FeedMetadata, OptionQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn feed_processor)]
-    pub(super) type FeedProcessor<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, FeedProcessorId, ValueQuery>;
+    #[pallet::getter(fn feed_configs)]
+    pub(super) type FeedConfigs<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -119,6 +125,9 @@ mod pallet {
     pub enum Error<T> {
         /// `FeedId` doesn't exist
         UnknownFeedId,
+
+        /// Feed is inactive
+        FeedInactive,
     }
 
     #[pallet::call]
@@ -143,7 +152,13 @@ mod pallet {
             }
 
             NextFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
-            FeedProcessor::<T>::insert(feed_id, feed_processor_id);
+            FeedConfigs::<T>::insert(
+                feed_id,
+                FeedConfig {
+                    active: true,
+                    feed_processor_id,
+                },
+            );
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
@@ -159,11 +174,14 @@ mod pallet {
             let who = ensure_signed(origin)?;
 
             // ensure feed_id is valid
-            ensure!(Self::next_feed_id() >= feed_id, Error::<T>::UnknownFeedId);
+            ensure!(Self::next_feed_id() > feed_id, Error::<T>::UnknownFeedId);
+
+            let feed_config = FeedConfigs::<T>::get(feed_id);
+            // ensure feed is active
+            ensure!(feed_config.active, Error::<T>::FeedInactive);
 
             let object_size = object.len() as u64;
-            let feed_processor_id = FeedProcessor::<T>::get(feed_id);
-            let feed_processor = T::feed_processor(feed_processor_id);
+            let feed_processor = T::feed_processor(feed_config.feed_processor_id);
 
             let metadata = feed_processor
                 .put(feed_id, object.as_slice())?
@@ -191,7 +209,9 @@ impl<T: Config> Call<T> {
     pub fn extract_call_objects(&self) -> Vec<FeedObjectMapping> {
         match self {
             Self::put { feed_id, object } => {
-                let feed_processor_id = FeedProcessor::<T>::get(feed_id);
+                let FeedConfig {
+                    feed_processor_id, ..
+                } = FeedConfigs::<T>::get(feed_id);
                 let feed_processor = T::feed_processor(feed_processor_id);
                 let mut objects_mappings = feed_processor.object_mappings(*feed_id, object);
                 // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
