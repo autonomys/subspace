@@ -62,6 +62,8 @@ pub(crate) async fn farm(
     })
     .await??;
 
+    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
+    // less than it was specified before.
     // TODO: Piece count should account for database overhead of various additional databases
     // For now assume 80% will go for plot itself
     let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;

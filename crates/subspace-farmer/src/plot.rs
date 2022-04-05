@@ -143,22 +143,10 @@ pub fn retrieve_piece_from_plots(
     let mut plots = plots.iter().collect::<Vec<_>>();
     plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
 
-    let result = match *plots {
-        // Lookup at 2 plots closest to piece index hash, as:
-        // - first might be closest, but it can be only partial replica
-        [first, second, ..] => first
-            .read(piece_index_hash)
-            .map(|piece| (piece, first.public_key()))
-            .or_else(|_| {
-                second
-                    .read(piece_index_hash)
-                    .map(|piece| (piece, first.public_key()))
-            }),
-        [plot] => plot
-            .read(piece_index_hash)
-            .map(|piece| (piece, plot.public_key())),
-        [] => unreachable!("Should have at least one plot"),
-    };
+    let result = plots.iter().take(2).find_map(|first| {
+        plot.read(piece_index_hash)
+            .map(|piece| (piece, plot.public_key()))
+    });
 
     let (mut piece, public_key) = match result {
         Ok(piece) => piece,
@@ -184,42 +172,6 @@ pub struct Plot {
 }
 
 impl Plot {
-    /// Helper function for ignoring the error that given file/directory does not exist.
-    fn try_remove<P: AsRef<Path>>(
-        path: P,
-        remove: impl FnOnce(P) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if path.as_ref().exists() {
-            remove(path)?;
-        }
-        Ok(())
-    }
-
-    // TODO: Remove with the next snapshot (as it is unused by now)
-    /// Erases plot in specific directory
-    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
-        info!("Erasing the plot");
-        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
-        info!("Erasing the plot offset to index db");
-        Self::try_remove(
-            path.as_ref().join("plot-offset-to-index.bin"),
-            fs::remove_file,
-        )?;
-        info!("Erasing the plot index to offset db");
-        Self::try_remove(
-            path.as_ref().join("plot-index-to-offset"),
-            fs::remove_dir_all,
-        )?;
-        info!("Erasing plot metadata");
-        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
-        info!("Erasing plot commitments");
-        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
-        info!("Erasing object mappings");
-        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
-
-        Ok(())
-    }
-
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
@@ -435,6 +387,42 @@ impl Plot {
         callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.inner.handlers.progress_change.add(callback)
+    }
+
+    /// Helper function for ignoring the error that given file/directory does not exist.
+    fn try_remove<P: AsRef<Path>>(
+        path: P,
+        remove: impl FnOnce(P) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if path.as_ref().exists() {
+            remove(path)?;
+        }
+        Ok(())
+    }
+
+    // TODO: Remove with the next snapshot (as it is unused by now)
+    /// Erases plot in specific directory
+    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
+        info!("Erasing the plot");
+        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
+        info!("Erasing the plot offset to index db");
+        Self::try_remove(
+            path.as_ref().join("plot-offset-to-index.bin"),
+            fs::remove_file,
+        )?;
+        info!("Erasing the plot index to offset db");
+        Self::try_remove(
+            path.as_ref().join("plot-index-to-offset"),
+            fs::remove_dir_all,
+        )?;
+        info!("Erasing plot metadata");
+        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
+        info!("Erasing plot commitments");
+        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
+        info!("Erasing object mappings");
+        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
+
+        Ok(())
     }
 }
 
