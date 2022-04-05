@@ -844,7 +844,6 @@ dependencies = [
  "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
- "cumulus-client-consensus-common",
  "futures 0.3.21",
  "futures-timer",
  "merkletree",
@@ -907,7 +906,6 @@ dependencies = [
  "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
- "cumulus-client-consensus-common",
  "parking_lot 0.12.0",
  "sc-client-api",
  "sc-consensus",
@@ -924,6 +922,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-service",
  "tracing",
 ]
@@ -1026,7 +1025,6 @@ dependencies = [
  "jsonrpc-core",
  "pallet-transaction-payment",
  "rand 0.8.5",
- "sc-basic-authorship",
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
@@ -1490,16 +1488,9 @@ name = "cumulus-client-consensus-common"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "dyn-clone",
- "futures 0.3.21",
- "sc-client-api",
  "sc-consensus",
- "sp-blockchain",
  "sp-consensus",
  "sp-runtime",
- "sp-trie",
- "subspace-runtime-primitives",
- "tracing",
 ]
 
 [[package]]
@@ -1507,23 +1498,13 @@ name = "cumulus-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cirrus-node-primitives",
  "cumulus-client-consensus-common",
- "futures 0.3.21",
- "parking_lot 0.12.0",
- "sc-client-api",
  "sc-consensus",
- "sp-api",
- "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-inherents",
  "sp-runtime",
- "subspace-runtime-primitives",
- "subspace-service",
  "substrate-prometheus-endpoint",
- "tracing",
 ]
 
 [[package]]
@@ -5267,7 +5248,6 @@ dependencies = [
  "log",
  "pallet-transaction-payment-rpc",
  "parachain-template-runtime",
- "sc-basic-authorship",
  "sc-chain-spec",
  "sc-cli",
  "sc-client-api",

@@ -27,7 +27,7 @@ use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::{borrow::Cow, pin::Pin};
 use subspace_core_primitives::{Randomness, Tag};
-use subspace_runtime_primitives::{BlockNumber, Hash};
+use subspace_runtime_primitives::Hash;
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
@@ -93,17 +93,6 @@ pub type CollationSecondedSignal = Vec<u8>;
 // TODO: SubspaceBlockWeight
 /// The cumulative weight of a block in a fork-choice rule.
 pub type BlockWeight = u32;
-
-#[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
-pub struct PersistedValidationData<H = Hash, N = BlockNumber> {
-    // TODO: use a proper wrapper type?
-    /// The encoded optional parent head hash.
-    pub parent_head: Vec<u8>,
-    /// The relay-chain block number this is in the context of.
-    pub relay_parent_number: N,
-    /// The relay-chain block storage root this is in the context of.
-    pub relay_parent_storage_root: H,
-}
 
 /// Bundle function.
 ///

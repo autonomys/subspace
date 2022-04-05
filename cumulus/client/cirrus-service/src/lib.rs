@@ -20,8 +20,6 @@
 
 #![allow(clippy::all)]
 
-use cumulus_client_consensus_common::ParachainConsensus;
-
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
@@ -35,14 +33,14 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
+use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
-	pub primary_chain_full_node: subspace_service::NewFull<RClient>,
+	pub primary_chain_full_node: subspace_service::NewFull<Arc<RClient>>,
 	pub task_manager: &'a mut TaskManager,
-	pub parachain_consensus: Box<dyn ParachainConsensus>,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
@@ -57,7 +55,6 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 		spawner,
 		task_manager,
 		primary_chain_full_node,
-		parachain_consensus,
 		transaction_pool,
 		network,
 		backend,
@@ -83,7 +80,7 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	RClient: Clone + Send + Sync + 'static,
+	RClient: HeaderBackend<PBlock> + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,
@@ -97,11 +94,6 @@ where
 	TP: TransactionPool<Block = Block> + 'static,
 	E: CodeExecutor,
 {
-	let consensus = cumulus_client_consensus_common::run_parachain_consensus(client.clone());
-	task_manager
-		.spawn_essential_handle()
-		.spawn("cumulus-consensus", None, consensus);
-
 	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
 	let (execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
@@ -116,7 +108,7 @@ where
 			client,
 			overseer_handle,
 			spawner,
-			parachain_consensus,
+			primary_chain_client: primary_chain_full_node.client.clone(),
 			transaction_pool,
 			bundle_sender,
 			execution_receipt_sender,

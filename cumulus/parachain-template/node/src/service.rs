@@ -1,14 +1,10 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
 // std
-use sc_basic_authorship::ProposerFactory;
 use std::sync::Arc;
 
 // Local Runtime Types
 use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
-
-// Cumulus Imports
-use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 // Substrate Imports
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -229,7 +225,6 @@ where
 	let backend = params.backend.clone();
 
 	let validator = parachain_config.role.is_authority();
-	let prometheus_registry = parachain_config.prometheus_registry().cloned();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
 	let (network, system_rpc_tx, start_network) =
@@ -272,27 +267,6 @@ where
 		telemetry: telemetry.as_mut(),
 	})?;
 
-	// Basically, all the executor nodes run all the components, the
-	// difference is that only the authority node will try to win the
-	// election for producing bundle and execution receipt.
-	let parachain_consensus = {
-		let proposer_factory = ProposerFactory::with_proof_recording(
-			task_manager.spawn_handle(),
-			client.clone(),
-			transaction_pool.clone(),
-			prometheus_registry.as_ref(),
-			telemetry.as_ref().map(|t| t.handle()),
-		);
-
-		Box::new(PrimaryChainConsensus::new(
-			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
-			client.clone(),
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.backend.clone(),
-		))
-	};
-
 	let spawner = task_manager.spawn_handle();
 
 	let params = cirrus_client_service::StartExecutorParams {
@@ -300,7 +274,6 @@ where
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
 		spawner: Box::new(spawner),
-		parachain_consensus,
 		transaction_pool,
 		network,
 		backend,
@@ -329,12 +302,8 @@ pub fn parachain_build_import_queue(
 	>,
 	sc_service::Error,
 > {
-	let block_import = client.clone();
-	let create_inherent_data_providers = |_, _| async move { Ok(()) };
 	cumulus_client_consensus_relay_chain::import_queue(
 		client,
-		block_import,
-		create_inherent_data_providers,
 		&task_manager.spawn_essential_handle(),
 		None,
 	)
