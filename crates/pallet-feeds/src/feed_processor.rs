@@ -18,6 +18,7 @@
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::{DispatchError, DispatchResult};
+use sp_std::vec::Vec;
 use subspace_core_primitives::Sha256Hash;
 
 /// Object mapping that points to an object in a block

@@ -2,21 +2,31 @@ mod justification;
 mod keyring;
 mod mock;
 
+use crate::chain::Chain;
 use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
-use crate::{initialize, validate};
-use crate::{BestFinalized, ChainType, CurrentAuthoritySet, Error as ErrorP, InitializationData};
+use crate::{initialize, validate_finalized_block};
+use crate::{BestFinalized, CurrentAuthoritySet, Error as ErrorP, InitializationData};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_noop, assert_ok};
 use justification::*;
 use keyring::*;
 use mock::{run_test, ChainId, TestRuntime};
+use sp_core::Hasher as HasherT;
 use sp_finality_grandpa::{ConsensusLog, GRANDPA_ENGINE_ID};
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{generic, Digest, DigestItem, DispatchError, OpaqueExtrinsic};
 
 type TestHeader = generic::Header<u32, BlakeTwo256>;
+
+struct TestFeedChain;
+
+impl Chain for TestFeedChain {
+    type BlockNumber = u32;
+    type Hash = <BlakeTwo256 as HasherT>::Out;
+    type Header = generic::Header<u32, BlakeTwo256>;
+}
 
 #[test]
 fn valid_justification_accepted() {
@@ -195,7 +205,6 @@ fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchErr
     let genesis = test_header::<TestHeader>(0);
 
     let init_data = crate::InitializationData {
-        chain_type: ChainType::PolkadotLike,
         header: genesis.encode(),
         authority_list: authority_list(),
         set_id: 1,
@@ -218,13 +227,14 @@ fn submit_finality_proof(
 ) -> DispatchResult {
     let block = SignedBlock {
         block: generic::Block::<TestHeader, OpaqueExtrinsic> {
-            header: header.clone(),
+            header,
             extrinsics: vec![],
         },
         justifications: Some((GRANDPA_ENGINE_ID, justification.encode()).into()),
     };
 
-    validate::<TestRuntime>(chain_id, block.encode().as_slice())
+    validate_finalized_block::<TestRuntime, TestFeedChain>(chain_id, block.encode().as_slice())?;
+    Ok(())
 }
 
 #[test]
@@ -244,30 +254,18 @@ fn init_storage_entries_are_correctly_initialized() {
 }
 
 #[test]
-fn init_can_only_initialize_pallet_once() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
-        assert_noop!(
-            init_with_origin(chain_id),
-            <ErrorP<TestRuntime>>::AlreadyInitialized
-        );
-    })
-}
-
-#[test]
 fn pallet_rejects_header_if_not_initialized_yet() {
     run_test(|| {
         let chain_id: ChainId = 1;
         assert_noop!(
             submit_valid_finality_proof(chain_id, 1),
-            ErrorP::<TestRuntime>::ChainUnknown
+            ErrorP::<TestRuntime>::FinalizedHeaderNotFound
         );
     });
 }
 
 #[test]
-fn succesfully_imports_header_with_valid_finality() {
+fn successfully_imports_header_with_valid_finality() {
     run_test(|| {
         let chain_id: ChainId = 1;
         assert_ok!(init_with_origin(chain_id));
@@ -326,7 +324,6 @@ fn disallows_invalid_authority_set() {
 
         let invalid_authority_list = vec![(ALICE.into(), u64::MAX), (BOB.into(), u64::MAX)];
         let init_data = InitializationData {
-            chain_type: ChainType::PolkadotLike,
             header: genesis.encode(),
             authority_list: invalid_authority_list,
             set_id: 1,

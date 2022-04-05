@@ -1,14 +1,9 @@
 use crate::grandpa::{verify_justification, AuthoritySet, GrandpaJustification};
 use crate::{Config, Error};
-use codec::{Decode, Encode};
+use codec::Decode;
 use finality_grandpa::voter_set::VoterSet;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
-use scale_info::TypeInfo;
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
-use sp_core::Hasher as HasherT;
-use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::{
     AtLeast32BitUnsigned, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
     MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
@@ -16,32 +11,10 @@ use sp_runtime::traits::{
 use sp_runtime::{generic, OpaqueExtrinsic};
 use sp_std::{hash::Hash, str::FromStr};
 
-// ChainType represents the kind of the Chain type we are verifying the GRANDPA finality for
-#[derive(Encode, Debug, Decode, Clone, PartialEq, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub enum ChainType {
-    PolkadotLike,
-}
-
-impl Default for ChainType {
-    fn default() -> Self {
-        Self::PolkadotLike
-    }
-}
-
-/// Polkadot-like chain.
-pub(crate) struct PolkadotLike;
-
-impl Chain for PolkadotLike {
-    type BlockNumber = u32;
-    type Hash = <BlakeTwo256 as HasherT>::Out;
-    type Header = generic::Header<u32, BlakeTwo256>;
-}
-
 type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;
 
 /// Minimal Substrate-based chain representation that may be used from no_std environment.
-pub(crate) trait Chain {
+pub trait Chain {
     /// A type that fulfills the abstract idea of what a Substrate block number is.
     // Constraints come from the associated Number type of `sp_runtime::traits::Header`
     // See here for more info:
@@ -81,7 +54,10 @@ pub(crate) trait Chain {
         + SimpleBitOps
         + AsRef<[u8]>
         + AsMut<[u8]>
-        + MaybeMallocSizeOf;
+        + MaybeMallocSizeOf
+        // since we want to use the hash as a key in DSN,
+        // we need the target chain to use Hash out length to be 32
+        + Into<[u8; 32]>;
 
     /// A type that fulfills the abstract idea of what a Substrate header is.
     // See here for more info:

@@ -20,6 +20,7 @@
 use crate::feed_processor::FeedObjectMapping;
 use core::mem;
 pub use pallet::*;
+use sp_std::{vec, vec::Vec};
 
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
