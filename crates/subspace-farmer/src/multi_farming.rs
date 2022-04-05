@@ -75,7 +75,7 @@ impl MultiFarming {
             })
             .collect::<FuturesUnordered<_>>();
 
-        while let Some(res) = farming_plotting.next().await {
+        if let Some(res) = farming_plotting.next().await {
             res?;
         }
         Ok(())

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::{fs, io};
 
 pub(crate) fn erase(path: impl AsRef<Path>) -> io::Result<()> {
+    subspace_farmer::Plot::erase(path.as_ref())?;
     (0..)
         .map(|i| path.as_ref().join(format!("plot{i}")))
         .take_while(|path| path.is_dir())
