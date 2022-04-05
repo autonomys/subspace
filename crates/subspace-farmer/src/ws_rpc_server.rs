@@ -13,7 +13,7 @@ use std::{
 };
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{PieceDistance, SubspaceCodec};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
@@ -433,11 +433,13 @@ impl RpcServerImpl {
             let plots = Arc::clone(&self.plots);
 
             move || {
-                plots.iter().find_map(|plot| {
-                    plot.read(piece_index)
-                        .ok()
-                        .map(|piece| (piece, plot.address()))
-                })
+                let plot = plots
+                    .iter()
+                    .min_by_key(|plot| {
+                        PieceDistance::xor_distance(&piece_index.into(), plot.address())
+                    })
+                    .expect("We always have at least one plot");
+                Some((plot.read(piece_index).ok()?, plot.address()))
             }
         });
         let (mut piece, address) = piece_fut.await.unwrap().ok_or_else(|| {
@@ -469,11 +471,13 @@ impl RpcServer for RpcServerImpl {
             let plots = Arc::clone(&self.plots);
 
             move || {
-                plots.iter().find_map(|plot| {
-                    plot.read(piece_index)
-                        .ok()
-                        .map(|piece| (piece, plot.address()))
-                })
+                let plot = plots
+                    .iter()
+                    .min_by_key(|plot| {
+                        PieceDistance::xor_distance(&piece_index.into(), plot.address())
+                    })
+                    .expect("We always have at least one plot");
+                Some((plot.read(piece_index).ok()?, plot.address()))
             }
         });
         let (mut piece, address) = match piece_fut.await.unwrap() {

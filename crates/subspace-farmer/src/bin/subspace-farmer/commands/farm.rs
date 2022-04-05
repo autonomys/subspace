@@ -17,7 +17,7 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{PieceDistance, SubspaceCodec};
 
 use crate::FarmingArgs;
 
@@ -238,14 +238,14 @@ fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
 
     let piece_index = u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
 
-    let (mut piece, public_key) = plots.iter().find_map(|plot| {
-        plot.read_piece(piece_index)
-            .ok()
-            .map(|piece| (piece, plot.address()))
-    })?;
+    let plot = plots
+        .iter()
+        .min_by_key(|plot| PieceDistance::xor_distance(&piece_index.into(), plot.address()))
+        .expect("We always have at least one plot");
+    let mut piece = plot.read_piece(piece_index).ok()?;
 
     // TODO: Do not create codec each time
-    SubspaceCodec::new(&public_key)
+    SubspaceCodec::new(&plot.address())
         .decode(&mut piece, piece_index)
         .expect("Decoding of local pieces must never fail");
     Some(piece)
