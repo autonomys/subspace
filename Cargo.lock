@@ -5756,7 +5756,6 @@ version = "0.9.13"
 dependencies = [
  "futures 0.3.21",
  "futures-timer",
- "metered-channel",
  "substrate-prometheus-endpoint",
 ]
 
@@ -5793,7 +5792,6 @@ version = "0.9.13"
 dependencies = [
  "async-trait",
  "futures 0.3.21",
- "metered-channel",
  "pin-project 1.0.10",
  "polkadot-node-jaeger",
  "polkadot-node-metrics",
@@ -5816,7 +5814,6 @@ dependencies = [
  "futures 0.3.21",
  "futures-timer",
  "lru 0.7.3",
- "metered-channel",
  "parity-util-mem",
  "parking_lot 0.12.0",
  "polkadot-node-metrics",

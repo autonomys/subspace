@@ -16,7 +16,6 @@ polkadot-node-subsystem = { package = "polkadot-node-subsystem", path = "../subs
 polkadot-node-jaeger = { path = "../jaeger" }
 polkadot-node-metrics = { path = "../metrics" }
 polkadot-overseer = { path = "../overseer" }
-metered-channel = { path = "../metered-channel" }
 
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

@@ -9,8 +9,6 @@ description = "Subsystem traits and message definitions"
 futures = "0.3.21"
 futures-timer = "3.0.2"
 
-metered-channel = { path = "../metered-channel" }
-
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
 [features]

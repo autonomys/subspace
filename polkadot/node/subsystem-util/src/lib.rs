@@ -68,7 +68,6 @@ use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header, Hash};
 use thiserror::Error;
 
-pub use metered_channel as metered;
 /// These reexports are required so that external crates can use the `delegated_subsystem` macro properly.
 pub mod reexports {
 	pub use polkadot_overseer::gen::{SpawnNamed, SpawnedSubsystem, Subsystem, SubsystemContext};

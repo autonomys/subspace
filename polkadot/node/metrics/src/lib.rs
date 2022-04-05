@@ -25,8 +25,6 @@
 #![deny(unused_imports)]
 #![allow(clippy::all)]
 
-pub use metered_channel as metered;
-
 /// Cyclic metric collection support.
 pub mod metronome;
 pub use self::metronome::Metronome;
