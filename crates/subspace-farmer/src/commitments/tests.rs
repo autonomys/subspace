@@ -20,7 +20,7 @@ async fn create() {
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
@@ -40,7 +40,7 @@ async fn find_by_tag() {
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     // Generate deterministic pieces, such that we don't have random errors in CI
@@ -122,7 +122,7 @@ async fn remove_commitments() {
     let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), None).unwrap();
+    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();

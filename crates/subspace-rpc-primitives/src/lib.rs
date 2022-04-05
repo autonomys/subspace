@@ -44,6 +44,8 @@ pub struct FarmerMetadata {
     pub record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
+    /// Maximum number of pieces in each plot
+    pub max_plot_size: u64,
 }
 
 /// Information about new slot that just arrived

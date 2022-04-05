@@ -212,8 +212,8 @@ mod pallet {
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     // TODO: prevent the spamming of fraud proof transaction.
-                    if let Err(e) = Self::check_fraud_proof(fraud_proof) {
-                        log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", e);
+                    if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
+                        log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
                         return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
                     }
                     // TODO: proper tag value.
@@ -264,11 +264,6 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    // TODO: Checks if the fraud proof is valid.
-    fn check_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
-        Ok(())
-    }
-
     // TODO: Checks if the bundle equivocation proof is valid.
     fn check_bundle_equivocation_proof(
         _bundle_equivocation_proof: &BundleEquivocationProof,

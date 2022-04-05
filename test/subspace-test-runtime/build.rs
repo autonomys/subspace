@@ -14,9 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::env;
 use substrate_wasm_builder::WasmBuilder;
 
 fn main() {
+    let relative_target_dir = env!("CARGO_MANIFEST_DIR").to_owned() + "/../../target";
+    let target_dir = option_env!("CARGO_TARGET_DIR")
+        .or(option_env!("WASM_TARGET_DIRECTORY"))
+        .unwrap_or(&relative_target_dir);
+
+    subspace_wasm_tools::create_runtime_bundle_inclusion_file(
+        target_dir,
+        "cirrus-test-runtime",
+        "EXECUTION_WASM_BUNDLE",
+        "execution_wasm_bundle.rs",
+    );
+
+    if env::var("WASM_TARGET_DIRECTORY").is_err() {
+        env::set_var("WASM_TARGET_DIRECTORY", target_dir);
+    }
+
     WasmBuilder::new()
         .with_current_project()
         .export_heap_base()

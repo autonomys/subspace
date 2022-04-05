@@ -15,9 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::verification::PieceCheckParams;
 use crate::{
-    find_pre_digest, verification, BlockSigningNotification, NewSlotInfo, NewSlotNotification,
-    SubspaceLink,
+    find_pre_digest, subspace_err, verification, BlockSigningNotification, NewSlotInfo,
+    NewSlotNotification, SubspaceLink,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -163,12 +164,14 @@ where
             let recorded_history_segment_size = runtime_api
                 .recorded_history_segment_size(&parent_block_id)
                 .ok()?;
+            let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
             let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
             let segment_index = solution.piece_index / merkle_num_leaves;
             let position = solution.piece_index % merkle_num_leaves;
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
+            let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -206,9 +209,13 @@ where
                     solution_range,
                     slot,
                     salt,
-                    records_root: &records_root,
-                    position,
-                    record_size,
+                    piece_check_params: Some(PieceCheckParams {
+                        records_root,
+                        position,
+                        record_size,
+                        max_plot_size,
+                        total_pieces,
+                    }),
                     signing_context: &self.signing_context,
                 },
             ) {
@@ -283,7 +290,9 @@ where
 
     fn should_backoff(&self, slot: Slot, chain_head: &B::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = find_pre_digest::<B>(chain_head).map(|digest| digest.slot)
+            if let Ok(chain_head_slot) = find_pre_digest::<B>(chain_head)
+                .map(|digest| digest.slot)
+                .map_err(subspace_err)
             {
                 return strategy.should_backoff(
                     *chain_head.number(),
@@ -319,6 +328,7 @@ where
 
     fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> std::time::Duration {
         let parent_slot = find_pre_digest::<B>(&slot_info.chain_head)
+            .map_err(subspace_err)
             .ok()
             .map(|d| d.slot);
 

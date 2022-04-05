@@ -5,12 +5,14 @@ use cirrus_test_service::{
 	runtime::Header,
 	Keyring::{Alice, Charlie, Dave},
 };
-use codec::{Decode, Encode};
-use sc_client_api::{HeaderBackend, StorageProof};
+use codec::Encode;
+use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
 use sp_api::ProvideRuntimeApi;
+use sp_core::traits::FetchRuntimeCode;
+use sp_executor::{ExecutionPhase, FraudProof};
 use sp_runtime::{
-	generic::BlockId,
-	traits::{BlakeTwo256, Header as HeaderT},
+	generic::{BlockId, DigestItem},
+	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
 };
 
 #[substrate_test_utils::test]
@@ -127,7 +129,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
-		BlockBuilder::with_extrinsics(
+		BlockBuilder::new(
 			&*charlie.client,
 			parent_header.hash(),
 			*parent_header.number(),
@@ -158,43 +160,61 @@ async fn execution_proof_creation_and_verification_should_work() {
 		return
 	}
 
-	// Test `initialize_block`.
-	let storage_proof = {
-		let new_header = Header::new(
-			*header.number(),
-			Default::default(),
-			Default::default(),
-			parent_header.hash(),
-			Default::default(),
-		);
+	let new_header = Header::new(
+		*header.number(),
+		Default::default(),
+		Default::default(),
+		parent_header.hash(),
+		Default::default(),
+	);
+	let execution_phase = ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
 
-		cirrus_fraud_proof::prove_execution::<_, _, _, _, sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_initialize_block_with_post_state_root", // TODO: "Core_initalize_block"
-			&new_header.encode(),
+	let prover = subspace_fraud_proof::ExecutionProver::new(
+		charlie.backend.clone(),
+		charlie.code_executor.clone(),
+		Box::new(charlie.task_manager.spawn_handle()),
+	);
+
+	// Test `initialize_block`.
+	let storage_proof = prover
+		.prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
 			None,
 		)
-		.expect("Create `initialize_block` proof")
-	};
+		.expect("Create `initialize_block` proof");
 
-	let execution_result = cirrus_fraud_proof::check_execution_proof(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		"SecondaryApi_initialize_block_with_post_state_root",
-		&header.encode(),
-		*parent_header.state_root(),
-		storage_proof,
-	)
-	.expect("Check `initialize_block` proof");
-
-	let res = Vec::<u8>::decode(&mut execution_result.as_slice()).unwrap();
-	let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
+	// Test `initialize_block` verification.
+	let execution_result = prover
+		.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			*parent_header.state_root(),
+			storage_proof.clone(),
+		)
+		.expect("Check `initialize_block` proof");
+	let post_execution_root =
+		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
+
+	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+		alice.client.clone(),
+		alice.backend.clone(),
+		alice.executor.clone(),
+		alice.task_manager.spawn_handle(),
+	);
+
+	// Incorrect but it's fine for the test purpose.
+	let parent_hash_alice = alice.client.info().best_hash;
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: *parent_header.state_root(),
+		post_state_root: intermediate_roots[0].into(),
+		proof: storage_proof,
+		execution_phase,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
 	// Test extrinsic execution.
 	for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
@@ -207,35 +227,40 @@ async fn execution_proof_creation_and_verification_should_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
-		let storage_proof = cirrus_fraud_proof::prove_execution(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"BlockBuilder_apply_extrinsic",
-			&xt.encode(),
-			Some((delta, post_delta_root)),
-		)
-		.expect("Create extrinsic execution proof");
+		let execution_phase = ExecutionPhase::ApplyExtrinsic { call_data: xt.encode() };
+
+		let storage_proof = prover
+			.prove_execution(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				Some((delta, post_delta_root)),
+			)
+			.expect("Create extrinsic execution proof");
 
 		let target_trace_root: Hash = intermediate_roots[target_extrinsic_index].into();
 		assert_eq!(target_trace_root, post_delta_root);
 
-		let execution_result = cirrus_fraud_proof::check_execution_proof(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_apply_extrinsic_with_post_state_root",
-			&xt.encode(),
-			post_delta_root,
-			storage_proof,
-		)
-		.expect("Check extrinsic execution proof");
-
-		let res = Vec::<u8>::decode(&mut execution_result.as_slice()).unwrap();
-		let post_execution_root = Hash::decode(&mut res.as_slice()).unwrap();
+		// Test `apply_extrinsic` verification.
+		let execution_result = prover
+			.check_execution_proof(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				post_delta_root,
+				storage_proof.clone(),
+			)
+			.expect("Check extrinsic execution proof");
+		let post_execution_root =
+			execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
+
+		let fraud_proof = FraudProof {
+			parent_hash: parent_hash_alice,
+			pre_state_root: intermediate_roots[target_extrinsic_index].into(),
+			post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
+			proof: storage_proof,
+			execution_phase,
+		};
+		assert!(proof_verifier.verify(&fraud_proof).is_ok());
 	}
 
 	// Test `finalize_block`
@@ -248,32 +273,37 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
-	let storage_proof = cirrus_fraud_proof::prove_execution(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		"BlockBuilder_finalize_block",
-		Default::default(),
-		Some((delta, post_delta_root)),
-	)
-	.expect("Create `finalize_block` proof");
+	let execution_phase = ExecutionPhase::FinalizeBlock;
 
-	let execution_result = cirrus_fraud_proof::check_execution_proof(
-		&charlie.backend,
-		&*charlie.code_executor,
-		charlie.task_manager.spawn_handle(),
-		&BlockId::Hash(parent_header.hash()),
-		"BlockBuilder_finalize_block",
-		Default::default(),
-		post_delta_root,
-		storage_proof,
-	)
-	.expect("Check `finalize_block` proof");
+	let storage_proof = prover
+		.prove_execution(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			Some((delta, post_delta_root)),
+		)
+		.expect("Create `finalize_block` proof");
 
-	let new_header = Header::decode(&mut execution_result.as_slice()).unwrap();
-	let post_execution_root = *new_header.state_root();
+	// Test `finalize_block` verification.
+	let execution_result = prover
+		.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			post_delta_root,
+			storage_proof.clone(),
+		)
+		.expect("Check `finalize_block` proof");
+	let post_execution_root =
+		execution_phase.decode_execution_result::<Header>(execution_result).unwrap();
 	assert_eq!(post_execution_root, *header.state_root());
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: intermediate_roots.last().unwrap().into(),
+		post_state_root: post_execution_root.into(),
+		proof: storage_proof,
+		execution_phase,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
 #[substrate_test_utils::test]
@@ -340,7 +370,7 @@ async fn invalid_execution_proof_should_not_work() {
 		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
-		BlockBuilder::with_extrinsics(
+		BlockBuilder::new(
 			&*charlie.client,
 			parent_header.hash(),
 			*parent_header.number(),
@@ -352,6 +382,12 @@ async fn invalid_execution_proof_should_not_work() {
 		.unwrap()
 	};
 
+	let prover = subspace_fraud_proof::ExecutionProver::new(
+		charlie.backend.clone(),
+		charlie.code_executor.clone(),
+		Box::new(charlie.task_manager.spawn_handle()),
+	);
+
 	let create_extrinsic_proof = |extrinsic_index: usize| {
 		let storage_changes = create_block_builder()
 			.prepare_storage_changes_before(extrinsic_index)
@@ -360,38 +396,117 @@ async fn invalid_execution_proof_should_not_work() {
 		let delta = storage_changes.transaction;
 		let post_delta_root = storage_changes.transaction_storage_root;
 
-		let proof = cirrus_fraud_proof::prove_execution(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"BlockBuilder_apply_extrinsic",
-			&test_txs[extrinsic_index].encode(),
-			Some((delta.clone(), post_delta_root.clone())),
-		)
-		.expect("Create extrinsic execution proof");
+		let execution_phase =
+			ExecutionPhase::ApplyExtrinsic { call_data: test_txs[extrinsic_index].encode() };
 
-		(proof, delta, post_delta_root)
+		let proof = prover
+			.prove_execution(
+				BlockId::Hash(parent_header.hash()),
+				&execution_phase,
+				Some((delta.clone(), post_delta_root.clone())),
+			)
+			.expect("Create extrinsic execution proof");
+
+		(proof, post_delta_root, execution_phase)
 	};
 
-	let (proof0, _delta0, post_delta_root0) = create_extrinsic_proof(0);
-	let (proof1, _delta1, post_delta_root1) = create_extrinsic_proof(1);
+	let (proof0, post_delta_root0, execution_phase0) = create_extrinsic_proof(0);
+	let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
-	let check_proof = |post_delta_root: Hash, proof: StorageProof| {
-		cirrus_fraud_proof::check_execution_proof(
-			&charlie.backend,
-			&*charlie.code_executor,
-			charlie.task_manager.spawn_handle(),
-			&BlockId::Hash(parent_header.hash()),
-			"SecondaryApi_apply_extrinsic_with_post_state_root",
-			&transfer_to_charlie_again.encode(),
+	let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
+		let execution_phase =
+			ExecutionPhase::ApplyExtrinsic { call_data: transfer_to_charlie_again.encode() };
+		prover.check_execution_proof(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
 			post_delta_root,
 			proof,
 		)
 	};
 
-	assert!(check_proof(post_delta_root1, proof0.clone()).is_err());
-	assert!(check_proof(post_delta_root0, proof1.clone()).is_err());
-	assert!(check_proof(post_delta_root0, proof0).is_ok());
-	assert!(check_proof(post_delta_root1, proof1).is_ok());
+	assert!(check_proof_executor(post_delta_root1, proof0.clone()).is_err());
+	assert!(check_proof_executor(post_delta_root0, proof1.clone()).is_err());
+	assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
+	assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
+
+	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+		alice.client.clone(),
+		alice.backend.clone(),
+		alice.executor.clone(),
+		alice.task_manager.spawn_handle(),
+	);
+
+	// Incorrect but it's fine for the test purpose.
+	let parent_hash_alice = alice.client.info().best_hash;
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof1,
+		execution_phase: execution_phase0.clone(),
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_err());
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof0.clone(),
+		execution_phase: execution_phase1,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_err());
+
+	let fraud_proof = FraudProof {
+		parent_hash: parent_hash_alice,
+		pre_state_root: post_delta_root0,
+		post_state_root: post_delta_root1,
+		proof: proof0,
+		execution_phase: execution_phase0,
+	};
+	assert!(proof_verifier.verify(&fraud_proof).is_ok());
+}
+
+#[substrate_test_utils::test]
+async fn set_new_code_should_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// start alice
+	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	// run cirrus charlie (a secondary chain authority node)
+	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
+		.connect_to_relay_chain_node(&alice)
+		.build()
+		.await;
+
+	charlie.wait_for_blocks(3).await;
+
+	let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
+
+	charlie
+		.executor
+		.clone()
+		.process_bundles(
+			Default::default(),
+			Default::default(),
+			BlakeTwo256::hash_of(&[1u8; 64]).into(),
+			Some(new_runtime_wasm_blob.clone().into()),
+		)
+		.await;
+
+	let best_hash = charlie.client.info().best_hash;
+	let state = charlie.backend.state_at(BlockId::Hash(best_hash)).expect("Get state");
+	let trie_backend = state.as_trie_backend().unwrap();
+	let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+	let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
+	assert_eq!(runtime_code, new_runtime_wasm_blob);
+	assert_eq!(
+		charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
+		vec![DigestItem::RuntimeEnvironmentUpdated]
+	);
 }

@@ -136,7 +136,7 @@ pub trait Rpc {
 ///
 /// let identity = Identity::open_or_create(base_directory)?;
 /// let address = identity.public_key().to_bytes().into();
-/// let plot = Plot::open_or_create(&base_directory, address, None)?;
+/// let plot = Plot::open_or_create(&base_directory, address, u64::MAX)?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
