@@ -20,6 +20,7 @@
 pub(crate) mod commitments;
 pub(crate) mod farming;
 pub(crate) mod identity;
+pub mod multi_farming;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub(crate) mod plotting;

@@ -4,21 +4,19 @@ use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::info;
 use std::mem;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::PIECE_SIZE;
+use subspace_farmer::multi_farming::create_multi_farming;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    retrieve_piece_from_plots, Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot,
-    Plotting, RpcClient, WsRpc,
+    retrieve_piece_from_plots, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
-use subspace_solving::SubspaceCodec;
 
 use crate::FarmingArgs;
 
@@ -66,51 +64,21 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    let (plots, mut farming_plotting): (Arc<Vec<_>>, FuturesUnordered<_>) = {
-        // TODO: Piece count should account for database overhead of various additional databases
-        // For now assume 80% will go for plot itself
-        let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
+    // TODO: Piece count should account for database overhead of various additional databases
+    // For now assume 80% will go for plot itself
+    let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
 
-        let single_plot_sizes =
-            std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
-        let single_plot_sizes = if plot_size % max_plot_size > 0 {
-            single_plot_sizes
-                .chain(std::iter::once(plot_size % max_plot_size))
-                .collect::<Vec<_>>()
-        } else {
-            single_plot_sizes.collect()
-        };
-
-        let mut plots = Vec::with_capacity(single_plot_sizes.len());
-        let farming_plotting = FuturesUnordered::new();
-
-        for (plot_index, max_plot_pieces) in single_plot_sizes.into_iter().enumerate() {
-            let base_directory = base_directory.join(format!("plot{plot_index}"));
-            let (plot, plotting, farming) = farm_single_plot(
-                base_directory,
-                reward_address,
-                client.clone(),
-                object_mappings.clone(),
-                max_plot_pieces,
-                best_block_number_check_interval,
-            )
-            .await?;
-            plots.push(plot);
-            farming_plotting.push(Box::pin(async move {
-                tokio::select! {
-                    res = plotting.wait() => if let Err(error) = res {
-                        return Err(anyhow!(error))
-                    },
-                    res = farming.wait() => if let Err(error) = res {
-                        return Err(anyhow!(error))
-                    },
-                }
-                Ok(())
-            }));
-        }
-
-        (Arc::new(plots), farming_plotting)
-    };
+    let (plots, farming_plotting) = create_multi_farming(
+        base_directory,
+        client,
+        object_mappings.clone(),
+        plot_size,
+        max_plot_size,
+        reward_address,
+        best_block_number_check_interval,
+    )
+    .await?;
+    let plots = Arc::new(plots);
 
     // Start RPC server
     let ws_server = WsServerBuilder::default()
@@ -160,74 +128,26 @@ pub(crate) async fn farm(
     });
 
     // Wait for any incoming error from farming or plotting
+    let mut farming_plotting = farming_plotting
+        .into_iter()
+        .map(|(farming, plotting)| async move {
+            tokio::select! {
+                res = plotting.wait() => if let Err(error) = res {
+                    return Err(anyhow!(error))
+                },
+                res = farming.wait() => if let Err(error) = res {
+                    return Err(anyhow!(error))
+                },
+            }
+            Ok(())
+        })
+        .collect::<FuturesUnordered<_>>();
+
     while let Some(res) = farming_plotting.next().await {
         res?;
     }
 
     Ok(())
-}
-
-/// Starts farming for a single plot in specified base directory.
-pub(crate) async fn farm_single_plot(
-    base_directory: impl AsRef<Path>,
-    reward_address: PublicKey,
-    client: WsRpc,
-    object_mappings: ObjectMappings,
-    max_plot_pieces: u64,
-    best_block_number_check_interval: Duration,
-) -> Result<(Plot, Plotting, Farming), anyhow::Error> {
-    let identity = Identity::open_or_create(&base_directory)?;
-    let public_key = identity.public_key().to_bytes().into();
-
-    // TODO: This doesn't account for the fact that node can
-    // have a completely different history to what farmer expects
-    info!("Opening plot");
-    let plot = tokio::task::spawn_blocking({
-        let base_directory = base_directory.as_ref().to_owned();
-
-        move || Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
-    })
-    .await
-    .unwrap()?;
-
-    info!("Opening commitments");
-    let commitments_fut = tokio::task::spawn_blocking({
-        let path = base_directory.as_ref().join("commitments");
-
-        move || Commitments::new(path)
-    });
-    let commitments = commitments_fut.await.unwrap()?;
-
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    // start the farming task
-    let farming_instance = Farming::start(
-        plot.clone(),
-        commitments.clone(),
-        client.clone(),
-        identity,
-        reward_address,
-    );
-
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments,
-        object_mappings,
-        client
-            .farmer_metadata()
-            .await
-            .map_err(|error| anyhow!(error))?,
-    );
-
-    // start the background plotting
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        client,
-        subspace_codec,
-        best_block_number_check_interval,
-    );
-
-    Ok((plot, plotting_instance, farming_instance))
 }
 
 fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
