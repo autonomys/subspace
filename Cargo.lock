@@ -4341,15 +4341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-lru"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beeb98b3d1ed2c0054bd81b5ba949a0243c3ccad751d45ea898fa8059fa2860a"
-dependencies = [
- "lru 0.6.6",
-]
-
-[[package]]
 name = "memory_units"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5666,11 +5657,11 @@ dependencies = [
  "futures 0.3.21",
  "parity-scale-codec",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-util",
  "sp-core",
  "sp-executor",
  "sp-maybe-compressed-blob",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -5685,7 +5676,6 @@ dependencies = [
  "sc-client-api",
  "sp-blockchain",
  "subspace-runtime-primitives",
- "tracing",
 ]
 
 [[package]]
@@ -5693,8 +5683,6 @@ name = "polkadot-node-core-runtime-api"
 version = "0.9.13"
 dependencies = [
  "futures 0.3.21",
- "memory-lru",
- "parity-util-mem",
  "polkadot-node-subsystem",
  "sp-api",
  "sp-core",
@@ -5726,24 +5714,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
-]
-
-[[package]]
-name = "polkadot-node-subsystem-util"
-version = "0.9.13"
-dependencies = [
- "async-trait",
- "futures 0.3.21",
- "pin-project 1.0.10",
- "polkadot-node-subsystem",
- "polkadot-overseer",
- "sp-core",
- "sp-executor",
- "sp-runtime",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
- "thiserror",
- "tracing",
 ]
 
 [[package]]

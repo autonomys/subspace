@@ -24,7 +24,6 @@ members = [
     "polkadot/node/overseer/overseer-gen/proc-macro",
     "polkadot/node/subsystem",
     "polkadot/node/subsystem-types",
-    "polkadot/node/subsystem-util",
     "substrate/*",
     "test/subspace-test-client",
     "test/subspace-test-runtime",

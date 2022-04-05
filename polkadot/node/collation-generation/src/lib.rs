@@ -29,24 +29,73 @@ use futures::{
 use polkadot_node_subsystem::{
 	messages::{
 		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
-		RuntimeApiRequest,
+		RuntimeApiRequest, RuntimeApiSender,
 	},
-	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
-	SubsystemError, SubsystemResult,
+	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, RuntimeApiError, SpawnedSubsystem,
+	SubsystemContext, SubsystemError, SubsystemResult, SubsystemSender,
 };
-use polkadot_node_subsystem_util::{
-	request_execution_wasm_bundle, request_extract_bundles, request_extrinsics_shuffling_seed,
-};
-use sp_runtime::generic::DigestItem;
-use std::sync::Arc;
+use sp_executor::OpaqueBundle;
+use sp_runtime::{generic::DigestItem, OpaqueExtrinsic};
+use std::{borrow::Cow, sync::Arc};
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use subspace_runtime_primitives::Hash;
+use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::{opaque::Header, Hash};
 
 mod error;
 
 const LOG_TARGET: &'static str = "parachain::collation-generation";
+
+/// A type alias for Runtime API receivers.
+type RuntimeApiReceiver<T> = oneshot::Receiver<Result<T, RuntimeApiError>>;
+
+/// Request some data from the `RuntimeApi`.
+async fn request_from_runtime<RequestBuilder, Response, Sender>(
+	parent: Hash,
+	sender: &mut Sender,
+	request_builder: RequestBuilder,
+) -> RuntimeApiReceiver<Response>
+where
+	RequestBuilder: FnOnce(RuntimeApiSender<Response>) -> RuntimeApiRequest,
+	Sender: SubsystemSender,
+{
+	let (tx, rx) = oneshot::channel();
+
+	sender
+		.send_message(RuntimeApiMessage::Request(parent, request_builder(tx)).into())
+		.await;
+
+	rx
+}
+
+/// Request `ExtractBundles` from the runtime
+pub async fn request_extract_bundles(
+	parent: Hash,
+	extrinsics: Vec<OpaqueExtrinsic>,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Vec<OpaqueBundle>> {
+	request_from_runtime(parent, sender, |tx| RuntimeApiRequest::ExtractBundles(extrinsics, tx))
+		.await
+}
+/// Request `ExtrinsicsShufflingSeed "` from the runtime
+pub async fn request_extrinsics_shuffling_seed(
+	parent: Hash,
+	header: Header,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Randomness> {
+	request_from_runtime(parent, sender, |tx| {
+		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, tx)
+	})
+	.await
+}
+/// Rquest `ExecutionWasmBundle` from the runtime
+pub async fn request_execution_wasm_bundle(
+	parent: Hash,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Cow<'static, [u8]>> {
+	request_from_runtime(parent, sender, RuntimeApiRequest::ExecutionWasmBundle).await
+}
 
 /// Collation Generation Subsystem
 pub struct CollationGenerationSubsystem {

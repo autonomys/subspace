@@ -86,13 +86,6 @@ impl ProcessorResult {
     }
 }
 
-// TODO: proper signal?
-pub type CollationSecondedSignal = Vec<u8>;
-
-// TODO: SubspaceBlockWeight
-/// The cumulative weight of a block in a fork-choice rule.
-pub type BlockWeight = u32;
-
 /// Bundle function.
 ///
 /// Will be called with each slot of the primary chain.

@@ -38,11 +38,19 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnNamed;
 use sp_executor::ExecutorApi;
 
-use cache::{RequestResult, RequestResultCache};
 use futures::{channel::oneshot, prelude::*, select, stream::FuturesUnordered};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
-mod cache;
+pub(crate) enum RequestResult {
+	SubmitExecutionReceipt(Hash),
+	SubmitTransactionBundle(Hash, Hash),
+	SubmitFraudProof(Hash),
+	SubmitBundleEquivocationProof(Hash),
+	SubmitInvalidTransactionProof(Hash),
+	ExtractBundles(Hash),
+	ExtrinsicsShufflingSeed(Hash),
+	ExecutionWasmBundle(Hash),
+}
 
 const LOG_TARGET: &str = "parachain::runtime-api";
 
@@ -57,16 +65,12 @@ pub struct RuntimeApiSubsystem<Client> {
 	client: Arc<Client>,
 	spawn_handle: Box<dyn SpawnNamed>,
 	/// If there are [`MAX_PARALLEL_REQUESTS`] requests being executed, we buffer them in here until they can be executed.
-	#[allow(unused)]
 	waiting_requests: VecDeque<(
 		Pin<Box<dyn Future<Output = ()> + Send>>,
 		oneshot::Receiver<Option<RequestResult>>,
 	)>,
 	/// All the active runtime API requests that are currently being executed.
 	active_requests: FuturesUnordered<oneshot::Receiver<Option<RequestResult>>>,
-	/// Requests results cache
-	#[allow(unused)]
-	requests_cache: RequestResultCache,
 }
 
 impl<Client> RuntimeApiSubsystem<Client> {
@@ -77,7 +81,6 @@ impl<Client> RuntimeApiSubsystem<Client> {
 			spawn_handle: Box::new(spawn_handle),
 			waiting_requests: Default::default(),
 			active_requests: Default::default(),
-			requests_cache: RequestResultCache::default(),
 		}
 	}
 }
@@ -99,70 +102,12 @@ where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	fn store_cache(&mut self, result: RequestResult) {
-		use RequestResult::*;
-
-		match result {
-			SubmitExecutionReceipt(..) => {},
-			SubmitTransactionBundle(..) => {},
-			SubmitFraudProof(..) => {},
-			SubmitBundleEquivocationProof(..) => {},
-			SubmitInvalidTransactionProof(..) => {},
-			ExtractBundles(..) => {},
-			ExtrinsicsShufflingSeed(..) => {},
-			ExecutionWasmBundle(..) => {},
-		}
-	}
-
-	#[allow(unused)]
-	fn query_cache(&mut self, _relay_parent: Hash, request: Request) -> Option<Request> {
-		macro_rules! query {
-			// Just query by relay parent
-			($cache_api_name:ident (), $sender:expr) => {{
-				let sender = $sender;
-				if let Some(value) = self.requests_cache.$cache_api_name(&relay_parent) {
-					let _ = sender.send(Ok(value.clone()));
-					None
-				} else {
-					Some(sender)
-				}
-			}};
-			// Query by relay parent + additional parameters
-			($cache_api_name:ident ($($param:expr),+), $sender:expr) => {{
-				let sender = $sender;
-				if let Some(value) = self.requests_cache.$cache_api_name((relay_parent.clone(), $($param.clone()),+)) {
-					let _ = sender.send(Ok(value.clone()));
-					None
-				} else {
-					Some(sender)
-				}
-			}}
-		}
-
-		match request {
-			Request::SubmitExecutionReceipt(..) => None,
-			Request::SubmitTransactionBundle(..) => None,
-			Request::SubmitFraudProof(..) => None,
-			Request::SubmitBundleEquivocationProof(..) => None,
-			Request::SubmitInvalidTransactionProof(..) => None,
-			Request::ExtractBundles(..) => None,
-			Request::ExtrinsicsShufflingSeed(..) => None,
-			Request::ExecutionWasmBundle(..) => None,
-		}
-	}
-
 	/// Spawn a runtime API request.
 	///
 	/// If there are already [`MAX_PARALLEL_REQUESTS`] requests being executed, the request will be buffered.
 	fn spawn_request(&mut self, relay_parent: Hash, request: Request) {
 		let client = self.client.clone();
 		let (sender, receiver) = oneshot::channel();
-
-		// FIXME: Re-enable the cache
-		// let request = match self.query_cache(relay_parent.clone(), request) {
-		// Some(request) => request,
-		// None => return,
-		// };
 
 		let request = async move {
 			let result = make_runtime_api_request(client, relay_parent, request);
@@ -194,9 +139,9 @@ where
 			return futures::pending!()
 		}
 
-		// If there are active requests, this will always resolve to `Some(_)` when a request is finished.
-		if let Some(Ok(Some(result))) = self.active_requests.next().await {
-			self.store_cache(result);
+		// TODO: Removing this breaks tests
+		if let Some(Ok(Some(_result))) = self.active_requests.next().await {
+			// self.store_cache(result);
 		}
 
 		if let Some((req, recv)) = self.waiting_requests.pop_front() {
