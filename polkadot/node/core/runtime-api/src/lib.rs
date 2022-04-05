@@ -102,7 +102,6 @@ where
 	Client: ProvideRuntimeApi<Block> + Send + 'static + Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-
 	/// Spawn a runtime API request.
 	///
 	/// If there are already [`MAX_PARALLEL_REQUESTS`] requests being executed, the request will be buffered.
@@ -144,7 +143,6 @@ where
 		if let Some(Ok(Some(_result))) = self.active_requests.next().await {
 			// self.store_cache(result);
 		}
-
 
 		if let Some((req, recv)) = self.waiting_requests.pop_front() {
 			self.spawn_handle

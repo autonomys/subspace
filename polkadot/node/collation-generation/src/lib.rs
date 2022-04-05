@@ -26,21 +26,22 @@ use futures::{
 	sink::SinkExt,
 	stream::StreamExt,
 };
-use polkadot_node_subsystem::{messages::{
-	AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
-	RuntimeApiRequest, RuntimeApiSender
-}, overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext, SubsystemError, SubsystemSender, SubsystemResult, RuntimeApiError};
+use polkadot_node_subsystem::{
+	messages::{
+		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
+		RuntimeApiRequest, RuntimeApiSender,
+	},
+	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, RuntimeApiError, SpawnedSubsystem,
+	SubsystemContext, SubsystemError, SubsystemResult, SubsystemSender,
+};
 use sp_executor::OpaqueBundle;
-use sp_runtime::OpaqueExtrinsic;
-use sp_runtime::generic::DigestItem;
-use std::borrow::Cow;
-use std::sync::Arc;
+use sp_runtime::{generic::DigestItem, OpaqueExtrinsic};
+use std::{borrow::Cow, sync::Arc};
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Hash;
-use subspace_runtime_primitives::{opaque::Header};
+use subspace_runtime_primitives::{opaque::Header, Hash};
 
 mod error;
 
@@ -55,9 +56,9 @@ async fn request_from_runtime<RequestBuilder, Response, Sender>(
 	sender: &mut Sender,
 	request_builder: RequestBuilder,
 ) -> RuntimeApiReceiver<Response>
-	where
-		RequestBuilder: FnOnce(RuntimeApiSender<Response>) -> RuntimeApiRequest,
-		Sender: SubsystemSender,
+where
+	RequestBuilder: FnOnce(RuntimeApiSender<Response>) -> RuntimeApiRequest,
+	Sender: SubsystemSender,
 {
 	let (tx, rx) = oneshot::channel();
 
@@ -86,7 +87,7 @@ pub async fn request_extrinsics_shuffling_seed(
 	request_from_runtime(parent, sender, |tx| {
 		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, tx)
 	})
-		.await
+	.await
 }
 /// Rquest `ExecutionWasmBundle` from the runtime
 pub async fn request_execution_wasm_bundle(
@@ -95,7 +96,6 @@ pub async fn request_execution_wasm_bundle(
 ) -> RuntimeApiReceiver<Cow<'static, [u8]>> {
 	request_from_runtime(parent, sender, RuntimeApiRequest::ExecutionWasmBundle).await
 }
-
 
 /// Collation Generation Subsystem
 pub struct CollationGenerationSubsystem {

@@ -26,7 +26,7 @@ use std::borrow::Cow;
 
 use futures::channel::oneshot;
 
-use cirrus_node_primitives::{ CollationGenerationConfig};
+use cirrus_node_primitives::CollationGenerationConfig;
 use sp_executor::{
 	BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
 	OpaqueExecutionReceipt,
