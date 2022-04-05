@@ -18,17 +18,19 @@ pub fn create_runtime_bundle_inclusion_file(
     bundle_const_name: &str,
     target_file_name: &str,
 ) {
-    let target_dir = if let Ok(target_dir) =
-        env::var("CARGO_TARGET_DIR").or_else(|_| env::var("WASM_TARGET_DIRECTORY"))
-    {
-        // Propagate target directory to wasm build
-        target_dir.into()
-    } else {
-        let out_dir = env::var("OUT_DIR").expect("Always set by cargo");
-        get_relative_target(out_dir.into())
-            .map(|target_dir| get_relative_target(target_dir.clone()).unwrap_or(target_dir))
-            .expect("Out dir is always inside the target directory")
-    };
+    let target_dir = env::var("CARGO_TARGET_DIR")
+        .or_else(|_| env::var("WASM_TARGET_DIRECTORY"))
+        .map(Into::into)
+        .unwrap_or_else(|| {
+            let out_dir = env::var("OUT_DIR").expect("Always set by cargo");
+            // Call get `get_relative_target` twice if possible, as wasm target directory is
+            // contained in host target directory, and we actually need host one.
+            get_relative_target(out_dir.into())
+                .map(|target_dir| get_relative_target(target_dir.clone()).unwrap_or(target_dir))
+                .expect("Out dir is always inside the target directory")
+        });
+
+    // Propagate target directory to wasm build
     if env::var("WASM_TARGET_DIRECTORY").is_err() {
         env::set_var("WASM_TARGET_DIRECTORY", &target_dir);
     }
