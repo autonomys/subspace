@@ -35,7 +35,6 @@ use polkadot_node_subsystem::{
 	SubsystemError, SubsystemResult,
 };
 use polkadot_node_subsystem_util::{
-	metrics::{self, prometheus},
 	request_execution_wasm_bundle, request_extract_bundles, request_extrinsics_shuffling_seed,
 };
 use sp_runtime::generic::DigestItem;
@@ -52,13 +51,12 @@ const LOG_TARGET: &'static str = "parachain::collation-generation";
 /// Collation Generation Subsystem
 pub struct CollationGenerationSubsystem {
 	config: Option<Arc<CollationGenerationConfig>>,
-	metrics: Metrics,
 }
 
 impl CollationGenerationSubsystem {
 	/// Create a new instance of the `CollationGenerationSubsystem`.
-	pub fn new(metrics: Metrics) -> Self {
-		Self { config: None, metrics }
+	pub fn new() -> Self {
+		Self { config: None }
 	}
 
 	/// Run this subsystem
@@ -122,12 +120,10 @@ impl CollationGenerationSubsystem {
 			}))) => {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
-					let metrics = self.metrics.clone();
 					if let Err(err) = handle_new_activations(
 						config.clone(),
 						activated.into_iter().map(|v| v.hash),
 						ctx,
-						metrics,
 						sender,
 					)
 					.await
@@ -187,7 +183,6 @@ impl CollationGenerationSubsystem {
 				}
 				false
 			},
-			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
 					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await {
@@ -230,7 +225,6 @@ async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
-	_metrics: Metrics,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()> {
 	for relay_parent in activated {
@@ -505,93 +499,4 @@ async fn submit_invalid_transaction_proof<Context: SubsystemContext>(
 	)?;
 
 	Ok(())
-}
-
-// TODO: fix unused
-#[allow(unused)]
-#[derive(Clone)]
-struct MetricsInner {
-	collations_generated_total: prometheus::Counter<prometheus::U64>,
-	new_activations_overall: prometheus::Histogram,
-	new_activations_per_relay_parent: prometheus::Histogram,
-	new_activations_per_availability_core: prometheus::Histogram,
-}
-
-/// `CollationGenerationSubsystem` metrics.
-#[derive(Default, Clone)]
-pub struct Metrics(Option<MetricsInner>);
-
-// TODO: fix unused
-#[allow(unused)]
-impl Metrics {
-	fn on_collation_generated(&self) {
-		if let Some(metrics) = &self.0 {
-			metrics.collations_generated_total.inc();
-		}
-	}
-
-	/// Provide a timer for new activations which updates on drop.
-	fn time_new_activations(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0.as_ref().map(|metrics| metrics.new_activations_overall.start_timer())
-	}
-
-	/// Provide a timer per relay parents which updates on drop.
-	fn time_new_activations_relay_parent(
-		&self,
-	) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0
-			.as_ref()
-			.map(|metrics| metrics.new_activations_per_relay_parent.start_timer())
-	}
-
-	/// Provide a timer per availability core which updates on drop.
-	fn time_new_activations_availability_core(
-		&self,
-	) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0
-			.as_ref()
-			.map(|metrics| metrics.new_activations_per_availability_core.start_timer())
-	}
-}
-
-impl metrics::Metrics for Metrics {
-	fn try_register(registry: &prometheus::Registry) -> Result<Self, prometheus::PrometheusError> {
-		let metrics = MetricsInner {
-			collations_generated_total: prometheus::register(
-				prometheus::Counter::new(
-					"parachain_collations_generated_total",
-					"Number of collations generated."
-				)?,
-				registry,
-			)?,
-			new_activations_overall: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_new_activations",
-						"Time spent within fn handle_new_activations",
-					)
-				)?,
-				registry,
-			)?,
-			new_activations_per_relay_parent: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_per_relay_parent",
-						"Time spent handling a particular relay parent within fn handle_new_activations"
-					)
-				)?,
-				registry,
-			)?,
-			new_activations_per_availability_core: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_per_availability_core",
-						"Time spent handling a particular availability core for a relay parent in fn handle_new_activations",
-					)
-				)?,
-				registry,
-			)?,
-		};
-		Ok(Metrics(Some(metrics)))
-	}
 }

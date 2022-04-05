@@ -7,7 +7,6 @@ description = "Subsystem traits and message definitions"
 
 [dependencies]
 futures = "0.3.21"
-polkadot-node-jaeger = { path = "../jaeger" }
 polkadot-overseer-gen = { path = "../overseer/overseer-gen" }
 sc-network = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

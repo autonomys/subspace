@@ -23,7 +23,7 @@
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 use cirrus_node_primitives::ExecutorSlotInfo;
 use smallvec::SmallVec;
@@ -31,9 +31,6 @@ pub use subspace_runtime_primitives::{BlockNumber, Hash};
 
 pub mod errors;
 pub mod messages;
-
-pub use jaeger::*;
-pub use polkadot_node_jaeger as jaeger;
 
 /// How many slots are stack-reserved for active leaves updates
 ///
@@ -79,11 +76,6 @@ pub struct ActivatedLeaf {
 	pub number: BlockNumber,
 	/// The status of the leaf.
 	pub status: LeafStatus,
-	/// An associated [`jaeger::Span`].
-	///
-	/// NOTE: Each span should only be kept active as long as the leaf is considered active and should be dropped
-	/// when the leaf is deactivated.
-	pub span: Arc<jaeger::Span>,
 }
 
 /// Changes in the set of active leaves: the parachain heads which we care to work on.
@@ -139,8 +131,6 @@ impl fmt::Debug for ActiveLeavesUpdate {
 pub enum OverseerSignal {
 	/// Subsystems should adjust their jobs to start and stop work on appropriate block hashes.
 	ActiveLeaves(ActiveLeavesUpdate),
-	/// `Subsystem` is informed of a finalized block by its block hash and number.
-	BlockFinalized(Hash, BlockNumber),
 	/// `Subsystem` is informed of a new slot.
 	NewSlot(ExecutorSlotInfo),
 	/// Conclude the work of the `Overseer` and all `Subsystem`s.

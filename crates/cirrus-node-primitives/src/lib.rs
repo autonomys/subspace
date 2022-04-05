@@ -20,7 +20,6 @@ use futures::Future;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_application_crypto::KeyTypeId;
 use sp_consensus_slots::Slot;
 use sp_core::bytes;
 use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
@@ -120,25 +119,6 @@ pub type ProcessorFn = Box<
         + Send
         + Sync,
 >;
-
-/// The key type ID for a collator key.
-const COLLATOR_KEY_TYPE_ID: KeyTypeId = KeyTypeId(*b"coll");
-
-mod collator_app {
-    use super::COLLATOR_KEY_TYPE_ID;
-    use sp_application_crypto::{app_crypto, sr25519};
-
-    app_crypto!(sr25519, COLLATOR_KEY_TYPE_ID);
-}
-
-/// Identity that collators use.
-pub type CollatorId = collator_app::Public;
-
-/// A Parachain collator keypair.
-pub type CollatorPair = collator_app::Pair;
-
-/// Signature on candidate's block data by a collator.
-pub type CollatorSignature = collator_app::Signature;
 
 /// Configuration for the collation generator
 pub struct CollationGenerationConfig {

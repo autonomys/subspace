@@ -34,7 +34,7 @@ use sc_service::{
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{Pair, H256};
+use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
@@ -43,7 +43,6 @@ use substrate_test_client::{
 };
 
 use cirrus_client_service::{start_executor, StartExecutorParams};
-use cirrus_node_primitives::CollatorPair;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 
 pub use cirrus_test_runtime as runtime;
@@ -151,7 +150,6 @@ pub fn new_partial(
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
 async fn start_node_impl<RB>(
 	mut parachain_config: Configuration,
-	_collator_key: Option<CollatorPair>,
 	relay_chain_config: Configuration,
 	rpc_ext_builder: RB,
 ) -> sc_service::error::Result<(
@@ -274,7 +272,6 @@ pub struct TestNode {
 pub struct TestNodeBuilder {
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
-	collator_key: Option<CollatorPair>,
 	parachain_nodes: Vec<MultiaddrWithPeerId>,
 	parachain_nodes_exclusive: bool,
 	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
@@ -292,20 +289,12 @@ impl TestNodeBuilder {
 		TestNodeBuilder {
 			key,
 			tokio_handle,
-			collator_key: None,
 			parachain_nodes: Vec::new(),
 			parachain_nodes_exclusive: false,
 			relay_chain_nodes: Vec::new(),
 			storage_update_func_parachain: None,
 			storage_update_func_relay_chain: None,
 		}
-	}
-
-	/// Enable collator for this node.
-	pub fn enable_collator(mut self) -> Self {
-		let collator_key = CollatorPair::generate().0;
-		self.collator_key = Some(collator_key);
-		self
 	}
 
 	/// Instruct the node to exclusively connect to registered parachain nodes.
@@ -381,7 +370,6 @@ impl TestNodeBuilder {
 			self.key,
 			self.parachain_nodes,
 			self.parachain_nodes_exclusive,
-			self.collator_key.is_some(),
 		)
 		.expect("could not generate Configuration");
 
@@ -397,11 +385,9 @@ impl TestNodeBuilder {
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(parachain_config, self.collator_key, relay_chain_config, |_| {
-				Ok(Default::default())
-			})
-			.await
-			.expect("could not create Cumulus test service");
+			start_node_impl(parachain_config, relay_chain_config, |_| Ok(Default::default()))
+				.await
+				.expect("could not create Cumulus test service");
 
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
@@ -430,11 +416,10 @@ pub fn node_config(
 	key: Sr25519Keyring,
 	nodes: Vec<MultiaddrWithPeerId>,
 	nodes_exlusive: bool,
-	is_collator: bool,
 ) -> Result<Configuration, ServiceError> {
 	let base_path = BasePath::new_temp_dir()?;
 	let root = base_path.path().to_path_buf();
-	let role = if is_collator { Role::Authority } else { Role::Full };
+	let role = Role::Full;
 	let key_seed = key.to_seed();
 
 	let mut spec = Box::new(chain_spec::get_chain_spec());
