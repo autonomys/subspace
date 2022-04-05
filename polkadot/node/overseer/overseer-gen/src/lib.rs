@@ -190,19 +190,6 @@ impl SignalsReceived {
 	}
 }
 
-/// A trait to support the origin annotation
-/// such that errors across subsystems can be easier tracked.
-pub trait AnnotateErrorOrigin: 'static + Send + Sync + std::error::Error {
-	/// Annotate the error with a origin `str`.
-	///
-	/// Commonly this is used to create nested enum variants.
-	///
-	/// ```rust,ignore
-	/// E::WithOrigin("I am originally from Cowtown.", E::Variant)
-	/// ```
-	fn with_origin(self, origin: &'static str) -> Self;
-}
-
 /// An asynchronous subsystem task..
 ///
 /// In essence it's just a new type wrapping a `BoxFuture`.

@@ -26,8 +26,6 @@ use std::borrow::Cow;
 
 use futures::channel::oneshot;
 
-pub use sc_network::IfDisconnected;
-
 use cirrus_node_primitives::{ CollationGenerationConfig};
 use sp_executor::{
 	BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
@@ -36,21 +34,6 @@ use sp_executor::{
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, Hash};
-
-/// Subsystem messages where each message is always bound to a relay parent.
-pub trait BoundToRelayParent {
-	/// Returns the relay parent this message is bound to.
-	fn relay_parent(&self) -> Hash;
-}
-
-/// The result of `DisputeCoordinatorMessage::ImportStatements`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ImportStatementsResult {
-	/// Import was invalid (candidate was not available)  and the sending peer should get banned.
-	InvalidImport,
-	/// Import was valid and can be confirmed to peer.
-	ValidImport,
-}
 
 /// A response channel for the result of a chain API request.
 pub type ChainApiResponseChannel<T> = oneshot::Sender<Result<T, crate::errors::ChainApiError>>;
@@ -65,13 +48,6 @@ pub enum ChainApiMessage {
 	BlockBody(Hash, ChainApiResponseChannel<Option<Vec<OpaqueExtrinsic>>>),
 	/// Request the best block hash.
 	BestBlockHash(ChainApiResponseChannel<Hash>),
-}
-
-impl ChainApiMessage {
-	/// If the current variant contains the relay parent hash, return it.
-	pub fn relay_parent(&self) -> Option<Hash> {
-		None
-	}
 }
 
 /// A sender for the result of a runtime API request.
@@ -105,15 +81,6 @@ pub enum RuntimeApiMessage {
 	Request(Hash, RuntimeApiRequest),
 }
 
-impl RuntimeApiMessage {
-	/// If the current variant contains the relay parent hash, return it.
-	pub fn relay_parent(&self) -> Option<Hash> {
-		match self {
-			Self::Request(hash, _) => Some(*hash),
-		}
-	}
-}
-
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
 pub enum CollationGenerationMessage {
@@ -125,11 +92,4 @@ pub enum CollationGenerationMessage {
 	BundleEquivocationProof(BundleEquivocationProof),
 	/// Invalid transaction proof needs to be submitted to primary chain.
 	InvalidTransactionProof(InvalidTransactionProof),
-}
-
-impl CollationGenerationMessage {
-	/// If the current variant contains the relay parent hash, return it.
-	pub fn relay_parent(&self) -> Option<Hash> {
-		None
-	}
 }
