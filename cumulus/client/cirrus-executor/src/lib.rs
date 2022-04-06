@@ -46,7 +46,7 @@ use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
-	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, ProcessorResult,
+	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, PrimaryChainClient, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
@@ -54,7 +54,7 @@ use sp_executor::{
 	InvalidTransactionProof, OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
+use subspace_runtime_primitives::Hash as PHash;
 
 use futures::FutureExt;
 use std::{borrow::Cow, sync::Arc};
@@ -66,7 +66,7 @@ const LOG_TARGET: &str = "cirrus::executor";
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+	primary_chain_client: Arc<dyn PrimaryChainClient>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
@@ -125,7 +125,7 @@ where
 {
 	/// Create a new instance.
 	fn new(
-		primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+		primary_chain_client: Arc<dyn PrimaryChainClient>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
@@ -691,7 +691,7 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub client: Arc<Client>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Box<Spawner>,
-	pub primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+	pub primary_chain_client: Arc<dyn PrimaryChainClient>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
@@ -743,7 +743,7 @@ where
 	E: CodeExecutor,
 {
 	let executor = Executor::new(
-		primary_chain_client,
+		Arc::clone(&primary_chain_client),
 		client,
 		spawner,
 		overseer_handle.clone(),
@@ -757,6 +757,7 @@ where
 
 	let span = tracing::Span::current();
 	let config = CollationGenerationConfig {
+		primary_chain_client,
 		bundler: {
 			let executor = executor.clone();
 			let span = span.clone();

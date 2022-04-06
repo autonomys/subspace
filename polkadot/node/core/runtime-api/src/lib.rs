@@ -25,7 +25,7 @@
 
 use polkadot_subsystem::{
 	errors::RuntimeApiError,
-	messages::{RuntimeApiMessage, RuntimeApiRequest as Request},
+	messages::{RuntimeApiMessage, RuntimeApiRequest},
 	overseer, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext, SubsystemError,
 	SubsystemResult,
 };
@@ -105,7 +105,7 @@ where
 	/// Spawn a runtime API request.
 	///
 	/// If there are already [`MAX_PARALLEL_REQUESTS`] requests being executed, the request will be buffered.
-	fn spawn_request(&mut self, relay_parent: Hash, request: Request) {
+	fn spawn_request(&mut self, relay_parent: Hash, request: RuntimeApiRequest) {
 		let client = self.client.clone();
 		let (sender, receiver) = oneshot::channel();
 
@@ -182,7 +182,7 @@ where
 fn make_runtime_api_request<Client>(
 	client: Arc<Client>,
 	relay_parent: Hash,
-	request: Request,
+	request: RuntimeApiRequest,
 ) -> Option<RequestResult>
 where
 	Client: ProvideRuntimeApi<Block>,
@@ -190,7 +190,7 @@ where
 {
 	// TODO: re-enable the marco to reduce the pattern duplication.
 	match request {
-		Request::SubmitExecutionReceipt(opaque_execution_receipt) => {
+		RuntimeApiRequest::SubmitExecutionReceipt(opaque_execution_receipt) => {
 			let api = client.runtime_api();
 			let res = api
 				.submit_execution_receipt_unsigned(
@@ -200,7 +200,7 @@ where
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			res.ok().map(|_res| RequestResult::SubmitExecutionReceipt(relay_parent));
 		},
-		Request::SubmitTransactionBundle(opaque_bundle) => {
+		RuntimeApiRequest::SubmitTransactionBundle(opaque_bundle) => {
 			let api = client.runtime_api();
 			let bundle_hash = opaque_bundle.hash();
 			let res = api
@@ -209,14 +209,14 @@ where
 			res.ok()
 				.map(|_res| RequestResult::SubmitTransactionBundle(relay_parent, bundle_hash));
 		},
-		Request::SubmitFraudProof(fraud_proof) => {
+		RuntimeApiRequest::SubmitFraudProof(fraud_proof) => {
 			let api = client.runtime_api();
 			let res = api
 				.submit_fraud_proof_unsigned(&BlockId::Hash(relay_parent), fraud_proof)
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			res.ok().map(|_res| RequestResult::SubmitFraudProof(relay_parent));
 		},
-		Request::SubmitBundleEquivocationProof(bundle_equivocation_proof) => {
+		RuntimeApiRequest::SubmitBundleEquivocationProof(bundle_equivocation_proof) => {
 			let api = client.runtime_api();
 			let res = api
 				.submit_bundle_equivocation_proof_unsigned(
@@ -226,7 +226,7 @@ where
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			res.ok().map(|_res| RequestResult::SubmitBundleEquivocationProof(relay_parent));
 		},
-		Request::SubmitInvalidTransactionProof(invalid_transaction_proof) => {
+		RuntimeApiRequest::SubmitInvalidTransactionProof(invalid_transaction_proof) => {
 			let api = client.runtime_api();
 			let res = api
 				.submit_invalid_transaction_proof_unsigned(
@@ -236,7 +236,7 @@ where
 				.map_err(|e| RuntimeApiError::from(e.to_string()));
 			res.ok().map(|_res| RequestResult::SubmitInvalidTransactionProof(relay_parent));
 		},
-		Request::ExtractBundles(extrinsics, sender) => {
+		RuntimeApiRequest::ExtractBundles(extrinsics, sender) => {
 			let api = client.runtime_api();
 			let res = api
 				.extract_bundles(&BlockId::Hash(relay_parent), extrinsics)
@@ -246,7 +246,7 @@ where
 
 			res.ok().map(|_res| RequestResult::ExtractBundles(relay_parent));
 		},
-		Request::ExtrinsicsShufflingSeed(header, sender) => {
+		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, sender) => {
 			let api = client.runtime_api();
 			let res = api
 				.extrinsics_shuffling_seed(&BlockId::Hash(relay_parent), header)
@@ -256,7 +256,7 @@ where
 
 			res.ok().map(|_res| RequestResult::ExtrinsicsShufflingSeed(relay_parent));
 		},
-		Request::ExecutionWasmBundle(sender) => {
+		RuntimeApiRequest::ExecutionWasmBundle(sender) => {
 			let api = client.runtime_api();
 			let res = api
 				.execution_wasm_bundle(&BlockId::Hash(relay_parent))

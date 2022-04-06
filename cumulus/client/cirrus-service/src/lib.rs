@@ -18,8 +18,7 @@
 //!
 //! Provides functions for starting an executor node or a normal full node.
 
-#![allow(clippy::all)]
-
+use cirrus_client_executor::Executor;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
@@ -61,7 +60,7 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 		code_executor,
 		is_authority,
 	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, TP, Backend, E>,
-) -> sc_service::error::Result<cirrus_client_executor::Executor<Block, Client, TP, Backend, E>>
+) -> sc_service::error::Result<Executor<Block, Client, TP, Backend, E>>
 where
 	Block: BlockT,
 	Client: Finalizer<Block, Backend>
@@ -80,7 +79,7 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	RClient: HeaderBackend<PBlock> + Send + Sync + 'static,
+	RClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,
@@ -101,7 +100,7 @@ where
 	let overseer_handle = primary_chain_full_node
 		.overseer_handle
 		.clone()
-		.ok_or_else(|| "Subspace full node did not provide an `OverseerHandle`!")?;
+		.ok_or("Subspace full node did not provide an `OverseerHandle`!")?;
 
 	let executor =
 		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {

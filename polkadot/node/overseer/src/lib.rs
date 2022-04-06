@@ -72,9 +72,7 @@ use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
 
-use polkadot_node_subsystem_types::messages::{
-	ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
-};
+use polkadot_node_subsystem_types::messages::{CollationGenerationMessage, RuntimeApiMessage};
 pub use polkadot_node_subsystem_types::{
 	errors::{SubsystemError, SubsystemResult},
 	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
@@ -334,9 +332,6 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 pub struct Overseer {
 	#[subsystem(no_dispatch, blocking, RuntimeApiMessage)]
 	runtime_api: RuntimeApi,
-
-	#[subsystem(no_dispatch, blocking, ChainApiMessage)]
-	chain_api: ChainApi,
 
 	#[subsystem(no_dispatch, CollationGenerationMessage)]
 	collation_generation: CollationGeneration,

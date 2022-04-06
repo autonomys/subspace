@@ -35,21 +35,6 @@ use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Header as BlockHeader, Hash};
 
-/// A response channel for the result of a chain API request.
-pub type ChainApiResponseChannel<T> = oneshot::Sender<Result<T, crate::errors::ChainApiError>>;
-
-/// Chain API request subsystem message.
-#[derive(Debug)]
-pub enum ChainApiMessage {
-	/// Request the block header by hash.
-	/// Returns `None` if a block with the given hash is not present in the db.
-	BlockHeader(Hash, ChainApiResponseChannel<Option<BlockHeader>>),
-	/// Request the block by hash.
-	BlockBody(Hash, ChainApiResponseChannel<Option<Vec<OpaqueExtrinsic>>>),
-	/// Request the best block hash.
-	BestBlockHash(ChainApiResponseChannel<Hash>),
-}
-
 /// A sender for the result of a runtime API request.
 pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeApiError>>;
 
