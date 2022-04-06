@@ -5667,22 +5667,8 @@ dependencies = [
  "sp-executor",
  "sp-maybe-compressed-blob",
  "sp-runtime",
- "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "polkadot-node-core-runtime-api"
-version = "0.9.13"
-dependencies = [
- "futures 0.3.21",
- "polkadot-node-subsystem",
- "sp-api",
- "sp-core",
- "sp-executor",
- "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -5704,8 +5690,6 @@ dependencies = [
  "sc-network",
  "smallvec",
  "sp-executor",
- "sp-runtime",
- "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -8773,7 +8757,6 @@ dependencies = [
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "polkadot-node-collation-generation",
- "polkadot-node-core-runtime-api",
  "polkadot-overseer",
  "sc-basic-authorship",
  "sc-client-api",

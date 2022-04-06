@@ -19,5 +19,4 @@ parity-scale-codec = { version = "3.1.2", features = ["bit-vec", "derive"] }
 
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 sp-executor  = { path = "../../../crates/sp-executor" }
-subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

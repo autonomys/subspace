@@ -16,7 +16,6 @@ members = [
     "cumulus/test/runtime",
     "cumulus/test/service",
     "polkadot/node/collation-generation",
-    "polkadot/node/core/runtime-api",
     "polkadot/node/metered-channel",
     "polkadot/node/overseer",
     "polkadot/node/overseer/overseer-gen",

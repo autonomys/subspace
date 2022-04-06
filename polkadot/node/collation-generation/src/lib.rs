@@ -17,91 +17,28 @@
 //! The collation generation subsystem is the interface between polkadot and the collators.
 
 #![deny(missing_docs)]
-#![allow(clippy::all)]
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
-use futures::{
-	channel::{mpsc, oneshot},
-	future::FutureExt,
-	select,
-	sink::SinkExt,
-	stream::StreamExt,
-};
+use futures::future::FutureExt;
 use polkadot_node_subsystem::{
-	messages::{
-		AllMessages, CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest,
-		RuntimeApiSender,
-	},
-	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, RuntimeApiError, SpawnedSubsystem,
-	SubsystemContext, SubsystemError, SubsystemResult, SubsystemSender,
+	messages::CollationGenerationMessage, overseer, ActiveLeavesUpdate, FromOverseer,
+	OverseerSignal, RuntimeApiError, SpawnedSubsystem, SubsystemContext, SubsystemError,
+	SubsystemResult,
 };
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_executor::{
-	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-};
-use sp_runtime::{generic::DigestItem, OpaqueExtrinsic};
-use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::Randomness;
+use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
+use sp_runtime::generic::DigestItem;
+use std::sync::Arc;
 use subspace_runtime_primitives::{
-	opaque::{Block, BlockId, Header},
+	opaque::{Block, BlockId},
 	Hash,
 };
 
 mod error;
 
-const LOG_TARGET: &'static str = "parachain::collation-generation";
-
-/// A type alias for Runtime API receivers.
-type RuntimeApiReceiver<T> = oneshot::Receiver<Result<T, RuntimeApiError>>;
-
-/// Request some data from the `RuntimeApi`.
-async fn request_from_runtime<RequestBuilder, Response, Sender>(
-	parent: Hash,
-	sender: &mut Sender,
-	request_builder: RequestBuilder,
-) -> RuntimeApiReceiver<Response>
-where
-	RequestBuilder: FnOnce(RuntimeApiSender<Response>) -> RuntimeApiRequest,
-	Sender: SubsystemSender,
-{
-	let (tx, rx) = oneshot::channel();
-
-	sender
-		.send_message(RuntimeApiMessage::Request(parent, request_builder(tx)).into())
-		.await;
-
-	rx
-}
-
-/// Request `ExtractBundles` from the runtime
-pub async fn request_extract_bundles(
-	parent: Hash,
-	extrinsics: Vec<OpaqueExtrinsic>,
-	sender: &mut impl SubsystemSender,
-) -> RuntimeApiReceiver<Vec<OpaqueBundle>> {
-	request_from_runtime(parent, sender, |tx| RuntimeApiRequest::ExtractBundles(extrinsics, tx))
-		.await
-}
-/// Request `ExtrinsicsShufflingSeed "` from the runtime
-pub async fn request_extrinsics_shuffling_seed(
-	parent: Hash,
-	header: Header,
-	sender: &mut impl SubsystemSender,
-) -> RuntimeApiReceiver<Randomness> {
-	request_from_runtime(parent, sender, |tx| {
-		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, tx)
-	})
-	.await
-}
-/// Rquest `ExecutionWasmBundle` from the runtime
-pub async fn request_execution_wasm_bundle(
-	parent: Hash,
-	sender: &mut impl SubsystemSender,
-) -> RuntimeApiReceiver<Cow<'static, [u8]>> {
-	request_from_runtime(parent, sender, RuntimeApiRequest::ExecutionWasmBundle).await
-}
+const LOG_TARGET: &str = "parachain::collation-generation";
 
 /// Collation Generation Subsystem
 pub struct CollationGenerationSubsystem<Client> {
@@ -140,26 +77,10 @@ where
 		Context: SubsystemContext<Message = CollationGenerationMessage>,
 		Context: overseer::SubsystemContext<Message = CollationGenerationMessage>,
 	{
-		// when we activate new leaves, we spawn a bunch of sub-tasks, each of which is
-		// expected to generate precisely one message. We don't want to block the main loop
-		// at any point waiting for them all, so instead, we create a channel on which they can
-		// send those messages. We can then just monitor the channel and forward messages on it
-		// to the overseer here, via the context.
-		let (sender, receiver) = mpsc::channel(0);
-
-		let mut receiver = receiver.fuse();
 		loop {
-			select! {
-				incoming = ctx.recv().fuse() => {
-					if self.handle_incoming::<Context>(incoming, &mut ctx, &sender).await {
-						break;
-					}
-				},
-				msg = receiver.next() => {
-					if let Some(msg) = msg {
-						ctx.send_message(msg).await;
-					}
-				},
+			let incoming = ctx.recv().await;
+			if self.handle_incoming::<Context>(incoming, &mut ctx).await {
+				break
 			}
 		}
 	}
@@ -172,7 +93,6 @@ where
 		&mut self,
 		incoming: SubsystemResult<FromOverseer<<Context as SubsystemContext>::Message>>,
 		ctx: &mut Context,
-		sender: &mpsc::Sender<AllMessages>,
 	) -> bool
 	where
 		Context: SubsystemContext<Message = CollationGenerationMessage>,
@@ -186,11 +106,10 @@ where
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					if let Err(err) = handle_new_activations(
-						&*self.primary_chain_client,
+						&self.primary_chain_client,
 						config,
 						activated.into_iter().map(|v| v.hash),
 						ctx,
-						sender,
 					)
 					.await
 					{
@@ -211,10 +130,9 @@ where
 						},
 					CollationGenerationMessage::FraudProof(fraud_proof) => {
 						if let Err(err) = submit_fraud_proof(
-							&*self.primary_chain_client,
+							Arc::clone(&self.primary_chain_client),
 							fraud_proof,
 							ctx,
-							sender,
 						)
 						.await
 						{
@@ -229,10 +147,9 @@ where
 						bundle_equivocation_proof,
 					) =>
 						if let Err(err) = submit_bundle_equivocation_proof(
-							&*self.primary_chain_client,
+							Arc::clone(&self.primary_chain_client),
 							bundle_equivocation_proof,
 							ctx,
-							sender,
 						)
 						.await
 						{
@@ -246,10 +163,9 @@ where
 						invalid_transaction_proof,
 					) =>
 						if let Err(err) = submit_invalid_transaction_proof(
-							&*self.primary_chain_client,
+							Arc::clone(&self.primary_chain_client),
 							invalid_transaction_proof,
 							ctx,
-							sender,
 						)
 						.await
 						{
@@ -265,11 +181,10 @@ where
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
 					if let Err(err) = produce_bundle(
-						&*self.primary_chain_client,
+						Arc::clone(&self.primary_chain_client),
 						config.clone(),
 						slot_info,
 						ctx,
-						sender,
 					)
 					.await
 					{
@@ -317,11 +232,10 @@ where
 
 /// Produces collations on each tip of primary chain.
 async fn handle_new_activations<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: &Arc<Client>,
 	config: &CollationGenerationConfig,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()>
 where
 	Client: HeaderBackend<Block>
@@ -334,7 +248,7 @@ where
 {
 	for relay_parent in activated {
 		// TODO: invoke this on finalized block?
-		process_primary_block(client, config, relay_parent, ctx, sender).await?;
+		process_primary_block(Arc::clone(client), config, relay_parent, ctx).await?;
 	}
 
 	Ok(())
@@ -345,11 +259,10 @@ where
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
 async fn process_primary_block<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: Arc<Client>,
 	config: &CollationGenerationConfig,
 	block_hash: Hash,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()>
 where
 	Client: HeaderBackend<Block>
@@ -377,7 +290,10 @@ where
 		Ok(Some(body)) => body,
 	};
 
-	let bundles = request_extract_bundles(block_hash, extrinsics, ctx.sender()).await.await??;
+	let bundles = client
+		.runtime_api()
+		.extract_bundles(&block_id, extrinsics)
+		.map_err(|e| RuntimeApiError::from(e.to_string()))?;
 
 	let header = match client.header(block_id) {
 		Err(err) => {
@@ -397,14 +313,20 @@ where
 		.iter()
 		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
 	{
-		Some(request_execution_wasm_bundle(block_hash, ctx.sender()).await.await??)
+		Some(
+			client
+				.runtime_api()
+				.execution_wasm_bundle(&block_id)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))?,
+		)
 	} else {
 		None
 	};
 
-	let shuffling_seed = request_extrinsics_shuffling_seed(block_hash, header, ctx.sender())
-		.await
-		.await??;
+	let shuffling_seed = client
+		.runtime_api()
+		.extrinsics_shuffling_seed(&block_id, header)
+		.map_err(|e| RuntimeApiError::from(e.to_string()))?;
 
 	let opaque_execution_receipt =
 		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
@@ -420,27 +342,24 @@ where
 
 	let best_hash = client.info().best_hash;
 
-	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation submit execution receipt",
 		Box::pin(async move {
-			if let Err(err) = task_sender
-				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
-					best_hash,
-					RuntimeApiRequest::SubmitExecutionReceipt(opaque_execution_receipt),
-				)))
-				.await
+			if let Err(err) = client
+				.runtime_api()
+				.submit_execution_receipt_unsigned(
+					&BlockId::Hash(best_hash),
+					opaque_execution_receipt,
+				)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"Failed to send RuntimeApiRequest::SubmitExecutionReceipt",
+					"Failed to send execution receipt",
 				);
 			} else {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitExecutionReceipt successfully",
-				);
+				tracing::debug!(target: LOG_TARGET, "Sent execution receipt successfully",);
 			}
 		}),
 	)?;
@@ -449,11 +368,10 @@ where
 }
 
 async fn produce_bundle<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: Arc<Client>,
 	config: Arc<CollationGenerationConfig>,
 	slot_info: ExecutorSlotInfo,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -474,27 +392,21 @@ where
 		},
 	};
 
-	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation bundle builder",
 		Box::pin(async move {
-			if let Err(err) = task_sender
-				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
-					best_hash,
-					RuntimeApiRequest::SubmitTransactionBundle(opaque_bundle),
-				)))
-				.await
+			if let Err(err) = client
+				.runtime_api()
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"Failed to send RuntimeApiRequest::SubmitTransactionBundle",
+					"Failed to send transaction bundle",
 				);
 			} else {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitTransactionBundle successfully",
-				);
+				tracing::debug!(target: LOG_TARGET, "Sent transaction bundle successfully",);
 			}
 		}),
 	)?;
@@ -503,10 +415,9 @@ where
 }
 
 async fn submit_fraud_proof<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: Arc<Client>,
 	fraud_proof: FraudProof,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -517,29 +428,21 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	let best_hash = client.info().best_hash;
-
-	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation fraud proof builder",
 		Box::pin(async move {
-			if let Err(err) = task_sender
-				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
-					best_hash,
-					RuntimeApiRequest::SubmitFraudProof(fraud_proof),
-				)))
-				.await
+			if let Err(err) = client
+				.runtime_api()
+				.submit_fraud_proof_unsigned(&BlockId::Hash(client.info().best_hash), fraud_proof)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"Failed to send RuntimeApiRequest::SubmitFraudProof",
+					"Failed to send fraud proof",
 				);
 			} else {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitFraudProof successfully",
-				);
+				tracing::debug!(target: LOG_TARGET, "Sent fraud proof successfully",);
 			}
 		}),
 	)?;
@@ -548,10 +451,9 @@ where
 }
 
 async fn submit_bundle_equivocation_proof<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: Arc<Client>,
 	bundle_equivocation_proof: BundleEquivocationProof,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -562,29 +464,24 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	let best_hash = client.info().best_hash;
-
-	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation bundle equivocation proof builder",
 		Box::pin(async move {
-			if let Err(err) = task_sender
-				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
-					best_hash,
-					RuntimeApiRequest::SubmitBundleEquivocationProof(bundle_equivocation_proof),
-				)))
-				.await
+			if let Err(err) = client
+				.runtime_api()
+				.submit_bundle_equivocation_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					bundle_equivocation_proof,
+				)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"Failed to send RuntimeApiRequest::SubmitBundleEquivocationProof",
+					"Failed to send equivocation proof",
 				);
 			} else {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitBundleEquivocationProof successfully",
-				);
+				tracing::debug!(target: LOG_TARGET, "Sent equivocation proof successfully",);
 			}
 		}),
 	)?;
@@ -593,10 +490,9 @@ where
 }
 
 async fn submit_invalid_transaction_proof<Client, Context: SubsystemContext>(
-	client: &Client,
+	client: Arc<Client>,
 	invalid_transaction_proof: InvalidTransactionProof,
 	ctx: &mut Context,
-	sender: &mpsc::Sender<AllMessages>,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -607,29 +503,24 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	let best_hash = client.info().best_hash;
-
-	let mut task_sender = sender.clone();
 	ctx.spawn(
 		"collation generation invalid transaction proof builder",
 		Box::pin(async move {
-			if let Err(err) = task_sender
-				.send(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
-					best_hash,
-					RuntimeApiRequest::SubmitInvalidTransactionProof(invalid_transaction_proof),
-				)))
-				.await
+			if let Err(err) = client
+				.runtime_api()
+				.submit_invalid_transaction_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					invalid_transaction_proof,
+				)
+				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
-					"Failed to send RuntimeApiRequest::SubmitInvalidTransactionProof",
+					"Failed to send invalid transaction proof",
 				);
 			} else {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Sent RuntimeApiRequest::SubmitInvalidTransactionProof successfully",
-				);
+				tracing::debug!(target: LOG_TARGET, "Sent invalid transaction proof successfully",);
 			}
 		}),
 	)?;

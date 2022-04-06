@@ -20,7 +20,6 @@ pub mod rpc;
 
 use lru::LruCache;
 use polkadot_node_collation_generation::CollationGenerationSubsystem;
-use polkadot_node_core_runtime_api::RuntimeApiSubsystem;
 use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
@@ -412,7 +411,6 @@ where
 
         let (overseer, overseer_handle) = Overseer::builder()
             .collation_generation(CollationGenerationSubsystem::new(client.clone()))
-            .runtime_api(RuntimeApiSubsystem::new(client.clone(), spawner.clone()))
             .leaves(
                 active_leaves
                     .into_iter()

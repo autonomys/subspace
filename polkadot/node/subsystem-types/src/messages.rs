@@ -22,49 +22,8 @@
 //!
 //! Subsystems' APIs are defined separately from their implementation, leading to easier mocking.
 
-use std::borrow::Cow;
-
-use futures::channel::oneshot;
-
 use cirrus_node_primitives::CollationGenerationConfig;
-use sp_executor::{
-	BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	OpaqueExecutionReceipt,
-};
-use sp_runtime::OpaqueExtrinsic;
-use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::{opaque::Header as BlockHeader, Hash};
-
-/// A sender for the result of a runtime API request.
-pub type RuntimeApiSender<T> = oneshot::Sender<Result<T, crate::errors::RuntimeApiError>>;
-
-/// A request to the Runtime API subsystem.
-#[derive(Debug)]
-pub enum RuntimeApiRequest {
-	/// Submit the execution receipt to primary chain.
-	SubmitExecutionReceipt(OpaqueExecutionReceipt),
-	/// Submit the transaction bundle to primary chain.
-	SubmitTransactionBundle(OpaqueBundle),
-	/// Submit the fraud proof to primary chain.
-	SubmitFraudProof(FraudProof),
-	/// Submit the bundle equivocation proof to primary chain.
-	SubmitBundleEquivocationProof(BundleEquivocationProof),
-	/// Submit the invalid transaction proof to primary chain.
-	SubmitInvalidTransactionProof(InvalidTransactionProof),
-	/// Extract the bundles from the extrinsics of a block.
-	ExtractBundles(Vec<OpaqueExtrinsic>, RuntimeApiSender<Vec<OpaqueBundle>>),
-	/// Get the randomness seed for extrinsics shuffling.
-	ExtrinsicsShufflingSeed(BlockHeader, RuntimeApiSender<Randomness>),
-	/// Get the execution runtime blob.
-	ExecutionWasmBundle(RuntimeApiSender<Cow<'static, [u8]>>),
-}
-
-/// A message to the Runtime API subsystem.
-#[derive(Debug)]
-pub enum RuntimeApiMessage {
-	/// Make a request of the runtime API against the post-state of the given relay-parent.
-	Request(Hash, RuntimeApiRequest),
-}
+use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
