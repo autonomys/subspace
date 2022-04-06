@@ -16,12 +16,13 @@
 //! Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![forbid(unsafe_code)]
+#![warn(rust_2018_idioms, missing_debug_implementations)]
 
 use crate::feed_processor::FeedObjectMapping;
 use core::mem;
 pub use pallet::*;
 use sp_std::{vec, vec::Vec};
-
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
 mod mock;
@@ -84,7 +85,7 @@ mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
-    pub type FeedConfigs<T: Config> =
+    pub(super) type FeedConfigs<T: Config> =
         StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorId>, OptionQuery>;
 
     #[pallet::storage]

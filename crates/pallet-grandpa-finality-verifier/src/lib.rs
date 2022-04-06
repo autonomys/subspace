@@ -59,16 +59,15 @@ pub struct InitializationData {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use crate::chain::Chain;
-    use crate::grandpa::{
-        find_forced_change, find_scheduled_change, verify_justification, AuthoritySet,
+    use crate::{
+        chain::Chain,
+        grandpa::{find_forced_change, find_scheduled_change, verify_justification, AuthoritySet},
+        InitializationData,
     };
-    use crate::InitializationData;
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;
-    use sp_runtime::traits::Header;
-    use sp_runtime::traits::Zero;
+    use sp_runtime::traits::{Header, Zero};
     use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]

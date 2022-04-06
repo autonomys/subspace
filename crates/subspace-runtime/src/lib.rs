@@ -28,42 +28,48 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-    Imbalance, WithdrawReasons,
+use frame_support::{
+    construct_runtime, parameter_types,
+    traits::{
+        ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
+        Imbalance, WithdrawReasons,
+    },
+    weights::{
+        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
+        IdentityFee,
+    },
 };
-use frame_support::weights::{
-    constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-    IdentityFee,
+use frame_system::{
+    limits::{BlockLength, BlockWeights},
+    EnsureNever,
 };
-use frame_support::{construct_runtime, parameter_types};
-use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
-use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
+    digests::CompatibleDigestItem, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts,
+    SolutionRanges,
 };
 use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero};
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+use sp_runtime::{
+    create_runtime_str, generic,
+    traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero},
+    transaction_validity::{
+        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    },
+    ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
 };
-use sp_runtime::OpaqueExtrinsic;
-use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, DispatchError, Perbill};
-use sp_std::borrow::Cow;
-use sp_std::marker::PhantomData;
-use sp_std::prelude::*;
+use sp_std::{borrow::Cow, marker::PhantomData, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{
+    objects::{BlockObject, BlockObjectMapping},
+    Randomness, RootBlock, Sha256Hash, PIECE_SIZE,
+};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,

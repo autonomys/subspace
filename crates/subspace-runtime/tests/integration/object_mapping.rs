@@ -1,15 +1,10 @@
 use codec::Encode;
 use frame_support::sp_io;
 use hex_literal::hex;
-use pallet_feeds::feed_processor::FeedProcessor;
-use pallet_feeds::{FeedConfig, FeedConfigs};
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
-use std::marker::PhantomData;
-use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{objects::BlockObjectMapping, Sha256Hash};
 use subspace_runtime::{
-    Block, Call, FeedProcessorId, GrandpaValidator, Header, PolkadotLike, Runtime, System,
-    UncheckedExtrinsic,
+    Block, Call, FeedProcessorId, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
 };
 
 #[test]
@@ -84,16 +79,13 @@ fn object_mapping() {
     let encoded_block = block.encode();
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed
-        GrandpaValidator(PhantomData::<PolkadotLike>)
-            .init(0, init_data.as_slice())
-            .expect("init should not fail");
-        FeedConfigs::<Runtime>::insert(
+        Feeds::create(
+            Origin::signed([0u8; 32].into()),
             0,
-            FeedConfig {
-                active: true,
-                feed_processor_id: FeedProcessorId::PolkadotLike,
-            },
-        );
+            FeedProcessorId::PolkadotLike,
+            Some(init_data),
+        )
+        .expect("create feed should not fail");
 
         Runtime::extract_block_object_mapping(block)
     });

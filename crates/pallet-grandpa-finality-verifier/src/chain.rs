@@ -1,14 +1,19 @@
-use crate::grandpa::{verify_justification, AuthoritySet, GrandpaJustification};
-use crate::{Config, Error};
+use crate::{
+    grandpa::{verify_justification, AuthoritySet, GrandpaJustification},
+    Config, Error,
+};
 use codec::Decode;
 use finality_grandpa::voter_set::VoterSet;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
-use sp_runtime::traits::{
-    AtLeast32BitUnsigned, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
-    MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
+use sp_runtime::{
+    generic,
+    traits::{
+        AtLeast32BitUnsigned, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
+        MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
+    },
+    OpaqueExtrinsic,
 };
-use sp_runtime::{generic, OpaqueExtrinsic};
 use sp_std::{hash::Hash, str::FromStr};
 
 type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;
