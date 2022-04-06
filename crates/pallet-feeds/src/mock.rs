@@ -1,6 +1,4 @@
-use crate as pallet_feeds;
-use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
-use crate::FeedObjectMapping;
+use crate::{self as pallet_feeds, feed_processor::FeedProcessor as FeedProcessorT};
 use frame_support::{
     parameter_types,
     traits::{ConstU16, ConstU32, ConstU64},
@@ -9,7 +7,6 @@ use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
-    DispatchError, DispatchResult,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -56,24 +53,6 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
-}
-
-impl FeedProcessorT<FeedId> for () {
-    fn init(&self, _feed_id: FeedId, _data: &[u8]) -> sp_runtime::DispatchResult {
-        Ok(())
-    }
-
-    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        Ok(Some(FeedMetadata::from(object)))
-    }
-
-    fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
-        vec![]
-    }
-
-    fn delete(&self, _feed_id: FeedId) -> DispatchResult {
-        Ok(())
-    }
 }
 
 impl pallet_feeds::Config for Test {

@@ -41,14 +41,10 @@ fn can_do_put() {
         // create feed before putting any data
         assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
 
-        assert_ok!(Feeds::put(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            object.clone()
-        ));
+        assert_ok!(Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object));
 
         // check Metadata hashmap for updated metadata
-        assert_eq!(Feeds::metadata(FEED_ID), Some(object.clone()));
+        assert_eq!(Feeds::metadata(FEED_ID), Some(vec![]));
 
         // check Totals hashmap
         assert_eq!(
@@ -60,7 +56,7 @@ fn can_do_put() {
         );
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {
-            metadata: object,
+            metadata: vec![],
             who: ACCOUNT_ID,
             object_size,
         }));

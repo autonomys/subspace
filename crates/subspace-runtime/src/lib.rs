@@ -62,7 +62,7 @@ use sp_runtime::{
     },
     ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
 };
-use sp_std::{borrow::Cow, marker::PhantomData, prelude::*};
+use sp_std::{borrow::Cow, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -497,7 +497,7 @@ impl Chain for PolkadotLike {
 
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
-pub struct GrandpaValidator<C>(pub PhantomData<C>);
+pub struct GrandpaValidator<C>(C);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
@@ -531,15 +531,53 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     }
 }
 
+pub struct ParachainImporter<C>(C);
+
+impl<C: Chain> ParachainImporter<C> {
+    fn decode_block(
+        &self,
+        object: &[u8],
+    ) -> Result<pallet_grandpa_finality_verifier::chain::SignedBlock<C::Header>, DispatchError>
+    {
+        let block = C::decode_block::<Runtime>(object)?;
+        Ok(block)
+    }
+}
+
+impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
+    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        let block = self.decode_block(object)?;
+        Ok(Some(
+            (block.block.header.hash(), *block.block.header.number()).encode(),
+        ))
+    }
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        self.decode_block(object)
+            .ok()
+            .map(|block| {
+                vec![FeedObjectMapping {
+                    key: block.block.header.hash().into(),
+                    offset: 0,
+                }]
+            })
+            .unwrap_or_default()
+    }
+}
+
 /// FeedProcessorId represents the available FeedProcessor impls
 #[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum FeedProcessorId {
+    // No validation
+    NoValidation,
+    // Validation and returns metadata
     PolkadotLike,
+    // No Validation but returns metadata
+    ParachainLike,
 }
 
 impl Default for FeedProcessorId {
     fn default() -> Self {
-        FeedProcessorId::PolkadotLike
+        FeedProcessorId::NoValidation
     }
 }
 
@@ -550,9 +588,9 @@ impl pallet_feeds::Config for Runtime {
 
     fn feed_processor(feed_processor_id: FeedProcessorId) -> Box<dyn FeedProcessor<Self::FeedId>> {
         match feed_processor_id {
-            FeedProcessorId::PolkadotLike => {
-                Box::new(GrandpaValidator(PhantomData::<PolkadotLike>))
-            }
+            FeedProcessorId::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
+            FeedProcessorId::NoValidation => Box::new(()),
+            FeedProcessorId::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
         }
     }
 }

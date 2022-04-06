@@ -16,7 +16,7 @@ use sp_runtime::{
 };
 use sp_std::{hash::Hash, str::FromStr};
 
-type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;
+pub type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;
 
 /// Minimal Substrate-based chain representation that may be used from no_std environment.
 pub trait Chain {

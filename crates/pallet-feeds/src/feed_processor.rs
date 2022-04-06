@@ -16,8 +16,8 @@
 //! Defines FeedProcessor and its types
 
 use sp_runtime::{DispatchError, DispatchResult};
-use sp_std::vec::Vec;
-use subspace_core_primitives::Sha256Hash;
+use sp_std::{vec, vec::Vec};
+use subspace_core_primitives::{crypto, Sha256Hash};
 
 /// Object mapping that points to an object in a block
 #[derive(Debug)]
@@ -35,15 +35,28 @@ pub type FeedMetadata = Vec<u8>;
 pub trait FeedProcessor<FeedId> {
     /// initiates a specific Feed with data transparent to FeedProcessor
     /// can be called when re-initializing the feed.
-    fn init(&self, feed_id: FeedId, data: &[u8]) -> DispatchResult;
+    fn init(&self, _feed_id: FeedId, _data: &[u8]) -> DispatchResult {
+        Ok(())
+    }
 
     /// puts a feed and returns the Metadata if any
     /// this is called once per extrinsic that puts a feed into a give feed.
-    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError>;
+    fn put(&self, _feed_id: FeedId, _object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        Ok(None)
+    }
 
     /// returns any object mappings inside the given object
-    fn object_mappings(&self, feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping>;
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        vec![FeedObjectMapping {
+            key: crypto::sha256_hash(object),
+            offset: 0,
+        }]
+    }
 
     /// signals a delete to any underlying feed data.
-    fn delete(&self, feed_id: FeedId) -> DispatchResult;
+    fn delete(&self, _feed_id: FeedId) -> DispatchResult {
+        Ok(())
+    }
 }
+
+impl<FeedId> FeedProcessor<FeedId> for () {}
