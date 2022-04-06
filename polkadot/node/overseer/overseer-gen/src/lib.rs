@@ -92,57 +92,8 @@ pub use std::time::Duration;
 #[doc(hidden)]
 pub use futures_timer::Delay;
 
-use std::fmt;
-
 #[cfg(test)]
 mod tests;
-
-/// A type of messages that are sent from [`Subsystem`] to [`Overseer`].
-///
-/// Used to launch jobs.
-pub enum ToOverseer {
-	/// A message that wraps something the `Subsystem` is desiring to
-	/// spawn on the overseer and a `oneshot::Sender` to signal the result
-	/// of the spawn.
-	SpawnJob {
-		/// Name of the task to spawn which be shown in jaeger and tracing logs.
-		name: &'static str,
-		/// Subsystem of the task to spawn which be shown in jaeger and tracing logs.
-		subsystem: Option<&'static str>,
-		/// The future to execute.
-		s: BoxFuture<'static, ()>,
-	},
-}
-
-impl fmt::Debug for ToOverseer {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::SpawnJob { name, subsystem, .. } => {
-				writeln!(f, "SpawnJob{{ {}, {} ..}}", name, subsystem.unwrap_or("default"))
-			},
-		}
-	}
-}
-
-/// A helper trait to map a subsystem to smth. else.
-pub trait MapSubsystem<T> {
-	/// The output type of the mapping.
-	type Output;
-
-	/// Consumes a `T` per subsystem, and maps it to `Self::Output`.
-	fn map_subsystem(&self, sub: T) -> Self::Output;
-}
-
-impl<F, T, U> MapSubsystem<T> for F
-where
-	F: Fn(T) -> U,
-{
-	type Output = U;
-
-	fn map_subsystem(&self, sub: T) -> U {
-		(self)(sub)
-	}
-}
 
 /// A wrapping type for messages.
 ///
@@ -243,38 +194,6 @@ pub enum OverseerError {
 /// Alias for a result with error type `OverseerError`.
 pub type OverseerResult<T> = std::result::Result<T, self::OverseerError>;
 
-/// Collection of meters related to a subsystem.
-#[derive(Clone)]
-pub struct SubsystemMeters {
-	#[allow(missing_docs)]
-	pub bounded: metered::Meter,
-	#[allow(missing_docs)]
-	pub unbounded: metered::Meter,
-	#[allow(missing_docs)]
-	pub signals: metered::Meter,
-}
-
-impl SubsystemMeters {
-	/// Read the values of all subsystem `Meter`s.
-	pub fn read(&self) -> SubsystemMeterReadouts {
-		SubsystemMeterReadouts {
-			bounded: self.bounded.read(),
-			unbounded: self.unbounded.read(),
-			signals: self.signals.read(),
-		}
-	}
-}
-
-/// Set of readouts of the `Meter`s of a subsystem.
-pub struct SubsystemMeterReadouts {
-	#[allow(missing_docs)]
-	pub bounded: metered::Readout,
-	#[allow(missing_docs)]
-	pub unbounded: metered::Readout,
-	#[allow(missing_docs)]
-	pub signals: metered::Readout,
-}
-
 /// A running instance of some [`Subsystem`].
 ///
 /// [`Subsystem`]: trait.Subsystem.html
@@ -285,8 +204,6 @@ pub struct SubsystemInstance<Message, Signal> {
 	pub tx_signal: crate::metered::MeteredSender<Signal>,
 	/// Send sink for `Message`s to be sent to a subsystem.
 	pub tx_bounded: crate::metered::MeteredSender<MessagePacket<Message>>,
-	/// All meters of the particular subsystem instance.
-	pub meters: SubsystemMeters,
 	/// The number of signals already received.
 	/// Required to assure messages and signals
 	/// are processed correctly.
@@ -340,45 +257,8 @@ pub trait SubsystemContext: Send + 'static {
 	/// The error type.
 	type Error: ::std::error::Error + ::std::convert::From<OverseerError> + Sync + Send + 'static;
 
-	/// Try to asynchronously receive a message.
-	///
-	/// This has to be used with caution, if you loop over this without
-	/// using `pending!()` macro you will end up with a busy loop!
-	async fn try_recv(&mut self) -> Result<Option<FromOverseer<Self::Message, Self::Signal>>, ()>;
-
 	/// Receive a message.
 	async fn recv(&mut self) -> Result<FromOverseer<Self::Message, Self::Signal>, Self::Error>;
-
-	/// Send a direct message to some other `Subsystem`, routed based on message type.
-	async fn send_message<X>(&mut self, msg: X)
-	where
-		Self::AllMessages: From<X>,
-		X: Send,
-	{
-		self.sender().send_message(<Self::AllMessages>::from(msg)).await
-	}
-
-	/// Send multiple direct messages to other `Subsystem`s, routed based on message type.
-	async fn send_messages<X, T>(&mut self, msgs: T)
-	where
-		T: IntoIterator<Item = X> + Send,
-		T::IntoIter: Send,
-		Self::AllMessages: From<X>,
-		X: Send,
-	{
-		self.sender()
-			.send_messages(msgs.into_iter().map(|x| <Self::AllMessages>::from(x)))
-			.await
-	}
-
-	/// Send a message using the unbounded connection.
-	fn send_unbounded_message<X>(&mut self, msg: X)
-	where
-		Self::AllMessages: From<X>,
-		X: Send,
-	{
-		self.sender().send_unbounded_message(Self::AllMessages::from(msg))
-	}
 
 	/// Obtain the sender.
 	fn sender(&mut self) -> &mut Self::Sender;
@@ -406,19 +286,6 @@ where
 pub trait SubsystemSender<Message>: Send + Clone + 'static {
 	/// Send a direct message to some other `Subsystem`, routed based on message type.
 	async fn send_message(&mut self, msg: Message);
-
-	/// Send multiple direct messages to other `Subsystem`s, routed based on message type.
-	async fn send_messages<T>(&mut self, msgs: T)
-	where
-		T: IntoIterator<Item = Message> + Send,
-		T::IntoIter: Send;
-
-	/// Send a message onto the unbounded queue of some other `Subsystem`, routed based on message
-	/// type.
-	///
-	/// This function should be used only when there is some other bounding factor on the messages
-	/// sent with it. Otherwise, it risks a memory leak.
-	fn send_unbounded_message(&mut self, msg: Message);
 }
 
 /// A future that wraps another future with a `Delay` allowing for time-limited futures.

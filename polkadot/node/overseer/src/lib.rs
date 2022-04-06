@@ -81,11 +81,11 @@ use cirrus_node_primitives::ExecutorSlotInfo;
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
 pub use polkadot_overseer_gen as gen;
-pub use polkadot_overseer_gen::{
-	FromOverseer, MapSubsystem, MessagePacket, SignalsReceived, SpawnNamed, Subsystem,
-	SubsystemContext, SubsystemIncomingMessages, SubsystemInstance, SubsystemMeterReadouts,
-	SubsystemMeters, SubsystemSender, TimeoutExt, ToOverseer,
+use polkadot_overseer_gen::{
+	FromOverseer, MessagePacket, SignalsReceived, SpawnNamed, SubsystemIncomingMessages,
+	SubsystemInstance, SubsystemSender, TimeoutExt,
 };
+pub use polkadot_overseer_gen::{Subsystem, SubsystemContext};
 
 /// Store 2 days worth of blocks, not accounting for forks,
 /// in the LRU cache. Assumes a 6-second block time.
@@ -455,7 +455,6 @@ where
 				panic!("All subsystems must exist with the builder pattern.")
 			},
 		};
-		let unbounded_meter = collation_generation_unbounded_rx.meter().clone();
 		let message_rx: SubsystemIncomingMessages<CollationGenerationMessage> =
 			polkadot_overseer_gen::select(
 				collation_generation_rx,
@@ -475,7 +474,6 @@ where
 				&mut spawner,
 				collation_generation_tx,
 				signal_tx,
-				unbounded_meter,
 				ctx,
 				collation_generation,
 				subsystem_static_str,
@@ -505,47 +503,6 @@ where
 			events_rx,
 		};
 		Ok((overseer, handle))
-	}
-}
-impl<S, CollationGeneration> OverseerBuilder<S, CollationGeneration>
-where
-	S: polkadot_overseer_gen::SpawnNamed,
-	CollationGeneration:
-		Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
-{
-	/// Replace a subsystem by another implementation for the
-	/// consumable message type.
-	pub fn replace_collation_generation<NEW, F>(
-		self,
-		gen_replacement_fn: F,
-	) -> OverseerBuilder<S, NEW>
-	where
-		CollationGeneration: 'static,
-		F: 'static + FnOnce(CollationGeneration) -> NEW,
-		NEW: polkadot_overseer_gen::Subsystem<
-			OverseerSubsystemContext<CollationGenerationMessage>,
-			SubsystemError,
-		>,
-	{
-		let Self { collation_generation, leaves, active_leaves, known_leaves, spawner } = self;
-		let replacement: FieldInitMethod<NEW> = match collation_generation {
-			FieldInitMethod::Fn(fx) =>
-				FieldInitMethod::Fn(Box::new(move |handle: OverseerHandle| {
-					let orig = fx(handle)?;
-					Ok(gen_replacement_fn(orig))
-				})),
-			FieldInitMethod::Value(val) => FieldInitMethod::Value(gen_replacement_fn(val)),
-			FieldInitMethod::Uninitialized => {
-				panic!("Must have a value before it can be replaced. qed")
-			},
-		};
-		OverseerBuilder::<S, NEW> {
-			collation_generation: replacement,
-			leaves,
-			active_leaves,
-			known_leaves,
-			spawner,
-		}
 	}
 }
 /// Task kind to launch.
@@ -587,7 +544,6 @@ pub fn spawn<S, M, TK, Ctx, E, SubSys>(
 	spawner: &mut S,
 	message_tx: polkadot_overseer_gen::metered::MeteredSender<MessagePacket<M>>,
 	signal_tx: polkadot_overseer_gen::metered::MeteredSender<OverseerSignal>,
-	unbounded_meter: polkadot_overseer_gen::metered::Meter,
 	ctx: Ctx,
 	s: SubSys,
 	subsystem_name: &'static str,
@@ -623,11 +579,6 @@ where
 		Ok(())
 	})));
 	let instance = Some(SubsystemInstance {
-		meters: polkadot_overseer_gen::SubsystemMeters {
-			unbounded: unbounded_meter,
-			bounded: message_tx.meter().clone(),
-			signals: signal_tx.meter().clone(),
-		},
 		tx_signal: signal_tx,
 		tx_bounded: message_tx,
 		signals_received: 0,
@@ -772,18 +723,6 @@ impl SubsystemSender<AllMessages> for OverseerSubsystemSender {
 	async fn send_message(&mut self, msg: AllMessages) {
 		self.channels.send_and_log_error(self.signals_received.load(), msg).await;
 	}
-	async fn send_messages<T>(&mut self, msgs: T)
-	where
-		T: IntoIterator<Item = AllMessages> + Send,
-		T::IntoIter: Send,
-	{
-		for msg in msgs {
-			self.send_message(msg).await;
-		}
-	}
-	fn send_unbounded_message(&mut self, msg: AllMessages) {
-		self.channels.send_unbounded_and_log_error(self.signals_received.load(), msg);
-	}
 }
 #[polkadot_overseer_gen::async_trait]
 impl SubsystemSender<CollationGenerationMessage> for OverseerSubsystemSender {
@@ -791,19 +730,6 @@ impl SubsystemSender<CollationGenerationMessage> for OverseerSubsystemSender {
 		self.channels
 			.send_and_log_error(self.signals_received.load(), AllMessages::from(msg))
 			.await;
-	}
-	async fn send_messages<T>(&mut self, msgs: T)
-	where
-		T: IntoIterator<Item = CollationGenerationMessage> + Send,
-		T::IntoIter: Send,
-	{
-		for msg in msgs {
-			self.send_message(msg).await;
-		}
-	}
-	fn send_unbounded_message(&mut self, msg: CollationGenerationMessage) {
-		self.channels
-			.send_unbounded_and_log_error(self.signals_received.load(), AllMessages::from(msg));
 	}
 }
 /// A context type that is given to the [`Subsystem`] upon spawning.
@@ -854,14 +780,6 @@ where
 	type Sender = OverseerSubsystemSender;
 	type AllMessages = AllMessages;
 	type Error = SubsystemError;
-	async fn try_recv(
-		&mut self,
-	) -> ::std::result::Result<Option<FromOverseer<M, OverseerSignal>>, ()> {
-		match polkadot_overseer_gen::poll!(self.recv()) {
-			polkadot_overseer_gen::Poll::Ready(msg) => Ok(Some(msg.map_err(|_| ())?)),
-			polkadot_overseer_gen::Poll::Pending => Ok(None),
-		}
-	}
 	async fn recv(
 		&mut self,
 	) -> ::std::result::Result<FromOverseer<M, OverseerSignal>, SubsystemError> {
