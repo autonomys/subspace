@@ -84,7 +84,7 @@ where
 	{
 		loop {
 			let incoming = ctx.recv().await;
-			if self.handle_incoming::<Context>(incoming, &mut ctx).await {
+			if self.handle_incoming::<Context>(incoming).await {
 				break
 			}
 		}
@@ -97,7 +97,6 @@ where
 	async fn handle_incoming<Context>(
 		&mut self,
 		incoming: SubsystemResult<FromOverseer<<Context as SubsystemContext>::Message>>,
-		ctx: &mut Context,
 	) -> bool
 	where
 		Context: SubsystemContext<Message = CollationGenerationMessage>,
@@ -114,7 +113,6 @@ where
 						&self.primary_chain_client,
 						config,
 						activated.into_iter().map(|v| v.hash),
-						ctx,
 					)
 					.await
 					{
@@ -134,12 +132,8 @@ where
 							self.config = Some(Arc::new(config));
 						},
 					CollationGenerationMessage::FraudProof(fraud_proof) => {
-						if let Err(err) = submit_fraud_proof(
-							Arc::clone(&self.primary_chain_client),
-							fraud_proof,
-							ctx,
-						)
-						.await
+						if let Err(err) =
+							submit_fraud_proof(Arc::clone(&self.primary_chain_client), fraud_proof)
 						{
 							tracing::warn!(
 								target: LOG_TARGET,
@@ -154,10 +148,7 @@ where
 						if let Err(err) = submit_bundle_equivocation_proof(
 							Arc::clone(&self.primary_chain_client),
 							bundle_equivocation_proof,
-							ctx,
-						)
-						.await
-						{
+						) {
 							tracing::warn!(
 								target: LOG_TARGET,
 								?err,
@@ -170,10 +161,7 @@ where
 						if let Err(err) = submit_invalid_transaction_proof(
 							Arc::clone(&self.primary_chain_client),
 							invalid_transaction_proof,
-							ctx,
-						)
-						.await
-						{
+						) {
 							tracing::warn!(
 								target: LOG_TARGET,
 								?err,
@@ -189,7 +177,6 @@ where
 						Arc::clone(&self.primary_chain_client),
 						config.clone(),
 						slot_info,
-						ctx,
 					)
 					.await
 					{
@@ -236,11 +223,10 @@ where
 }
 
 /// Produces collations on each tip of primary chain.
-async fn handle_new_activations<Client, Context: SubsystemContext>(
+async fn handle_new_activations<Client>(
 	client: &Arc<Client>,
 	config: &CollationGenerationConfig,
 	activated: impl IntoIterator<Item = Hash>,
-	ctx: &mut Context,
 ) -> Result<(), Error>
 where
 	Client: HeaderBackend<Block>
@@ -253,7 +239,7 @@ where
 {
 	for relay_parent in activated {
 		// TODO: invoke this on finalized block?
-		process_primary_block(Arc::clone(client), config, relay_parent, ctx).await?;
+		process_primary_block(Arc::clone(client), config, relay_parent).await?;
 	}
 
 	Ok(())
@@ -263,11 +249,10 @@ where
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<Client, Context: SubsystemContext>(
+async fn process_primary_block<Client>(
 	client: Arc<Client>,
 	config: &CollationGenerationConfig,
 	block_hash: Hash,
-	ctx: &mut Context,
 ) -> Result<(), Error>
 where
 	Client: HeaderBackend<Block>
@@ -336,32 +321,18 @@ where
 
 	let best_hash = client.info().best_hash;
 
-	ctx.spawn(
-		"collation generation submit execution receipt",
-		Box::pin(async move {
-			if let Err(err) = client.runtime_api().submit_execution_receipt_unsigned(
-				&BlockId::Hash(best_hash),
-				opaque_execution_receipt,
-			) {
-				tracing::warn!(
-					target: LOG_TARGET,
-					err = ?err,
-					"Failed to send execution receipt",
-				);
-			} else {
-				tracing::debug!(target: LOG_TARGET, "Sent execution receipt successfully",);
-			}
-		}),
-	)?;
+	// TODO: Handle returned result?
+	client
+		.runtime_api()
+		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), opaque_execution_receipt)?;
 
 	Ok(())
 }
 
-async fn produce_bundle<Client, Context: SubsystemContext>(
+async fn produce_bundle<Client>(
 	client: Arc<Client>,
 	config: Arc<CollationGenerationConfig>,
 	slot_info: ExecutorSlotInfo,
-	ctx: &mut Context,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -382,32 +353,15 @@ where
 		},
 	};
 
-	ctx.spawn(
-		"collation generation bundle builder",
-		Box::pin(async move {
-			if let Err(err) = client
-				.runtime_api()
-				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)
-			{
-				tracing::warn!(
-					target: LOG_TARGET,
-					err = ?err,
-					"Failed to send transaction bundle",
-				);
-			} else {
-				tracing::debug!(target: LOG_TARGET, "Sent transaction bundle successfully",);
-			}
-		}),
-	)?;
+	// TODO: Handle returned result?
+	client
+		.runtime_api()
+		.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
 
 	Ok(())
 }
 
-async fn submit_fraud_proof<Client, Context: SubsystemContext>(
-	client: Arc<Client>,
-	fraud_proof: FraudProof,
-	ctx: &mut Context,
-) -> SubsystemResult<()>
+fn submit_fraud_proof<Client>(client: Arc<Client>, fraud_proof: FraudProof) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -417,31 +371,17 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	ctx.spawn(
-		"collation generation fraud proof builder",
-		Box::pin(async move {
-			if let Err(err) = client
-				.runtime_api()
-				.submit_fraud_proof_unsigned(&BlockId::Hash(client.info().best_hash), fraud_proof)
-			{
-				tracing::warn!(
-					target: LOG_TARGET,
-					err = ?err,
-					"Failed to send fraud proof",
-				);
-			} else {
-				tracing::debug!(target: LOG_TARGET, "Sent fraud proof successfully",);
-			}
-		}),
-	)?;
+	// TODO: Handle returned result?
+	client
+		.runtime_api()
+		.submit_fraud_proof_unsigned(&BlockId::Hash(client.info().best_hash), fraud_proof)?;
 
 	Ok(())
 }
 
-async fn submit_bundle_equivocation_proof<Client, Context: SubsystemContext>(
+fn submit_bundle_equivocation_proof<Client>(
 	client: Arc<Client>,
 	bundle_equivocation_proof: BundleEquivocationProof,
-	ctx: &mut Context,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -452,31 +392,18 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	ctx.spawn(
-		"collation generation bundle equivocation proof builder",
-		Box::pin(async move {
-			if let Err(err) = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-				&BlockId::Hash(client.info().best_hash),
-				bundle_equivocation_proof,
-			) {
-				tracing::warn!(
-					target: LOG_TARGET,
-					err = ?err,
-					"Failed to send equivocation proof",
-				);
-			} else {
-				tracing::debug!(target: LOG_TARGET, "Sent equivocation proof successfully",);
-			}
-		}),
+	// TODO: Handle returned result?
+	client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+		&BlockId::Hash(client.info().best_hash),
+		bundle_equivocation_proof,
 	)?;
 
 	Ok(())
 }
 
-async fn submit_invalid_transaction_proof<Client, Context: SubsystemContext>(
+fn submit_invalid_transaction_proof<Client>(
 	client: Arc<Client>,
 	invalid_transaction_proof: InvalidTransactionProof,
-	ctx: &mut Context,
 ) -> SubsystemResult<()>
 where
 	Client: HeaderBackend<Block>
@@ -487,22 +414,10 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	ctx.spawn(
-		"collation generation invalid transaction proof builder",
-		Box::pin(async move {
-			if let Err(err) = client.runtime_api().submit_invalid_transaction_proof_unsigned(
-				&BlockId::Hash(client.info().best_hash),
-				invalid_transaction_proof,
-			) {
-				tracing::warn!(
-					target: LOG_TARGET,
-					err = ?err,
-					"Failed to send invalid transaction proof",
-				);
-			} else {
-				tracing::debug!(target: LOG_TARGET, "Sent invalid transaction proof successfully",);
-			}
-		}),
+	// TODO: Handle returned result?
+	client.runtime_api().submit_invalid_transaction_proof_unsigned(
+		&BlockId::Hash(client.info().best_hash),
+		invalid_transaction_proof,
 	)?;
 
 	Ok(())

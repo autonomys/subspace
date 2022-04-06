@@ -5685,6 +5685,7 @@ dependencies = [
  "polkadot-overseer-gen",
  "sc-network",
  "smallvec",
+ "sp-api",
  "sp-executor",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
