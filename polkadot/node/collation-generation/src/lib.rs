@@ -22,11 +22,10 @@ use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use futures::future::FutureExt;
 use polkadot_node_subsystem::{
 	messages::CollationGenerationMessage, overseer, ActiveLeavesUpdate, FromOverseer,
-	OverseerSignal, RuntimeApiError, SpawnedSubsystem, SubsystemContext, SubsystemError,
-	SubsystemResult,
+	OverseerSignal, SpawnedSubsystem, SubsystemContext, SubsystemError, SubsystemResult,
 };
 use sc_client_api::BlockBackend;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use sp_runtime::generic::DigestItem;
@@ -36,7 +35,13 @@ use subspace_runtime_primitives::{
 	Hash,
 };
 
-mod error;
+#[derive(Debug, thiserror::Error)]
+enum Error {
+	#[error(transparent)]
+	Subsystem(#[from] polkadot_node_subsystem::SubsystemError),
+	#[error(transparent)]
+	Runtime(#[from] ApiError),
+}
 
 const LOG_TARGET: &str = "parachain::collation-generation";
 
@@ -236,7 +241,7 @@ async fn handle_new_activations<Client, Context: SubsystemContext>(
 	config: &CollationGenerationConfig,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
-) -> crate::error::Result<()>
+) -> Result<(), Error>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -263,7 +268,7 @@ async fn process_primary_block<Client, Context: SubsystemContext>(
 	config: &CollationGenerationConfig,
 	block_hash: Hash,
 	ctx: &mut Context,
-) -> crate::error::Result<()>
+) -> Result<(), Error>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -290,10 +295,7 @@ where
 		Ok(Some(body)) => body,
 	};
 
-	let bundles = client
-		.runtime_api()
-		.extract_bundles(&block_id, extrinsics)
-		.map_err(|e| RuntimeApiError::from(e.to_string()))?;
+	let bundles = client.runtime_api().extract_bundles(&block_id, extrinsics)?;
 
 	let header = match client.header(block_id) {
 		Err(err) => {
@@ -313,20 +315,12 @@ where
 		.iter()
 		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
 	{
-		Some(
-			client
-				.runtime_api()
-				.execution_wasm_bundle(&block_id)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))?,
-		)
+		Some(client.runtime_api().execution_wasm_bundle(&block_id)?)
 	} else {
 		None
 	};
 
-	let shuffling_seed = client
-		.runtime_api()
-		.extrinsics_shuffling_seed(&block_id, header)
-		.map_err(|e| RuntimeApiError::from(e.to_string()))?;
+	let shuffling_seed = client.runtime_api().extrinsics_shuffling_seed(&block_id, header)?;
 
 	let opaque_execution_receipt =
 		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
@@ -345,14 +339,10 @@ where
 	ctx.spawn(
 		"collation generation submit execution receipt",
 		Box::pin(async move {
-			if let Err(err) = client
-				.runtime_api()
-				.submit_execution_receipt_unsigned(
-					&BlockId::Hash(best_hash),
-					opaque_execution_receipt,
-				)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))
-			{
+			if let Err(err) = client.runtime_api().submit_execution_receipt_unsigned(
+				&BlockId::Hash(best_hash),
+				opaque_execution_receipt,
+			) {
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
@@ -398,7 +388,6 @@ where
 			if let Err(err) = client
 				.runtime_api()
 				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
@@ -434,7 +423,6 @@ where
 			if let Err(err) = client
 				.runtime_api()
 				.submit_fraud_proof_unsigned(&BlockId::Hash(client.info().best_hash), fraud_proof)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))
 			{
 				tracing::warn!(
 					target: LOG_TARGET,
@@ -467,14 +455,10 @@ where
 	ctx.spawn(
 		"collation generation bundle equivocation proof builder",
 		Box::pin(async move {
-			if let Err(err) = client
-				.runtime_api()
-				.submit_bundle_equivocation_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					bundle_equivocation_proof,
-				)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))
-			{
+			if let Err(err) = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+				&BlockId::Hash(client.info().best_hash),
+				bundle_equivocation_proof,
+			) {
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
@@ -506,14 +490,10 @@ where
 	ctx.spawn(
 		"collation generation invalid transaction proof builder",
 		Box::pin(async move {
-			if let Err(err) = client
-				.runtime_api()
-				.submit_invalid_transaction_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					invalid_transaction_proof,
-				)
-				.map_err(|e| RuntimeApiError::from(e.to_string()))
-			{
+			if let Err(err) = client.runtime_api().submit_invalid_transaction_proof_unsigned(
+				&BlockId::Hash(client.info().best_hash),
+				invalid_transaction_proof,
+			) {
 				tracing::warn!(
 					target: LOG_TARGET,
 					err = ?err,
