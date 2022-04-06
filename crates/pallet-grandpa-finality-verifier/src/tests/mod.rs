@@ -1,11 +1,22 @@
 mod justification;
 mod keyring;
-use crate::grandpa::{verify_justification, Error};
+mod mock;
 
+use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
+use crate::{initialize, validate};
+use crate::{BestFinalized, ChainType, CurrentAuthoritySet, Error as ErrorP, InitializationData};
+use codec::Encode;
+use frame_support::dispatch::DispatchResult;
+use frame_support::{assert_err, assert_noop, assert_ok};
 use justification::*;
 use keyring::*;
+use mock::{run_test, ChainId, TestRuntime};
+use sp_finality_grandpa::{ConsensusLog, GRANDPA_ENGINE_ID};
+use sp_runtime::generic::SignedBlock;
+use sp_runtime::traits::BlakeTwo256;
+use sp_runtime::{generic, Digest, DigestItem, DispatchError, OpaqueExtrinsic};
 
-type TestHeader = sp_runtime::testing::Header;
+type TestHeader = generic::Header<u32, BlakeTwo256>;
 
 #[test]
 fn valid_justification_accepted() {
@@ -178,4 +189,291 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
         ),
         Err(Error::TooLowCumulativeWeight),
     );
+}
+
+fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchError> {
+    let genesis = test_header::<TestHeader>(0);
+
+    let init_data = crate::InitializationData {
+        chain_type: ChainType::PolkadotLike,
+        header: genesis.encode(),
+        authority_list: authority_list(),
+        set_id: 1,
+    };
+
+    initialize::<TestRuntime>(chain_id, init_data.encode().as_slice())?;
+    Ok(init_data)
+}
+
+fn submit_valid_finality_proof(chain_id: ChainId, header: u8) -> DispatchResult {
+    let header = test_header::<TestHeader>(header.into());
+    let justification = make_default_justification(&header);
+    submit_finality_proof(chain_id, header, justification)
+}
+
+fn submit_finality_proof(
+    chain_id: ChainId,
+    header: TestHeader,
+    justification: GrandpaJustification<TestHeader>,
+) -> DispatchResult {
+    let block = SignedBlock {
+        block: generic::Block::<TestHeader, OpaqueExtrinsic> {
+            header: header.clone(),
+            extrinsics: vec![],
+        },
+        justifications: Some((GRANDPA_ENGINE_ID, justification.encode()).into()),
+    };
+
+    validate::<TestRuntime>(chain_id, block.encode().as_slice())
+}
+
+#[test]
+fn init_storage_entries_are_correctly_initialized() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let init_data = init_with_origin(chain_id).unwrap();
+        assert_eq!(
+            BestFinalized::<TestRuntime>::get(chain_id).expect("should hold the encoded header"),
+            init_data.header
+        );
+        assert_eq!(
+            CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
+            init_data.authority_list
+        );
+    })
+}
+
+#[test]
+fn init_can_only_initialize_pallet_once() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+        assert_noop!(
+            init_with_origin(chain_id),
+            <ErrorP<TestRuntime>>::AlreadyInitialized
+        );
+    })
+}
+
+#[test]
+fn pallet_rejects_header_if_not_initialized_yet() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_noop!(
+            submit_valid_finality_proof(chain_id, 1),
+            ErrorP::<TestRuntime>::ChainUnknown
+        );
+    });
+}
+
+#[test]
+fn succesfully_imports_header_with_valid_finality() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(submit_valid_finality_proof(chain_id, 1));
+
+        let header = test_header::<TestHeader>(1);
+        assert_eq!(
+            <BestFinalized<TestRuntime>>::get(chain_id).unwrap(),
+            header.encode()
+        );
+    })
+}
+
+#[test]
+fn rejects_justification_that_skips_authority_set_transition() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+        let header = test_header::<TestHeader>(1);
+
+        let params = JustificationGeneratorParams::<TestHeader> {
+            set_id: 2,
+            ..Default::default()
+        };
+        let justification = make_justification_for_header(params);
+
+        assert_err!(
+            submit_finality_proof(chain_id, header, justification),
+            <ErrorP<TestRuntime>>::InvalidJustification
+        );
+    })
+}
+
+#[test]
+fn does_not_import_header_with_invalid_finality_proof() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+
+        let header = test_header(1);
+        let mut justification = make_default_justification(&header);
+        justification.round = 42;
+
+        assert_err!(
+            submit_finality_proof(chain_id, header, justification),
+            <ErrorP<TestRuntime>>::InvalidJustification
+        );
+    })
+}
+
+#[test]
+fn disallows_invalid_authority_set() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let genesis = test_header::<TestHeader>(0);
+
+        let invalid_authority_list = vec![(ALICE.into(), u64::MAX), (BOB.into(), u64::MAX)];
+        let init_data = InitializationData {
+            chain_type: ChainType::PolkadotLike,
+            header: genesis.encode(),
+            authority_list: invalid_authority_list,
+            set_id: 1,
+        };
+
+        assert_ok!(initialize::<TestRuntime>(
+            chain_id,
+            init_data.encode().as_slice()
+        ));
+
+        let header = test_header::<TestHeader>(1);
+        let justification = make_default_justification(&header);
+
+        assert_err!(
+            submit_finality_proof(chain_id, header, justification),
+            <ErrorP<TestRuntime>>::InvalidAuthoritySet
+        );
+    })
+}
+
+#[test]
+fn importing_header_ensures_that_chain_is_extended() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(submit_valid_finality_proof(chain_id, 4));
+        assert_err!(
+            submit_valid_finality_proof(chain_id, 3),
+            ErrorP::<TestRuntime>::OldHeader
+        );
+        assert_ok!(submit_valid_finality_proof(chain_id, 5));
+    })
+}
+
+fn change_log(delay: u32) -> Digest {
+    let consensus_log =
+        ConsensusLog::<u32>::ScheduledChange(sp_finality_grandpa::ScheduledChange {
+            next_authorities: vec![(ALICE.into(), 1), (BOB.into(), 1)],
+            delay,
+        });
+
+    Digest {
+        logs: vec![DigestItem::Consensus(
+            GRANDPA_ENGINE_ID,
+            consensus_log.encode(),
+        )],
+    }
+}
+
+#[test]
+fn importing_header_enacts_new_authority_set() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+
+        let next_set_id = 2;
+        let next_authorities = vec![(ALICE.into(), 1), (BOB.into(), 1)];
+
+        // Need to update the header digest to indicate that our header signals an authority set
+        // change. The change will be enacted when we import our header.
+        let mut header = test_header::<TestHeader>(2);
+        header.digest = change_log(0);
+
+        // Create a valid justification for the header
+        let justification = make_default_justification(&header);
+
+        // Let's import our test header
+        assert_ok!(submit_finality_proof(
+            chain_id,
+            header.clone(),
+            justification
+        ));
+
+        // Make sure that our header is the best finalized
+        assert_eq!(
+            <BestFinalized<TestRuntime>>::get(chain_id).unwrap(),
+            header.encode()
+        );
+
+        // Make sure that the authority set actually changed upon importing our header
+        assert_eq!(
+            <CurrentAuthoritySet<TestRuntime>>::get(chain_id),
+            AuthoritySet {
+                authorities: next_authorities,
+                set_id: next_set_id
+            },
+        );
+    })
+}
+
+#[test]
+fn importing_header_rejects_header_with_scheduled_change_delay() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+
+        // Need to update the header digest to indicate that our header signals an authority set
+        // change. However, the change doesn't happen until the next block.
+        let mut header = test_header::<TestHeader>(2);
+        header.digest = change_log(1);
+
+        // Create a valid justification for the header
+        let justification = make_default_justification(&header);
+
+        // Should not be allowed to import this header
+        assert_err!(
+            submit_finality_proof(chain_id, header, justification),
+            <ErrorP<TestRuntime>>::UnsupportedScheduledChange
+        );
+    })
+}
+
+fn forced_change_log(delay: u32) -> Digest {
+    let consensus_log = ConsensusLog::<u32>::ForcedChange(
+        delay,
+        sp_finality_grandpa::ScheduledChange {
+            next_authorities: vec![(ALICE.into(), 1), (BOB.into(), 1)],
+            delay,
+        },
+    );
+
+    Digest {
+        logs: vec![DigestItem::Consensus(
+            GRANDPA_ENGINE_ID,
+            consensus_log.encode(),
+        )],
+    }
+}
+
+#[test]
+fn importing_header_rejects_header_with_forced_changes() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        assert_ok!(init_with_origin(chain_id));
+
+        // Need to update the header digest to indicate that it signals a forced authority set
+        // change.
+        let mut header = test_header::<TestHeader>(2);
+        header.digest = forced_change_log(0);
+
+        // Create a valid justification for the header
+        let justification = make_default_justification(&header);
+
+        // Should not be allowed to import this header
+        assert_err!(
+            submit_finality_proof(chain_id, header, justification),
+            <ErrorP<TestRuntime>>::UnsupportedScheduledChange
+        );
+    })
 }

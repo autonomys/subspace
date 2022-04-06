@@ -2,10 +2,10 @@
 mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
-use log::error;
+use log::{error, info};
 use rocksdb::DB;
 use std::collections::VecDeque;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -13,17 +13,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, Sha256Hash, PIECE_SIZE,
-    SHA256_HASH_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, PIECE_SIZE,
 };
+use subspace_solving::PieceDistance;
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 /// Index of piece on disk
 pub(crate) type PieceOffset = u64;
-/// Distance to piece index hash from farmer identity
-type PieceDistance = [u8; SHA256_HASH_SIZE];
 
 #[derive(Debug, Error)]
 pub enum PlotError {
@@ -148,17 +146,49 @@ pub struct Plot {
 }
 
 impl Plot {
+    /// Helper function for ignoring the error that given file/directory does not exist.
+    fn try_remove<P: AsRef<Path>>(
+        path: P,
+        remove: impl FnOnce(P) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if path.as_ref().exists() {
+            remove(path)?;
+        }
+        Ok(())
+    }
+
+    /// Erases plot in specific directory
+    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
+        info!("Erasing the plot");
+        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
+        info!("Erasing the plot offset to index db");
+        Self::try_remove(
+            path.as_ref().join("plot-offset-to-index.bin"),
+            fs::remove_file,
+        )?;
+        info!("Erasing the plot index to offset db");
+        Self::try_remove(
+            path.as_ref().join("plot-index-to-offset"),
+            fs::remove_dir_all,
+        )?;
+        info!("Erasing plot metadata");
+        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
+        info!("Erasing plot commitments");
+        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
+        info!("Erasing object mappings");
+        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
+
+        Ok(())
+    }
+
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
         address: PublicKey,
-        max_piece_count: Option<u64>,
+        max_piece_count: u64,
     ) -> Result<Plot, PlotError> {
-        let plot_worker = PlotWorker::from_base_directory(
-            base_directory.as_ref(),
-            address,
-            max_piece_count.unwrap_or(u64::MAX),
-        )?;
+        let plot_worker =
+            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
 
         let plot_metadata_db = Arc::new(
             DB::open_default(base_directory.as_ref().join("plot-metadata"))
@@ -374,22 +404,11 @@ impl WeakPlot {
     }
 }
 
-/// Calculates the xor distance metric between piece index hash and farmer address.
-pub(crate) fn xor_distance(
-    PieceIndexHash(mut hash): PieceIndexHash,
-    address: PublicKey,
-) -> PieceDistance {
-    for (hash_byte, address_byte) in hash.iter_mut().zip(address.iter()) {
-        *hash_byte ^= address_byte;
-    }
-    hash
-}
-
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance: Option<Sha256Hash>,
+    max_distance: Option<PieceDistance>,
 }
 
 impl IndexHashToOffsetDB {
@@ -398,7 +417,7 @@ impl IndexHashToOffsetDB {
         let max_distance = {
             let mut iter = inner.raw_iterator();
             iter.seek_to_last();
-            iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap())
+            iter.key().map(PieceDistance::from_big_endian)
         };
         Ok(Self {
             inner,
@@ -407,10 +426,10 @@ impl IndexHashToOffsetDB {
         })
     }
 
-    fn get(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Option<PieceOffset>> {
-        let distance = xor_distance(index_hash.into(), self.address);
+    fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
+        let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .get(&distance)
+            .get(&distance.to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -422,10 +441,10 @@ impl IndexHashToOffsetDB {
 
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
-    fn should_store(&self, index_hash: PieceIndexHash) -> io::Result<bool> {
+    fn should_store(&self, index_hash: &PieceIndexHash) -> io::Result<bool> {
         Ok(match self.max_distance {
             Some(max_distance) => {
-                xor_distance(index_hash, self.address) < max_distance
+                PieceDistance::xor_distance(index_hash, &self.address) < max_distance
                     && self.get(index_hash)?.is_none()
             }
             None => false,
@@ -439,26 +458,25 @@ impl IndexHashToOffsetDB {
         };
         let result = self
             .inner
-            .get(max_distance)
+            .get(&max_distance.to_bytes())
             .map_err(io::Error::other)?
             .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
             .map(PieceOffset::from_le_bytes);
-        self.inner.delete(max_distance).map_err(io::Error::other)?;
+        self.inner
+            .delete(&max_distance.to_bytes())
+            .map_err(io::Error::other)?;
 
         let mut iter = self.inner.raw_iterator();
         iter.seek_to_last();
-        self.max_distance = iter.key().map(|key| *<&Sha256Hash>::try_from(key).unwrap());
+        self.max_distance = iter.key().map(PieceDistance::from_big_endian);
+
         Ok(result)
     }
 
-    fn put(
-        &mut self,
-        index_hash: impl Into<PieceIndexHash>,
-        offset: PieceOffset,
-    ) -> io::Result<()> {
-        let distance = xor_distance(index_hash.into(), self.address);
+    fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
+        let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .put(&distance, offset.to_le_bytes())
+            .put(&distance.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
         match self.max_distance {
@@ -532,7 +550,7 @@ impl PlotWorker {
         let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
-            .get(piece_index_hash)?
+            .get(&piece_index_hash)?
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
@@ -590,7 +608,7 @@ impl PlotWorker {
                 (current_piece_count..).zip(sequential_piece_indexes)
             {
                 self.piece_index_hash_to_offset_db
-                    .put(piece_index, piece_offset)?;
+                    .put(&piece_index.into(), piece_offset)?;
                 self.put_piece_index(piece_offset, piece_index)?;
             }
 
@@ -619,7 +637,7 @@ impl PlotWorker {
             // Check if piece is out of plot range or if it is in the plot
             if !self
                 .piece_index_hash_to_offset_db
-                .should_store(piece_index.into())?
+                .should_store(&piece_index.into())?
             {
                 continue;
             }
@@ -639,7 +657,7 @@ impl PlotWorker {
             self.plot.write_all(piece)?;
 
             self.piece_index_hash_to_offset_db
-                .put(piece_index, piece_offset)?;
+                .put(&piece_index.into(), piece_offset)?;
             self.put_piece_index(piece_offset, piece_index)?;
 
             // TODO: This is a bit inefficient when pieces from previous iterations of this loop are

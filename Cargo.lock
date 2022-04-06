@@ -840,12 +840,10 @@ version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-fraud-proof",
  "cirrus-node-primitives",
  "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
- "cumulus-client-consensus-common",
  "futures 0.3.21",
  "futures-timer",
  "merkletree",
@@ -869,11 +867,12 @@ dependencies = [
  "sp-consensus-slots",
  "sp-core",
  "sp-executor",
- "sp-inherents",
  "sp-keyring",
  "sp-runtime",
+ "sp-state-machine",
  "sp-trie",
  "subspace-core-primitives",
+ "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -907,10 +906,7 @@ dependencies = [
  "cirrus-client-executor-gossip",
  "cirrus-node-primitives",
  "cirrus-primitives",
- "cumulus-client-consensus-common",
- "parity-scale-codec",
  "parking_lot 0.12.0",
- "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
  "sc-network",
@@ -924,26 +920,11 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-inherents",
  "sp-runtime",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-service",
  "tracing",
-]
-
-[[package]]
-name = "cirrus-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "hash-db",
- "parity-scale-codec",
- "sc-client-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
 ]
 
 [[package]]
@@ -954,7 +935,6 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
  "sp-executor",
@@ -1034,8 +1014,8 @@ name = "cirrus-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cirrus-client-executor",
  "cirrus-client-service",
- "cirrus-node-primitives",
  "cirrus-test-runtime",
  "cumulus-client-consensus-relay-chain",
  "frame-system",
@@ -1043,7 +1023,6 @@ dependencies = [
  "jsonrpc-core",
  "pallet-transaction-payment",
  "rand 0.8.5",
- "sc-basic-authorship",
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
@@ -1055,6 +1034,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-inherents",
  "sp-keyring",
  "sp-runtime",
  "sp-timestamp",
@@ -1506,19 +1486,9 @@ name = "cumulus-client-consensus-common"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cirrus-node-primitives",
- "dyn-clone",
- "futures 0.3.21",
- "parity-scale-codec",
- "sc-client-api",
  "sc-consensus",
- "sp-api",
- "sp-blockchain",
  "sp-consensus",
  "sp-runtime",
- "sp-trie",
- "subspace-runtime-primitives",
- "tracing",
 ]
 
 [[package]]
@@ -1526,23 +1496,13 @@ name = "cumulus-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cirrus-node-primitives",
  "cumulus-client-consensus-common",
- "futures 0.3.21",
- "parking_lot 0.12.0",
- "sc-client-api",
  "sc-consensus",
- "sp-api",
- "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-inherents",
  "sp-runtime",
- "subspace-runtime-primitives",
- "subspace-service",
  "substrate-prometheus-endpoint",
- "tracing",
 ]
 
 [[package]]
@@ -2883,12 +2843,6 @@ checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if 1.0.0",
 ]
-
-[[package]]
-name = "integer-encoding"
-version = "3.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90c11140ffea82edce8dcd74137ce9324ec24b3cf0175fc9d7e29164da9915b8"
 
 [[package]]
 name = "integer-sqrt"
@@ -4387,15 +4341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-lru"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beeb98b3d1ed2c0054bd81b5ba949a0243c3ccad751d45ea898fa8059fa2860a"
-dependencies = [
- "lru 0.6.6",
-]
-
-[[package]]
 name = "memory_units"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4444,17 +4389,6 @@ dependencies = [
  "log",
  "thiserror",
  "tracing",
-]
-
-[[package]]
-name = "mick-jaeger"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd2c2cc134e57461f0898b0e921f0a7819b5e3f3a4335b9aa390ce81a5f36fb9"
-dependencies = [
- "futures 0.3.21",
- "rand 0.8.5",
- "thrift",
 ]
 
 [[package]]
@@ -4925,15 +4859,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
-name = "ordered-float"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3305af35278dd29f46fcdd139e0b1fbfae2153f0e5928b39b035542dd31e37b7"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "orml-vesting"
 version = "0.4.1-dev"
 source = "git+https://github.com/subspace/open-runtime-module-library?rev=0e9f38313775b94c87c289f346e50f900db2bab7#0e9f38313775b94c87c289f346e50f900db2bab7"
@@ -5286,8 +5211,6 @@ dependencies = [
  "log",
  "pallet-transaction-payment-rpc",
  "parachain-template-runtime",
- "parity-scale-codec",
- "sc-basic-authorship",
  "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
@@ -5734,10 +5657,11 @@ dependencies = [
  "futures 0.3.21",
  "parity-scale-codec",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-util",
  "sp-core",
  "sp-executor",
  "sp-maybe-compressed-blob",
+ "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -5749,11 +5673,9 @@ version = "0.9.13"
 dependencies = [
  "futures 0.3.21",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-util",
  "sc-client-api",
  "sp-blockchain",
  "subspace-runtime-primitives",
- "tracing",
 ]
 
 [[package]]
@@ -5761,10 +5683,7 @@ name = "polkadot-node-core-runtime-api"
 version = "0.9.13"
 dependencies = [
  "futures 0.3.21",
- "memory-lru",
- "parity-util-mem",
  "polkadot-node-subsystem",
- "polkadot-node-subsystem-util",
  "sp-api",
  "sp-core",
  "sp-executor",
@@ -5773,37 +5692,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-jaeger"
-version = "0.9.13"
-dependencies = [
- "async-std",
- "lazy_static",
- "log",
- "mick-jaeger",
- "parity-scale-codec",
- "parking_lot 0.12.0",
- "sc-network",
- "sp-core",
- "sp-runtime",
- "subspace-runtime-primitives",
- "thiserror",
-]
-
-[[package]]
-name = "polkadot-node-metrics"
-version = "0.9.13"
-dependencies = [
- "futures 0.3.21",
- "futures-timer",
- "metered-channel",
- "substrate-prometheus-endpoint",
-]
-
-[[package]]
 name = "polkadot-node-subsystem"
 version = "0.9.13"
 dependencies = [
- "polkadot-node-jaeger",
  "polkadot-node-subsystem-types",
  "polkadot-overseer",
 ]
@@ -5814,7 +5705,6 @@ version = "0.9.13"
 dependencies = [
  "cirrus-node-primitives",
  "futures 0.3.21",
- "polkadot-node-jaeger",
  "polkadot-overseer-gen",
  "sc-network",
  "smallvec",
@@ -5827,27 +5717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-subsystem-util"
-version = "0.9.13"
-dependencies = [
- "async-trait",
- "futures 0.3.21",
- "metered-channel",
- "pin-project 1.0.10",
- "polkadot-node-jaeger",
- "polkadot-node-metrics",
- "polkadot-node-subsystem",
- "polkadot-overseer",
- "sp-core",
- "sp-executor",
- "sp-runtime",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "polkadot-overseer"
 version = "0.9.13"
 dependencies = [
@@ -5855,10 +5724,7 @@ dependencies = [
  "futures 0.3.21",
  "futures-timer",
  "lru 0.7.3",
- "metered-channel",
- "parity-util-mem",
  "parking_lot 0.12.0",
- "polkadot-node-metrics",
  "polkadot-node-subsystem-types",
  "polkadot-overseer-gen",
  "sc-client-api",
@@ -8218,7 +8084,10 @@ dependencies = [
  "sp-api",
  "sp-consensus-slots",
  "sp-core",
+ "sp-externalities",
  "sp-runtime",
+ "sp-runtime-interface",
+ "sp-state-machine",
  "sp-std",
  "sp-trie",
  "subspace-core-primitives",
@@ -8757,6 +8626,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "hash-db",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-executor",
+ "sp-externalities",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
@@ -8795,6 +8682,7 @@ dependencies = [
  "serde",
  "sp-consensus",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -8831,6 +8719,7 @@ dependencies = [
  "pallet-balances",
  "pallet-executor",
  "pallet-feeds",
+ "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
@@ -8841,6 +8730,7 @@ dependencies = [
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",
+ "parachain-template-runtime",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -8858,6 +8748,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -8889,7 +8780,6 @@ dependencies = [
  "polkadot-node-collation-generation",
  "polkadot-node-core-chain-api",
  "polkadot-node-core-runtime-api",
- "polkadot-node-subsystem-util",
  "polkadot-overseer",
  "sc-basic-authorship",
  "sc-client-api",
@@ -8911,6 +8801,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
@@ -8920,6 +8811,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -8939,6 +8831,7 @@ dependencies = [
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
+ "uint",
 ]
 
 [[package]]
@@ -8956,6 +8849,7 @@ dependencies = [
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -8970,6 +8864,7 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-test-runtime",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -8979,6 +8874,7 @@ dependencies = [
  "pallet-balances",
  "pallet-executor",
  "pallet-feeds",
+ "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
@@ -9006,6 +8902,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -9021,6 +8918,7 @@ dependencies = [
  "rand 0.8.5",
  "sc-cli",
  "sc-client-api",
+ "sc-executor",
  "sc-network",
  "sc-service",
  "sc-tracing",
@@ -9036,6 +8934,10 @@ dependencies = [
  "substrate-test-utils",
  "tokio",
 ]
+
+[[package]]
+name = "subspace-wasm-tools"
+version = "0.1.0"
 
 [[package]]
 name = "substrate-bip39"
@@ -9363,19 +9265,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
 dependencies = [
  "num_cpus",
-]
-
-[[package]]
-name = "thrift"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b82ca8f46f95b3ce96081fe3dd89160fdea970c254bb72925255d1b62aae692e"
-dependencies = [
- "byteorder 1.4.3",
- "integer-encoding",
- "log",
- "ordered-float",
- "threadpool",
 ]
 
 [[package]]

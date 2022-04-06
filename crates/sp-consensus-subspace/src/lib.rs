@@ -193,6 +193,9 @@ sp_api::decl_runtime_apis! {
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         fn recorded_history_segment_size() -> u32;
 
+        /// Maximum number of pieces in each plot
+        fn max_plot_size() -> u64;
+
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> Duration;
 
@@ -217,6 +220,9 @@ sp_api::decl_runtime_apis! {
 
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
+
+        /// Total number of pieces in a blockchain
+        fn total_pieces() -> u64;
 
         /// Get the merkle tree root of records for specified segment index
         fn records_root(segment_index: u64) -> Option<Sha256Hash>;

@@ -20,7 +20,7 @@ use thiserror::Error;
 use tokio::sync::oneshot::Receiver;
 use tokio::{sync::oneshot, task::JoinHandle};
 
-const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Error)]
 pub enum PlottingError {
@@ -127,6 +127,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
+        ..
     } = farmer_data.metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case

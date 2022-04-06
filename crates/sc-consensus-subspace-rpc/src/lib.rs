@@ -243,6 +243,7 @@ where
                     record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
                         .recorded_history_segment_size(&best_block_id)?,
+                    max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
                 }
             };
 

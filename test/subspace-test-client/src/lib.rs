@@ -43,7 +43,7 @@ pub struct TestExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
     /// Otherwise we only use the default Substrate host functions.
-    type ExtendHostFunctions = ();
+    type ExtendHostFunctions = sp_executor::fraud_proof_ext::fraud_proof::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_test_runtime::api::dispatch(method, data)
@@ -56,6 +56,9 @@ impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
 
 /// The client type being used by the test service.
 pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
+
+/// The backend type being used by the test service.
+pub type Backend = sc_service::TFullBackend<Block>;
 
 /// Run a farmer.
 pub fn start_farmer(new_full: &NewFull<Arc<Client>>) {

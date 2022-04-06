@@ -29,35 +29,83 @@ use futures::{
 use polkadot_node_subsystem::{
 	messages::{
 		AllMessages, ChainApiMessage, CollationGenerationMessage, RuntimeApiMessage,
-		RuntimeApiRequest,
+		RuntimeApiRequest, RuntimeApiSender,
 	},
-	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, SpawnedSubsystem, SubsystemContext,
-	SubsystemError, SubsystemResult,
+	overseer, ActiveLeavesUpdate, FromOverseer, OverseerSignal, RuntimeApiError, SpawnedSubsystem,
+	SubsystemContext, SubsystemError, SubsystemResult, SubsystemSender,
 };
-use polkadot_node_subsystem_util::{
-	metrics::{self, prometheus},
-	request_extract_bundles, request_extrinsics_shuffling_seed,
-};
-use std::sync::Arc;
+use sp_executor::OpaqueBundle;
+use sp_runtime::{generic::DigestItem, OpaqueExtrinsic};
+use std::{borrow::Cow, sync::Arc};
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use subspace_runtime_primitives::Hash;
+use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::{opaque::Header, Hash};
 
 mod error;
 
 const LOG_TARGET: &'static str = "parachain::collation-generation";
 
+/// A type alias for Runtime API receivers.
+type RuntimeApiReceiver<T> = oneshot::Receiver<Result<T, RuntimeApiError>>;
+
+/// Request some data from the `RuntimeApi`.
+async fn request_from_runtime<RequestBuilder, Response, Sender>(
+	parent: Hash,
+	sender: &mut Sender,
+	request_builder: RequestBuilder,
+) -> RuntimeApiReceiver<Response>
+where
+	RequestBuilder: FnOnce(RuntimeApiSender<Response>) -> RuntimeApiRequest,
+	Sender: SubsystemSender,
+{
+	let (tx, rx) = oneshot::channel();
+
+	sender
+		.send_message(RuntimeApiMessage::Request(parent, request_builder(tx)).into())
+		.await;
+
+	rx
+}
+
+/// Request `ExtractBundles` from the runtime
+pub async fn request_extract_bundles(
+	parent: Hash,
+	extrinsics: Vec<OpaqueExtrinsic>,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Vec<OpaqueBundle>> {
+	request_from_runtime(parent, sender, |tx| RuntimeApiRequest::ExtractBundles(extrinsics, tx))
+		.await
+}
+/// Request `ExtrinsicsShufflingSeed "` from the runtime
+pub async fn request_extrinsics_shuffling_seed(
+	parent: Hash,
+	header: Header,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Randomness> {
+	request_from_runtime(parent, sender, |tx| {
+		RuntimeApiRequest::ExtrinsicsShufflingSeed(header, tx)
+	})
+	.await
+}
+/// Rquest `ExecutionWasmBundle` from the runtime
+pub async fn request_execution_wasm_bundle(
+	parent: Hash,
+	sender: &mut impl SubsystemSender,
+) -> RuntimeApiReceiver<Cow<'static, [u8]>> {
+	request_from_runtime(parent, sender, RuntimeApiRequest::ExecutionWasmBundle).await
+}
+
 /// Collation Generation Subsystem
 pub struct CollationGenerationSubsystem {
 	config: Option<Arc<CollationGenerationConfig>>,
-	metrics: Metrics,
 }
 
 impl CollationGenerationSubsystem {
 	/// Create a new instance of the `CollationGenerationSubsystem`.
-	pub fn new(metrics: Metrics) -> Self {
-		Self { config: None, metrics }
+	pub fn new() -> Self {
+		Self { config: None }
 	}
 
 	/// Run this subsystem
@@ -121,12 +169,10 @@ impl CollationGenerationSubsystem {
 			}))) => {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
-					let metrics = self.metrics.clone();
 					if let Err(err) = handle_new_activations(
 						config.clone(),
 						activated.into_iter().map(|v| v.hash),
 						ctx,
-						metrics,
 						sender,
 					)
 					.await
@@ -186,7 +232,6 @@ impl CollationGenerationSubsystem {
 				}
 				false
 			},
-			Ok(FromOverseer::Signal(OverseerSignal::BlockFinalized(..))) => false,
 			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
 					if let Err(err) = produce_bundle(config.clone(), slot_info, ctx, sender).await {
@@ -229,7 +274,6 @@ async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
 	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
-	_metrics: Metrics,
 	sender: &mpsc::Sender<AllMessages>,
 ) -> crate::error::Result<()> {
 	for relay_parent in activated {
@@ -292,12 +336,23 @@ async fn process_primary_block<Context: SubsystemContext>(
 		}
 	};
 
+	let maybe_new_runtime = if header
+		.digest
+		.logs
+		.iter()
+		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+	{
+		Some(request_execution_wasm_bundle(block_hash, ctx.sender()).await.await??)
+	} else {
+		None
+	};
+
 	let shuffling_seed = request_extrinsics_shuffling_seed(block_hash, header, ctx.sender())
 		.await
 		.await??;
 
 	let opaque_execution_receipt =
-		match (config.processor)(block_hash, bundles, shuffling_seed).await {
+		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
 			Some(processor_result) => processor_result.to_opaque_execution_receipt(),
 			None => {
 				tracing::debug!(
@@ -493,93 +548,4 @@ async fn submit_invalid_transaction_proof<Context: SubsystemContext>(
 	)?;
 
 	Ok(())
-}
-
-// TODO: fix unused
-#[allow(unused)]
-#[derive(Clone)]
-struct MetricsInner {
-	collations_generated_total: prometheus::Counter<prometheus::U64>,
-	new_activations_overall: prometheus::Histogram,
-	new_activations_per_relay_parent: prometheus::Histogram,
-	new_activations_per_availability_core: prometheus::Histogram,
-}
-
-/// `CollationGenerationSubsystem` metrics.
-#[derive(Default, Clone)]
-pub struct Metrics(Option<MetricsInner>);
-
-// TODO: fix unused
-#[allow(unused)]
-impl Metrics {
-	fn on_collation_generated(&self) {
-		if let Some(metrics) = &self.0 {
-			metrics.collations_generated_total.inc();
-		}
-	}
-
-	/// Provide a timer for new activations which updates on drop.
-	fn time_new_activations(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0.as_ref().map(|metrics| metrics.new_activations_overall.start_timer())
-	}
-
-	/// Provide a timer per relay parents which updates on drop.
-	fn time_new_activations_relay_parent(
-		&self,
-	) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0
-			.as_ref()
-			.map(|metrics| metrics.new_activations_per_relay_parent.start_timer())
-	}
-
-	/// Provide a timer per availability core which updates on drop.
-	fn time_new_activations_availability_core(
-		&self,
-	) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
-		self.0
-			.as_ref()
-			.map(|metrics| metrics.new_activations_per_availability_core.start_timer())
-	}
-}
-
-impl metrics::Metrics for Metrics {
-	fn try_register(registry: &prometheus::Registry) -> Result<Self, prometheus::PrometheusError> {
-		let metrics = MetricsInner {
-			collations_generated_total: prometheus::register(
-				prometheus::Counter::new(
-					"parachain_collations_generated_total",
-					"Number of collations generated."
-				)?,
-				registry,
-			)?,
-			new_activations_overall: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_new_activations",
-						"Time spent within fn handle_new_activations",
-					)
-				)?,
-				registry,
-			)?,
-			new_activations_per_relay_parent: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_per_relay_parent",
-						"Time spent handling a particular relay parent within fn handle_new_activations"
-					)
-				)?,
-				registry,
-			)?,
-			new_activations_per_availability_core: prometheus::register(
-				prometheus::Histogram::with_opts(
-					prometheus::HistogramOpts::new(
-						"parachain_collation_generation_per_availability_core",
-						"Time spent handling a particular availability core for a relay parent in fn handle_new_activations",
-					)
-				)?,
-				registry,
-			)?,
-		};
-		Ok(Metrics(Some(metrics)))
-	}
 }

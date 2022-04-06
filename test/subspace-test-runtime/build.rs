@@ -17,6 +17,12 @@
 use substrate_wasm_builder::WasmBuilder;
 
 fn main() {
+    subspace_wasm_tools::create_runtime_bundle_inclusion_file(
+        "cirrus-test-runtime",
+        "EXECUTION_WASM_BUNDLE",
+        "execution_wasm_bundle.rs",
+    );
+
     WasmBuilder::new()
         .with_current_project()
         .export_heap_base()

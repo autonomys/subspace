@@ -1,8 +1,8 @@
 use crate::mock::{new_test_ext, Event, Feeds, Origin, System, Test};
-use crate::{Error, FeedId, Object, ObjectMetadata, TotalObjectsAndSize};
+use crate::{Error, Object, ObjectMetadata, TotalObjectsAndSize};
 use frame_support::{assert_noop, assert_ok};
 
-const FEED_ID: FeedId = 0;
+const FEED_ID: u64 = 0;
 const ACCOUNT_ID: u64 = 100;
 
 #[test]
@@ -10,7 +10,7 @@ fn can_create_feed() {
     new_test_ext().execute_with(|| {
         // current feed id is 0 by default
         assert_eq!(Feeds::current_feed_id(), FEED_ID);
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID)));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), None));
         // current feed id value should be incremented after feed is created
         assert_eq!(Feeds::current_feed_id(), 1);
 
@@ -72,7 +72,7 @@ fn cannot_do_put_with_wrong_feed_id() {
                 Origin::signed(ACCOUNT_ID),
                 wrong_feed_id,
                 object,
-                object_metadata
+                object_metadata,
             ),
             Error::<Test>::UnknownFeedId
         );

@@ -1,15 +1,10 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
 // std
-use sc_basic_authorship::ProposerFactory;
 use std::sync::Arc;
 
 // Local Runtime Types
 use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
-
-// Cumulus Imports
-use cirrus_client_service::prepare_node_config;
-use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 // Substrate Imports
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -154,7 +149,7 @@ where
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with("Secondarychain")]
 async fn start_node_impl<RuntimeApi, Executor, RB, BIQ>(
-	parachain_config: Configuration,
+	mut parachain_config: Configuration,
 	polkadot_config: Configuration,
 	_rpc_ext_builder: RB,
 	build_import_queue: BIQ,
@@ -202,7 +197,8 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	let mut parachain_config = prepare_node_config(parachain_config);
+	// TODO: Do we even need block announcement on secondary node?
+	// parachain_config.announce_block = false;
 
 	parachain_config
 		.network
@@ -229,17 +225,15 @@ where
 	let backend = params.backend.clone();
 
 	let validator = parachain_config.role.is_authority();
-	let prometheus_registry = parachain_config.prometheus_registry().cloned();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
-	let import_queue = cirrus_client_service::SharedImportQueue::new(params.import_queue);
 	let (network, system_rpc_tx, start_network) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &parachain_config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
-			import_queue: import_queue.clone(),
+			import_queue: params.import_queue,
 			// TODO: we might want to re-enable this some day.
 			block_announce_validator_builder: None,
 			warp_sync: None,
@@ -273,46 +267,16 @@ where
 		telemetry: telemetry.as_mut(),
 	})?;
 
-	let announce_block = {
-		let network = network.clone();
-		Arc::new(move |hash, data| network.announce_block(hash, data))
-	};
-
-	// Basically, all the executor nodes run all the components, the
-	// difference is that only the authority node will try to win the
-	// election for producing bundle and execution receipt.
-	let parachain_consensus = {
-		let proposer_factory = ProposerFactory::with_proof_recording(
-			task_manager.spawn_handle(),
-			client.clone(),
-			transaction_pool.clone(),
-			prometheus_registry.as_ref(),
-			telemetry.as_ref().map(|t| t.handle()),
-		);
-
-		Box::new(PrimaryChainConsensus::new(
-			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
-			client.clone(),
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.backend.clone(),
-		))
-	};
-
 	let spawner = task_manager.spawn_handle();
 
 	let params = cirrus_client_service::StartExecutorParams {
-		announce_block,
 		client: client.clone(),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
 		spawner: Box::new(spawner),
-		parachain_consensus,
-		import_queue,
 		transaction_pool,
 		network,
 		backend,
-		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
 		code_executor: Arc::new(code_executor),
 		is_authority: validator,
 	};
@@ -338,12 +302,8 @@ pub fn parachain_build_import_queue(
 	>,
 	sc_service::Error,
 > {
-	let block_import = client.clone();
-	let create_inherent_data_providers = |_, _| async move { Ok(()) };
 	cumulus_client_consensus_relay_chain::import_queue(
 		client,
-		block_import,
-		create_inherent_data_providers,
 		&task_manager.spawn_essential_handle(),
 		None,
 	)
