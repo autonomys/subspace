@@ -1,8 +1,9 @@
 use codec::Encode;
+use frame_support::sp_io;
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
 use subspace_core_primitives::crypto;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_runtime::{Block, Call, Header, Runtime, UncheckedExtrinsic};
+use subspace_runtime::{Block, Call, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic};
 
 #[test]
 fn object_mapping() {
@@ -24,7 +25,6 @@ fn object_mapping() {
                 function: Call::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data0.clone(),
-                    metadata: vec![1, 2, 3],
                 }),
             },
             UncheckedExtrinsic {
@@ -32,7 +32,6 @@ fn object_mapping() {
                 function: Call::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data1.clone(),
-                    metadata: vec![],
                 }),
             },
             UncheckedExtrinsic {
@@ -42,12 +41,10 @@ fn object_mapping() {
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data2.clone(),
-                            metadata: vec![1, 2, 3],
                         }),
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data3.clone(),
-                            metadata: vec![],
                         }),
                     ],
                 }),
@@ -59,7 +56,6 @@ fn object_mapping() {
                     call: Box::new(Call::Feeds(pallet_feeds::Call::put {
                         feed_id: 0,
                         object: data0.clone(),
-                        metadata: vec![1, 2, 3],
                     })),
                 }),
             },
@@ -70,12 +66,10 @@ fn object_mapping() {
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data2.clone(),
-                            metadata: vec![1, 2, 3],
                         }),
                         Call::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data3.clone(),
-                            metadata: vec![],
                         }),
                     ],
                 }),
@@ -84,7 +78,10 @@ fn object_mapping() {
     };
 
     let encoded_block = block.encode();
-    let BlockObjectMapping { objects } = Runtime::extract_block_object_mapping(block);
+    let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
+        // init feed
+        Runtime::extract_block_object_mapping(block)
+    });
 
     // Expect all 7 objects to be mapped.
     assert_eq!(objects.len(), 7);
@@ -127,4 +124,16 @@ fn object_mapping() {
         &encoded_block[objects[6].offset() as usize..][..data3.encoded_size()],
         &data3.encode()
     );
+}
+
+pub fn new_test_ext() -> sp_io::TestExternalities {
+    let t = frame_system::GenesisConfig::default()
+        .build_storage::<Runtime>()
+        .unwrap();
+
+    let mut t: sp_io::TestExternalities = t.into();
+
+    t.execute_with(|| System::set_block_number(1));
+
+    t
 }

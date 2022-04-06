@@ -131,3 +131,25 @@ fn delete_feed() {
         assert!(!Totals::<Test>::contains_key(FEED_ID));
     });
 }
+
+#[test]
+fn can_update_existing_feed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::update(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedUpdated {
+            feed_id: FEED_ID,
+            who: ACCOUNT_ID,
+        }));
+    });
+}
+
+#[test]
+fn cannot_update_unknown_feed() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Feeds::update(Origin::signed(ACCOUNT_ID), FEED_ID, (), None),
+            Error::<Test>::UnknownFeedId
+        );
+    });
+}

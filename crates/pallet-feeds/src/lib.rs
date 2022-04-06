@@ -60,7 +60,7 @@ mod pallet {
     /// User-provided object to store
     pub(super) type Object = Vec<u8>;
     /// User provided initial data for validation
-    pub(super) type InitialValidation = Vec<u8>;
+    pub(super) type InitData = Vec<u8>;
 
     /// Total amount of data and number of objects stored in a feed
     #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
@@ -108,6 +108,12 @@ mod pallet {
             who: T::AccountId,
         },
 
+        /// An existing feed was updated.
+        FeedUpdated {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
+
         /// Feed is closed.
         FeedClosed {
             feed_id: T::FeedId,
@@ -138,12 +144,12 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
         /// Create a new feed
-        #[pallet::weight(10_000)]
+        #[pallet::weight((10_000, Pays::No))]
         pub fn create(
             origin: OriginFor<T>,
             feed_id: T::FeedId,
             feed_processor_id: T::FeedProcessorId,
-            initial_validation: Option<InitialValidation>,
+            init_data: Option<InitData>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(
@@ -152,7 +158,7 @@ mod pallet {
             );
 
             let feed_processor = T::feed_processor(feed_processor_id);
-            if let Some(init_data) = initial_validation {
+            if let Some(init_data) = init_data {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }
 
@@ -166,6 +172,37 @@ mod pallet {
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
+
+            Ok(())
+        }
+
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn update(
+            origin: OriginFor<T>,
+            feed_id: T::FeedId,
+            feed_processor_id: T::FeedProcessorId,
+            init_data: Option<InitData>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(
+                FeedConfigs::<T>::contains_key(feed_id),
+                Error::<T>::UnknownFeedId
+            );
+
+            let feed_processor = T::feed_processor(feed_processor_id);
+            if let Some(init_data) = init_data {
+                feed_processor.init(feed_id, init_data.as_slice())?;
+            }
+
+            FeedConfigs::<T>::insert(
+                feed_id,
+                FeedConfig {
+                    active: true,
+                    feed_processor_id,
+                },
+            );
+
+            Self::deposit_event(Event::FeedUpdated { feed_id, who });
 
             Ok(())
         }

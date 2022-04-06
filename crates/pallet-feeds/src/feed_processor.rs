@@ -34,6 +34,7 @@ pub type FeedMetadata = Vec<u8>;
 /// FeedProcessor dictates a flow import and constituents of a Feed
 pub trait FeedProcessor<FeedId> {
     /// initiates a specific Feed with data transparent to FeedProcessor
+    /// can be called when re-initializing the feed.
     fn init(&self, feed_id: FeedId, data: &[u8]) -> DispatchResult;
 
     /// puts a feed and returns the Metadata if any
