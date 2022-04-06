@@ -5,19 +5,21 @@ use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PIECE_SIZE;
+use subspace_farmer::multi_farming::MultiFarming;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    retrieve_piece_from_plots, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
-use subspace_solving::SubspaceCodec;
+use subspace_rpc_primitives::FarmerMetadata;
 
 use crate::FarmingArgs;
 
-/// Start farming by using plot in specified path and connecting to WebSocket server at specified
-/// address.
+/// Start farming by using multiple replica plot in specified path and connecting to WebSocket
+/// server at specified address.
 pub(crate) async fn farm(
     FarmingArgs {
         bootstrap_nodes,
@@ -32,47 +34,25 @@ pub(crate) async fn farm(
 ) -> Result<(), anyhow::Error> {
     let base_directory = crate::utils::get_path(custom_path);
 
-    let identity = Identity::open_or_create(&base_directory)?;
-    let address = identity.public_key().to_bytes().into();
-
-    let reward_address = reward_address.unwrap_or(address);
+    let reward_address = if let Some(reward_address) = reward_address {
+        reward_address
+    } else {
+        let identity = Identity::open_or_create(&base_directory)?;
+        identity.public_key().to_bytes().into()
+    };
 
     info!("Connecting to node at {}", node_rpc_url);
     let client = WsRpc::new(&node_rpc_url).await?;
 
-    let farmer_metadata = client
+    let FarmerMetadata {
+        record_size,
+        recorded_history_segment_size,
+        max_plot_size,
+        ..
+    } = client
         .farmer_metadata()
         .await
-        .map_err(|error| anyhow::Error::msg(error.to_string()))?;
-
-    // TODO: This doesn't account for the fact that node can
-    // have a completely different history to what farmer expects
-    info!("Opening plot");
-    let plot_fut = tokio::task::spawn_blocking({
-        let base_directory = base_directory.clone();
-        let plot_size = plot_size / PIECE_SIZE as u64;
-
-        // TODO: This should be removed once multi replica is merged, as all the disk space will be
-        // used for plotting.
-        if plot_size > farmer_metadata.max_plot_size {
-            log::debug!(
-                "Plot size ({plot_size}) is too large. Maximum plot size is {}",
-                farmer_metadata.max_plot_size,
-            );
-        }
-
-        // TODO: Piece count should account for database overhead of various additional databases
-        move || Plot::open_or_create(&base_directory, address, plot_size)
-    });
-    let plot = plot_fut.await.unwrap()?;
-
-    info!("Opening commitments");
-    let commitments_fut = tokio::task::spawn_blocking({
-        let path = base_directory.join("commitments");
-
-        move || Commitments::new(path)
-    });
-    let commitments = commitments_fut.await.unwrap()?;
+        .map_err(|error| anyhow!(error))?;
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
@@ -82,7 +62,30 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
+    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
+    // less than it was specified before.
+    // TODO: Piece count should account for database overhead of various additional databases
+    // For now assume 80% will go for plot itself
+    let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
+
+    let plot_sizes = std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
+    let plot_sizes = if plot_size % max_plot_size > 0 {
+        plot_sizes
+            .chain(std::iter::once(plot_size % max_plot_size))
+            .collect::<Vec<_>>()
+    } else {
+        plot_sizes.collect()
+    };
+
+    let multi_farming = MultiFarming::new(
+        base_directory,
+        client,
+        object_mappings.clone(),
+        plot_sizes,
+        reward_address,
+        best_block_number_check_interval,
+    )
+    .await?;
 
     // Start RPC server
     let ws_server = WsServerBuilder::default()
@@ -90,11 +93,10 @@ pub(crate) async fn farm(
         .await?;
     let ws_server_addr = ws_server.local_addr()?;
     let rpc_server = RpcServerImpl::new(
-        farmer_metadata.record_size,
-        farmer_metadata.recorded_history_segment_size,
-        plot.clone(),
+        record_size,
+        recorded_history_segment_size,
+        Arc::clone(&multi_farming.plots),
         object_mappings.clone(),
-        subspace_codec,
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
@@ -104,26 +106,9 @@ pub(crate) async fn farm(
         bootstrap_nodes,
         listen_on,
         value_getter: Arc::new({
-            let plot = plot.clone();
+            let plots = Arc::clone(&multi_farming.plots);
 
-            move |key| {
-                let code = key.code();
-
-                if code == u64::from(MultihashCode::Piece)
-                    || code == u64::from(MultihashCode::PieceIndex)
-                {
-                    let piece_index =
-                        u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
-                    let mut piece = plot.read_piece(piece_index).ok()?;
-
-                    subspace_codec
-                        .decode(&mut piece, piece_index)
-                        .expect("Decoding of local pieces must never fail");
-                    Some(piece)
-                } else {
-                    None
-                }
-            }
+            move |key| networking_getter(&plots, key)
         }),
         allow_non_globals_in_dht: true,
         // TODO: Persistent identity
@@ -149,33 +134,19 @@ pub(crate) async fn farm(
         node_runner.run().await;
     });
 
-    // start the farming task
-    let farming_instance = Farming::start(
-        plot.clone(),
-        commitments.clone(),
-        client.clone(),
-        identity,
-        reward_address,
-    );
+    multi_farming.wait().await
+}
 
-    let farmer_data = FarmerData::new(plot, commitments, object_mappings, farmer_metadata);
+fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
+    let code = key.code();
 
-    // start the background plotting
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        client,
-        subspace_codec,
-        best_block_number_check_interval,
-    );
-
-    tokio::select! {
-        res = plotting_instance.wait() => if let Err(error) = res {
-            return Err(anyhow!(error))
-        },
-        res = farming_instance.wait() => if let Err(error) = res {
-            return Err(anyhow!(error))
-        },
+    if code != u64::from(MultihashCode::Piece) && code != u64::from(MultihashCode::PieceIndex) {
+        return None;
     }
 
-    Ok(())
+    let piece_index = u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
+
+    retrieve_piece_from_plots(plots, piece_index)
+        .expect("Decoding of local pieces must never fail")
+        .map(|piece| piece.to_vec())
 }

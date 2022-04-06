@@ -15,7 +15,7 @@ use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, PIECE_SIZE,
 };
-use subspace_solving::PieceDistance;
+use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
 
 const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
@@ -113,6 +113,7 @@ struct Inner {
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
+    address: PublicKey,
 }
 
 impl Drop for Inner {
@@ -133,6 +134,33 @@ impl Drop for Inner {
     }
 }
 
+/// Retrieves and decodes a single piece from multiple plots
+pub fn retrieve_piece_from_plots(
+    plots: &[Plot],
+    piece_index: PieceIndex,
+) -> io::Result<Option<Piece>> {
+    let piece_index_hash = PieceIndexHash::from(piece_index);
+    let mut plots = plots.iter().collect::<Vec<_>>();
+    plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
+
+    plots
+        .iter()
+        .take(2)
+        .find_map(|plot| {
+            plot.read(piece_index_hash)
+                .map(|piece| (piece, plot.public_key()))
+                .ok()
+        })
+        .map(|(mut piece, public_key)| {
+            // TODO: Do not recreate codec each time
+            SubspaceCodec::new(&public_key)
+                .decode(&mut piece, piece_index)
+                .map_err(|_| io::Error::other("Failed to decode piece"))
+                .map(move |()| piece)
+        })
+        .transpose()
+}
+
 /// `Plot` struct is an abstraction on top of both plot and tags database.
 ///
 /// It converts requests to internal reads/writes to the plot and tags database. It
@@ -146,41 +174,6 @@ pub struct Plot {
 }
 
 impl Plot {
-    /// Helper function for ignoring the error that given file/directory does not exist.
-    fn try_remove<P: AsRef<Path>>(
-        path: P,
-        remove: impl FnOnce(P) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if path.as_ref().exists() {
-            remove(path)?;
-        }
-        Ok(())
-    }
-
-    /// Erases plot in specific directory
-    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
-        info!("Erasing the plot");
-        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
-        info!("Erasing the plot offset to index db");
-        Self::try_remove(
-            path.as_ref().join("plot-offset-to-index.bin"),
-            fs::remove_file,
-        )?;
-        info!("Erasing the plot index to offset db");
-        Self::try_remove(
-            path.as_ref().join("plot-index-to-offset"),
-            fs::remove_dir_all,
-        )?;
-        info!("Erasing plot metadata");
-        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
-        info!("Erasing plot commitments");
-        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
-        info!("Erasing object mappings");
-        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
-
-        Ok(())
-    }
-
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
@@ -205,6 +198,7 @@ impl Plot {
             requests_sender,
             plot_metadata_db,
             piece_count,
+            address,
         };
 
         Ok(Plot {
@@ -215,6 +209,11 @@ impl Plot {
     /// How many pieces are there in the plot
     pub(crate) fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
+    }
+
+    /// Public key for which pieces were plotted
+    pub fn public_key(&self) -> PublicKey {
+        self.inner.address
     }
 
     /// Whether plot doesn't have anything in it
@@ -390,6 +389,42 @@ impl Plot {
         callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.inner.handlers.progress_change.add(callback)
+    }
+
+    /// Helper function for ignoring the error that given file/directory does not exist.
+    fn try_remove<P: AsRef<Path>>(
+        path: P,
+        remove: impl FnOnce(P) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if path.as_ref().exists() {
+            remove(path)?;
+        }
+        Ok(())
+    }
+
+    // TODO: Remove with the next snapshot (as it is unused by now)
+    /// Erases plot in specific directory
+    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
+        info!("Erasing the plot");
+        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
+        info!("Erasing the plot offset to index db");
+        Self::try_remove(
+            path.as_ref().join("plot-offset-to-index.bin"),
+            fs::remove_file,
+        )?;
+        info!("Erasing the plot index to offset db");
+        Self::try_remove(
+            path.as_ref().join("plot-index-to-offset"),
+            fs::remove_dir_all,
+        )?;
+        info!("Erasing plot metadata");
+        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
+        info!("Erasing plot commitments");
+        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
+        info!("Erasing object mappings");
+        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
+
+        Ok(())
     }
 }
 

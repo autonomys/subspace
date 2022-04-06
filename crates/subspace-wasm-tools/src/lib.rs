@@ -21,7 +21,7 @@ pub fn create_runtime_bundle_inclusion_file(
     let target_dir = env::var("CARGO_TARGET_DIR")
         .or_else(|_| env::var("WASM_TARGET_DIRECTORY"))
         .map(Into::into)
-        .unwrap_or_else(|| {
+        .unwrap_or_else(|_| {
             let out_dir = env::var("OUT_DIR").expect("Always set by cargo");
             // Call get `get_relative_target` twice if possible, as wasm target directory is
             // contained in host target directory, and we actually need host one.

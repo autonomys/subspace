@@ -135,29 +135,3 @@ async fn partial_plot() {
         assert!(plot.read(i).is_err());
     }
 }
-
-#[tokio::test()]
-async fn wipe_cleans_everything() {
-    init();
-    let base_directory = TempDir::new().unwrap();
-
-    let plot =
-        Plot::open_or_create(&base_directory, rand::random::<[u8; 32]>().into(), u64::MAX).unwrap();
-
-    let pieces = Arc::new(generate_random_pieces(20));
-    plot.write_many(Arc::clone(&pieces), (0..).take(pieces.count()).collect())
-        .unwrap();
-    assert!(!plot.is_empty());
-    drop(plot);
-
-    std::fs::read_dir(&base_directory)
-        .unwrap()
-        .next()
-        .expect("Plot at least has 1 dir entry")
-        .unwrap();
-    Plot::erase(&base_directory).unwrap();
-    assert!(
-        std::fs::read_dir(&base_directory).unwrap().next().is_none(),
-        "Plot directory is clean"
-    );
-}

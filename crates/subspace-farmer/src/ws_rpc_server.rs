@@ -1,5 +1,5 @@
-use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::{object_mappings::ObjectMappings, plot};
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
@@ -7,10 +7,12 @@ use jsonrpsee::proc_macros::rpc;
 use log::{debug, error};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
-use subspace_solving::SubspaceCodec;
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
@@ -126,6 +128,7 @@ pub trait Rpc {
 /// Usage example:
 /// ```rust
 /// # async fn f() -> anyhow::Result<()> {
+/// use std::sync::Arc;
 /// use jsonrpsee::ws_server::WsServerBuilder;
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
@@ -142,9 +145,8 @@ pub trait Rpc {
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
-///     plot,
+///     Arc::new(vec![plot]),
 ///     object_mappings,
-///     SubspaceCodec::new(&[0]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -154,25 +156,22 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    plot: Plot,
+    plots: Arc<Vec<Plot>>,
     object_mappings: ObjectMappings,
-    subspace_codec: SubspaceCodec,
 }
 
 impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        plot: Plot,
+        plots: Arc<Vec<Plot>>,
         object_mappings: ObjectMappings,
-        subspace_codec: SubspaceCodec,
     ) -> Self {
         Self {
             record_size,
             merkle_num_leaves: recorded_history_segment_size / record_size * 2,
-            plot,
+            plots,
             object_mappings,
-            subspace_codec,
         }
     }
 
@@ -429,61 +428,28 @@ impl RpcServerImpl {
 
     /// Read and decode the whole piece
     async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
-        let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
-
-            move || plot.read(piece_index)
-        });
-        let mut piece = piece_fut.await.unwrap().map_err(|error| {
-            debug!("Failed to read piece with index {}: {}", piece_index, error);
-
-            Error::Custom("Object mapping found, but reading piece failed".to_string())
-        })?;
-
-        self.subspace_codec
-            .decode(&mut piece, piece_index)
-            .map_err(|error| {
-                debug!(
-                    "Failed to decode piece with index {}: {}",
-                    piece_index, error
-                );
-
-                Error::Custom("Failed to decode piece".to_string())
-            })?;
-
-        Ok(piece)
+        let plots = Arc::clone(&self.plots);
+        tokio::task::spawn_blocking(move || plot::retrieve_piece_from_plots(&plots, piece_index))
+            .await
+            .unwrap()
+            .map_err(|err| Error::Custom(err.to_string()))
+            .and_then(|maybe_piece| {
+                maybe_piece.ok_or_else(|| {
+                    Error::Custom("Object mapping found, but reading piece failed".to_string())
+                })
+            })
     }
 }
 
 #[async_trait]
 impl RpcServer for RpcServerImpl {
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
-        let piece_fut = tokio::task::spawn_blocking({
-            let plot = self.plot.clone();
-
-            move || plot.read(piece_index)
-        });
-        let mut piece = match piece_fut.await.unwrap() {
-            Ok(encoding) => encoding,
-            Err(error) => {
-                debug!("Failed to find piece with index {}: {}", piece_index, error);
-
-                return Ok(None);
-            }
-        };
-
-        self.subspace_codec
-            .decode(&mut piece, piece_index)
-            .map_err(|error| {
-                debug!(
-                    "Failed to decode piece with index {}: {}",
-                    piece_index, error
-                );
-
-                Error::Custom("Failed to decode piece".to_string())
-            })?;
-
-        Ok(Some(piece.into()))
+        let plots = Arc::clone(&self.plots);
+        tokio::task::spawn_blocking(move || plot::retrieve_piece_from_plots(&plots, piece_index))
+            .await
+            .unwrap()
+            .map(|maybe_piece| maybe_piece.map(HexPiece::from))
+            .map_err(|err| Error::Custom(err.to_string()))
     }
 
     /// Find object by its ID
