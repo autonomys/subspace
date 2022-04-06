@@ -932,16 +932,12 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.21",
  "parity-scale-codec",
- "sc-client-api",
  "scale-info",
  "serde",
- "sp-api",
- "sp-blockchain",
  "sp-consensus-slots",
  "sp-core",
  "sp-executor",
  "sp-runtime",
- "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]

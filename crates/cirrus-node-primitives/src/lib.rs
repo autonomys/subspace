@@ -18,29 +18,15 @@
 
 use futures::Future;
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::BlockBackend;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_core::bytes;
 use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
 use std::{borrow::Cow, pin::Pin};
 use subspace_core_primitives::{Randomness, Tag};
-use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Hash;
-
-/// Type alias for APIs required from primary chain client
-pub trait PrimaryChainClient:
-    HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
-{
-}
-
-impl<T> PrimaryChainClient for T where
-    T: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
-{
-}
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]

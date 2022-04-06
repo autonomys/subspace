@@ -46,7 +46,7 @@ use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_node_primitives::{
-	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, PrimaryChainClient, ProcessorResult,
+	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, ProcessorResult,
 };
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
@@ -54,7 +54,7 @@ use sp_executor::{
 	InvalidTransactionProof, OpaqueBundle,
 };
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Hash as PHash;
+use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 use futures::FutureExt;
 use std::{borrow::Cow, sync::Arc};
@@ -62,6 +62,17 @@ use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
+
+/// Type alias for APIs required from primary chain client
+pub trait PrimaryChainClient:
+	HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+{
+}
+
+impl<T> PrimaryChainClient for T where
+	T: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+{
+}
 
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
