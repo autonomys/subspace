@@ -26,7 +26,6 @@ use sp_consensus_slots::Slot;
 use sp_core::bytes;
 use sp_executor::{OpaqueBundle, OpaqueExecutionReceipt};
 use sp_runtime::traits::Hash as HashT;
-use std::sync::Arc;
 use std::{borrow::Cow, pin::Pin};
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::opaque::Block;
@@ -130,7 +129,6 @@ pub type ProcessorFn = Box<
 
 /// Configuration for the collation generator
 pub struct CollationGenerationConfig {
-    pub primary_chain_client: Arc<dyn PrimaryChainClient>,
     /// Transaction bundle function. See [`BundlerFn`] for more details.
     pub bundler: BundlerFn,
     /// State processor function. See [`ProcessorFn`] for more details.

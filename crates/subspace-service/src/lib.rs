@@ -411,7 +411,7 @@ where
         let spawner = task_manager.spawn_handle();
 
         let (overseer, overseer_handle) = Overseer::builder()
-            .collation_generation(CollationGenerationSubsystem::new())
+            .collation_generation(CollationGenerationSubsystem::new(client.clone()))
             .runtime_api(RuntimeApiSubsystem::new(client.clone(), spawner.clone()))
             .leaves(
                 active_leaves

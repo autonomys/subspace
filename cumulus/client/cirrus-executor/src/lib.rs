@@ -743,7 +743,7 @@ where
 	E: CodeExecutor,
 {
 	let executor = Executor::new(
-		Arc::clone(&primary_chain_client),
+		primary_chain_client,
 		client,
 		spawner,
 		overseer_handle.clone(),
@@ -757,7 +757,6 @@ where
 
 	let span = tracing::Span::current();
 	let config = CollationGenerationConfig {
-		primary_chain_client,
 		bundler: {
 			let executor = executor.clone();
 			let span = span.clone();
