@@ -66,8 +66,9 @@ pub mod pallet {
     };
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
+    use num_traits::CheckedAdd;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;
-    use sp_runtime::traits::{Header, Zero};
+    use sp_runtime::traits::{Header, One, Zero};
     use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]
@@ -109,7 +110,7 @@ pub mod pallet {
         /// Best finalized header not found for chain
         FinalizedHeaderNotFound,
         /// The header is already finalized
-        OldHeader,
+        InvalidHeader,
         /// The scheduled authority set change found in the header is unsupported by the pallet.
         ///
         /// This is the case for non-standard (e.g forced) authority set changes.
@@ -153,7 +154,11 @@ pub mod pallet {
 
         // ensure block is always increasing
         let (number, hash) = (block.block.header.number(), block.block.header.hash());
-        ensure!(best_finalized.number() < number, Error::<T>::OldHeader);
+        let next_block_number = best_finalized
+            .number()
+            .checked_add(&One::one())
+            .ok_or(sp_runtime::ArithmeticError::Overflow)?;
+        ensure!(next_block_number == *number, Error::<T>::InvalidHeader);
 
         // fetch current authority set
         let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);

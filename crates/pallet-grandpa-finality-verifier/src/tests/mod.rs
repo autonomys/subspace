@@ -351,12 +351,13 @@ fn importing_header_ensures_that_chain_is_extended() {
     run_test(|| {
         let chain_id: ChainId = 1;
         assert_ok!(init_with_origin(chain_id));
-        assert_ok!(submit_valid_finality_proof(chain_id, 4));
+        assert_ok!(submit_valid_finality_proof(chain_id, 1));
+        assert_ok!(submit_valid_finality_proof(chain_id, 2));
         assert_err!(
-            submit_valid_finality_proof(chain_id, 3),
-            ErrorP::<TestRuntime>::OldHeader
+            submit_valid_finality_proof(chain_id, 4),
+            ErrorP::<TestRuntime>::InvalidHeader
         );
-        assert_ok!(submit_valid_finality_proof(chain_id, 5));
+        assert_ok!(submit_valid_finality_proof(chain_id, 3));
     })
 }
 
@@ -386,7 +387,7 @@ fn importing_header_enacts_new_authority_set() {
 
         // Need to update the header digest to indicate that our header signals an authority set
         // change. The change will be enacted when we import our header.
-        let mut header = test_header::<TestHeader>(2);
+        let mut header = test_header::<TestHeader>(1);
         header.digest = change_log(0);
 
         // Create a valid justification for the header
@@ -424,7 +425,7 @@ fn importing_header_rejects_header_with_scheduled_change_delay() {
 
         // Need to update the header digest to indicate that our header signals an authority set
         // change. However, the change doesn't happen until the next block.
-        let mut header = test_header::<TestHeader>(2);
+        let mut header = test_header::<TestHeader>(1);
         header.digest = change_log(1);
 
         // Create a valid justification for the header
@@ -463,7 +464,7 @@ fn importing_header_rejects_header_with_forced_changes() {
 
         // Need to update the header digest to indicate that it signals a forced authority set
         // change.
-        let mut header = test_header::<TestHeader>(2);
+        let mut header = test_header::<TestHeader>(1);
         header.digest = forced_change_log(0);
 
         // Create a valid justification for the header
