@@ -349,13 +349,6 @@ pub trait SubsystemContext: Send + 'static {
 	/// Receive a message.
 	async fn recv(&mut self) -> Result<FromOverseer<Self::Message, Self::Signal>, Self::Error>;
 
-	/// Spawn a child task on the executor.
-	fn spawn(
-		&mut self,
-		name: &'static str,
-		s: ::std::pin::Pin<Box<dyn crate::Future<Output = ()> + Send>>,
-	) -> Result<(), Self::Error>;
-
 	/// Send a direct message to some other `Subsystem`, routed based on message type.
 	async fn send_message<X>(&mut self, msg: X)
 	where
