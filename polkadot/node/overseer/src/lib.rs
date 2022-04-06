@@ -211,45 +211,45 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 }
 
 // SystemTime { tv_sec: 1649250089, tv_nsec: 861080098 }
-#[doc = r" Capacity of a bounded message channel between overseer and subsystem"]
-#[doc = r" but also for bounded channels between two subsystems."]
+/// Capacity of a bounded message channel between overseer and subsystem
+/// but also for bounded channels between two subsystems.
 const CHANNEL_CAPACITY: usize = 1024usize;
-#[doc = r" Capacity of a signal channel between a subsystem and the overseer."]
+/// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
-#[doc = r" The log target tag."]
+/// The log target tag.
 const LOG_TARGET: &'static str = "overseer";
-#[doc = r" The overseer."]
+/// The overseer.
 pub struct Overseer<S> {
-	#[doc = r" A subsystem instance."]
+	/// A subsystem instance.
 	collation_generation: OverseenSubsystem<CollationGenerationMessage>,
-	#[doc = r" A user specified addendum field."]
+	/// A user specified addendum field.
 	pub leaves: Vec<(Hash, BlockNumber)>,
-	#[doc = r" A user specified addendum field."]
+	/// A user specified addendum field.
 	pub active_leaves: HashMap<Hash, BlockNumber>,
-	#[doc = r" A user specified addendum field."]
+	/// A user specified addendum field.
 	pub known_leaves: LruCache<Hash, ()>,
-	#[doc = r" Responsible for driving the subsystem futures."]
+	/// Responsible for driving the subsystem futures.
 	spawner: S,
-	#[doc = r" The set of running subsystems."]
+	/// The set of running subsystems.
 	running_subsystems: polkadot_overseer_gen::FuturesUnordered<
 		BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
 	>,
-	#[doc = r" Gather running subsystems' outbound streams into one."]
+	/// Gather running subsystems' outbound streams into one.
 	to_overseer_rx: polkadot_overseer_gen::stream::Fuse<
 		polkadot_overseer_gen::metered::UnboundedMeteredReceiver<polkadot_overseer_gen::ToOverseer>,
 	>,
-	#[doc = r" Events that are sent to the overseer from the outside world."]
+	/// Events that are sent to the overseer from the outside world.
 	events_rx: polkadot_overseer_gen::metered::MeteredReceiver<Event>,
 }
 impl<S> Overseer<S>
 where
 	S: polkadot_overseer_gen::SpawnNamed,
 {
-	#[doc = r" Send the given signal, a termination signal, to all subsystems"]
-	#[doc = r" and wait for all subsystems to go down."]
-	#[doc = r""]
-	#[doc = r" The definition of a termination signal is up to the user and"]
-	#[doc = r" implementation specific."]
+	/// Send the given signal, a termination signal, to all subsystems
+	/// and wait for all subsystems to go down.
+	///
+	/// The definition of a termination signal is up to the user and
+	/// implementation specific.
 	pub async fn wait_terminate(
 		&mut self,
 		signal: OverseerSignal,
@@ -267,7 +267,7 @@ where
 		}
 		Ok(())
 	}
-	#[doc = r" Broadcast a signal to all subsystems."]
+	/// Broadcast a signal to all subsystems.
 	pub async fn broadcast_signal(
 		&mut self,
 		signal: OverseerSignal,
@@ -276,7 +276,7 @@ where
 		let _ = signal;
 		Ok(())
 	}
-	#[doc = r" Route a particular message to a subsystem that consumes the message."]
+	/// Route a particular message to a subsystem that consumes the message.
 	pub async fn route_message(
 		&mut self,
 		message: AllMessages,
@@ -294,14 +294,14 @@ where
 		}
 		Ok(())
 	}
-	#[doc = r" Extract information from each subsystem."]
+	/// Extract information from each subsystem.
 	pub fn map_subsystems<'a, Mapper, Output>(&'a self, mapper: Mapper) -> Vec<Output>
 	where
 		Mapper: MapSubsystem<&'a OverseenSubsystem<CollationGenerationMessage>, Output = Output>,
 	{
 		vec![mapper.map_subsystem(&self.collation_generation)]
 	}
-	#[doc = r" Get access to internal task spawner."]
+	/// Get access to internal task spawner.
 	pub fn spawner<'a>(&'a mut self) -> &'a mut S {
 		&mut self.spawner
 	}
@@ -310,7 +310,7 @@ impl<S> Overseer<S>
 where
 	S: polkadot_overseer_gen::SpawnNamed,
 {
-	#[doc = r" Create a new overseer utilizing the builder."]
+	/// Create a new overseer utilizing the builder.
 	pub fn builder<CollationGeneration>() -> OverseerBuilder<S, CollationGeneration>
 	where
 		S: polkadot_overseer_gen::SpawnNamed,
@@ -320,29 +320,29 @@ where
 		OverseerBuilder::default()
 	}
 }
-#[doc = r" Handle for an overseer."]
+/// Handle for an overseer.
 pub type OverseerHandle = polkadot_overseer_gen::metered::MeteredSender<Event>;
-#[doc = r" External connector."]
+/// External connector.
 pub struct OverseerConnector {
-	#[doc = r" Publicly accessible handle, to be used for setting up"]
-	#[doc = r" components that are _not_ subsystems but access is needed"]
-	#[doc = r" due to other limitations."]
-	#[doc = r""]
-	#[doc = r" For subsystems, use the `_with` variants of the builder."]
+	/// Publicly accessible handle, to be used for setting up
+	/// components that are _not_ subsystems but access is needed
+	/// due to other limitations.
+	///
+	/// For subsystems, use the `_with` variants of the builder.
 	handle: OverseerHandle,
-	#[doc = r" The side consumed by the `spawned` side of the overseer pattern."]
+	/// The side consumed by the `spawned` side of the overseer pattern.
 	consumer: polkadot_overseer_gen::metered::MeteredReceiver<Event>,
 }
 impl OverseerConnector {
-	#[doc = r" Obtain access to the overseer handle."]
+	/// Obtain access to the overseer handle.
 	pub fn as_handle_mut(&mut self) -> &mut OverseerHandle {
 		&mut self.handle
 	}
-	#[doc = r" Obtain access to the overseer handle."]
+	/// Obtain access to the overseer handle.
 	pub fn as_handle(&self) -> &OverseerHandle {
 		&self.handle
 	}
-	#[doc = r" Obtain a clone of the handle."]
+	/// Obtain a clone of the handle.
 	pub fn handle(&self) -> OverseerHandle {
 		self.handle.clone()
 	}
@@ -354,16 +354,16 @@ impl ::std::default::Default for OverseerConnector {
 		Self { handle: events_tx, consumer: events_rx }
 	}
 }
-#[doc = r" Convenience alias."]
+/// Convenience alias.
 type SubsystemInitFn<T> =
 	Box<dyn FnOnce(OverseerHandle) -> ::std::result::Result<T, SubsystemError>>;
-#[doc = r" Initialization type to be used for a field of the overseer."]
+/// Initialization type to be used for a field of the overseer.
 enum FieldInitMethod<T> {
-	#[doc = r" Defer initialization to a point where the `handle` is available."]
+	/// Defer initialization to a point where the `handle` is available.
 	Fn(SubsystemInitFn<T>),
-	#[doc = r" Directly initialize the subsystem with the given subsystem type `T`."]
+	/// Directly initialize the subsystem with the given subsystem type `T`.
 	Value(T),
-	#[doc = r" Subsystem field does not have value just yet."]
+	/// Subsystem field does not have value just yet.
 	Uninitialized,
 }
 impl<T> ::std::default::Default for FieldInitMethod<T> {
@@ -406,7 +406,7 @@ where
 	CollationGeneration:
 		Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
 {
-	#[doc = r" The spawner to use for spawning tasks."]
+	/// The spawner to use for spawning tasks.
 	pub fn spawner(mut self, spawner: S) -> Self
 	where
 		S: polkadot_overseer_gen::SpawnNamed + Send,
@@ -414,12 +414,12 @@ where
 		self.spawner = Some(spawner);
 		self
 	}
-	#[doc = r" Specify the particular subsystem implementation."]
+	/// Specify the particular subsystem implementation.
 	pub fn collation_generation(mut self, subsystem: CollationGeneration) -> Self {
 		self.collation_generation = FieldInitMethod::Value(subsystem);
 		self
 	}
-	#[doc = r" Specify the particular subsystem by giving a init function."]
+	/// Specify the particular subsystem by giving a init function.
 	pub fn collation_generation_with<'a, F>(mut self, subsystem_init_fn: F) -> Self
 	where
 		F: 'static
@@ -430,27 +430,27 @@ where
 		);
 		self
 	}
-	#[doc = r" Attach the user defined addendum type."]
+	/// Attach the user defined addendum type.
 	pub fn leaves(mut self, baggage: Vec<(Hash, BlockNumber)>) -> Self {
 		self.leaves = Some(baggage);
 		self
 	}
-	#[doc = r" Attach the user defined addendum type."]
+	/// Attach the user defined addendum type.
 	pub fn active_leaves(mut self, baggage: HashMap<Hash, BlockNumber>) -> Self {
 		self.active_leaves = Some(baggage);
 		self
 	}
-	#[doc = r" Attach the user defined addendum type."]
+	/// Attach the user defined addendum type.
 	pub fn known_leaves(mut self, baggage: LruCache<Hash, ()>) -> Self {
 		self.known_leaves = Some(baggage);
 		self
 	}
-	#[doc = r" Complete the construction and create the overseer type."]
+	/// Complete the construction and create the overseer type.
 	pub fn build(self) -> ::std::result::Result<(Overseer<S>, OverseerHandle), SubsystemError> {
 		let connector = OverseerConnector::default();
 		self.build_with_connector(connector)
 	}
-	#[doc = r" Complete the construction and create the overseer type based on an existing `connector`."]
+	/// Complete the construction and create the overseer type based on an existing `connector`.
 	pub fn build_with_connector(
 		self,
 		connector: OverseerConnector,
@@ -489,7 +489,7 @@ where
 			);
 		let (signal_tx, signal_rx) =
 			polkadot_overseer_gen::metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let mut subsystem_string = String::from(stringify!(collation_generation));
+		let subsystem_string = String::from(stringify!(collation_generation));
 		let subsystem_static_str = Box::leak(subsystem_string.replace("_", "-").into_boxed_str());
 		let ctx = OverseerSubsystemContext::<CollationGenerationMessage>::new(
 			signal_rx,
@@ -524,7 +524,6 @@ where
 			stringify!(known_leaves),
 			stringify!(Overseer)
 		));
-		use polkadot_overseer_gen::StreamExt;
 		let to_overseer_rx = to_overseer_rx.fuse();
 		let overseer = Overseer {
 			collation_generation,
@@ -545,8 +544,8 @@ where
 	CollationGeneration:
 		Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
 {
-	#[doc = r" Replace a subsystem by another implementation for the"]
-	#[doc = r" consumable message type."]
+	/// Replace a subsystem by another implementation for the
+	/// consumable message type.
 	pub fn replace_collation_generation<NEW, F>(
 		self,
 		gen_replacement_fn: F,
@@ -580,9 +579,9 @@ where
 		}
 	}
 }
-#[doc = r" Task kind to launch."]
+/// Task kind to launch.
 pub trait TaskKind {
-	#[doc = r" Spawn a task, it depends on the implementer if this is blocking or not."]
+	/// Spawn a task, it depends on the implementer if this is blocking or not.
 	fn launch_task<S: SpawnNamed>(
 		spawner: &mut S,
 		task_name: &'static str,
@@ -614,7 +613,7 @@ impl TaskKind for Blocking {
 		spawner.spawn(task_name, Some(subsystem_name), future)
 	}
 }
-#[doc = r" Spawn task of kind `self` using spawner `S`."]
+/// Spawn task of kind `self` using spawner `S`.
 pub fn spawn<S, M, TK, Ctx, E, SubSys>(
 	spawner: &mut S,
 	message_tx: polkadot_overseer_gen::metered::MeteredSender<MessagePacket<M>>,
@@ -667,21 +666,21 @@ where
 	});
 	Ok(OverseenSubsystem { instance })
 }
-#[doc = r" A subsystem that the overseer oversees."]
-#[doc = r""]
-#[doc = r" Ties together the [`Subsystem`] itself and it's running instance"]
-#[doc = r" (which may be missing if the [`Subsystem`] is not running at the moment"]
-#[doc = r" for whatever reason)."]
-#[doc = r""]
-#[doc = r" [`Subsystem`]: trait.Subsystem.html"]
+/// A subsystem that the overseer oversees.
+///
+/// Ties together the [`Subsystem`] itself and it's running instance
+/// (which may be missing if the [`Subsystem`] is not running at the moment
+/// for whatever reason).
+///
+/// [`Subsystem`]: trait.Subsystem.html
 pub struct OverseenSubsystem<M> {
-	#[doc = r" The instance."]
+	/// The instance.
 	pub instance: std::option::Option<polkadot_overseer_gen::SubsystemInstance<M, OverseerSignal>>,
 }
 impl<M> OverseenSubsystem<M> {
-	#[doc = r" Send a message to the wrapped subsystem."]
-	#[doc = r""]
-	#[doc = r" If the inner `instance` is `None`, nothing is happening."]
+	/// Send a message to the wrapped subsystem.
+	///
+	/// If the inner `instance` is `None`, nothing is happening.
 	pub async fn send_message2(
 		&mut self,
 		message: M,
@@ -712,9 +711,9 @@ impl<M> OverseenSubsystem<M> {
 			Ok(())
 		}
 	}
-	#[doc = r" Send a signal to the wrapped subsystem."]
-	#[doc = r""]
-	#[doc = r" If the inner `instance` is `None`, nothing is happening."]
+	/// Send a signal to the wrapped subsystem.
+	///
+	/// If the inner `instance` is `None`, nothing is happening.
 	pub async fn send_signal(
 		&mut self,
 		signal: OverseerSignal,
@@ -738,22 +737,22 @@ impl<M> OverseenSubsystem<M> {
 		}
 	}
 }
-#[doc = r" Collection of channels to the individual subsystems."]
-#[doc = r""]
-#[doc = r" Naming is from the point of view of the overseer."]
+/// Collection of channels to the individual subsystems.
+///
+/// Naming is from the point of view of the overseer.
 #[derive(Debug, Clone)]
 pub struct ChannelsOut {
-	#[doc = r" Bounded channel sender, connected to a subsystem."]
+	/// Bounded channel sender, connected to a subsystem.
 	pub collation_generation:
 		polkadot_overseer_gen::metered::MeteredSender<MessagePacket<CollationGenerationMessage>>,
-	#[doc = r" Unbounded channel sender, connected to a subsystem."]
+	/// Unbounded channel sender, connected to a subsystem.
 	pub collation_generation_unbounded: polkadot_overseer_gen::metered::UnboundedMeteredSender<
 		MessagePacket<CollationGenerationMessage>,
 	>,
 }
 #[allow(unreachable_code)]
 impl ChannelsOut {
-	#[doc = r" Send a message via a bounded channel."]
+	/// Send a message via a bounded channel.
 	pub async fn send_and_log_error(&mut self, signals_received: usize, message: AllMessages) {
 		let res: ::std::result::Result<_, _> = match message {
 			AllMessages::CollationGeneration(inner) => self
@@ -771,7 +770,7 @@ impl ChannelsOut {
 			);
 		}
 	}
-	#[doc = r" Send a message to another subsystem via an unbounded channel."]
+	/// Send a message to another subsystem via an unbounded channel.
 	pub fn send_unbounded_and_log_error(&self, signals_received: usize, message: AllMessages) {
 		let res: ::std::result::Result<_, _> = match message {
 			AllMessages::CollationGeneration(inner) => self
@@ -789,16 +788,16 @@ impl ChannelsOut {
 		}
 	}
 }
-#[doc = r" Connector to send messages towards all subsystems,"]
-#[doc = r" while tracking the which signals where already received."]
+/// Connector to send messages towards all subsystems,
+/// while tracking the which signals where already received.
 #[derive(Debug, Clone)]
 pub struct OverseerSubsystemSender {
-	#[doc = r" Collection of channels to all subsystems."]
+	/// Collection of channels to all subsystems.
 	channels: ChannelsOut,
-	#[doc = r" Systemwide tick for which signals were received by all subsystems."]
+	/// Systemwide tick for which signals were received by all subsystems.
 	signals_received: SignalsReceived,
 }
-#[doc = r" implementation for wrapping message type..."]
+/// implementation for wrapping message type...
 #[polkadot_overseer_gen::async_trait]
 impl SubsystemSender<AllMessages> for OverseerSubsystemSender {
 	async fn send_message(&mut self, msg: AllMessages) {
@@ -838,13 +837,13 @@ impl SubsystemSender<CollationGenerationMessage> for OverseerSubsystemSender {
 			.send_unbounded_and_log_error(self.signals_received.load(), AllMessages::from(msg));
 	}
 }
-#[doc = r" A context type that is given to the [`Subsystem`] upon spawning."]
-#[doc = r" It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s"]
-#[doc = r" or to spawn it's [`SubsystemJob`]s."]
-#[doc = r""]
-#[doc = r" [`Overseer`]: struct.Overseer.html"]
-#[doc = r" [`Subsystem`]: trait.Subsystem.html"]
-#[doc = r" [`SubsystemJob`]: trait.SubsystemJob.html"]
+/// A context type that is given to the [`Subsystem`] upon spawning.
+/// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
+/// or to spawn it's [`SubsystemJob`]s.
+///
+/// [`Overseer`]: struct.Overseer.html
+/// [`Subsystem`]: trait.Subsystem.html
+/// [`SubsystemJob`]: trait.SubsystemJob.html
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub struct OverseerSubsystemContext<M> {
@@ -858,7 +857,7 @@ pub struct OverseerSubsystemContext<M> {
 	name: &'static str,
 }
 impl<M> OverseerSubsystemContext<M> {
-	#[doc = r" Create a new context."]
+	/// Create a new context.
 	fn new(
 		signals: polkadot_overseer_gen::metered::MeteredReceiver<OverseerSignal>,
 		messages: SubsystemIncomingMessages<M>,
@@ -975,7 +974,7 @@ where
 		Ok(())
 	}
 }
-#[doc = r" Generated message type wrapper"]
+/// Generated message type wrapper
 #[allow(missing_docs)]
 #[derive(Debug)]
 pub enum AllMessages {
