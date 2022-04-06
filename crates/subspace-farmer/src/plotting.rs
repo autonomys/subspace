@@ -37,10 +37,8 @@ pub enum PlottingError {
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
 }
-/// `Plotting` struct is the abstraction of the plotting process
-///
-/// Plotting Instance that stores a channel to stop/pause the background farming task
-/// and a handle to make it possible to wait on this background task
+
+#[doc = include_str!("../docs/plotting.md")]
 pub struct Plotting {
     stop_sender: Option<oneshot::Sender<()>>,
     handle: Option<JoinHandle<Result<(), PlottingError>>>,

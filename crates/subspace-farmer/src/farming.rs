@@ -25,10 +25,8 @@ pub enum FarmingError {
     #[error("Plot read error: {0}")]
     PlotRead(std::io::Error),
 }
-/// `Farming` struct is the abstraction of the farming process
-///
-/// Farming Instance that stores a channel to stop/pause the background farming task
-/// and a handle to make it possible to wait on this background task
+
+#[doc = include_str!("../docs/farming.md")]
 pub struct Farming {
     stop_sender: async_oneshot::Sender<()>,
     handle: Option<JoinHandle<Result<(), FarmingError>>>,

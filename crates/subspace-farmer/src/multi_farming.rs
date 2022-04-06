@@ -10,7 +10,7 @@ use crate::{
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 
-/// Abstraction around having multiple plots, farmings and plottings
+#[doc = include_str!("../docs/multi_farming.md")]
 pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,

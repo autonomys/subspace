@@ -15,6 +15,7 @@ pub enum ObjectMappingError {
     Db(rocksdb::Error),
 }
 
+#[doc = include_str!("../docs/object_mappings.md")]
 #[derive(Debug, Clone)]
 pub struct ObjectMappings {
     db: Arc<DB>,

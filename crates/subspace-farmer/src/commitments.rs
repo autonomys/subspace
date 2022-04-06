@@ -55,6 +55,7 @@ struct Inner {
     commitment_databases: Mutex<CommitmentDatabases>,
 }
 
+#[doc = include_str!("../docs/commitments.md")]
 #[derive(Debug, Clone)]
 pub struct Commitments {
     inner: Arc<Inner>,
