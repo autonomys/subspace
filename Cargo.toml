@@ -19,7 +19,6 @@ members = [
     "polkadot/node/metered-channel",
     "polkadot/node/overseer",
     "polkadot/node/overseer/overseer-gen",
-    "polkadot/node/overseer/overseer-gen/proc-macro",
     "polkadot/node/subsystem",
     "polkadot/node/subsystem-types",
     "substrate/*",

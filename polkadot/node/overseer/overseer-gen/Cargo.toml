@@ -11,7 +11,6 @@ futures = "0.3.21"
 async-trait = "0.1.52"
 thiserror = "1.0.30"
 metered = { package = "metered-channel", path = "../../metered-channel" }
-polkadot-overseer-gen-proc-macro = { path = "./proc-macro" }
 # trait SpawnNamed
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 futures-timer = "3.0.2"

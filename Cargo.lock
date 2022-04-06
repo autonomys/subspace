@@ -5719,22 +5719,10 @@ dependencies = [
  "futures-timer",
  "metered-channel",
  "pin-project 1.0.10",
- "polkadot-overseer-gen-proc-macro",
  "sp-core",
  "thiserror",
  "tracing",
  "trybuild",
-]
-
-[[package]]
-name = "polkadot-overseer-gen-proc-macro"
-version = "0.9.13"
-dependencies = [
- "assert_matches",
- "proc-macro-crate 1.1.3",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -9564,13 +9552,14 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "trybuild"
-version = "1.0.55"
+version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "099a24e67e2b4083a6d0beb5a98e274c3160edfb879d71cd2cd14da93786a93b"
+checksum = "606ab3fe0065741fdbb51f64bcb6ba76f13fad49f1723030041826c631782764"
 dependencies = [
  "glob",
  "once_cell",
  "serde",
+ "serde_derive",
  "serde_json",
  "termcolor",
  "toml",
