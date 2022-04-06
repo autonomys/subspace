@@ -109,6 +109,33 @@ jobs:
           args: -- -D warnings
         if: runner.os == 'macOS'
 
+  cargo-docs:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Rust toolchain
+        uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
+        with:
+          toolchain: nightly-2022-02-15
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Configure cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Check Documentation
+        run: cargo doc --all --no-deps --lib
+        env:
+          RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links"
+
   cargo-test:
     strategy:
       matrix:
