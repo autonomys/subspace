@@ -84,7 +84,7 @@ mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
-    pub(super) type FeedConfigs<T: Config> =
+    pub type FeedConfigs<T: Config> =
         StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorId>, OptionQuery>;
 
     #[pallet::storage]
@@ -176,6 +176,7 @@ mod pallet {
             Ok(())
         }
 
+        /// Updates the feed with init data provided.
         #[pallet::weight((10_000, Pays::No))]
         pub fn update(
             origin: OriginFor<T>,
@@ -241,6 +242,7 @@ mod pallet {
             Ok(())
         }
 
+        /// Closes the feed and stops accepting new feed.
         #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), Pays::No))]
         pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -255,6 +257,8 @@ mod pallet {
             Ok(())
         }
 
+        /// Deletes the complete state of the Feed.
+        /// FeedId can be reused
         #[pallet::weight((T::DbWeight::get().reads_writes(0, 3), Pays::No))]
         pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -269,7 +273,7 @@ mod pallet {
 }
 
 impl<T: Config> Call<T> {
-    /// Extract the call object if an extrinsic corresponds to `put` call
+    /// Extract the call objects if an extrinsic corresponds to `put` call
     pub fn extract_call_objects(&self) -> Vec<FeedObjectMapping> {
         match self {
             Self::put { feed_id, object } => {

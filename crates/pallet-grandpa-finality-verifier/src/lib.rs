@@ -138,7 +138,7 @@ pub mod pallet {
     pub fn validate_finalized_block<T: Config, C: Chain>(
         chain_id: T::ChainId,
         object: &[u8],
-    ) -> Result<(C::BlockNumber, C::Hash), DispatchError> {
+    ) -> Result<(C::Hash, C::BlockNumber), DispatchError> {
         let block = C::decode_block::<T>(object)?;
         let justification = block
             .justifications
@@ -180,7 +180,7 @@ pub mod pallet {
 
         // Update best finalized header
         BestFinalized::<T>::insert(chain_id, next_header.encode());
-        Ok((*number, hash))
+        Ok((hash, *number))
     }
 
     /// Check the given header for a GRANDPA scheduled authority set change. If a change

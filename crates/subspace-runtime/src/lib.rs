@@ -482,7 +482,7 @@ impl pallet_rewards::Config for Runtime {
 }
 
 /// Polkadot-like chain.
-struct PolkadotLike;
+pub struct PolkadotLike;
 impl Chain for PolkadotLike {
     type BlockNumber = u32;
     type Hash = <BlakeTwo256 as Hasher>::Out;
@@ -491,7 +491,7 @@ impl Chain for PolkadotLike {
 
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
-pub struct GrandpaValidator<C>(PhantomData<C>);
+pub struct GrandpaValidator<C>(pub PhantomData<C>);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
