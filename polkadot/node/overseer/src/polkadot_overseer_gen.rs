@@ -61,13 +61,7 @@ use futures::{
 };
 use std::pin::Pin;
 
-use std::{
-	sync::{
-		atomic::{self, AtomicUsize},
-		Arc,
-	},
-	time::Duration,
-};
+use std::time::Duration;
 
 use futures_timer::Delay;
 
@@ -85,23 +79,6 @@ pub struct MessagePacket {
 	pub signals_received: usize,
 	/// The message to be sent/consumed.
 	pub message: crate::CollationGenerationMessage,
-}
-
-/// Watermark to track the received signals.
-#[derive(Debug, Default, Clone)]
-pub struct SignalsReceived(Arc<AtomicUsize>);
-
-impl SignalsReceived {
-	/// Load the current value of received signals.
-	pub fn load(&self) -> usize {
-		// off by a few is ok
-		self.0.load(atomic::Ordering::Relaxed)
-	}
-
-	/// Increase the number of signals by one.
-	pub fn inc(&self) {
-		self.0.fetch_add(1, atomic::Ordering::Acquire);
-	}
 }
 
 /// An error type that describes faults that may happen

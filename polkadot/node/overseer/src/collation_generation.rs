@@ -18,7 +18,7 @@
 
 #![deny(missing_docs)]
 
-use crate::{ActiveLeavesUpdate, OverseerSignal, SubsystemError, SubsystemResult};
+use crate::{ActiveLeavesUpdate, OverseerSignal};
 use cirrus_node_primitives::CollationGenerationConfig;
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -47,14 +47,6 @@ pub enum CollationGenerationMessage {
 // Simplify usage without having to do large scale modifications of all
 // subsystems at once.
 
-#[derive(Debug, thiserror::Error)]
-enum Error {
-	#[error(transparent)]
-	Subsystem(#[from] SubsystemError),
-	#[error(transparent)]
-	Runtime(#[from] ApiError),
-}
-
 const LOG_TARGET: &str = "parachain::collation-generation";
 
 /// Collation Generation Subsystem
@@ -78,36 +70,16 @@ where
 		Self { primary_chain_client, config: None }
 	}
 
-	/// Run this subsystem
-	///
-	/// Conceptually, this is very simple: it just loops forever.
-	///
-	/// - On incoming overseer messages, it starts or stops jobs as appropriate.
-	/// - On other incoming messages, if they can be converted into `Job::ToJob` and
-	///   include a hash, then they're forwarded to the appropriate individual job.
-	/// - On outgoing messages from the jobs, it forwards them to the overseer.
-	///
-	/// If `err_tx` is not `None`, errors are forwarded onto that channel as they occur.
-	/// Otherwise, most are logged and then discarded.
-	pub(crate) async fn run(mut self, mut ctx: crate::OverseerSubsystemContext) {
-		loop {
-			let incoming = ctx.recv().await;
-			if self.handle_incoming(incoming).await {
-				break
-			}
-		}
-	}
-
 	// handle an incoming message. return true if we should break afterwards.
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	async fn handle_incoming(&mut self, incoming: SubsystemResult<crate::FromOverseer>) -> bool {
+	pub(crate) async fn handle_incoming(&mut self, incoming: crate::FromOverseer) -> bool {
 		match incoming {
-			Ok(crate::FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
+			crate::FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
 				activated,
 				..
-			}))) => {
+			})) => {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					if let Err(err) = handle_new_activations(
@@ -123,8 +95,8 @@ where
 
 				false
 			},
-			Ok(crate::FromOverseer::Signal(OverseerSignal::Conclude)) => true,
-			Ok(crate::FromOverseer::Communication { msg }) => {
+			crate::FromOverseer::Signal(OverseerSignal::Conclude) => true,
+			crate::FromOverseer::Communication { msg } => {
 				let client = &self.primary_chain_client;
 
 				match msg {
@@ -182,7 +154,7 @@ where
 				}
 				false
 			},
-			Ok(crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
+			crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info)) => {
 				// TODO: Handle returned result?
 				if let Some(config) = &self.config {
 					let client = &self.primary_chain_client;
@@ -208,15 +180,6 @@ where
 				}
 				false
 			},
-			Err(err) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					err = ?err,
-					"error receiving message from subsystem context: {:?}",
-					err
-				);
-				true
-			},
 		}
 	}
 }
@@ -226,7 +189,7 @@ async fn handle_new_activations<Client>(
 	client: &Arc<Client>,
 	config: &CollationGenerationConfig,
 	activated: impl IntoIterator<Item = Hash>,
-) -> Result<(), Error>
+) -> Result<(), ApiError>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -252,7 +215,7 @@ async fn process_primary_block<Client>(
 	client: Arc<Client>,
 	config: &CollationGenerationConfig,
 	block_hash: Hash,
-) -> Result<(), Error>
+) -> Result<(), ApiError>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>

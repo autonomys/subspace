@@ -87,9 +87,7 @@ use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-use polkadot_overseer_gen::{
-	FromOverseer, MessagePacket, SignalsReceived, SubsystemInstance, TimeoutExt,
-};
+use polkadot_overseer_gen::{FromOverseer, MessagePacket, SubsystemInstance, TimeoutExt};
 
 /// How many slots are stack-reserved for active leaves updates
 ///
@@ -233,7 +231,7 @@ pub struct Handle(OverseerHandle);
 
 impl Handle {
 	/// Create a new [`Handle`].
-	pub fn new(raw: OverseerHandle) -> Self {
+	fn new(raw: OverseerHandle) -> Self {
 		Self(raw)
 	}
 
@@ -376,42 +374,20 @@ pub struct Overseer {
 	/// A subsystem instance.
 	collation_generation: polkadot_overseer_gen::SubsystemInstance,
 	/// A user specified addendum field.
-	pub leaves: Vec<(Hash, BlockNumber)>,
+	leaves: Vec<(Hash, BlockNumber)>,
 	/// A user specified addendum field.
-	pub active_leaves: HashMap<Hash, BlockNumber>,
+	active_leaves: HashMap<Hash, BlockNumber>,
 	/// A user specified addendum field.
-	pub known_leaves: LruCache<Hash, ()>,
+	known_leaves: LruCache<Hash, ()>,
 	/// The set of running subsystems.
-	running_subsystem:
-		Pin<Box<dyn FusedFuture<Output = ::std::result::Result<(), SubsystemError>> + Send>>,
+	running_subsystem: Pin<Box<dyn FusedFuture<Output = Result<(), SubsystemError>> + Send>>,
 	/// Events that are sent to the overseer from the outside world.
 	events_rx: metered::MeteredReceiver<Event>,
 }
 impl Overseer {
-	/// Send the given signal, a termination signal, to all subsystems
-	/// and wait for all subsystems to go down.
-	///
-	/// The definition of a termination signal is up to the user and
-	/// implementation specific.
-	pub async fn wait_terminate(
-		mut self,
-		signal: OverseerSignal,
-		timeout: ::std::time::Duration,
-	) -> ::std::result::Result<(), SubsystemError> {
-		::std::mem::drop(self.broadcast_signal(signal).await);
-		let mut timeout_fut = futures_timer::Delay::new(timeout).fuse();
-		select! {
-			_ = self.running_subsystem => {},
-			_ = timeout_fut => {},
-		}
-		Ok(())
-	}
 	/// Broadcast a signal to all subsystems.
-	pub async fn broadcast_signal(
-		&mut self,
-		signal: OverseerSignal,
-	) -> ::std::result::Result<(), SubsystemError> {
-		const SIGNAL_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(10);
+	pub async fn broadcast_signal(&mut self, signal: OverseerSignal) -> Result<(), SubsystemError> {
+		const SIGNAL_TIMEOUT: Duration = Duration::from_secs(10);
 		match self.collation_generation.tx_signal.send(signal).timeout(SIGNAL_TIMEOUT).await {
 			None =>
 				Err(SubsystemError::from(polkadot_overseer_gen::OverseerError::SubsystemStalled(
@@ -430,7 +406,7 @@ impl Overseer {
 	pub async fn send_message(
 		&mut self,
 		message: CollationGenerationMessage,
-	) -> ::std::result::Result<(), SubsystemError> {
+	) -> Result<(), SubsystemError> {
 		const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 		match self
 			.collation_generation
@@ -457,94 +433,16 @@ impl Overseer {
 	}
 }
 /// Handle for an overseer.
-pub type OverseerHandle = metered::MeteredSender<Event>;
+type OverseerHandle = metered::MeteredSender<Event>;
 
-/// A context type that is given to the [`Subsystem`] upon spawning.
-/// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
-/// or to spawn it's [`SubsystemJob`]s.
-///
-/// [`Overseer`]: struct.Overseer.html
-/// [`Subsystem`]: trait.Subsystem.html
-/// [`SubsystemJob`]: trait.SubsystemJob.html
-#[derive(Debug)]
-#[allow(missing_docs)]
-pub struct OverseerSubsystemContext {
-	signals: metered::MeteredReceiver<OverseerSignal>,
-	messages: metered::MeteredReceiver<MessagePacket>,
-	signals_received: SignalsReceived,
-	pending_incoming: Option<(usize, CollationGenerationMessage)>,
-}
-impl OverseerSubsystemContext {
-	/// Create a new context.
-	fn new(
-		signals: metered::MeteredReceiver<OverseerSignal>,
-		messages: metered::MeteredReceiver<MessagePacket>,
-	) -> Self {
-		let signals_received = SignalsReceived::default();
-		OverseerSubsystemContext { signals, messages, signals_received, pending_incoming: None }
-	}
-}
-impl OverseerSubsystemContext {
-	async fn recv(
-		&mut self,
-	) -> ::std::result::Result<polkadot_overseer_gen::FromOverseer, SubsystemError> {
-		loop {
-			if let Some((needs_signals_received, msg)) = self.pending_incoming.take() {
-				if needs_signals_received <= self.signals_received.load() {
-					return Ok(polkadot_overseer_gen::FromOverseer::Communication { msg })
-				} else {
-					self.pending_incoming = Some((needs_signals_received, msg));
-					let signal = self.signals.next().await.ok_or(
-						polkadot_overseer_gen::OverseerError::Context(
-							"Signal channel is terminated and empty.".to_owned(),
-						),
-					)?;
-					self.signals_received.inc();
-					return Ok(polkadot_overseer_gen::FromOverseer::Signal(signal))
-				}
-			}
-			let mut await_message = self.messages.next().fuse();
-			let mut await_signal = self.signals.next().fuse();
-			let signals_received = self.signals_received.load();
-			let pending_incoming = &mut self.pending_incoming;
-			let from_overseer = futures::select_biased! {
-				signal = await_signal =>
-				{
-					let signal =
-					signal.ok_or(polkadot_overseer_gen :: OverseerError ::
-					Context("Signal channel is terminated and empty.".to_owned()))
-					? ; polkadot_overseer_gen :: FromOverseer :: Signal(signal)
-				} msg = await_message =>
-				{
-					let packet =
-					msg.ok_or(polkadot_overseer_gen :: OverseerError ::
-					Context("Message channel is terminated and empty.".to_owned()))
-					? ; if packet.signals_received > signals_received
-					{
-						* pending_incoming =
-						Some((packet.signals_received, packet.message)) ; continue ;
-					} else
-					{
-						polkadot_overseer_gen :: FromOverseer :: Communication
-						{ msg : packet.message }
-					}
-				}
-			};
-			if let polkadot_overseer_gen::FromOverseer::Signal(_) = from_overseer {
-				self.signals_received.inc();
-			}
-			return Ok(from_overseer)
-		}
-	}
-}
 impl Overseer {
 	/// Create a new overseer.
 	pub fn new<Client>(
-		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+		mut collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
 		known_leaves: LruCache<Hash, ()>,
-	) -> Result<(Overseer, OverseerHandle), SubsystemError>
+	) -> Result<(Overseer, Handle), SubsystemError>
 	where
 		Client: HeaderBackend<Block>
 			+ BlockBackend<Block>
@@ -555,15 +453,34 @@ impl Overseer {
 		Client::Api: ExecutorApi<Block>,
 	{
 		let (handle, events_rx) = metered::channel::<Event>(SIGNAL_CHANNEL_CAPACITY);
-		let (collation_generation_tx, collation_generation_rx) =
+		let (collation_generation_tx, mut collation_generation_rx) =
 			metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
-		let (signal_tx, signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
+		let (signal_tx, mut signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
 		let running_subsystem = Box::pin(
-			collation_generation
-				.run(ctx)
+			async move {
+				loop {
+					let mut await_message = collation_generation_rx.next().fuse();
+					let mut await_signal = signal_rx.next().fuse();
+					let from_overseer = futures::select_biased! {
+						signal = await_signal => {
+							let signal = signal.ok_or(polkadot_overseer_gen::OverseerError::Context("Signal channel is terminated and empty.".to_owned()))?;
+							polkadot_overseer_gen::FromOverseer::Signal(signal)
+						}
+						msg = await_message => {
+							let packet = msg.ok_or(polkadot_overseer_gen::OverseerError::Context("Message channel is terminated and empty.".to_owned()))?;
+							polkadot_overseer_gen::FromOverseer::Communication{ msg : packet.message }
+						}
+					};
+
+					if collation_generation.handle_incoming(from_overseer).await {
+						break;
+					}
+				}
+
+				Ok::<_, SubsystemError>(())
+			}
 				.map(|e| {
-					tracing :: warn! (err = ? e, "dropping error");
+					tracing::warn! (err = ? e, "dropping error");
 					Ok(())
 				})
 				.fuse(),
@@ -582,7 +499,7 @@ impl Overseer {
 			running_subsystem,
 			events_rx,
 		};
-		Ok((overseer, handle))
+		Ok((overseer, Handle::new(handle)))
 	}
 
 	/// Run the `Overseer`.
@@ -617,7 +534,6 @@ impl Overseer {
 						subsystem = ?res,
 						"subsystem finished unexpectedly",
 					);
-					let _ = self.wait_terminate(OverseerSignal::Conclude, Duration::from_secs(1_u64)).await;
 					return res;
 				},
 			}

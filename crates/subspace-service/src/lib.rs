@@ -557,10 +557,8 @@ where
         LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
     )?;
 
-    let handle = Handle::new(overseer_handle);
-
     {
-        let handle = handle.clone();
+        let overseer_handle = overseer_handle.clone();
         task_manager.spawn_essential_handle().spawn_blocking(
             "collation-generation-subsystem",
             Some("collation-generation-subsystem"),
@@ -579,7 +577,7 @@ where
                             }
                         },
                     )),
-                    handle,
+                    overseer_handle,
                 );
 
                 let forward = forward.fuse();
@@ -597,5 +595,5 @@ where
         );
     }
 
-    Ok(handle)
+    Ok(overseer_handle)
 }
