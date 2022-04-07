@@ -44,7 +44,7 @@ The address of your account will be necessary at the last step.
 --ws-external `
 --validator `
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" `
---telemetry-url "wss://telemetry.subspace.network/ 1" `
+--telemetry-url "wss://telemetry.subspace.network/submit 1" `
 --name INSERT_YOUR_ID
 ```
 5. You should see something similar in the terminal:
@@ -98,7 +98,7 @@ The address of your account will be necessary at the last step.
   --ws-external \
   --validator \
   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
-  --telemetry-url "wss://telemetry.subspace.network/ 1" \
+  --telemetry-url "wss://telemetry.subspace.network/submit 1" \
   --name INSERT_YOUR_ID
 ```
 5. You should see something similar in the terminal:
@@ -155,7 +155,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
   --ws-external \
   --validator \
   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
-  --telemetry-url "wss://telemetry.subspace.network/ 1" \
+  --telemetry-url "wss://telemetry.subspace.network/submit/ 1" \
   --name INSERT_YOUR_ID
 ```
 5. You should see something similar in the terminal:
