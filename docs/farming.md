@@ -1,8 +1,7 @@
 
 # 👨‍🌾 Getting Started Farming
 
-This is the documentation/guideline on how to run the farmer. You may also refer to the [glossary](#glossary-for-farm-commands) for
-various farm commands.
+This is the documentation/guideline on how to run the farmer. You may also refer to the [help](#help) section for various commands.
 
 We are regularly releasing stable snapshots. Our CI builds container images and executables for 3 major platforms (Windows, macOS, Linux).
 
@@ -25,10 +24,6 @@ Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your br
 The address of your account will be necessary at the last step.
 
 ## 🖼️ Windows Instructions
-
-<details>
-
-### 📝 Windows Installation
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
@@ -81,13 +76,7 @@ The address of your account will be necessary at the last step.
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS
 ```
 
-</details>
-
 ## 🐧 Linux Instructions
-
-<details>
-
-### 📝 Linux Installation
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -139,13 +128,7 @@ The address of your account will be necessary at the last step.
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS
 ```
 
-</details>
-
 ## 🍎 macOS Instructions
-
-<details>
-
-### 📝 macOS Installation
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab and extract binaries from ZIP archives.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -202,8 +185,6 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
-</details>
-
 # 🤔Notes
 
 ## Checking results and interacting with farmnet
@@ -226,9 +207,11 @@ Does not matter if the node/farmer executable is the previous one or from the ne
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
 
-## Glossary for useful farmer commands
+## Help
 
-Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
+There are extra commands and parameters you can use on farmer or node, use the `--help` after any other command to display additional options.
+
+Below are some helpful farmer commands:
 
 - `farm --reward-address WALLET_ADDRESS` : starts background plotting and farming together, farmed testnet coins will be sent to `WALLET_ADDRESS`
 - `farm` : starts background plotting and farming together, rewards are sent to auto-generated wallet (see `identity` commands below)
@@ -237,8 +220,9 @@ Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
 - `identity view` : displays SS58 address (this is the same as `identity view --address`) where farmed testnet coins will be sent
 - `identity view --mnemonic` : displays mnemonic phrase of auto-generated wallet (sensitive information, keep this private, not very useful if `--reward-address` was used)
 
-An example command:
+Examples:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
-``./FARMER_FILE_NAME wipe
+./FARMER_FILE_NAME farm --help
+./FARMER_FILE_NAME wipe
 ```
