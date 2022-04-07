@@ -36,7 +36,6 @@ polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 
 cirrus-block-builder = { path = "../block-builder" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
-cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
 sp-executor = { path = "../../../crates/sp-executor" }
 subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }

@@ -20,8 +20,7 @@
 
 use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
-use cirrus_node_primitives::CollationGenerationConfig;
-use polkadot_overseer::Handle;
+use polkadot_overseer::OverseerHandle;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
@@ -36,14 +35,13 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
-use tracing::Instrument;
 
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<Arc<RClient>>,
-	pub overseer_handle: Handle,
+	pub overseer_handle: OverseerHandle,
 	pub task_manager: &'a mut TaskManager,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
@@ -57,7 +55,7 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 	StartExecutorParams {
 		client,
 		spawner,
-		mut overseer_handle,
+		overseer_handle,
 		task_manager,
 		primary_chain_full_node,
 		transaction_pool,
@@ -107,41 +105,15 @@ where
 		primary_chain_full_node.client.clone(),
 		client,
 		spawner,
-		overseer_handle.clone(),
+		overseer_handle,
 		transaction_pool,
 		Arc::new(bundle_sender),
 		Arc::new(execution_receipt_sender),
 		backend,
 		code_executor,
 		is_authority,
-	);
-
-	let span = tracing::Span::current();
-	let config = CollationGenerationConfig {
-		bundler: {
-			let executor = executor.clone();
-			let span = span.clone();
-
-			Box::new(move |primary_hash, slot_info| {
-				let executor = executor.clone();
-				Box::pin(executor.produce_bundle(primary_hash, slot_info).instrument(span.clone()))
-			})
-		},
-		processor: {
-			let executor = executor.clone();
-
-			Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-				let executor = executor.clone();
-				Box::pin(
-					executor
-						.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
-						.instrument(span.clone()),
-				)
-			})
-		},
-	};
-
-	overseer_handle.initialize(config).await;
+	)
+	.await;
 
 	let executor_gossip =
 		cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {

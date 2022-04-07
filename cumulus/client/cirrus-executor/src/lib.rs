@@ -41,20 +41,20 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 
-use polkadot_overseer::Handle as OverseerHandle;
+use polkadot_overseer::{CollationGenerationConfig, ExecutorSlotInfo, OverseerHandle};
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
-use cirrus_node_primitives::{BundleResult, ExecutorSlotInfo, ProcessorResult};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, FraudProof,
-	InvalidTransactionProof, OpaqueBundle,
+	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 use futures::FutureExt;
 use std::{borrow::Cow, sync::Arc};
+use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -113,7 +113,8 @@ impl<Block, Client, TransactionPool, Backend, E>
 	Executor<Block, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
-	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+	Client:
+		HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -131,7 +132,7 @@ where
 	E: CodeExecutor,
 {
 	/// Create a new instance.
-	pub fn new(
+	pub async fn new(
 		primary_chain_client: Arc<dyn PrimaryChainClient>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -143,7 +144,7 @@ where
 		code_executor: Arc<E>,
 		is_authority: bool,
 	) -> Self {
-		Self {
+		let mut executor = Self {
 			primary_chain_client,
 			client,
 			spawner,
@@ -154,7 +155,43 @@ where
 			backend,
 			code_executor,
 			is_authority,
-		}
+		};
+
+		let span = tracing::Span::current();
+		let config = CollationGenerationConfig {
+			bundler: {
+				let executor = executor.clone();
+				let span = span.clone();
+
+				Box::new(move |primary_hash, slot_info| {
+					let executor = executor.clone();
+					Box::pin(
+						executor.produce_bundle(primary_hash, slot_info).instrument(span.clone()),
+					)
+				})
+			},
+			processor: {
+				let executor = executor.clone();
+
+				Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+					let executor = executor.clone();
+					Box::pin(
+						executor
+							.process_bundles(
+								primary_hash,
+								bundles,
+								shuffling_seed,
+								maybe_new_runtime,
+							)
+							.instrument(span.clone()),
+					)
+				})
+			},
+		};
+
+		executor.overseer_handle.initialize(config).await;
+
+		executor
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -379,7 +416,7 @@ where
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<BundleResult> {
+	) -> Option<OpaqueBundle> {
 		self.produce_bundle_impl(primary_hash, slot_info).await
 	}
 
@@ -390,7 +427,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<ProcessorResult> {
+	) -> Option<OpaqueExecutionReceipt> {
 		match self
 			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
 			.await

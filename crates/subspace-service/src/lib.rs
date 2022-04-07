@@ -19,7 +19,8 @@
 pub mod rpc;
 
 use futures::channel::mpsc;
-use polkadot_overseer::{BlockInfo, Handle, Overseer};
+use futures::{pin_mut, select, FutureExt, StreamExt};
+use polkadot_overseer::{BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -533,7 +534,7 @@ pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
         NumberFor<Block>,
         mpsc::Sender<RootBlock>,
     )>,
-) -> Result<Handle, Error>
+) -> Result<OverseerHandle, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -567,9 +568,6 @@ where
             "collation-generation-subsystem",
             Some("collation-generation-subsystem"),
             Box::pin(async move {
-                use cirrus_node_primitives::ExecutorSlotInfo;
-                use futures::{pin_mut, select, FutureExt, StreamExt};
-
                 let forward = polkadot_overseer::forward_events(
                     client,
                     Box::pin(

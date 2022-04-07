@@ -17,9 +17,8 @@ use std::{
 };
 
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
-use cirrus_node_primitives::ProcessorResult;
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{ExecutionReceipt, OpaqueBundle};
+use sp_executor::{ExecutionReceipt, OpaqueBundle, OpaqueExecutionReceipt};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -98,7 +97,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<ProcessorResult>, sp_blockchain::Error> {
+	) -> Result<Option<OpaqueExecutionReceipt>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -216,7 +215,7 @@ where
 			}
 
 			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Ok(Some(ProcessorResult { opaque_execution_receipt: execution_receipt.into() }))
+			Ok(Some(execution_receipt.into()))
 		} else {
 			Ok(None)
 		}

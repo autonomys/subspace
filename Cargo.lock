@@ -834,7 +834,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-node-primitives",
  "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
@@ -897,7 +896,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
- "cirrus-node-primitives",
  "cirrus-primitives",
  "parking_lot 0.12.0",
  "polkadot-overseer",
@@ -919,22 +917,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "tracing",
-]
-
-[[package]]
-name = "cirrus-node-primitives"
-version = "0.1.0"
-dependencies = [
- "futures 0.3.21",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-consensus-slots",
- "sp-core",
- "sp-executor",
- "sp-runtime",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -5634,15 +5616,16 @@ name = "polkadot-overseer"
 version = "0.9.13"
 dependencies = [
  "async-trait",
- "cirrus-node-primitives",
  "futures 0.3.21",
  "parking_lot 0.12.0",
  "pin-project 1.0.10",
  "sc-client-api",
  "sp-api",
  "sp-blockchain",
+ "sp-consensus-slots",
  "sp-executor",
  "sp-runtime",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
  "tracing",
@@ -8656,7 +8639,6 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "cirrus-node-primitives",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",

@@ -16,8 +16,9 @@ thiserror = "1.0.30"
 tracing = "0.1.32"
 pin-project = "1.0.10"
 
-cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
+sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-executor = { path = "../../../crates/sp-executor" }
+subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 
 [dev-dependencies]

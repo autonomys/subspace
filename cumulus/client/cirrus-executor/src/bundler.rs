@@ -9,9 +9,9 @@ use sp_runtime::{
 };
 use std::time;
 
-use cirrus_node_primitives::{BundleResult, ExecutorSlotInfo};
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader};
+use polkadot_overseer::ExecutorSlotInfo;
+use sp_executor::{Bundle, BundleHeader, OpaqueBundle};
 
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -35,7 +35,7 @@ where
 		self,
 		_primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<BundleResult> {
+	) -> Option<OpaqueBundle> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let parent_number = self.client.info().best_number;
@@ -93,6 +93,6 @@ where
 			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
 		}
 
-		Some(BundleResult { opaque_bundle: bundle.into() })
+		Some(bundle.into())
 	}
 }

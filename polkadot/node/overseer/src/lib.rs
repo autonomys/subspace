@@ -18,8 +18,11 @@
 #![warn(missing_docs)]
 
 use std::{
+	borrow::Cow,
 	collections::{hash_map::Entry, HashMap},
 	fmt::Debug,
+	future::Future,
+	pin::Pin,
 	sync::Arc,
 };
 
@@ -28,17 +31,71 @@ use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_consensus_slots::Slot;
 use sp_runtime::{
 	generic::DigestItem,
 	traits::{Header as HeaderT, NumberFor},
 };
 
-use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
-use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
+use sp_executor::{
+	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
+	OpaqueExecutionReceipt,
+};
+use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::{
 	opaque::{Block, BlockId},
 	BlockNumber, Hash,
 };
+
+/// Data required to produce bundles on executor node.
+#[derive(PartialEq, Clone, Debug)]
+pub struct ExecutorSlotInfo {
+	/// Slot
+	pub slot: Slot,
+	/// Global slot challenge
+	pub global_challenge: Tag,
+}
+
+/// Bundle function.
+///
+/// Will be called with each slot of the primary chain.
+///
+/// Returns an optional [`OpaqueBundle`].
+pub type BundlerFn = Box<
+	dyn Fn(Hash, ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<OpaqueBundle>> + Send>>
+		+ Send
+		+ Sync,
+>;
+
+/// Process function.
+///
+/// Will be called with the hash of the primary chain block.
+///
+/// Returns an optional [`OpaqueExecutionReceipt`].
+pub type ProcessorFn = Box<
+	dyn Fn(
+			Hash,
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<OpaqueExecutionReceipt>> + Send>>
+		+ Send
+		+ Sync,
+>;
+
+/// Configuration for the collation generator
+pub struct CollationGenerationConfig {
+	/// Transaction bundle function. See [`BundlerFn`] for more details.
+	pub bundler: BundlerFn,
+	/// State processor function. See [`ProcessorFn`] for more details.
+	pub processor: ProcessorFn,
+}
+
+impl std::fmt::Debug for CollationGenerationConfig {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "CollationGenerationConfig {{ ... }}")
+	}
+}
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
@@ -119,7 +176,7 @@ where
 
 	let opaque_execution_receipt =
 		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
-			Some(processor_result) => processor_result.to_opaque_execution_receipt(),
+			Some(opaque_execution_receipt) => opaque_execution_receipt,
 			None => {
 				tracing::debug!(
 					target: LOG_TARGET,
@@ -152,9 +209,9 @@ pub struct ActivatedLeaf {
 ///
 /// [`Overseer`]: struct.Overseer.html
 #[derive(Clone)]
-pub struct Handle(mpsc::Sender<Event>);
+pub struct OverseerHandle(mpsc::Sender<Event>);
 
-impl Handle {
+impl OverseerHandle {
 	/// Create a new [`Handle`].
 	fn new(raw: mpsc::Sender<Event>) -> Self {
 		Self(raw)
@@ -254,7 +311,7 @@ pub async fn forward_events<C: HeaderBackend<Block>>(
 	client: Arc<C>,
 	mut imports: impl FusedStream<Item = NumberFor<Block>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
-	mut handle: Handle,
+	mut handle: OverseerHandle,
 ) {
 	loop {
 		select! {
@@ -317,11 +374,11 @@ where
 		primary_chain_client: Arc<Client>,
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
-	) -> (Self, Handle) {
+	) -> (Self, OverseerHandle) {
 		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
 		let overseer =
 			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
-		(overseer, Handle::new(handle))
+		(overseer, OverseerHandle::new(handle))
 	}
 
 	/// Run the `Overseer`.
@@ -407,7 +464,7 @@ where
 			let best_hash = client.info().best_hash;
 
 			let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
-				Some(bundle_result) => bundle_result.to_opaque_bundle(),
+				Some(opaque_bundle) => opaque_bundle,
 				None => {
 					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
 					return Ok(())
