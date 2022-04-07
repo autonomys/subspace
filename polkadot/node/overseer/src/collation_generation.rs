@@ -19,15 +19,13 @@
 #![deny(missing_docs)]
 
 use crate as overseer;
-use crate::{
-	polkadot_node_subsystem,
-	polkadot_node_subsystem::{
-		messages::CollationGenerationMessage, ActiveLeavesUpdate, FromOverseer, OverseerSignal,
-		SpawnedSubsystem, SubsystemContext, SubsystemError, SubsystemResult,
-	},
-};
+use crate::{ActiveLeavesUpdate, OverseerSignal};
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use futures::future::FutureExt;
+use polkadot_node_subsystem_types::{
+	errors::{SubsystemError, SubsystemResult},
+	messages::CollationGenerationMessage,
+};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -39,10 +37,50 @@ use subspace_runtime_primitives::{
 	Hash,
 };
 
+// Simplify usage without having to do large scale modifications of all
+// subsystems at once.
+
+/// Specialized message type originating from the overseer.
+type FromOverseer<M> = polkadot_overseer_gen::FromOverseer<M, OverseerSignal>;
+
+/// Sender trait for the `AllMessages` wrapper.
+trait SubsystemSender: polkadot_overseer_gen::SubsystemSender<crate::AllMessages> {}
+
+impl<T> SubsystemSender for T where T: polkadot_overseer_gen::SubsystemSender<crate::AllMessages> {}
+
+/// Spawned subsystem.
+type SpawnedSubsystem = polkadot_overseer_gen::SpawnedSubsystem<SubsystemError>;
+
+/// Convenience trait specialization.
+trait SubsystemContext:
+	polkadot_overseer_gen::SubsystemContext<
+	Signal = OverseerSignal,
+	AllMessages = crate::AllMessages,
+	Error = SubsystemError,
+>
+{
+	/// The message type the subsystem consumes.
+	type Message: std::fmt::Debug + Send + 'static;
+	/// Sender type to communicate with other subsystems.
+	type Sender: SubsystemSender + Send + Clone + 'static;
+}
+
+impl<T> SubsystemContext for T
+where
+	T: polkadot_overseer_gen::SubsystemContext<
+		Signal = OverseerSignal,
+		AllMessages = crate::AllMessages,
+		Error = SubsystemError,
+	>,
+{
+	type Message = <Self as polkadot_overseer_gen::SubsystemContext>::Message;
+	type Sender = <Self as polkadot_overseer_gen::SubsystemContext>::Sender;
+}
+
 #[derive(Debug, thiserror::Error)]
 enum Error {
 	#[error(transparent)]
-	Subsystem(#[from] polkadot_node_subsystem::SubsystemError),
+	Subsystem(#[from] SubsystemError),
 	#[error(transparent)]
 	Runtime(#[from] ApiError),
 }
