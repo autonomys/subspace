@@ -59,6 +59,9 @@
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
+pub mod collation_generation;
+mod polkadot_node_subsystem;
+
 use std::{
 	collections::{hash_map, HashMap},
 	fmt::Debug,
@@ -70,7 +73,7 @@ use futures::{future::BoxFuture, select, stream::FusedStream, FutureExt, StreamE
 use lru::LruCache;
 use sp_core::traits::SpawnNamed;
 
-use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
+use sc_client_api::{BlockImportNotification, BlockchainEvents, FinalityNotification};
 
 use polkadot_node_subsystem_types::messages::CollationGenerationMessage;
 pub use polkadot_node_subsystem_types::{

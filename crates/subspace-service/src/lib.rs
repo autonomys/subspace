@@ -19,7 +19,7 @@
 pub mod rpc;
 
 use lru::LruCache;
-use polkadot_node_collation_generation::CollationGenerationSubsystem;
+use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
 use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;

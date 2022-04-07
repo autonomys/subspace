@@ -5648,34 +5648,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-collation-generation"
-version = "0.9.13"
-dependencies = [
- "cirrus-node-primitives",
- "futures 0.3.21",
- "parity-scale-codec",
- "polkadot-node-subsystem",
- "sc-client-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-executor",
- "sp-maybe-compressed-blob",
- "sp-runtime",
- "subspace-runtime-primitives",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "polkadot-node-subsystem"
-version = "0.9.13"
-dependencies = [
- "polkadot-node-subsystem-types",
- "polkadot-overseer",
-]
-
-[[package]]
 name = "polkadot-node-subsystem-types"
 version = "0.9.13"
 dependencies = [
@@ -5704,9 +5676,12 @@ dependencies = [
  "polkadot-overseer-gen",
  "sc-client-api",
  "sp-api",
+ "sp-blockchain",
  "sp-core",
  "sp-executor",
+ "sp-runtime",
  "subspace-runtime-primitives",
+ "thiserror",
  "tracing",
 ]
 
@@ -8740,7 +8715,6 @@ dependencies = [
  "lru 0.7.3",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
- "polkadot-node-collation-generation",
  "polkadot-overseer",
  "sc-basic-authorship",
  "sc-client-api",

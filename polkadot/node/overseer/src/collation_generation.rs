@@ -18,12 +18,16 @@
 
 #![deny(missing_docs)]
 
+use crate as overseer;
+use crate::{
+	polkadot_node_subsystem,
+	polkadot_node_subsystem::{
+		messages::CollationGenerationMessage, ActiveLeavesUpdate, FromOverseer, OverseerSignal,
+		SpawnedSubsystem, SubsystemContext, SubsystemError, SubsystemResult,
+	},
+};
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use futures::future::FutureExt;
-use polkadot_node_subsystem::{
-	messages::CollationGenerationMessage, overseer, ActiveLeavesUpdate, FromOverseer,
-	OverseerSignal, SpawnedSubsystem, SubsystemContext, SubsystemError, SubsystemResult,
-};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
