@@ -61,6 +61,7 @@
 
 pub mod collation_generation;
 mod polkadot_node_subsystem_types;
+mod polkadot_overseer_gen;
 
 use std::{
 	collections::{hash_map, HashMap},
@@ -75,17 +76,16 @@ use sp_core::traits::SpawnNamed;
 
 use sc_client_api::{BlockImportNotification, BlockchainEvents, FinalityNotification};
 
-use polkadot_node_subsystem_types::messages::CollationGenerationMessage;
-pub use polkadot_node_subsystem_types::{
-	errors::{SubsystemError, SubsystemResult},
-	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
+pub use polkadot_node_subsystem_types::errors::SubsystemError;
+use polkadot_node_subsystem_types::{
+	errors::SubsystemResult, messages::CollationGenerationMessage, ActivatedLeaf,
+	ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-pub use polkadot_overseer_gen as gen;
 use polkadot_overseer_gen::{
 	FromOverseer, MessagePacket, SignalsReceived, SubsystemIncomingMessages, SubsystemInstance,
 	SubsystemSender, TimeoutExt,

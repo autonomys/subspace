@@ -24,7 +24,7 @@ use crate::{
 		errors::{SubsystemError, SubsystemResult},
 		messages::CollationGenerationMessage,
 	},
-	ActiveLeavesUpdate, OverseerSignal,
+	polkadot_overseer_gen, ActiveLeavesUpdate, OverseerSignal,
 };
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use futures::future::FutureExt;

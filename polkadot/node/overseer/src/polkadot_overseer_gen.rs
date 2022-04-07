@@ -57,8 +57,6 @@
 // #![deny(unused_results)]
 // unused dependencies can not work for test and examples at the same time
 // yielding false positives
-#![deny(missing_docs)]
-#![deny(unused_crate_dependencies)]
 
 #[doc(hidden)]
 pub use metered;
@@ -89,9 +87,6 @@ pub use std::time::Duration;
 
 #[doc(hidden)]
 pub use futures_timer::Delay;
-
-#[cfg(test)]
-mod tests;
 
 /// A wrapping type for messages.
 ///
@@ -189,9 +184,6 @@ pub enum OverseerError {
 	},
 }
 
-/// Alias for a result with error type `OverseerError`.
-pub type OverseerResult<T> = std::result::Result<T, self::OverseerError>;
-
 /// A running instance of some [`Subsystem`].
 ///
 /// [`Subsystem`]: trait.Subsystem.html
@@ -199,9 +191,9 @@ pub type OverseerResult<T> = std::result::Result<T, self::OverseerError>;
 /// `M` here is the inner message type, and _not_ the generated `enum AllMessages`.
 pub struct SubsystemInstance<Message, Signal> {
 	/// Send sink for `Signal`s to be sent to a subsystem.
-	pub tx_signal: crate::metered::MeteredSender<Signal>,
+	pub tx_signal: metered::MeteredSender<Signal>,
 	/// Send sink for `Message`s to be sent to a subsystem.
-	pub tx_bounded: crate::metered::MeteredSender<MessagePacket<Message>>,
+	pub tx_bounded: metered::MeteredSender<MessagePacket<Message>>,
 	/// The number of signals already received.
 	/// Required to assure messages and signals
 	/// are processed correctly.
