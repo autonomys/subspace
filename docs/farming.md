@@ -220,12 +220,19 @@ Does not matter if the node/farmer executable is the previous one or from the ne
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
 
-## Help
+## Glossary for useful farmer commands
 
-For additional commands for the farmer or node use the `--help` command, which will display additional options for your farming or node configuration. 
+Structure -> `subspace-farmer-x86_64-*-snapshot <COMMAND>`
+
+- `farm --reward-address WALLET_ADDRESS` : starts background plotting and farming together, farmed testnet coins will be sent to `WALLET_ADDRESS`
+- `farm` : starts background plotting and farming together, rewards are sent to auto-generated wallet (see `identity` commands below)
+- `wipe` : erases the plot and identity (including plot, commitment, object mappings and identity files)
+- `identity import-from-mnemonic "spell out your seed phrase here"` : imports your existing identity from your seed phrase (not recommended! use `--reward-address` instead)
+- `identity view` : displays SS58 address (this is the same as `identity view --address`) where farmed testnet coins will be sent
+- `identity view --mnemonic` : displays mnemonic phrase of auto-generated wallet (sensitive information, keep this private, not very useful if `--reward-address` was used)
 
 An example command:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
-``./FARMER_FILE_NAME --help
+./FARMER_FILE_NAME --help
 ```
