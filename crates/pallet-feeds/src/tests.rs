@@ -1,6 +1,6 @@
 use crate::{
     mock::{new_test_ext, Event, Feeds, Origin, System, Test},
-    Error, FeedConfigs, Metadata, Object, TotalObjectsAndSize, Totals,
+    Error, FeedConfigs, Feeds as FeedsStorage, Metadata, Object, TotalObjectsAndSize, Totals,
 };
 use frame_support::{assert_noop, assert_ok};
 
@@ -19,7 +19,13 @@ fn create_feed() {
             feed_id: FEED_ID,
             who: OWNER,
         }));
-        assert_eq!(Feeds::next_feed_id(), 1)
+        assert_eq!(Feeds::next_feed_id(), 1);
+        assert_eq!(Feeds::feeds(OWNER, FEED_ID), Some(()));
+        assert_eq!(
+            FeedsStorage::<Test>::iter_prefix(OWNER).collect::<Vec<(u64, ())>>(),
+            vec![(FEED_ID, ())]
+        );
+        assert_eq!(Feeds::feeds(NOT_OWNER, FEED_ID), None);
     });
 }
 
@@ -130,6 +136,7 @@ fn delete_feed() {
         assert!(!FeedConfigs::<Test>::contains_key(FEED_ID));
         assert!(!Metadata::<Test>::contains_key(FEED_ID));
         assert!(!Totals::<Test>::contains_key(FEED_ID));
+        assert!(!FeedsStorage::<Test>::contains_key(OWNER, FEED_ID));
     });
 }
 

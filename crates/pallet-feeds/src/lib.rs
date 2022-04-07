@@ -85,22 +85,27 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
     pub(super) type Metadata<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, FeedMetadata, OptionQuery>;
+        StorageMap<_, Identity, T::FeedId, FeedMetadata, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
     pub(super) type FeedConfigs<T: Config> = StorageMap<
         _,
-        Blake2_128Concat,
+        Identity,
         T::FeedId,
         FeedConfig<T::FeedProcessorKind, T::AccountId>,
         OptionQuery,
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn feeds)]
+    pub(super) type Feeds<T: Config> =
+        StorageDoubleMap<_, Identity, T::AccountId, Identity, T::FeedId, (), OptionQuery>;
+
+    #[pallet::storage]
     #[pallet::getter(fn totals)]
     pub(super) type Totals<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, TotalObjectsAndSize, ValueQuery>;
+        StorageMap<_, Identity, T::FeedId, TotalObjectsAndSize, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_feed_id)]
@@ -183,6 +188,7 @@ mod pallet {
                     owner: who.clone(),
                 },
             );
+            Feeds::<T>::insert(who.clone(), feed_id, ());
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
@@ -273,6 +279,7 @@ mod pallet {
             FeedConfigs::<T>::remove(feed_id);
             Metadata::<T>::remove(feed_id);
             Totals::<T>::remove(feed_id);
+            Feeds::<T>::remove(owner.clone(), feed_id);
             Self::deposit_event(Event::FeedDeleted {
                 feed_id,
                 who: owner,
