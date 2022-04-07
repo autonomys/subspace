@@ -1,6 +1,6 @@
 use crate::{
     mock::{new_test_ext, Event, Feeds, Origin, System, Test},
-    Error, FeedConfigs, Feeds as FeedsStorage, Metadata, Object, TotalObjectsAndSize, Totals,
+    Error, Feeds as FeedsStorage, Object, TotalObjectsAndSize,
 };
 use frame_support::{assert_noop, assert_ok};
 
@@ -116,27 +116,6 @@ fn cannot_close_invalid_feed() {
             Feeds::close(Origin::signed(OWNER), feed_id),
             Error::<Test>::UnknownFeedId
         );
-    });
-}
-
-#[test]
-fn delete_feed() {
-    new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
-
-        assert!(FeedConfigs::<Test>::contains_key(FEED_ID));
-        assert!(Totals::<Test>::contains_key(FEED_ID));
-
-        // only owner can delete
-        assert_noop!(
-            Feeds::delete(Origin::signed(NOT_OWNER), FEED_ID),
-            Error::<Test>::NotFeedOwner
-        );
-        assert_ok!(Feeds::delete(Origin::signed(OWNER), FEED_ID));
-        assert!(!FeedConfigs::<Test>::contains_key(FEED_ID));
-        assert!(!Metadata::<Test>::contains_key(FEED_ID));
-        assert!(!Totals::<Test>::contains_key(FEED_ID));
-        assert!(!FeedsStorage::<Test>::contains_key(OWNER, FEED_ID));
     });
 }
 

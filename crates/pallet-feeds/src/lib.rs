@@ -286,21 +286,6 @@ mod pallet {
             Ok(())
         }
 
-        /// Deletes the complete state of the Feed.
-        #[pallet::weight((T::DbWeight::get().reads_writes(1, 3), Pays::No))]
-        pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
-            let (owner, _feed_config) = ensure_owner!(origin, feed_id);
-            FeedConfigs::<T>::remove(feed_id);
-            Metadata::<T>::remove(feed_id);
-            Totals::<T>::remove(feed_id);
-            Feeds::<T>::remove(owner.clone(), feed_id);
-            Self::deposit_event(Event::FeedDeleted {
-                feed_id,
-                who: owner,
-            });
-            Ok(())
-        }
-
         /// Transfers feed from current owner to new owner
         #[pallet::weight((T::DbWeight::get().reads_writes(1, 3), Pays::No))]
         pub fn transfer(
