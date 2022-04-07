@@ -58,33 +58,24 @@
 // unused dependencies can not work for test and examples at the same time
 // yielding false positives
 
-#[doc(hidden)]
-pub use metered;
-#[doc(hidden)]
-pub use tracing;
+use metered;
 
-#[doc(hidden)]
-pub use futures::{
-	self,
+use futures::{
 	channel::{mpsc, oneshot},
-	future::{BoxFuture, Fuse, Future},
-	poll, select,
-	stream::{self, select, FuturesUnordered},
+	future::Future,
 	task::{Context, Poll},
-	FutureExt, StreamExt,
 };
-#[doc(hidden)]
-pub use std::pin::Pin;
+use std::pin::Pin;
 
-use std::sync::{
-	atomic::{self, AtomicUsize},
-	Arc,
+use std::{
+	sync::{
+		atomic::{self, AtomicUsize},
+		Arc,
+	},
+	time::Duration,
 };
-#[doc(hidden)]
-pub use std::time::Duration;
 
-#[doc(hidden)]
-pub use futures_timer::Delay;
+use futures_timer::Delay;
 
 /// A wrapping type for messages.
 ///
@@ -182,9 +173,9 @@ pub(crate) struct SubsystemInstance {
 ///
 /// It is generic over over the message type `M` that a particular `Subsystem` may use.
 #[derive(Debug)]
-pub enum FromOverseer<Signal> {
+pub enum FromOverseer {
 	/// Signal from the `Overseer`.
-	Signal(Signal),
+	Signal(crate::OverseerSignal),
 
 	/// Some other `Subsystem`'s message.
 	Communication {
@@ -193,8 +184,8 @@ pub enum FromOverseer<Signal> {
 	},
 }
 
-impl<Signal> From<Signal> for FromOverseer<Signal> {
-	fn from(signal: Signal) -> Self {
+impl From<crate::OverseerSignal> for FromOverseer {
+	fn from(signal: crate::OverseerSignal) -> Self {
 		Self::Signal(signal)
 	}
 }

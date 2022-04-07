@@ -19,11 +19,8 @@
 #![deny(missing_docs)]
 
 use crate::{
-	polkadot_node_subsystem_types::{
-		errors::{SubsystemError, SubsystemResult},
-		messages::CollationGenerationMessage,
-	},
-	polkadot_overseer_gen, ActiveLeavesUpdate, OverseerSignal,
+	polkadot_node_subsystem_types::errors::{SubsystemError, SubsystemResult},
+	ActiveLeavesUpdate, OverseerSignal,
 };
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sc_client_api::BlockBackend;
@@ -37,11 +34,21 @@ use subspace_runtime_primitives::{
 	Hash,
 };
 
+/// Message to the Collation Generation subsystem.
+#[derive(Debug)]
+pub enum CollationGenerationMessage {
+	/// Initialize the collation generation subsystem
+	Initialize(CollationGenerationConfig),
+	/// Fraud proof needs to be submitted to primary chain.
+	FraudProof(FraudProof),
+	/// Bundle equivocation proof needs to be submitted to primary chain.
+	BundleEquivocationProof(BundleEquivocationProof),
+	/// Invalid transaction proof needs to be submitted to primary chain.
+	InvalidTransactionProof(InvalidTransactionProof),
+}
+
 // Simplify usage without having to do large scale modifications of all
 // subsystems at once.
-
-/// Specialized message type originating from the overseer.
-type FromOverseer = polkadot_overseer_gen::FromOverseer<OverseerSignal>;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -98,9 +105,9 @@ where
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	async fn handle_incoming(&mut self, incoming: SubsystemResult<FromOverseer>) -> bool {
+	async fn handle_incoming(&mut self, incoming: SubsystemResult<crate::FromOverseer>) -> bool {
 		match incoming {
-			Ok(FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
+			Ok(crate::FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
 				activated,
 				..
 			}))) => {
@@ -119,8 +126,8 @@ where
 
 				false
 			},
-			Ok(FromOverseer::Signal(OverseerSignal::Conclude)) => true,
-			Ok(FromOverseer::Communication { msg }) => {
+			Ok(crate::FromOverseer::Signal(OverseerSignal::Conclude)) => true,
+			Ok(crate::FromOverseer::Communication { msg }) => {
 				match msg {
 					CollationGenerationMessage::Initialize(config) =>
 						if self.config.is_some() {
@@ -168,7 +175,7 @@ where
 				}
 				false
 			},
-			Ok(FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
+			Ok(crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
 				if let Some(config) = &self.config {
 					if let Err(err) = produce_bundle(
 						Arc::clone(&self.primary_chain_client),

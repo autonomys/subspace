@@ -57,23 +57,6 @@ pub mod errors {
 	/// Ease the use of subsystem errors.
 	pub type SubsystemResult<T> = Result<T, self::SubsystemError>;
 }
-pub mod messages {
-	use cirrus_node_primitives::CollationGenerationConfig;
-	use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-
-	/// Message to the Collation Generation subsystem.
-	#[derive(Debug)]
-	pub enum CollationGenerationMessage {
-		/// Initialize the collation generation subsystem
-		Initialize(CollationGenerationConfig),
-		/// Fraud proof needs to be submitted to primary chain.
-		FraudProof(FraudProof),
-		/// Bundle equivocation proof needs to be submitted to primary chain.
-		BundleEquivocationProof(BundleEquivocationProof),
-		/// Invalid transaction proof needs to be submitted to primary chain.
-		InvalidTransactionProof(InvalidTransactionProof),
-	}
-}
 
 /// How many slots are stack-reserved for active leaves updates
 ///
