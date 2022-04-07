@@ -146,12 +146,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e22d1f4b888c298a027c99dc9048015fac177587de20fc30232a057dfbe24a21"
 
 [[package]]
-name = "assert_matches"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
-
-[[package]]
 name = "async-channel"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4378,20 +4372,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metered-channel"
-version = "0.9.13"
-dependencies = [
- "assert_matches",
- "derive_more",
- "env_logger 0.9.0",
- "futures 0.3.21",
- "futures-timer",
- "log",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5656,7 +5636,6 @@ dependencies = [
  "async-trait",
  "cirrus-node-primitives",
  "futures 0.3.21",
- "metered-channel",
  "parking_lot 0.12.0",
  "pin-project 1.0.10",
  "sc-client-api",
@@ -9337,7 +9316,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a1bdf54a7c28a2bbf701e1d2233f6c77f473486b94bee4f9678da5a148dca7f"
 dependencies = [
  "cfg-if 1.0.0",
- "log",
  "pin-project-lite 0.2.8",
  "tracing-attributes",
  "tracing-core",

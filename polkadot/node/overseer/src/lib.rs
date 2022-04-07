@@ -23,7 +23,7 @@ use std::{
 	sync::Arc,
 };
 
-use futures::{select, stream::FusedStream, StreamExt};
+use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
 
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -149,11 +149,11 @@ pub struct ActivatedLeaf {
 ///
 /// [`Overseer`]: struct.Overseer.html
 #[derive(Clone)]
-pub struct Handle(OverseerHandle);
+pub struct Handle(mpsc::Sender<Event>);
 
 impl Handle {
 	/// Create a new [`Handle`].
-	fn new(raw: OverseerHandle) -> Self {
+	fn new(raw: mpsc::Sender<Event>) -> Self {
 		Self(raw)
 	}
 
@@ -246,7 +246,7 @@ enum Event {
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
-/// import and finality notifications into the [`OverseerHandle`].
+/// import and finality notifications to it.
 pub async fn forward_events<P: BlockchainEvents<Block>>(
 	client: Arc<P>,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
@@ -288,10 +288,8 @@ pub struct Overseer<Client> {
 	/// A user specified addendum field.
 	active_leaves: HashMap<Hash, BlockNumber>,
 	/// Events that are sent to the overseer from the outside world.
-	events_rx: metered::MeteredReceiver<Event>,
+	events_rx: mpsc::Receiver<Event>,
 }
-/// Handle for an overseer.
-type OverseerHandle = metered::MeteredSender<Event>;
 
 impl<Client> Overseer<Client>
 where
@@ -309,7 +307,7 @@ where
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
 	) -> (Self, Handle) {
-		let (handle, events_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
+		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
 		let overseer =
 			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
 		(overseer, Handle::new(handle))
