@@ -26,7 +26,6 @@ use crate::{
 	polkadot_overseer_gen, ActiveLeavesUpdate, OverseerSignal,
 };
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
-use futures::future::FutureExt;
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -43,9 +42,6 @@ use subspace_runtime_primitives::{
 
 /// Specialized message type originating from the overseer.
 type FromOverseer = polkadot_overseer_gen::FromOverseer<OverseerSignal>;
-
-/// Spawned subsystem.
-type SpawnedSubsystem = polkadot_overseer_gen::SpawnedSubsystem<SubsystemError>;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -89,7 +85,7 @@ where
 	///
 	/// If `err_tx` is not `None`, errors are forwarded onto that channel as they occur.
 	/// Otherwise, most are logged and then discarded.
-	async fn run(mut self, mut ctx: crate::OverseerSubsystemContext) {
+	pub(crate) async fn run(mut self, mut ctx: crate::OverseerSubsystemContext) {
 		loop {
 			let incoming = ctx.recv().await;
 			if self.handle_incoming(incoming).await {
@@ -196,28 +192,6 @@ where
 				true
 			},
 		}
-	}
-}
-
-impl<Client> CollationGenerationSubsystem<Client>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	/// TODO
-	pub fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem {
-		let future = async move {
-			self.run(ctx).await;
-			Ok(())
-		}
-		.boxed();
-
-		SpawnedSubsystem { name: "collation-generation-subsystem", future }
 	}
 }
 

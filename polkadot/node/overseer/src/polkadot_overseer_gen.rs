@@ -119,19 +119,6 @@ impl SignalsReceived {
 	}
 }
 
-/// An asynchronous subsystem task..
-///
-/// In essence it's just a new type wrapping a `BoxFuture`.
-pub struct SpawnedSubsystem<E>
-where
-	E: std::error::Error + Send + Sync + 'static + From<self::OverseerError>,
-{
-	/// Name of the subsystem being spawned.
-	pub name: &'static str,
-	/// The task of the subsystem being spawned.
-	pub future: BoxFuture<'static, Result<(), E>>,
-}
-
 /// An error type that describes faults that may happen
 ///
 /// These are:
@@ -176,17 +163,17 @@ pub enum OverseerError {
 /// [`Subsystem`]: trait.Subsystem.html
 ///
 /// `M` here is the inner message type, and _not_ the generated `enum AllMessages`.
-pub struct SubsystemInstance<Signal> {
+pub(crate) struct SubsystemInstance {
 	/// Send sink for `Signal`s to be sent to a subsystem.
-	pub tx_signal: metered::MeteredSender<Signal>,
+	pub(crate) tx_signal: metered::MeteredSender<crate::OverseerSignal>,
 	/// Send sink for `Message`s to be sent to a subsystem.
-	pub tx_bounded: metered::MeteredSender<MessagePacket>,
+	pub(crate) tx_bounded: metered::MeteredSender<MessagePacket>,
 	/// The number of signals already received.
 	/// Required to assure messages and signals
 	/// are processed correctly.
-	pub signals_received: usize,
+	pub(crate) signals_received: usize,
 	/// Name of the subsystem instance.
-	pub name: &'static str,
+	pub(crate) name: &'static str,
 }
 
 /// A message type that a subsystem receives from an overseer.
@@ -210,13 +197,6 @@ impl<Signal> From<Signal> for FromOverseer<Signal> {
 	fn from(signal: Signal) -> Self {
 		Self::Signal(signal)
 	}
-}
-
-/// Sender end of a channel to interface with a subsystem.
-#[async_trait::async_trait]
-pub trait SubsystemSender: Send + Clone + 'static {
-	/// Send a direct message to some other `Subsystem`, routed based on message type.
-	async fn send_message(&mut self, msg: crate::CollationGenerationMessage);
 }
 
 /// A future that wraps another future with a `Delay` allowing for time-limited futures.

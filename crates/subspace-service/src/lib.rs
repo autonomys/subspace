@@ -410,7 +410,7 @@ where
         let spawner = task_manager.spawn_handle();
 
         let (overseer, overseer_handle) =
-            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
+            Overseer::builder(CollationGenerationSubsystem::new(client.clone()), spawner)
                 .leaves(
                     active_leaves
                         .into_iter()
@@ -425,7 +425,6 @@ where
                 )
                 .active_leaves(Default::default())
                 .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-                .spawner(spawner)
                 .build_with_connector(OverseerConnector::default())?;
 
         let handle = Handle::new(overseer_handle);

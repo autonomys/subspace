@@ -316,6 +316,7 @@ impl Overseer {
 	/// Create a new overseer utilizing the builder.
 	pub fn builder<Client, S>(
 		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+		spawner: S,
 	) -> OverseerBuilder<Client, S>
 	where
 		Client: HeaderBackend<Block>
@@ -327,7 +328,7 @@ impl Overseer {
 		Client::Api: ExecutorApi<Block>,
 		S: SpawnNamed,
 	{
-		OverseerBuilder::new(collation_generation)
+		OverseerBuilder::new(collation_generation, spawner)
 	}
 }
 /// Handle for an overseer.
@@ -357,7 +358,7 @@ pub struct OverseerBuilder<Client, S> {
 	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
 	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
 	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
-	spawner: ::std::option::Option<S>,
+	spawner: S,
 }
 impl<Client, S> OverseerBuilder<Client, S>
 where
@@ -372,22 +373,15 @@ where
 {
 	fn new(
 		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+		spawner: S,
 	) -> Self {
 		Self {
 			collation_generation,
 			leaves: None,
 			active_leaves: None,
 			known_leaves: None,
-			spawner: None,
+			spawner,
 		}
-	}
-	/// The spawner to use for spawning tasks.
-	pub fn spawner(mut self, spawner: S) -> Self
-	where
-		S: SpawnNamed + Send,
-	{
-		self.spawner = Some(spawner);
-		self
 	}
 	/// Attach the user defined addendum type.
 	pub fn leaves(mut self, baggage: Vec<(Hash, BlockNumber)>) -> Self {
@@ -417,7 +411,6 @@ where
 		let OverseerConnector { handle, consumer: events_rx } = connector;
 		let (collation_generation_tx, collation_generation_rx) =
 			polkadot_overseer_gen::metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
-		let spawner = self.spawner.expect("Spawner is set. qed");
 		let running_subsystems = polkadot_overseer_gen::FuturesUnordered::<
 			BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
 		>::new();
@@ -428,32 +421,25 @@ where
 		let subsystem_static_str = Box::leak(subsystem_string.replace("_", "-").into_boxed_str());
 		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
 		let collation_generation: OverseenSubsystem = {
-			let polkadot_overseer_gen::SpawnedSubsystem { future, name } =
-				collation_generation.start(ctx);
+			let future = collation_generation.run(ctx);
 			let (tx, rx) = polkadot_overseer_gen::oneshot::channel();
 			let fut = Box::pin(async move {
-				if let Err(e) = future.await {
-					polkadot_overseer_gen :: tracing :: error!
-					(subsystem = name, err = ? e, "subsystem exited with error");
-				} else {
-					polkadot_overseer_gen::tracing::debug!(
-						subsystem = name,
-						"subsystem exited without an error"
-					);
-				}
+				future.await;
+				polkadot_overseer_gen::tracing::debug!("subsystem exited without an error");
 				let _ = tx.send(());
 			});
-			spawner.spawn(name, Some(subsystem_static_str), fut);
+			self.spawner
+				.spawn("collation-generation-subsystem", Some(subsystem_static_str), fut);
 			running_subsystems.push(Box::pin(rx.map(|e| {
 				tracing :: warn! (err = ? e, "dropping error");
 				Ok(())
 			})));
-			let instance = Some(SubsystemInstance {
+			let instance = SubsystemInstance {
 				tx_signal: signal_tx,
 				tx_bounded: collation_generation_tx,
 				signals_received: 0,
-				name,
-			});
+				name: "collation-generation-subsystem",
+			};
 
 			OverseenSubsystem { instance }
 		};
@@ -492,7 +478,7 @@ where
 /// [`Subsystem`]: trait.Subsystem.html
 pub struct OverseenSubsystem {
 	/// The instance.
-	pub instance: std::option::Option<polkadot_overseer_gen::SubsystemInstance<OverseerSignal>>,
+	instance: polkadot_overseer_gen::SubsystemInstance,
 }
 impl OverseenSubsystem {
 	/// Send a message to the wrapped subsystem.
@@ -504,28 +490,25 @@ impl OverseenSubsystem {
 		origin: &'static str,
 	) -> ::std::result::Result<(), SubsystemError> {
 		const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
-		if let Some(ref mut instance) = self.instance {
-			match instance
-				.tx_bounded
-				.send(MessagePacket {
-					signals_received: instance.signals_received,
-					message: message.into(),
-				})
-				.timeout(MESSAGE_TIMEOUT)
-				.await
-			{
-				None => {
-					polkadot_overseer_gen :: tracing :: error!
+		match self
+			.instance
+			.tx_bounded
+			.send(MessagePacket {
+				signals_received: self.instance.signals_received,
+				message: message.into(),
+			})
+			.timeout(MESSAGE_TIMEOUT)
+			.await
+		{
+			None => {
+				polkadot_overseer_gen :: tracing :: error!
 					(target : LOG_TARGET, % origin,
-                    "Subsystem {} appears unresponsive.", instance.name,);
-					Err(SubsystemError::from(
-						polkadot_overseer_gen::OverseerError::SubsystemStalled(instance.name),
-					))
-				},
-				Some(res) => res.map_err(Into::into),
-			}
-		} else {
-			Ok(())
+                    "Subsystem {} appears unresponsive.", self.instance.name,);
+				Err(SubsystemError::from(polkadot_overseer_gen::OverseerError::SubsystemStalled(
+					self.instance.name,
+				)))
+			},
+			Some(res) => res.map_err(Into::into),
 		}
 	}
 	/// Send a signal to the wrapped subsystem.
@@ -536,21 +519,17 @@ impl OverseenSubsystem {
 		signal: OverseerSignal,
 	) -> ::std::result::Result<(), SubsystemError> {
 		const SIGNAL_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(10);
-		if let Some(ref mut instance) = self.instance {
-			match instance.tx_signal.send(signal).timeout(SIGNAL_TIMEOUT).await {
-				None => Err(SubsystemError::from(
-					polkadot_overseer_gen::OverseerError::SubsystemStalled(instance.name),
-				)),
-				Some(res) => {
-					let res = res.map_err(Into::into);
-					if res.is_ok() {
-						instance.signals_received += 1;
-					}
-					res
-				},
-			}
-		} else {
-			Ok(())
+		match self.instance.tx_signal.send(signal).timeout(SIGNAL_TIMEOUT).await {
+			None => Err(SubsystemError::from(
+				polkadot_overseer_gen::OverseerError::SubsystemStalled(self.instance.name),
+			)),
+			Some(res) => {
+				let res = res.map_err(Into::into);
+				if res.is_ok() {
+					self.instance.signals_received += 1;
+				}
+				res
+			},
 		}
 	}
 }
