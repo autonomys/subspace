@@ -44,7 +44,7 @@ where
 		// TODO: proper timeout
 		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
-		let mut pending_iterator = select! {
+		let pending_iterator = select! {
 			res = t1 => res,
 			_ = t2 => {
 				tracing::warn!(
@@ -68,7 +68,7 @@ where
 		// - maximize the executor computation power.
 		let mut extrinsics = Vec::new();
 
-		while let Some(pending_tx) = pending_iterator.next() {
+		for pending_tx in pending_iterator {
 			if start.elapsed() >= pushing_duration {
 				break
 			}

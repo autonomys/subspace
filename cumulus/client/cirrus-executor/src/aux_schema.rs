@@ -83,7 +83,7 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 		&[
 			(execution_receipt_key(block_hash).as_slice(), execution_receipt.encode().as_slice()),
 			(block_number_key.as_slice(), hashes_at_block_number.encode().as_slice()),
-			((EXECUTION_RECEIPT_START, new_first_saved_receipt.encode().as_slice())),
+			(EXECUTION_RECEIPT_START, new_first_saved_receipt.encode().as_slice()),
 		],
 		&keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<&[u8]>>()[..],
 	)

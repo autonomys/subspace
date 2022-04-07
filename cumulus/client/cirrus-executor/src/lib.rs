@@ -15,7 +15,6 @@
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Cirrus Executor implementation for Subspace.
-#![allow(clippy::all)]
 
 mod aux_schema;
 mod bundler;
@@ -129,6 +128,7 @@ where
 	E: CodeExecutor,
 {
 	/// Create a new instance.
+	#[allow(clippy::too_many_arguments)]
 	pub async fn new(
 		primary_chain_client: Arc<dyn PrimaryChainClient>,
 		client: Arc<Client>,
@@ -318,13 +318,13 @@ where
 	fn header(&self, at: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
 		self.client
 			.header(BlockId::Hash(at))?
-			.ok_or(sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
+			.ok_or_else(|| sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
 	}
 
 	fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-		self.client
-			.block_body(&BlockId::Hash(at))?
-			.ok_or(sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at)))
+		self.client.block_body(&BlockId::Hash(at))?.ok_or_else(|| {
+			sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at))
+		})
 	}
 
 	fn create_extrinsic_execution_proof(
@@ -393,10 +393,12 @@ where
 							&*self.client,
 							local_block_hash,
 						)?
-						.ok_or(sp_blockchain::Error::Backend(format!(
-							"Execution receipt not found for {:?}",
-							local_block_hash
-						)));
+						.ok_or_else(|| {
+							sp_blockchain::Error::Backend(format!(
+								"Execution receipt not found for {:?}",
+								local_block_hash
+							))
+						});
 						return tx
 							.send(local_receipt_result)
 							.map_err(|_| GossipMessageError::SendError)
@@ -453,11 +455,17 @@ pub enum GossipMessageError {
 	#[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
 	InvalidExtrinsicIndex { index: usize, max: usize },
 	#[error(transparent)]
-	Client(#[from] sp_blockchain::Error),
+	Client(Box<sp_blockchain::Error>),
 	#[error(transparent)]
 	RecvError(#[from] crossbeam::channel::RecvError),
 	#[error("Failed to send local receipt result because the channel is disconnected")]
 	SendError,
+}
+
+impl From<sp_blockchain::Error> for GossipMessageError {
+	fn from(error: sp_blockchain::Error) -> Self {
+		Self::Client(Box::new(error))
+	}
 }
 
 impl<Block, Client, TransactionPool, Backend, E> GossipMessageHandler<Block>
@@ -545,10 +553,12 @@ where
 		let block_number = self
 			.primary_chain_client
 			.block_number_from_id(&BlockId::Hash(execution_receipt.primary_hash))?
-			.ok_or(sp_blockchain::Error::Backend(format!(
-				"Primary block number not found for {:?}",
-				execution_receipt.primary_hash
-			)))?
+			.ok_or_else(|| {
+				sp_blockchain::Error::Backend(format!(
+					"Primary block number not found for {:?}",
+					execution_receipt.primary_hash
+				))
+			})?
 			.into();
 
 		let best_number = self.client.info().best_number;

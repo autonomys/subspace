@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 mod worker;
 
 use self::worker::GossipWorker;
@@ -245,10 +243,7 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validat
 				return do_rebroadcast
 			}
 
-			match GossipMessage::<Block>::decode(&mut data) {
-				Ok(_) => true,
-				Err(_) => false,
-			}
+			GossipMessage::<Block>::decode(&mut data).is_ok()
 		})
 	}
 }
