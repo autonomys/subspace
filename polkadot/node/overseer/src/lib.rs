@@ -17,6 +17,19 @@
 //! TODO
 #![warn(missing_docs)]
 
+use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
+use sc_client_api::{BlockBackend, BlockImportNotification};
+use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_blockchain::HeaderBackend;
+use sp_consensus_slots::Slot;
+use sp_executor::{
+	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
+	OpaqueExecutionReceipt,
+};
+use sp_runtime::{
+	generic::DigestItem,
+	traits::{Header as HeaderT, NumberFor},
+};
 use std::{
 	borrow::Cow,
 	collections::{hash_map::Entry, HashMap},
@@ -24,22 +37,6 @@ use std::{
 	future::Future,
 	pin::Pin,
 	sync::Arc,
-};
-
-use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
-
-use sc_client_api::{BlockBackend, BlockImportNotification};
-use sp_api::{ApiError, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
-use sp_consensus_slots::Slot;
-use sp_runtime::{
-	generic::DigestItem,
-	traits::{Header as HeaderT, NumberFor},
-};
-
-use sp_executor::{
-	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	OpaqueExecutionReceipt,
 };
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::{

@@ -25,7 +25,11 @@ mod processor;
 mod tests;
 
 use cirrus_block_builder::{BlockBuilder, RecordProof};
+use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
+use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
+use futures::FutureExt;
+use polkadot_overseer::{CollationGenerationConfig, ExecutorSlotInfo, OverseerHandle};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
@@ -35,25 +39,18 @@ use sp_core::{
 	traits::{CodeExecutor, SpawnNamed},
 	H256,
 };
+use sp_executor::{
+	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, FraudProof,
+	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
+};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, Zero},
 };
 use sp_trie::StorageProof;
-
-use polkadot_overseer::{CollationGenerationConfig, ExecutorSlotInfo, OverseerHandle};
-
-use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
-use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, FraudProof,
-	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
-};
+use std::{borrow::Cow, sync::Arc};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
-
-use futures::FutureExt;
-use std::{borrow::Cow, sync::Arc};
 use tracing::Instrument;
 
 /// The logging target.
