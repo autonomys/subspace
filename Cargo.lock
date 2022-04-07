@@ -5648,22 +5648,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polkadot-node-subsystem-types"
-version = "0.9.13"
-dependencies = [
- "cirrus-node-primitives",
- "futures 0.3.21",
- "polkadot-overseer-gen",
- "sc-network",
- "smallvec",
- "sp-api",
- "sp-executor",
- "subspace-runtime-primitives",
- "substrate-prometheus-endpoint",
- "thiserror",
-]
-
-[[package]]
 name = "polkadot-overseer"
 version = "0.9.13"
 dependencies = [
@@ -5672,9 +5656,9 @@ dependencies = [
  "futures-timer",
  "lru 0.7.3",
  "parking_lot 0.12.0",
- "polkadot-node-subsystem-types",
  "polkadot-overseer-gen",
  "sc-client-api",
+ "smallvec",
  "sp-api",
  "sp-blockchain",
  "sp-core",

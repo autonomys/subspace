@@ -60,6 +60,7 @@
 #![allow(clippy::all)]
 
 pub mod collation_generation;
+mod polkadot_node_subsystem_types;
 
 use std::{
 	collections::{hash_map, HashMap},

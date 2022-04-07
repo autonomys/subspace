@@ -18,7 +18,6 @@ members = [
     "polkadot/node/metered-channel",
     "polkadot/node/overseer",
     "polkadot/node/overseer/overseer-gen",
-    "polkadot/node/subsystem-types",
     "substrate/*",
     "test/subspace-test-client",
     "test/subspace-test-runtime",

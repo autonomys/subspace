@@ -13,8 +13,8 @@ sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6
 futures = "0.3.21"
 futures-timer = "3.0.2"
 parking_lot = "0.12.0"
-polkadot-node-subsystem-types = { path = "../subsystem-types" }
 polkadot-overseer-gen = { path = "./overseer-gen" }
+smallvec = "1.8.0"
 thiserror = "1.0.30"
 tracing = "0.1.32"
 lru = "0.7.3"
