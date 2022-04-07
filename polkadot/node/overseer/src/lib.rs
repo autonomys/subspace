@@ -16,9 +16,6 @@
 
 //! TODO
 #![warn(missing_docs)]
-#![allow(clippy::all)]
-
-pub mod collation_generation;
 
 use std::{
 	collections::{hash_map::Entry, HashMap},
@@ -31,12 +28,220 @@ use futures::{select, stream::FusedStream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-
-use crate::collation_generation::CollationGenerationMessage;
+use sp_runtime::generic::DigestItem;
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
-use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
+use subspace_runtime_primitives::{
+	opaque::{Block, BlockId},
+	BlockNumber, Hash,
+};
+
+/// Message to the Collation Generation subsystem.
+#[derive(Debug)]
+pub enum CollationGenerationMessage {
+	/// Initialize the collation generation subsystem
+	Initialize(CollationGenerationConfig),
+	/// Fraud proof needs to be submitted to primary chain.
+	FraudProof(FraudProof),
+	/// Bundle equivocation proof needs to be submitted to primary chain.
+	BundleEquivocationProof(BundleEquivocationProof),
+	/// Invalid transaction proof needs to be submitted to primary chain.
+	InvalidTransactionProof(InvalidTransactionProof),
+}
+
+const LOG_TARGET: &str = "overseer";
+
+/// Collation Generation Subsystem
+pub struct CollationGenerationSubsystem<Client> {
+	primary_chain_client: Arc<Client>,
+	config: Option<Arc<CollationGenerationConfig>>,
+}
+
+impl<Client> CollationGenerationSubsystem<Client>
+where
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ Send
+		+ 'static
+		+ Sync,
+	Client::Api: ExecutorApi<Block>,
+{
+	/// Create a new instance of the `CollationGenerationSubsystem`.
+	pub fn new(primary_chain_client: Arc<Client>) -> Self {
+		Self { primary_chain_client, config: None }
+	}
+
+	pub(crate) async fn update_activated_leave(
+		&self,
+		activated_leaf: ActivatedLeaf,
+	) -> Result<(), ApiError> {
+		// follow the procedure from the guide
+		if let Some(config) = &self.config {
+			// TODO: invoke this on finalized block?
+			process_primary_block(
+				Arc::clone(&self.primary_chain_client),
+				config,
+				activated_leaf.hash,
+			)
+			.await?;
+		}
+
+		Ok(())
+	}
+
+	pub(crate) async fn update_new_slot(
+		&self,
+		slot_info: ExecutorSlotInfo,
+	) -> Result<(), ApiError> {
+		if let Some(config) = &self.config {
+			let client = &self.primary_chain_client;
+			let best_hash = client.info().best_hash;
+
+			let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
+				Some(bundle_result) => bundle_result.to_opaque_bundle(),
+				None => {
+					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+					return Ok(())
+				},
+			};
+
+			// TODO: Handle returned result?
+			let _ = client
+				.runtime_api()
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+		}
+
+		Ok(())
+	}
+
+	pub(crate) async fn handle_message(
+		&mut self,
+		message: CollationGenerationMessage,
+	) -> Result<(), ApiError> {
+		let client = &self.primary_chain_client;
+
+		match message {
+			CollationGenerationMessage::Initialize(config) =>
+				if self.config.is_some() {
+					tracing::error!(target: LOG_TARGET, "double initialization");
+				} else {
+					self.config = Some(Arc::new(config));
+				},
+			CollationGenerationMessage::FraudProof(fraud_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_fraud_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					fraud_proof,
+				)?;
+			},
+			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					bundle_equivocation_proof,
+				)?;
+			},
+			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof) => {
+				// TODO: Handle returned result?
+				let _ = self
+					.primary_chain_client
+					.runtime_api()
+					.submit_invalid_transaction_proof_unsigned(
+						&BlockId::Hash(client.info().best_hash),
+						invalid_transaction_proof,
+					)?;
+			},
+		}
+
+		Ok(())
+	}
+}
+
+/// Apply the transaction bundles for given primary block as follows:
+///
+/// 1. Extract the transaction bundles from the block.
+/// 2. Pass the bundles to secondary node and do the computation there.
+async fn process_primary_block<Client>(
+	client: Arc<Client>,
+	config: &CollationGenerationConfig,
+	block_hash: Hash,
+) -> Result<(), ApiError>
+where
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ Send
+		+ 'static
+		+ Sync,
+	Client::Api: ExecutorApi<Block>,
+{
+	let block_id = BlockId::Hash(block_hash);
+	let extrinsics = match client.block_body(&block_id) {
+		Err(err) => {
+			tracing::error!(
+				target: LOG_TARGET,
+				?err,
+				"Failed to get block body from primary chain"
+			);
+			return Ok(())
+		},
+		Ok(None) => {
+			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
+			return Ok(())
+		},
+		Ok(Some(body)) => body,
+	};
+
+	let bundles = client.runtime_api().extract_bundles(&block_id, extrinsics)?;
+
+	let header = match client.header(block_id) {
+		Err(err) => {
+			tracing::error!(target: LOG_TARGET, ?err, "Failed to get block from primary chain");
+			return Ok(())
+		},
+		Ok(None) => {
+			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
+			return Ok(())
+		},
+		Ok(Some(header)) => header,
+	};
+
+	let maybe_new_runtime = if header
+		.digest
+		.logs
+		.iter()
+		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+	{
+		Some(client.runtime_api().execution_wasm_bundle(&block_id)?)
+	} else {
+		None
+	};
+
+	let shuffling_seed = client.runtime_api().extrinsics_shuffling_seed(&block_id, header)?;
+
+	let opaque_execution_receipt =
+		match (config.processor)(block_hash, bundles, shuffling_seed, maybe_new_runtime).await {
+			Some(processor_result) => processor_result.to_opaque_execution_receipt(),
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Skip sending the execution receipt because executor is not elected",
+				);
+				return Ok(())
+			},
+		};
+
+	let best_hash = client.info().best_hash;
+
+	// TODO: Handle returned result?
+	client
+		.runtime_api()
+		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), opaque_execution_receipt)?;
+
+	Ok(())
+}
 
 /// Activated leaf.
 #[derive(Debug, Clone)]
@@ -181,12 +386,10 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 
 /// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
-/// The log target tag.
-const LOG_TARGET: &str = "overseer";
 /// The overseer.
 pub struct Overseer<Client> {
 	/// A subsystem instance.
-	collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	collation_generation: CollationGenerationSubsystem<Client>,
 	/// A user specified addendum field.
 	leaves: Vec<(Hash, BlockNumber)>,
 	/// A user specified addendum field.
@@ -209,7 +412,7 @@ where
 {
 	/// Create a new overseer.
 	pub fn new(
-		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+		collation_generation: CollationGenerationSubsystem<Client>,
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
 	) -> (Self, Handle) {

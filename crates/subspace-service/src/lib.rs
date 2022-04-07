@@ -18,7 +18,7 @@
 
 pub mod rpc;
 
-use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
+use polkadot_overseer::CollationGenerationSubsystem;
 use polkadot_overseer::{BlockInfo, Handle, Overseer};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
