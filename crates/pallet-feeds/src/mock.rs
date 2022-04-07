@@ -58,10 +58,10 @@ parameter_types! {
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
-    type FeedProcessorId = ();
+    type FeedProcessorKind = ();
 
     fn feed_processor(
-        _feed_processor_id: Self::FeedProcessorId,
+        _feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
         Box::new(())
     }

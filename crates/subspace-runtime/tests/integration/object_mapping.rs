@@ -4,7 +4,7 @@ use hex_literal::hex;
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
 use subspace_core_primitives::{crypto, objects::BlockObjectMapping, Sha256Hash};
 use subspace_runtime::{
-    Block, Call, FeedProcessorId, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
+    Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
 };
 
 #[test]
@@ -86,7 +86,7 @@ fn object_mapping() {
         Feeds::create(
             Origin::signed([0u8; 32].into()),
             0,
-            FeedProcessorId::default(),
+            FeedProcessorKind::default(),
             None,
         )
         .expect("create feed should not fail");
@@ -162,7 +162,7 @@ fn grandpa_object_mapping() {
         Feeds::create(
             Origin::signed([0u8; 32].into()),
             0,
-            FeedProcessorId::PolkadotLike,
+            FeedProcessorKind::PolkadotLike,
             Some(init_data),
         )
         .expect("create feed should not fail");

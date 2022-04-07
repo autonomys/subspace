@@ -524,10 +524,10 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
-    type FeedProcessorId = ();
+    type FeedProcessorKind = ();
 
     fn feed_processor(
-        _feed_processor_id: Self::FeedProcessorId,
+        _feed_processor_id: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessor<Self::FeedId>> {
         Box::new(GrandpaValidator(PhantomData::<PolkadotLike>))
     }

@@ -44,11 +44,11 @@ mod pallet {
         // Feed ID uniquely identifies a Feed
         type FeedId: Parameter + Member + Default + Copy + PartialOrd;
 
-        // type that represents a feed processor id
-        type FeedProcessorId: Parameter + Member + Default + Copy;
+        // type that references to a particular impl of feed processor
+        type FeedProcessorKind: Parameter + Member + Default + Copy;
 
         fn feed_processor(
-            feed_processor_id: Self::FeedProcessorId,
+            feed_processor_kind: Self::FeedProcessorKind,
         ) -> Box<dyn FeedProcessorT<Self::FeedId>>;
     }
 
@@ -86,7 +86,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
     pub(super) type FeedConfigs<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorId>, OptionQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorKind>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -115,13 +115,13 @@ mod pallet {
             who: T::AccountId,
         },
 
-        /// Feed is closed.
+        /// Feed was closed.
         FeedClosed {
             feed_id: T::FeedId,
             who: T::AccountId,
         },
 
-        /// Feed is deleted.
+        /// Feed was deleted.
         FeedDeleted {
             feed_id: T::FeedId,
             who: T::AccountId,
@@ -149,7 +149,7 @@ mod pallet {
         pub fn create(
             origin: OriginFor<T>,
             feed_id: T::FeedId,
-            feed_processor_id: T::FeedProcessorId,
+            feed_processor_id: T::FeedProcessorKind,
             init_data: Option<InitData>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -182,7 +182,7 @@ mod pallet {
         pub fn update(
             origin: OriginFor<T>,
             feed_id: T::FeedId,
-            feed_processor_id: T::FeedProcessorId,
+            feed_processor_id: T::FeedProcessorKind,
             init_data: Option<InitData>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;

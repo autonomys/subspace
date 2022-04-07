@@ -566,7 +566,7 @@ impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
 
 /// FeedProcessorId represents the available FeedProcessor impls
 #[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
-pub enum FeedProcessorId {
+pub enum FeedProcessorKind {
     // No validation
     NoValidation,
     // Validation and returns metadata
@@ -575,22 +575,24 @@ pub enum FeedProcessorId {
     ParachainLike,
 }
 
-impl Default for FeedProcessorId {
+impl Default for FeedProcessorKind {
     fn default() -> Self {
-        FeedProcessorId::NoValidation
+        FeedProcessorKind::NoValidation
     }
 }
 
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
-    type FeedProcessorId = FeedProcessorId;
+    type FeedProcessorKind = FeedProcessorKind;
 
-    fn feed_processor(feed_processor_id: FeedProcessorId) -> Box<dyn FeedProcessor<Self::FeedId>> {
-        match feed_processor_id {
-            FeedProcessorId::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
-            FeedProcessorId::NoValidation => Box::new(()),
-            FeedProcessorId::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
+    fn feed_processor(
+        feed_processor_kind: FeedProcessorKind,
+    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
+        match feed_processor_kind {
+            FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
+            FeedProcessorKind::NoValidation => Box::new(()),
+            FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
         }
     }
 }
