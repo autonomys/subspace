@@ -25,10 +25,8 @@ use std::sync::{
 use derive_more::{Add, Display};
 
 mod bounded;
-pub mod oneshot;
-mod unbounded;
 
-pub use self::{bounded::*, unbounded::*};
+pub use self::bounded::*;
 
 /// A peek into the inner state of a meter.
 #[derive(Debug, Clone, Default)]
@@ -165,21 +163,6 @@ mod tests {
 					}
 				}
 			)
-		});
-	}
-
-	#[test]
-	fn failed_send_does_not_inc_sent() {
-		let (mut bounded, _) = channel::<Msg>(5);
-		let (unbounded, _) = unbounded::<Msg>();
-
-		block_on(async move {
-			assert!(bounded.send(Msg::default()).await.is_err());
-			assert!(bounded.try_send(Msg::default()).is_err());
-			assert_eq!(bounded.meter().read(), Readout { sent: 0, received: 0 });
-
-			assert!(unbounded.unbounded_send(Msg::default()).is_err());
-			assert_eq!(unbounded.meter().read(), Readout { sent: 0, received: 0 });
 		});
 	}
 }
