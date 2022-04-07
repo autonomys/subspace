@@ -34,6 +34,8 @@ mod pallet {
     use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::{CheckedAdd, One};
+    use sp_runtime::ArithmeticError;
     use sp_std::prelude::*;
 
     #[pallet::config]
@@ -42,7 +44,7 @@ mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         // Feed ID uniquely identifies a Feed
-        type FeedId: Parameter + Member + Default + Copy + PartialOrd;
+        type FeedId: Parameter + Member + Default + Copy + PartialOrd + CheckedAdd + One;
 
         // type that references to a particular impl of feed processor
         type FeedProcessorKind: Parameter + Member + Default + Copy;
@@ -93,6 +95,10 @@ mod pallet {
     pub(super) type Totals<T: Config> =
         StorageMap<_, Blake2_128Concat, T::FeedId, TotalObjectsAndSize, ValueQuery>;
 
+    #[pallet::storage]
+    #[pallet::getter(fn next_feed_id)]
+    pub(super) type NextFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
+
     /// `pallet-feeds` events
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -131,9 +137,6 @@ mod pallet {
     /// `pallet-feeds` errors
     #[pallet::error]
     pub enum Error<T> {
-        /// `FeedId` already taken
-        FeedIdUnavailable,
-
         /// `FeedId` doesn't exist
         UnknownFeedId,
 
@@ -148,21 +151,20 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn create(
             origin: OriginFor<T>,
-            feed_id: T::FeedId,
             feed_processor_id: T::FeedProcessorKind,
             init_data: Option<InitData>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            ensure!(
-                !FeedConfigs::<T>::contains_key(feed_id),
-                Error::<T>::FeedIdUnavailable
-            );
-
+            let feed_id = NextFeedId::<T>::get();
+            let next_feed_id = feed_id
+                .checked_add(&One::one())
+                .ok_or(ArithmeticError::Overflow)?;
             let feed_processor = T::feed_processor(feed_processor_id);
             if let Some(init_data) = init_data {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }
 
+            NextFeedId::<T>::set(next_feed_id);
             FeedConfigs::<T>::insert(
                 feed_id,
                 FeedConfig {

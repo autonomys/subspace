@@ -85,7 +85,6 @@ fn object_mapping() {
         // init feed
         Feeds::create(
             Origin::signed([0u8; 32].into()),
-            0,
             FeedProcessorKind::default(),
             None,
         )
@@ -161,7 +160,6 @@ fn grandpa_object_mapping() {
         // init feed
         Feeds::create(
             Origin::signed([0u8; 32].into()),
-            0,
             FeedProcessorKind::PolkadotLike,
             Some(init_data),
         )

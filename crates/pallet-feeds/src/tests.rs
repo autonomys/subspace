@@ -8,9 +8,9 @@ const FEED_ID: u64 = 0;
 const ACCOUNT_ID: u64 = 100;
 
 #[test]
-fn take_available_feed_id() {
+fn create_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
@@ -18,18 +18,7 @@ fn take_available_feed_id() {
             feed_id: FEED_ID,
             who: ACCOUNT_ID,
         }));
-    });
-}
-
-#[test]
-fn cannot_take_unavailable_feed_id() {
-    new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
-
-        assert_noop!(
-            Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None),
-            Error::<Test>::FeedIdUnavailable
-        );
+        assert_eq!(Feeds::next_feed_id(), 1)
     });
 }
 
@@ -39,7 +28,7 @@ fn can_do_put() {
         let object: Object = vec![1, 2, 3, 4, 5];
         let object_size = object.len() as u64;
         // create feed before putting any data
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
 
         assert_ok!(Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object));
 
@@ -81,7 +70,7 @@ fn can_close_open_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         // create feed before putting any data
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
 
         assert_ok!(Feeds::put(
             Origin::signed(ACCOUNT_ID),
@@ -118,7 +107,7 @@ fn cannot_close_invalid_feed() {
 #[test]
 fn delete_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
 
         assert!(FeedConfigs::<Test>::contains_key(FEED_ID));
         assert!(Totals::<Test>::contains_key(FEED_ID));
@@ -133,7 +122,7 @@ fn delete_feed() {
 #[test]
 fn can_update_existing_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
         assert_ok!(Feeds::update(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedUpdated {
             feed_id: FEED_ID,
