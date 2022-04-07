@@ -5663,7 +5663,6 @@ dependencies = [
  "smallvec",
  "sp-api",
  "sp-blockchain",
- "sp-core",
  "sp-executor",
  "sp-runtime",
  "subspace-runtime-primitives",

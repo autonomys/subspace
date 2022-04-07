@@ -61,7 +61,7 @@
 use metered;
 
 use futures::{
-	channel::{mpsc, oneshot},
+	channel::oneshot,
 	future::Future,
 	task::{Context, Poll},
 };
@@ -123,30 +123,11 @@ pub enum OverseerError {
 	#[error(transparent)]
 	NotifyCancellation(#[from] oneshot::Canceled),
 
-	#[error(transparent)]
-	QueueError(#[from] mpsc::SendError),
-
-	#[error("Failed to spawn task {0}")]
-	TaskSpawn(&'static str),
-
-	#[error(transparent)]
-	Infallible(#[from] std::convert::Infallible),
-
 	#[error("Failed to {0}")]
 	Context(String),
 
 	#[error("Subsystem stalled: {0}")]
 	SubsystemStalled(&'static str),
-
-	/// Per origin (or subsystem) annotations to wrap an error.
-	#[error("Error originated in {origin}")]
-	FromOrigin {
-		/// An additional annotation tag for the origin of `source`.
-		origin: &'static str,
-		/// The wrapped error. Marked as source for tracking the error chain.
-		#[source]
-		source: Box<dyn 'static + std::error::Error + Send + Sync>,
-	},
 }
 
 /// A running instance of some [`Subsystem`].

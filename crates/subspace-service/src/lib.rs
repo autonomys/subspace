@@ -407,10 +407,8 @@ where
     let overseer_handle = if config.role.is_authority() {
         let active_leaves = active_leaves(&select_chain, &*client).await?;
 
-        let spawner = task_manager.spawn_handle();
-
         let (overseer, overseer_handle) =
-            Overseer::builder(CollationGenerationSubsystem::new(client.clone()), spawner)
+            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
                 .leaves(
                     active_leaves
                         .into_iter()
@@ -434,8 +432,8 @@ where
             let overseer_client = client.clone();
             let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
             task_manager.spawn_essential_handle().spawn_blocking(
-                "overseer",
-                Some("overseer"),
+                "collation-generation-subsystem",
+                Some("collation-generation-subsystem"),
                 Box::pin(async move {
                     use cirrus_node_primitives::ExecutorSlotInfo;
                     use futures::{pin_mut, select, FutureExt, StreamExt};

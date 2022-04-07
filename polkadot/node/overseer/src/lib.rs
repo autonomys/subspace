@@ -66,13 +66,13 @@ mod polkadot_overseer_gen;
 use std::{
 	collections::{hash_map, HashMap},
 	fmt::Debug,
+	pin::Pin,
 	sync::Arc,
 	time::Duration,
 };
 
-use futures::{future::BoxFuture, select, stream::FusedStream, FutureExt, StreamExt};
+use futures::{future::FusedFuture, select, stream::FusedStream, FutureExt, StreamExt};
 use lru::LruCache;
-use sp_core::traits::SpawnNamed;
 
 use sc_client_api::{
 	BlockBackend, BlockImportNotification, BlockchainEvents, FinalityNotification,
@@ -255,9 +255,8 @@ pub struct Overseer {
 	/// A user specified addendum field.
 	pub known_leaves: LruCache<Hash, ()>,
 	/// The set of running subsystems.
-	running_subsystems: futures::stream::FuturesUnordered<
-		BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
-	>,
+	running_subsystem:
+		Pin<Box<dyn FusedFuture<Output = ::std::result::Result<(), SubsystemError>> + Send>>,
 	/// Events that are sent to the overseer from the outside world.
 	events_rx: metered::MeteredReceiver<Event>,
 }
@@ -268,18 +267,15 @@ impl Overseer {
 	/// The definition of a termination signal is up to the user and
 	/// implementation specific.
 	pub async fn wait_terminate(
-		&mut self,
+		mut self,
 		signal: OverseerSignal,
 		timeout: ::std::time::Duration,
 	) -> ::std::result::Result<(), SubsystemError> {
 		::std::mem::drop(self.broadcast_signal(signal).await);
 		let mut timeout_fut = futures_timer::Delay::new(timeout).fuse();
-		loop {
-			select! {
-				_ = self.running_subsystems.next() => if
-				self.running_subsystems.is_empty() { break ; }, _ =
-				timeout_fut => break, complete => break,
-			}
+		select! {
+			_ = self.running_subsystem => {},
+			_ = timeout_fut => {},
 		}
 		Ok(())
 	}
@@ -335,10 +331,9 @@ impl Overseer {
 }
 impl Overseer {
 	/// Create a new overseer utilizing the builder.
-	pub fn builder<Client, S>(
+	pub fn builder<Client>(
 		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
-		spawner: S,
-	) -> OverseerBuilder<Client, S>
+	) -> OverseerBuilder<Client>
 	where
 		Client: HeaderBackend<Block>
 			+ BlockBackend<Block>
@@ -347,9 +342,8 @@ impl Overseer {
 			+ 'static
 			+ Sync,
 		Client::Api: ExecutorApi<Block>,
-		S: SpawnNamed,
 	{
-		OverseerBuilder::new(collation_generation, spawner)
+		OverseerBuilder::new(collation_generation)
 	}
 }
 /// Handle for an overseer.
@@ -373,14 +367,13 @@ impl ::std::default::Default for OverseerConnector {
 }
 /// Initialization type to be used for a field of the overseer.
 #[allow(missing_docs)]
-pub struct OverseerBuilder<Client, S> {
+pub struct OverseerBuilder<Client> {
 	collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
 	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
 	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
 	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
-	spawner: S,
 }
-impl<Client, S> OverseerBuilder<Client, S>
+impl<Client> OverseerBuilder<Client>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -389,19 +382,11 @@ where
 		+ 'static
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
-	S: SpawnNamed,
 {
 	fn new(
 		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
-		spawner: S,
 	) -> Self {
-		Self {
-			collation_generation,
-			leaves: None,
-			active_leaves: None,
-			known_leaves: None,
-			spawner,
-		}
+		Self { collation_generation, leaves: None, active_leaves: None, known_leaves: None }
 	}
 	/// Attach the user defined addendum type.
 	pub fn leaves(mut self, baggage: Vec<(Hash, BlockNumber)>) -> Self {
@@ -418,11 +403,6 @@ where
 		self.known_leaves = Some(baggage);
 		self
 	}
-	/// Complete the construction and create the overseer type.
-	pub fn build(self) -> ::std::result::Result<(Overseer, OverseerHandle), SubsystemError> {
-		let connector = OverseerConnector::default();
-		self.build_with_connector(connector)
-	}
 	/// Complete the construction and create the overseer type based on an existing `connector`.
 	pub fn build_with_connector(
 		self,
@@ -431,34 +411,23 @@ where
 		let OverseerConnector { handle, consumer: events_rx } = connector;
 		let (collation_generation_tx, collation_generation_rx) =
 			metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
-		let running_subsystems = futures::stream::FuturesUnordered::<
-			BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
-		>::new();
 		let collation_generation = self.collation_generation;
 		let (signal_tx, signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let subsystem_string = String::from(stringify!(collation_generation));
-		let subsystem_static_str = Box::leak(subsystem_string.replace("_", "-").into_boxed_str());
 		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
-		let collation_generation = {
-			let future = collation_generation.run(ctx);
-			let (tx, rx) = futures::channel::oneshot::channel();
-			let fut = Box::pin(async move {
-				future.await;
-				tracing::debug!("subsystem exited without an error");
-				let _ = tx.send(());
-			});
-			self.spawner
-				.spawn("collation-generation-subsystem", Some(subsystem_static_str), fut);
-			running_subsystems.push(Box::pin(rx.map(|e| {
-				tracing :: warn! (err = ? e, "dropping error");
-				Ok(())
-			})));
-			SubsystemInstance {
-				tx_signal: signal_tx,
-				tx_bounded: collation_generation_tx,
-				signals_received: 0,
-				name: "collation-generation-subsystem",
-			}
+		let running_subsystem = Box::pin(
+			collation_generation
+				.run(ctx)
+				.map(|e| {
+					tracing :: warn! (err = ? e, "dropping error");
+					Ok(())
+				})
+				.fuse(),
+		);
+		let collation_generation = SubsystemInstance {
+			tx_signal: signal_tx,
+			tx_bounded: collation_generation_tx,
+			signals_received: 0,
+			name: "collation-generation-subsystem",
 		};
 		let leaves = self.leaves.expect(&format!(
 			"Baggage variable `{0}` of `{1}` must be set by the user!",
@@ -480,7 +449,7 @@ where
 			leaves,
 			active_leaves,
 			known_leaves,
-			running_subsystems,
+			running_subsystem,
 			events_rx,
 		};
 		Ok((overseer, handle))
@@ -565,11 +534,6 @@ impl OverseerSubsystemContext {
 	}
 }
 impl Overseer {
-	/// Stop the overseer.
-	async fn stop(mut self) {
-		let _ = self.wait_terminate(OverseerSignal::Conclude, Duration::from_secs(1_u64)).await;
-	}
-
 	/// Run the `Overseer`.
 	pub async fn run(mut self) -> SubsystemResult<()> {
 		// Notify about active leaves on startup before starting the loop
@@ -596,13 +560,13 @@ impl Overseer {
 						}
 					}
 				},
-				res = self.running_subsystems.select_next_some() => {
+				res = &mut self.running_subsystem => {
 					tracing::error!(
 						target: LOG_TARGET,
 						subsystem = ?res,
 						"subsystem finished unexpectedly",
 					);
-					self.stop().await;
+					let _ = self.wait_terminate(OverseerSignal::Conclude, Duration::from_secs(1_u64)).await;
 					return res;
 				},
 			}
