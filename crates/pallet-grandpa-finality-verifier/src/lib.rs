@@ -31,11 +31,10 @@
 
 mod grandpa;
 
-mod chain;
+pub mod chain;
 #[cfg(test)]
 mod tests;
 
-use chain::ChainType;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -46,18 +45,10 @@ use sp_std::{fmt::Debug, vec::Vec};
 // Re-export in crate namespace for `construct_runtime!`
 pub use pallet::*;
 
-// ChainData holds the type of the Chain and if its operational
-#[derive(Encode, Decode, TypeInfo)]
-struct ChainData {
-    chain_type: ChainType,
-}
-
 /// Data required to initialize a Chain
 #[derive(Default, Debug, Encode, Decode, Clone, PartialEq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct InitializationData {
-    /// Type of Chain
-    pub chain_type: ChainType,
     /// Scale encoded header from which we should start syncing.
     pub header: Vec<u8>,
     /// The initial authorities of the pallet.
@@ -68,22 +59,22 @@ pub struct InitializationData {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use crate::chain::{Chain, PolkadotLike};
-    use crate::grandpa::{
-        find_forced_change, find_scheduled_change, verify_justification, AuthoritySet,
+    use crate::{
+        chain::Chain,
+        grandpa::{find_forced_change, find_scheduled_change, verify_justification, AuthoritySet},
+        InitializationData,
     };
-    use crate::{ChainData, ChainType, InitializationData};
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
+    use num_traits::CheckedAdd;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;
-    use sp_runtime::traits::Header;
-    use sp_runtime::traits::Zero;
+    use sp_runtime::traits::{Header, One, Zero};
     use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         // Chain ID uniquely identifies a substrate based chain
-        type ChainId: Parameter + Member + MaybeSerializeDeserialize + Debug + Default + Copy;
+        type ChainId: Parameter + Member + Debug + Default + Copy;
     }
 
     #[pallet::pallet]
@@ -100,19 +91,8 @@ pub mod pallet {
     pub(super) type CurrentAuthoritySet<T: Config> =
         StorageMap<_, Blake2_128Concat, T::ChainId, AuthoritySet, ValueQuery>;
 
-    /// Map from Chain Id to ChainData
-    #[pallet::storage]
-    pub(super) type Chains<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::ChainId, ChainData, OptionQuery>;
-
     #[pallet::error]
     pub enum Error<T> {
-        /// Chain already initialized
-        AlreadyInitialized,
-        /// Unknown chain
-        ChainUnknown,
-        /// All feed operations are halted.
-        Halted,
         /// The authority set from the underlying header chain is invalid.
         InvalidAuthoritySet,
         /// Justification is missing..
@@ -125,48 +105,28 @@ pub mod pallet {
         FailedDecodingHeader,
         /// Failed to Decode block
         FailedDecodingBlock,
-        /// Failed to decode finality proof
-        FailedDecodingFinalityProof,
         /// Failed to decode justifications
         FailedDecodingJustifications,
         /// Best finalized header not found for chain
         FinalizedHeaderNotFound,
         /// The header is already finalized
-        OldHeader,
+        InvalidHeader,
         /// The scheduled authority set change found in the header is unsupported by the pallet.
         ///
         /// This is the case for non-standard (e.g forced) authority set changes.
         UnsupportedScheduledChange,
     }
 
-    /// Ensure that the pallet is in operational mode (not halted).
-    pub(crate) fn ensure_operational<T: Config>(
-        chain_id: T::ChainId,
-    ) -> Result<ChainType, Error<T>> {
-        let data = Chains::<T>::get(chain_id);
-        match data {
-            None => Err(Error::<T>::ChainUnknown),
-            Some(data) => Ok(data.chain_type),
-        }
-    }
-
     pub(crate) fn initialize_chain<T: Config>(
         chain_id: T::ChainId,
         init_params: InitializationData,
     ) -> DispatchResult {
-        ensure!(
-            !BestFinalized::<T>::contains_key(chain_id),
-            Error::<T>::AlreadyInitialized
-        );
-
         let InitializationData {
-            chain_type,
             header,
             authority_list,
             set_id,
         } = init_params;
         BestFinalized::<T>::insert(chain_id, header);
-        Chains::<T>::insert(chain_id, ChainData { chain_type });
         let authority_set = AuthoritySet {
             authorities: authority_list,
             set_id,
@@ -175,10 +135,10 @@ pub mod pallet {
         Ok(())
     }
 
-    pub(crate) fn validate_finalized_block<T: Config, C: Chain>(
+    pub fn validate_finalized_block<T: Config, C: Chain>(
         chain_id: T::ChainId,
         object: &[u8],
-    ) -> DispatchResult {
+    ) -> Result<(C::Hash, C::BlockNumber), DispatchError> {
         let block = C::decode_block::<T>(object)?;
         let justification = block
             .justifications
@@ -194,7 +154,11 @@ pub mod pallet {
 
         // ensure block is always increasing
         let (number, hash) = (block.block.header.number(), block.block.header.hash());
-        ensure!(best_finalized.number() < number, Error::<T>::OldHeader);
+        let next_block_number = best_finalized
+            .number()
+            .checked_add(&One::one())
+            .ok_or(sp_runtime::ArithmeticError::Overflow)?;
+        ensure!(next_block_number == *number, Error::<T>::InvalidHeader);
 
         // fetch current authority set
         let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);
@@ -215,12 +179,12 @@ pub mod pallet {
             })?;
 
         // Update any next authority set if any
-        let next_header = block.block.header;
-        try_enact_authority_change::<T, C>(chain_id, &next_header, set_id)?;
+        let next_header = &block.block.header;
+        try_enact_authority_change::<T, C>(chain_id, next_header, set_id)?;
 
         // Update best finalized header
         BestFinalized::<T>::insert(chain_id, next_header.encode());
-        Ok(())
+        Ok((hash, *number))
     }
 
     /// Check the given header for a GRANDPA scheduled authority set change. If a change
@@ -286,12 +250,10 @@ pub mod pallet {
         Ok(())
     }
 
-    pub fn validate<T: Config>(chain_id: T::ChainId, object: &[u8]) -> DispatchResult {
-        let chain_type = ensure_operational::<T>(chain_id)?;
-        match chain_type {
-            ChainType::PolkadotLike => {
-                validate_finalized_block::<T, PolkadotLike>(chain_id, object)
-            }
-        }
+    /// purges the on chain state of a given chain
+    pub fn purge<T: Config>(chain_id: T::ChainId) -> DispatchResult {
+        BestFinalized::<T>::remove(chain_id);
+        CurrentAuthoritySet::<T>::remove(chain_id);
+        Ok(())
     }
 }

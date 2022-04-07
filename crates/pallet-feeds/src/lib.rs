@@ -19,11 +19,11 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+use crate::feed_processor::FeedObjectMapping;
 use core::mem;
-use frame_support::sp_runtime::DispatchResult;
 pub use pallet::*;
-use subspace_core_primitives::{crypto, Sha256Hash};
-
+use sp_std::{vec, vec::Vec};
+pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
 mod mock;
 #[cfg(all(feature = "std", test))]
@@ -31,7 +31,7 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::FeedValidator;
+    use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, One};
@@ -44,17 +44,14 @@ mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         // Feed ID uniquely identifies a Feed
-        type FeedId: Parameter
-            + Member
-            + MaybeSerializeDeserialize
-            + Default
-            + Copy
-            + One
-            + CheckedAdd
-            + PartialOrd;
+        type FeedId: Parameter + Member + Default + Copy + PartialOrd + CheckedAdd + One;
 
-        /// Feed Validator
-        type Validator: FeedValidator<Self::FeedId>;
+        // type that references to a particular impl of feed processor
+        type FeedProcessorKind: Parameter + Member + Default + Copy;
+
+        fn feed_processor(
+            feed_processor_kind: Self::FeedProcessorKind,
+        ) -> Box<dyn FeedProcessorT<Self::FeedId>>;
     }
 
     /// Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
@@ -65,10 +62,8 @@ mod pallet {
 
     /// User-provided object to store
     pub(super) type Object = Vec<u8>;
-    /// User-provided object metadata (not addressable directly, but available in an even)
-    pub(super) type ObjectMetadata = Vec<u8>;
     /// User provided initial data for validation
-    pub(super) type InitialValidation = Vec<u8>;
+    pub(super) type InitData = Vec<u8>;
 
     /// Total amount of data and number of objects stored in a feed
     #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
@@ -79,15 +74,21 @@ mod pallet {
         pub count: u64,
     }
 
+    #[derive(Debug, Decode, Encode, TypeInfo, Default)]
+    pub struct FeedConfig<FeedProcessorId> {
+        pub active: bool,
+        pub feed_processor_id: FeedProcessorId,
+    }
+
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
     pub(super) type Metadata<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, ObjectMetadata, OptionQuery>;
+        StorageMap<_, Blake2_128Concat, T::FeedId, FeedMetadata, OptionQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn should_validate)]
-    pub(super) type ShouldValidate<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, bool, ValueQuery>;
+    #[pallet::getter(fn feed_configs)]
+    pub(super) type FeedConfigs<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorKind>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -95,8 +96,8 @@ mod pallet {
         StorageMap<_, Blake2_128Concat, T::FeedId, TotalObjectsAndSize, ValueQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn current_feed_id)]
-    pub(super) type CurrentFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
+    #[pallet::getter(fn next_feed_id)]
+    pub(super) type NextFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
 
     /// `pallet-feeds` events
     #[pallet::event]
@@ -104,12 +105,30 @@ mod pallet {
     pub enum Event<T: Config> {
         /// New object was added.
         ObjectSubmitted {
-            metadata: ObjectMetadata,
+            metadata: FeedMetadata,
             who: T::AccountId,
             object_size: u64,
         },
         /// New feed was created.
         FeedCreated {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
+
+        /// An existing feed was updated.
+        FeedUpdated {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
+
+        /// Feed was closed.
+        FeedClosed {
+            feed_id: T::FeedId,
+            who: T::AccountId,
+        },
+
+        /// Feed was deleted.
+        FeedDeleted {
             feed_id: T::FeedId,
             who: T::AccountId,
         },
@@ -120,35 +139,74 @@ mod pallet {
     pub enum Error<T> {
         /// `FeedId` doesn't exist
         UnknownFeedId,
+
+        /// Feed is closed
+        FeedClosed,
     }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
         /// Create a new feed
-        #[pallet::weight(10_000)]
+        #[pallet::weight((10_000, Pays::No))]
         pub fn create(
             origin: OriginFor<T>,
-            initial_validation: Option<InitialValidation>,
+            feed_processor_id: T::FeedProcessorKind,
+            init_data: Option<InitData>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
-            let feed_id = Self::current_feed_id();
-
+            let feed_id = NextFeedId::<T>::get();
             let next_feed_id = feed_id
-                .checked_add(&T::FeedId::one())
+                .checked_add(&One::one())
                 .ok_or(ArithmeticError::Overflow)?;
-            let mut should_validate = false;
-            if let Some(init_data) = initial_validation {
-                should_validate = true;
-                T::Validator::initialize(feed_id, init_data.as_slice())?;
+            let feed_processor = T::feed_processor(feed_processor_id);
+            if let Some(init_data) = init_data {
+                feed_processor.init(feed_id, init_data.as_slice())?;
             }
 
-            CurrentFeedId::<T>::mutate(|feed_id| *feed_id = next_feed_id);
-            ShouldValidate::<T>::mutate(feed_id, |validate| *validate = should_validate);
+            NextFeedId::<T>::set(next_feed_id);
+            FeedConfigs::<T>::insert(
+                feed_id,
+                FeedConfig {
+                    active: true,
+                    feed_processor_id,
+                },
+            );
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
+
+            Ok(())
+        }
+
+        /// Updates the feed with init data provided.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn update(
+            origin: OriginFor<T>,
+            feed_id: T::FeedId,
+            feed_processor_id: T::FeedProcessorKind,
+            init_data: Option<InitData>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(
+                FeedConfigs::<T>::contains_key(feed_id),
+                Error::<T>::UnknownFeedId
+            );
+
+            let feed_processor = T::feed_processor(feed_processor_id);
+            if let Some(init_data) = init_data {
+                feed_processor.init(feed_id, init_data.as_slice())?;
+            }
+
+            FeedConfigs::<T>::insert(
+                feed_id,
+                FeedConfig {
+                    active: true,
+                    feed_processor_id,
+                },
+            );
+
+            Self::deposit_event(Event::FeedUpdated { feed_id, who });
 
             Ok(())
         }
@@ -157,26 +215,20 @@ mod pallet {
         // TODO: For now we don't have fees, but we will have them in the future
         /// Put a new object into a feed
         #[pallet::weight((10_000, Pays::No))]
-        pub fn put(
-            origin: OriginFor<T>,
-            feed_id: T::FeedId,
-            object: Object,
-            metadata: ObjectMetadata,
-        ) -> DispatchResult {
+        pub fn put(origin: OriginFor<T>, feed_id: T::FeedId, object: Object) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
+            let feed_config = FeedConfigs::<T>::get(feed_id).ok_or(Error::<T>::UnknownFeedId)?;
+
+            // ensure feed is active
+            ensure!(feed_config.active, Error::<T>::FeedClosed);
+
             let object_size = object.len() as u64;
+            let feed_processor = T::feed_processor(feed_config.feed_processor_id);
 
-            log::debug!("metadata: {:?}", metadata);
-            log::debug!("object_size: {:?}", object_size);
-
-            let current_feed_id = Self::current_feed_id();
-
-            ensure!(current_feed_id >= feed_id, Error::<T>::UnknownFeedId);
-            if ShouldValidate::<T>::get(feed_id) {
-                T::Validator::validate(feed_id, object.as_slice())?
-            }
-
+            let metadata = feed_processor
+                .put(feed_id, object.as_slice())?
+                .unwrap_or_default();
             Metadata::<T>::insert(feed_id, metadata.clone());
 
             Totals::<T>::mutate(feed_id, |feed_totals| {
@@ -192,37 +244,58 @@ mod pallet {
 
             Ok(())
         }
-    }
-}
 
-/// Mapping to the object offset and size within an extrinsic
-#[derive(Debug)]
-pub struct CallObject {
-    /// Object hash
-    pub hash: Sha256Hash,
-    /// Offset of object in the encoded call.
-    pub offset: u32,
-}
+        /// Closes the feed and stops accepting new feed.
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), Pays::No))]
+        pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
 
-impl<T: Config> Call<T> {
-    /// Extract the call object if an extrinsic corresponds to `put` call
-    pub fn extract_call_object(&self) -> Option<CallObject> {
-        match self {
-            Self::put { object, .. } => {
-                // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
-                // enum variant encoding.
-                Some(CallObject {
-                    hash: crypto::sha256_hash(object),
-                    offset: 1 + mem::size_of::<T::FeedId>() as u32,
-                })
-            }
-            _ => None,
+            FeedConfigs::<T>::mutate(feed_id, |maybe_config| -> DispatchResult {
+                let mut config = maybe_config.take().ok_or(Error::<T>::UnknownFeedId)?;
+                config.active = false;
+                *maybe_config = Some(config);
+                Ok(())
+            })?;
+            Self::deposit_event(Event::FeedClosed { feed_id, who });
+            Ok(())
+        }
+
+        /// Deletes the complete state of the Feed.
+        /// FeedId can be reused
+        #[pallet::weight((T::DbWeight::get().reads_writes(0, 3), Pays::No))]
+        pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            FeedConfigs::<T>::remove(feed_id);
+            Metadata::<T>::remove(feed_id);
+            Totals::<T>::remove(feed_id);
+            Self::deposit_event(Event::FeedDeleted { feed_id, who });
+            Ok(())
         }
     }
 }
 
-/// FeedValidator validates a given feed before accepting the feed
-pub trait FeedValidator<FeedId> {
-    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult;
-    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult;
+impl<T: Config> Call<T> {
+    /// Extract the call objects if an extrinsic corresponds to `put` call
+    pub fn extract_call_objects(&self) -> Vec<FeedObjectMapping> {
+        match self {
+            Self::put { feed_id, object } => {
+                let feed_processor_id = match FeedConfigs::<T>::get(feed_id) {
+                    Some(config) => config.feed_processor_id,
+                    // return if this was a invalid extrinsic
+                    None => return vec![],
+                };
+                let feed_processor = T::feed_processor(feed_processor_id);
+                let mut objects_mappings = feed_processor.object_mappings(*feed_id, object);
+                // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
+                // enum variant encoding.
+                objects_mappings.iter_mut().for_each(|object_mapping| {
+                    // update the offset to include the absolute offset in the extrinsic
+                    object_mapping.offset += 1 + mem::size_of::<T::FeedId>() as u32
+                });
+                objects_mappings
+            }
+            _ => Default::default(),
+        }
+    }
 }

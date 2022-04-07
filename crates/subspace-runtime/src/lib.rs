@@ -28,39 +28,48 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-    Imbalance, WithdrawReasons,
+use frame_support::{
+    construct_runtime, parameter_types,
+    traits::{
+        ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
+        Imbalance, WithdrawReasons,
+    },
+    weights::{
+        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
+        IdentityFee,
+    },
 };
-use frame_support::weights::{
-    constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-    IdentityFee,
+use frame_system::{
+    limits::{BlockLength, BlockWeights},
+    EnsureNever,
 };
-use frame_support::{construct_runtime, parameter_types};
-use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use pallet_feeds::FeedValidator;
+use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
+use pallet_grandpa_finality_verifier::chain::Chain;
+use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
-use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
+    digests::CompatibleDigestItem, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts,
+    SolutionRanges,
 };
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero};
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+use sp_runtime::{
+    create_runtime_str, generic,
+    traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero},
+    transaction_validity::{
+        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    },
+    ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
 };
-use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
-use sp_runtime::{DispatchResult, OpaqueExtrinsic};
-use sp_std::borrow::Cow;
-use sp_std::prelude::*;
+use sp_std::{borrow::Cow, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{
+    objects::{BlockObject, BlockObjectMapping},
+    Randomness, RootBlock, Sha256Hash, PIECE_SIZE,
+};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -478,25 +487,114 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
+/// Polkadot-like chain.
+pub struct PolkadotLike;
+impl Chain for PolkadotLike {
+    type BlockNumber = u32;
+    type Hash = <BlakeTwo256 as Hasher>::Out;
+    type Header = generic::Header<u32, BlakeTwo256>;
+}
+
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
+pub struct GrandpaValidator<C>(C);
 
-pub struct GrandpaValidator;
-
-impl FeedValidator<FeedId> for GrandpaValidator {
-    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult {
+impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
+    fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
         pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
     }
 
-    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult {
-        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object)
+    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        Ok(Some(
+            pallet_grandpa_finality_verifier::validate_finalized_block::<Runtime, C>(
+                feed_id, object,
+            )?
+            .encode(),
+        ))
+    }
+
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        let block = match C::decode_block::<Runtime>(object) {
+            Ok(block) => block,
+            // we just return empty if we failed to decode as this is not called in runtime
+            Err(_) => return vec![],
+        };
+        // for substrate, we store the block as is. so offset is 0
+        vec![FeedObjectMapping {
+            key: block.block.header.hash().into(),
+            offset: 0,
+        }]
+    }
+
+    fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
+        pallet_grandpa_finality_verifier::purge::<Runtime>(feed_id)
+    }
+}
+
+pub struct ParachainImporter<C>(C);
+
+impl<C: Chain> ParachainImporter<C> {
+    fn decode_block(
+        &self,
+        object: &[u8],
+    ) -> Result<pallet_grandpa_finality_verifier::chain::SignedBlock<C::Header>, DispatchError>
+    {
+        let block = C::decode_block::<Runtime>(object)?;
+        Ok(block)
+    }
+}
+
+impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
+    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        let block = self.decode_block(object)?;
+        Ok(Some(
+            (block.block.header.hash(), *block.block.header.number()).encode(),
+        ))
+    }
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        self.decode_block(object)
+            .ok()
+            .map(|block| {
+                vec![FeedObjectMapping {
+                    key: block.block.header.hash().into(),
+                    offset: 0,
+                }]
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// FeedProcessorId represents the available FeedProcessor impls
+#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
+pub enum FeedProcessorKind {
+    // No validation
+    NoValidation,
+    // Validation and returns metadata
+    PolkadotLike,
+    // No Validation but returns metadata
+    ParachainLike,
+}
+
+impl Default for FeedProcessorKind {
+    fn default() -> Self {
+        FeedProcessorKind::NoValidation
     }
 }
 
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
-    type Validator = GrandpaValidator;
+    type FeedProcessorKind = FeedProcessorKind;
+
+    fn feed_processor(
+        feed_processor_kind: FeedProcessorKind,
+    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
+        match feed_processor_kind {
+            FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
+            FeedProcessorKind::NoValidation => Box::new(()),
+            FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
+        }
+    }
 }
 
 impl pallet_grandpa_finality_verifier::Config for Runtime {
@@ -594,12 +692,14 @@ fn extract_feeds_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
 ) {
-    if let Some(call_object) = call.extract_call_object() {
-        objects.push(BlockObject::V0 {
-            hash: call_object.hash,
-            offset: base_offset + call_object.offset,
-        });
-    }
+    call.extract_call_objects()
+        .into_iter()
+        .for_each(|object_map| {
+            objects.push(BlockObject::V0 {
+                hash: object_map.key,
+                offset: base_offset + object_map.offset,
+            })
+        })
 }
 
 fn extract_object_store_block_object_mapping(

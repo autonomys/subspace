@@ -28,7 +28,6 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
-use frame_support::dispatch::DispatchResult;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -41,21 +40,23 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use pallet_feeds::FeedValidator;
+use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
+use pallet_grandpa_finality_verifier::chain::Chain;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
 };
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
+use sp_runtime::{DispatchError, OpaqueExtrinsic};
 use sp_std::borrow::Cow;
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -476,24 +477,60 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
+/// Polkadot-like chain.
+struct PolkadotLike;
+impl Chain for PolkadotLike {
+    type BlockNumber = u32;
+    type Hash = <BlakeTwo256 as Hasher>::Out;
+    type Header = generic::Header<u32, BlakeTwo256>;
+}
+
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
-pub struct GrandpaValidator;
+pub struct GrandpaValidator<C>(PhantomData<C>);
 
-impl FeedValidator<FeedId> for GrandpaValidator {
-    fn initialize(feed_id: FeedId, data: &[u8]) -> DispatchResult {
+impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
+    fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
         pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
     }
 
-    fn validate(feed_id: FeedId, object: &[u8]) -> DispatchResult {
-        pallet_grandpa_finality_verifier::validate::<Runtime>(feed_id, object)
+    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
+        Ok(Some(
+            pallet_grandpa_finality_verifier::validate_finalized_block::<Runtime, C>(
+                feed_id, object,
+            )?
+            .encode(),
+        ))
+    }
+
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        let block = match C::decode_block::<Runtime>(object) {
+            Ok(block) => block,
+            // we just return empty if we failed to decode as this is not called in runtime
+            Err(_) => return vec![],
+        };
+        // for substrate, we store the block as is. so offset is 0
+        vec![FeedObjectMapping {
+            key: block.block.header.hash().into(),
+            offset: 0,
+        }]
+    }
+
+    fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
+        pallet_grandpa_finality_verifier::purge::<Runtime>(feed_id)
     }
 }
 
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
-    type Validator = GrandpaValidator;
+    type FeedProcessorKind = ();
+
+    fn feed_processor(
+        _feed_processor_id: Self::FeedProcessorKind,
+    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
+        Box::new(GrandpaValidator(PhantomData::<PolkadotLike>))
+    }
 }
 
 impl pallet_grandpa_finality_verifier::Config for Runtime {
@@ -593,12 +630,14 @@ fn extract_feeds_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
 ) {
-    if let Some(call_object) = call.extract_call_object() {
-        objects.push(BlockObject::V0 {
-            hash: call_object.hash,
-            offset: base_offset + call_object.offset,
-        });
-    }
+    call.extract_call_objects()
+        .into_iter()
+        .for_each(|object_map| {
+            objects.push(BlockObject::V0 {
+                hash: object_map.key,
+                offset: base_offset + object_map.offset,
+            })
+        })
 }
 
 fn extract_object_store_block_object_mapping(

@@ -66,6 +66,9 @@ parachain-template-runtime = { version = "0.1.0", path = "../../cumulus/parachai
 subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../subspace-wasm-tools" }
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
+[dev-dependencies]
+hex-literal = { version = "0.3.3" }
+
 [features]
 default = ["std"]
 std = [
