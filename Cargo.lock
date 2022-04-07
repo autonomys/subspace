@@ -903,6 +903,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
+ "cirrus-node-primitives",
  "cirrus-primitives",
  "parking_lot 0.12.0",
  "sc-client-api",
