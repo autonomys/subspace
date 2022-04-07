@@ -850,7 +850,6 @@ dependencies = [
  "pallet-balances",
  "parity-scale-codec",
  "parking_lot 0.12.0",
- "polkadot-node-subsystem",
  "polkadot-overseer",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -5706,6 +5705,7 @@ dependencies = [
  "sc-client-api",
  "sp-api",
  "sp-core",
+ "sp-executor",
  "subspace-runtime-primitives",
  "tracing",
 ]
@@ -5719,7 +5719,6 @@ dependencies = [
  "futures-timer",
  "metered-channel",
  "pin-project 1.0.10",
- "sp-core",
  "thiserror",
  "tracing",
  "trybuild",

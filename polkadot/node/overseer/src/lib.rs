@@ -68,6 +68,7 @@ use std::{
 
 use futures::{future::BoxFuture, select, stream::FusedStream, FutureExt, StreamExt};
 use lru::LruCache;
+use sp_core::traits::SpawnNamed;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
 
@@ -77,13 +78,14 @@ pub use polkadot_node_subsystem_types::{
 	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
-use cirrus_node_primitives::ExecutorSlotInfo;
+use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
+use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
 pub use polkadot_overseer_gen as gen;
 use polkadot_overseer_gen::{
-	FromOverseer, MessagePacket, SignalsReceived, SpawnNamed, SubsystemIncomingMessages,
-	SubsystemInstance, SubsystemSender, TimeoutExt,
+	FromOverseer, MessagePacket, SignalsReceived, SubsystemIncomingMessages, SubsystemInstance,
+	SubsystemSender, TimeoutExt,
 };
 pub use polkadot_overseer_gen::{Subsystem, SubsystemContext};
 
@@ -104,23 +106,18 @@ impl Handle {
 	}
 
 	/// Inform the `Overseer` that that some block was imported.
-	pub async fn block_imported(&mut self, block: BlockInfo) {
+	async fn block_imported(&mut self, block: BlockInfo) {
 		self.send_and_log_error(Event::BlockImported(block)).await
 	}
 
 	/// Send some message to one of the `Subsystem`s.
-	pub async fn send_msg(&mut self, msg: impl Into<AllMessages>, origin: &'static str) {
+	async fn send_msg(&mut self, msg: impl Into<AllMessages>, origin: &'static str) {
 		self.send_and_log_error(Event::MsgToSubsystem { msg: msg.into(), origin }).await
 	}
 
 	/// Inform the `Overseer` that a new slot was triggered.
-	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
+	async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
-	/// Tell `Overseer` to shutdown.
-	pub async fn stop(&mut self) {
-		self.send_and_log_error(Event::Stop).await;
 	}
 
 	/// Most basic operation, to stop a server.
@@ -128,6 +125,42 @@ impl Handle {
 		if self.0.send(event).await.is_err() {
 			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
 		}
+	}
+
+	/// TODO
+	pub async fn initialize(&mut self, config: CollationGenerationConfig) {
+		self.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
+			.await;
+	}
+
+	/// TODO
+	pub async fn submit_bundle_equivocation_proof(
+		&mut self,
+		bundle_equivocation_proof: BundleEquivocationProof,
+	) {
+		self.send_msg(
+			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof),
+			"SubmitBundleEquivocationProof",
+		)
+		.await
+	}
+
+	/// TODO
+	pub async fn submit_fraud_proof(&mut self, fraud_proof: FraudProof) {
+		self.send_msg(CollationGenerationMessage::FraudProof(fraud_proof), "SubmitFraudProof")
+			.await;
+	}
+
+	/// TODO
+	pub async fn submit_invalid_transaction_proof(
+		&mut self,
+		invalid_transaction_proof: InvalidTransactionProof,
+	) {
+		self.send_msg(
+			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof),
+			"SubmitInvalidTransactionProof",
+		)
+		.await;
 	}
 }
 
@@ -173,8 +206,6 @@ pub enum Event {
 		/// The originating subsystem name.
 		origin: &'static str,
 	},
-	/// Stop the overseer on i.e. a UNIX signal.
-	Stop,
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -287,13 +318,15 @@ impl Overseer {
 }
 impl Overseer {
 	/// Create a new overseer utilizing the builder.
-	pub fn builder<S, CollationGeneration>() -> OverseerBuilder<S, CollationGeneration>
+	pub fn builder<S, CollationGeneration>(
+		collation_generation: CollationGeneration,
+	) -> OverseerBuilder<S, CollationGeneration>
 	where
-		S: polkadot_overseer_gen::SpawnNamed,
+		S: SpawnNamed,
 		CollationGeneration:
 			Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
 	{
-		OverseerBuilder::default()
+		OverseerBuilder::new(collation_generation)
 	}
 }
 /// Handle for an overseer.
@@ -309,20 +342,6 @@ pub struct OverseerConnector {
 	/// The side consumed by the `spawned` side of the overseer pattern.
 	consumer: polkadot_overseer_gen::metered::MeteredReceiver<Event>,
 }
-impl OverseerConnector {
-	/// Obtain access to the overseer handle.
-	pub fn as_handle_mut(&mut self) -> &mut OverseerHandle {
-		&mut self.handle
-	}
-	/// Obtain access to the overseer handle.
-	pub fn as_handle(&self) -> &OverseerHandle {
-		&self.handle
-	}
-	/// Obtain a clone of the handle.
-	pub fn handle(&self) -> OverseerHandle {
-		self.handle.clone()
-	}
-}
 impl ::std::default::Default for OverseerConnector {
 	fn default() -> Self {
 		let (events_tx, events_rx) =
@@ -330,33 +349,22 @@ impl ::std::default::Default for OverseerConnector {
 		Self { handle: events_tx, consumer: events_rx }
 	}
 }
-/// Convenience alias.
-type SubsystemInitFn<T> =
-	Box<dyn FnOnce(OverseerHandle) -> ::std::result::Result<T, SubsystemError>>;
 /// Initialization type to be used for a field of the overseer.
-enum FieldInitMethod<T> {
-	/// Defer initialization to a point where the `handle` is available.
-	Fn(SubsystemInitFn<T>),
-	/// Directly initialize the subsystem with the given subsystem type `T`.
-	Value(T),
-	/// Subsystem field does not have value just yet.
-	Uninitialized,
-}
-impl<T> ::std::default::Default for FieldInitMethod<T> {
-	fn default() -> Self {
-		Self::Uninitialized
-	}
-}
 #[allow(missing_docs)]
 pub struct OverseerBuilder<S, CollationGeneration> {
-	collation_generation: FieldInitMethod<CollationGeneration>,
+	collation_generation: CollationGeneration,
 	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
 	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
 	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
 	spawner: ::std::option::Option<S>,
 }
-impl<S, CollationGeneration> Default for OverseerBuilder<S, CollationGeneration> {
-	fn default() -> Self {
+impl<S, CollationGeneration> OverseerBuilder<S, CollationGeneration>
+where
+	S: SpawnNamed,
+	CollationGeneration:
+		Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
+{
+	fn new(collation_generation: CollationGeneration) -> Self {
 		fn trait_from_must_be_implemented<E>()
 		where
 			E: std::error::Error
@@ -368,42 +376,19 @@ impl<S, CollationGeneration> Default for OverseerBuilder<S, CollationGeneration>
 		}
 		trait_from_must_be_implemented::<SubsystemError>();
 		Self {
-			collation_generation: Default::default(),
+			collation_generation,
 			leaves: None,
 			active_leaves: None,
 			known_leaves: None,
 			spawner: None,
 		}
 	}
-}
-impl<S, CollationGeneration> OverseerBuilder<S, CollationGeneration>
-where
-	S: polkadot_overseer_gen::SpawnNamed,
-	CollationGeneration:
-		Subsystem<OverseerSubsystemContext<CollationGenerationMessage>, SubsystemError>,
-{
 	/// The spawner to use for spawning tasks.
 	pub fn spawner(mut self, spawner: S) -> Self
 	where
-		S: polkadot_overseer_gen::SpawnNamed + Send,
+		S: SpawnNamed + Send,
 	{
 		self.spawner = Some(spawner);
-		self
-	}
-	/// Specify the particular subsystem implementation.
-	pub fn collation_generation(mut self, subsystem: CollationGeneration) -> Self {
-		self.collation_generation = FieldInitMethod::Value(subsystem);
-		self
-	}
-	/// Specify the particular subsystem by giving a init function.
-	pub fn collation_generation_with<'a, F>(mut self, subsystem_init_fn: F) -> Self
-	where
-		F: 'static
-			+ FnOnce(OverseerHandle) -> ::std::result::Result<CollationGeneration, SubsystemError>,
-	{
-		self.collation_generation = FieldInitMethod::Fn(
-			Box::new(subsystem_init_fn) as SubsystemInitFn<CollationGeneration>
-		);
 		self
 	}
 	/// Attach the user defined addendum type.
@@ -431,8 +416,7 @@ where
 		self,
 		connector: OverseerConnector,
 	) -> ::std::result::Result<(Overseer, OverseerHandle), SubsystemError> {
-		let OverseerConnector { handle: events_tx, consumer: events_rx } = connector;
-		let handle = events_tx.clone();
+		let OverseerConnector { handle, consumer: events_rx } = connector;
 		let (collation_generation_tx, collation_generation_rx) =
 			polkadot_overseer_gen::metered::channel::<MessagePacket<CollationGenerationMessage>>(
 				CHANNEL_CAPACITY,
@@ -444,17 +428,11 @@ where
 			collation_generation: collation_generation_tx.clone(),
 			collation_generation_unbounded: collation_generation_unbounded_tx,
 		};
-		let mut spawner = self.spawner.expect("Spawner is set. qed");
-		let mut running_subsystems = polkadot_overseer_gen::FuturesUnordered::<
+		let spawner = self.spawner.expect("Spawner is set. qed");
+		let running_subsystems = polkadot_overseer_gen::FuturesUnordered::<
 			BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
 		>::new();
-		let collation_generation = match self.collation_generation {
-			FieldInitMethod::Fn(func) => func(handle.clone())?,
-			FieldInitMethod::Value(val) => val,
-			FieldInitMethod::Uninitialized => {
-				panic!("All subsystems must exist with the builder pattern.")
-			},
-		};
+		let collation_generation = self.collation_generation;
 		let message_rx: SubsystemIncomingMessages<CollationGenerationMessage> =
 			polkadot_overseer_gen::select(
 				collation_generation_rx,
@@ -469,16 +447,36 @@ where
 			message_rx,
 			channels_out.clone(),
 		);
-		let collation_generation: OverseenSubsystem<CollationGenerationMessage> =
-			spawn::<_, _, Regular, _, _, _>(
-				&mut spawner,
-				collation_generation_tx,
-				signal_tx,
-				ctx,
-				collation_generation,
-				subsystem_static_str,
-				&mut running_subsystems,
-			)?;
+		let collation_generation: OverseenSubsystem<CollationGenerationMessage> = {
+			let polkadot_overseer_gen::SpawnedSubsystem { future, name } =
+				collation_generation.start(ctx);
+			let (tx, rx) = polkadot_overseer_gen::oneshot::channel();
+			let fut = Box::pin(async move {
+				if let Err(e) = future.await {
+					polkadot_overseer_gen :: tracing :: error!
+					(subsystem = name, err = ? e, "subsystem exited with error");
+				} else {
+					polkadot_overseer_gen::tracing::debug!(
+						subsystem = name,
+						"subsystem exited without an error"
+					);
+				}
+				let _ = tx.send(());
+			});
+			spawner.spawn(name, Some(subsystem_static_str), fut);
+			running_subsystems.push(Box::pin(rx.map(|e| {
+				tracing :: warn! (err = ? e, "dropping error");
+				Ok(())
+			})));
+			let instance = Some(SubsystemInstance {
+				tx_signal: signal_tx,
+				tx_bounded: collation_generation_tx,
+				signals_received: 0,
+				name,
+			});
+
+			OverseenSubsystem { instance }
+		};
 		let leaves = self.leaves.expect(&format!(
 			"Baggage variable `{0}` of `{1}` must be set by the user!",
 			stringify!(leaves),
@@ -504,87 +502,6 @@ where
 		};
 		Ok((overseer, handle))
 	}
-}
-/// Task kind to launch.
-pub trait TaskKind {
-	/// Spawn a task, it depends on the implementer if this is blocking or not.
-	fn launch_task<S: SpawnNamed>(
-		spawner: &mut S,
-		task_name: &'static str,
-		subsystem_name: &'static str,
-		future: BoxFuture<'static, ()>,
-	);
-}
-#[allow(missing_docs)]
-struct Regular;
-impl TaskKind for Regular {
-	fn launch_task<S: SpawnNamed>(
-		spawner: &mut S,
-		task_name: &'static str,
-		subsystem_name: &'static str,
-		future: BoxFuture<'static, ()>,
-	) {
-		spawner.spawn(task_name, Some(subsystem_name), future)
-	}
-}
-#[allow(missing_docs)]
-struct Blocking;
-impl TaskKind for Blocking {
-	fn launch_task<S: SpawnNamed>(
-		spawner: &mut S,
-		task_name: &'static str,
-		subsystem_name: &'static str,
-		future: BoxFuture<'static, ()>,
-	) {
-		spawner.spawn(task_name, Some(subsystem_name), future)
-	}
-}
-/// Spawn task of kind `self` using spawner `S`.
-pub fn spawn<S, M, TK, Ctx, E, SubSys>(
-	spawner: &mut S,
-	message_tx: polkadot_overseer_gen::metered::MeteredSender<MessagePacket<M>>,
-	signal_tx: polkadot_overseer_gen::metered::MeteredSender<OverseerSignal>,
-	ctx: Ctx,
-	s: SubSys,
-	subsystem_name: &'static str,
-	futures: &mut polkadot_overseer_gen::FuturesUnordered<
-		BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
-	>,
-) -> ::std::result::Result<OverseenSubsystem<M>, SubsystemError>
-where
-	S: polkadot_overseer_gen::SpawnNamed,
-	M: std::fmt::Debug + Send + 'static,
-	TK: TaskKind,
-	Ctx: polkadot_overseer_gen::SubsystemContext<Message = M>,
-	E: std::error::Error + Send + Sync + 'static + From<polkadot_overseer_gen::OverseerError>,
-	SubSys: polkadot_overseer_gen::Subsystem<Ctx, E>,
-{
-	let polkadot_overseer_gen::SpawnedSubsystem::<E> { future, name } = s.start(ctx);
-	let (tx, rx) = polkadot_overseer_gen::oneshot::channel();
-	let fut = Box::pin(async move {
-		if let Err(e) = future.await {
-			polkadot_overseer_gen :: tracing :: error!
-			(subsystem = name, err = ? e, "subsystem exited with error");
-		} else {
-			polkadot_overseer_gen::tracing::debug!(
-				subsystem = name,
-				"subsystem exited without an error"
-			);
-		}
-		let _ = tx.send(());
-	});
-	<TK as TaskKind>::launch_task(spawner, name, subsystem_name, fut);
-	futures.push(Box::pin(rx.map(|e| {
-		tracing :: warn! (err = ? e, "dropping error");
-		Ok(())
-	})));
-	let instance = Some(SubsystemInstance {
-		tx_signal: signal_tx,
-		tx_bounded: message_tx,
-		signals_received: 0,
-		name,
-	});
-	Ok(OverseenSubsystem { instance })
 }
 /// A subsystem that the overseer oversees.
 ///
@@ -876,10 +793,6 @@ impl Overseer {
 					match msg {
 						Event::MsgToSubsystem { msg, origin } => {
 							self.route_message(msg, origin).await?;
-						}
-						Event::Stop => {
-							self.stop().await;
-							return Ok(());
 						}
 						Event::BlockImported(block) => {
 							self.block_imported(block).await?;

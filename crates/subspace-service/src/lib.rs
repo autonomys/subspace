@@ -409,24 +409,24 @@ where
 
         let spawner = task_manager.spawn_handle();
 
-        let (overseer, overseer_handle) = Overseer::builder()
-            .collation_generation(CollationGenerationSubsystem::new(client.clone()))
-            .leaves(
-                active_leaves
-                    .into_iter()
-                    .map(
-                        |BlockInfo {
-                             hash,
-                             parent_hash: _,
-                             number,
-                         }| (hash, number),
-                    )
-                    .collect(),
-            )
-            .active_leaves(Default::default())
-            .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-            .spawner(spawner)
-            .build_with_connector(OverseerConnector::default())?;
+        let (overseer, overseer_handle) =
+            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
+                .leaves(
+                    active_leaves
+                        .into_iter()
+                        .map(
+                            |BlockInfo {
+                                 hash,
+                                 parent_hash: _,
+                                 number,
+                             }| (hash, number),
+                        )
+                        .collect(),
+                )
+                .active_leaves(Default::default())
+                .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
+                .spawner(spawner)
+                .build_with_connector(OverseerConnector::default())?;
 
         let handle = Handle::new(overseer_handle);
 

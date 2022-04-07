@@ -41,7 +41,6 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 
-use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
@@ -235,12 +234,7 @@ where
 					"Submitting bundle equivocation proof in a background task..."
 				);
 				overseer_handle
-					.send_msg(
-						CollationGenerationMessage::BundleEquivocationProof(
-							bundle_equivocation_proof,
-						),
-						"SubmitBundleEquivocationProof",
-					)
+					.submit_bundle_equivocation_proof(bundle_equivocation_proof)
 					.await;
 				tracing::debug!(
 					target: LOG_TARGET,
@@ -261,12 +255,7 @@ where
 					target: LOG_TARGET,
 					"Submitting fraud proof in a background task..."
 				);
-				overseer_handle
-					.send_msg(
-						CollationGenerationMessage::FraudProof(fraud_proof),
-						"SubmitFraudProof",
-					)
-					.await;
+				overseer_handle.submit_fraud_proof(fraud_proof).await;
 				tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
 			}
 			.boxed(),
@@ -284,12 +273,7 @@ where
 					"Submitting invalid transaction proof in a background task..."
 				);
 				overseer_handle
-					.send_msg(
-						CollationGenerationMessage::InvalidTransactionProof(
-							invalid_transaction_proof,
-						),
-						"SubmitInvalidTransactionProof",
-					)
+					.submit_invalid_transaction_proof(invalid_transaction_proof)
 					.await;
 				tracing::debug!(
 					target: LOG_TARGET,
@@ -793,9 +777,7 @@ where
 		},
 	};
 
-	overseer_handle
-		.send_msg(CollationGenerationMessage::Initialize(config), "StartCollator")
-		.await;
+	overseer_handle.initialize(config).await;
 
 	executor
 }

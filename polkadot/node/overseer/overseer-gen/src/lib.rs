@@ -63,8 +63,6 @@
 #[doc(hidden)]
 pub use metered;
 #[doc(hidden)]
-pub use sp_core::traits::SpawnNamed;
-#[doc(hidden)]
 pub use tracing;
 
 #[doc(hidden)]
