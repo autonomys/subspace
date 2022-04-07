@@ -19,7 +19,7 @@
 #![deny(missing_docs)]
 
 use crate::{ActiveLeavesUpdate, OverseerSignal, SubsystemError, SubsystemResult};
-use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
+use cirrus_node_primitives::CollationGenerationConfig;
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -125,6 +125,8 @@ where
 			},
 			Ok(crate::FromOverseer::Signal(OverseerSignal::Conclude)) => true,
 			Ok(crate::FromOverseer::Communication { msg }) => {
+				let client = &self.primary_chain_client;
+
 				match msg {
 					CollationGenerationMessage::Initialize(config) =>
 						if self.config.is_some() {
@@ -133,9 +135,11 @@ where
 							self.config = Some(Arc::new(config));
 						},
 					CollationGenerationMessage::FraudProof(fraud_proof) => {
-						if let Err(err) =
-							submit_fraud_proof(Arc::clone(&self.primary_chain_client), fraud_proof)
-						{
+						// TODO: Handle returned result?
+						if let Err(err) = client.runtime_api().submit_fraud_proof_unsigned(
+							&BlockId::Hash(client.info().best_hash),
+							fraud_proof,
+						) {
 							tracing::warn!(
 								target: LOG_TARGET,
 								?err,
@@ -146,10 +150,12 @@ where
 					CollationGenerationMessage::BundleEquivocationProof(
 						bundle_equivocation_proof,
 					) =>
-						if let Err(err) = submit_bundle_equivocation_proof(
-							Arc::clone(&self.primary_chain_client),
-							bundle_equivocation_proof,
-						) {
+					// TODO: Handle returned result?
+						if let Err(err) =
+							client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+								&BlockId::Hash(client.info().best_hash),
+								bundle_equivocation_proof,
+							) {
 							tracing::warn!(
 								target: LOG_TARGET,
 								?err,
@@ -159,10 +165,14 @@ where
 					CollationGenerationMessage::InvalidTransactionProof(
 						invalid_transaction_proof,
 					) =>
-						if let Err(err) = submit_invalid_transaction_proof(
-							Arc::clone(&self.primary_chain_client),
-							invalid_transaction_proof,
-						) {
+					// TODO: Handle returned result?
+						if let Err(err) = self
+							.primary_chain_client
+							.runtime_api()
+							.submit_invalid_transaction_proof_unsigned(
+								&BlockId::Hash(client.info().best_hash),
+								invalid_transaction_proof,
+							) {
 							tracing::warn!(
 								target: LOG_TARGET,
 								?err,
@@ -173,14 +183,26 @@ where
 				false
 			},
 			Ok(crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info))) => {
+				// TODO: Handle returned result?
 				if let Some(config) = &self.config {
-					if let Err(err) = produce_bundle(
-						Arc::clone(&self.primary_chain_client),
-						config.clone(),
-						slot_info,
-					)
-					.await
-					{
+					let client = &self.primary_chain_client;
+					let best_hash = client.info().best_hash;
+
+					let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
+						Some(bundle_result) => bundle_result.to_opaque_bundle(),
+						None => {
+							tracing::debug!(
+								target: LOG_TARGET,
+								"executor returned no bundle on bundling",
+							);
+							return false
+						},
+					};
+
+					if let Err(err) = client.runtime_api().submit_transaction_bundle_unsigned(
+						&BlockId::Hash(best_hash),
+						opaque_bundle,
+					) {
 						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to produce new bundle");
 					}
 				}
@@ -302,100 +324,6 @@ where
 	client
 		.runtime_api()
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), opaque_execution_receipt)?;
-
-	Ok(())
-}
-
-async fn produce_bundle<Client>(
-	client: Arc<Client>,
-	config: Arc<CollationGenerationConfig>,
-	slot_info: ExecutorSlotInfo,
-) -> SubsystemResult<()>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	let best_hash = client.info().best_hash;
-
-	let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
-		Some(bundle_result) => bundle_result.to_opaque_bundle(),
-		None => {
-			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
-			return Ok(())
-		},
-	};
-
-	// TODO: Handle returned result?
-	client
-		.runtime_api()
-		.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-
-	Ok(())
-}
-
-fn submit_fraud_proof<Client>(client: Arc<Client>, fraud_proof: FraudProof) -> SubsystemResult<()>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	// TODO: Handle returned result?
-	client
-		.runtime_api()
-		.submit_fraud_proof_unsigned(&BlockId::Hash(client.info().best_hash), fraud_proof)?;
-
-	Ok(())
-}
-
-fn submit_bundle_equivocation_proof<Client>(
-	client: Arc<Client>,
-	bundle_equivocation_proof: BundleEquivocationProof,
-) -> SubsystemResult<()>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	// TODO: Handle returned result?
-	client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-		&BlockId::Hash(client.info().best_hash),
-		bundle_equivocation_proof,
-	)?;
-
-	Ok(())
-}
-
-fn submit_invalid_transaction_proof<Client>(
-	client: Arc<Client>,
-	invalid_transaction_proof: InvalidTransactionProof,
-) -> SubsystemResult<()>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	// TODO: Handle returned result?
-	client.runtime_api().submit_invalid_transaction_proof_unsigned(
-		&BlockId::Hash(client.info().best_hash),
-		invalid_transaction_proof,
-	)?;
 
 	Ok(())
 }
