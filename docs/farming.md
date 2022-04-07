@@ -35,7 +35,17 @@ The address of your account will be necessary at the last step.
 # Replace `NODE_FILE_NAME.exe` with the name of the node file you downloaded from releases
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
-.\NODE_FILE_NAME.exe --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+.\NODE_FILE_NAME.exe `
+--chain testnet `
+--wasm-execution compiled `
+--execution wasm `
+--bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" `
+--rpc-cors all `
+--rpc-methods unsafe `
+--ws-external `
+--validator `
+--telemetry-url "wss://telemetry.polkadot.io/submit/ 1" `
+--name INSERT_YOUR_ID
 ```
 5. You should see something similar in the terminal:
 ```
@@ -62,9 +72,20 @@ The address of your account will be necessary at the last step.
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```PowerShell
-# Replace `FARMER_FILE_NAME.exe` with the name of the node file you downloaded from releases
-# Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-.\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS
+# Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `INSERT_YOUR_ID` with a nickname you choose
+# Copy all of the lines below, they are all part of the same command
+./NODE_FILE_NAME \
+  --chain testnet \
+  --wasm-execution compiled \
+  --execution wasm \
+  --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
+  --rpc-cors all \
+  --rpc-methods unsafe \
+  --ws-external \
+  --validator \
+  --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
+  --name INSERT_YOUR_ID
 ```
 
 ## 🐧 Linux Instructions
@@ -78,7 +99,17 @@ The address of your account will be necessary at the last step.
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
-./NODE_FILE_NAME --chain testnet --wasm-execution compiled --execution wasm --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" --rpc-cors all --rpc-methods unsafe --ws-external --validator --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" --name INSERT_YOUR_ID
+./NODE_FILE_NAME \
+  --chain testnet \
+  --wasm-execution compiled \
+  --execution wasm \
+  --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
+  --rpc-cors all \
+  --rpc-methods unsafe \
+  --ws-external \
+  --validator \
+  --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
+  --name INSERT_YOUR_ID
 ```
 5. You should see something similar in the terminal:
 ```
@@ -104,9 +135,20 @@ The address of your account will be necessary at the last step.
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
-# Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
-# Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS
+# Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `INSERT_YOUR_ID` with a nickname you choose
+# Copy all of the lines below, they are all part of the same command
+./NODE_FILE_NAME \
+  --chain testnet \
+  --wasm-execution compiled \
+  --execution wasm \
+  --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
+  --rpc-cors all \
+  --rpc-methods unsafe \
+  --ws-external \
+  --validator \
+  --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
+  --name INSERT_YOUR_ID
 ```
 
 ## 🍎 macOS Instructions
