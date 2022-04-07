@@ -5,12 +5,12 @@
 // Skip in regular `no-std` environment, such that we don't cause conflicts of globally exported
 // functions
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
-mod r#impl;
+mod runtime;
 
 // Skip in regular `no-std` environment, such that we don't cause conflicts of globally exported
 // functions
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
-pub use r#impl::*;
+pub use runtime::*;
 
 // Make the WASM binary available, except in wasm builder environment.
 #[cfg(not(feature = "wasm-builder"))]
