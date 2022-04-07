@@ -18,9 +18,8 @@
 
 pub mod rpc;
 
-use lru::LruCache;
 use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
-use polkadot_overseer::{BlockInfo, Handle, Overseer, KNOWN_LEAVES_CACHE_SIZE};
+use polkadot_overseer::{BlockInfo, Handle, Overseer};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -550,7 +549,6 @@ where
             )
             .collect(),
         Default::default(),
-        LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
     );
 
     {

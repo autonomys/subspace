@@ -12,10 +12,8 @@ sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/su
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 futures = "0.3.21"
 parking_lot = "0.12.0"
-smallvec = "1.8.0"
 thiserror = "1.0.30"
 tracing = "0.1.32"
-lru = "0.7.3"
 metered = { package = "metered-channel", path = "../metered-channel" }
 pin-project = "1.0.10"
 

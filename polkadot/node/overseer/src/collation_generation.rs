@@ -18,7 +18,7 @@
 
 #![deny(missing_docs)]
 
-use crate::ActiveLeavesUpdate;
+use crate::ActivatedLeaf;
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -70,16 +70,17 @@ where
 		Self { primary_chain_client, config: None }
 	}
 
-	pub(crate) async fn update_active_leaves(
+	pub(crate) async fn update_activated_leave(
 		&self,
-		ActiveLeavesUpdate { activated, .. }: ActiveLeavesUpdate,
+		activated_leaf: ActivatedLeaf,
 	) -> Result<(), ApiError> {
 		// follow the procedure from the guide
 		if let Some(config) = &self.config {
-			let _ = handle_new_activations(
-				&self.primary_chain_client,
+			// TODO: invoke this on finalized block?
+			process_primary_block(
+				Arc::clone(&self.primary_chain_client),
 				config,
-				activated.into_iter().map(|v| v.hash),
+				activated_leaf.hash,
 			)
 			.await?;
 		}
@@ -153,29 +154,6 @@ where
 
 		Ok(())
 	}
-}
-
-/// Produces collations on each tip of primary chain.
-async fn handle_new_activations<Client>(
-	client: &Arc<Client>,
-	config: &CollationGenerationConfig,
-	activated: impl IntoIterator<Item = Hash>,
-) -> Result<(), ApiError>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	for relay_parent in activated {
-		// TODO: invoke this on finalized block?
-		process_primary_block(Arc::clone(client), config, relay_parent).await?;
-	}
-
-	Ok(())
 }
 
 /// Apply the transaction bundles for given primary block as follows:

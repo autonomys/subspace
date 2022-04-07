@@ -21,15 +21,12 @@
 pub mod collation_generation;
 
 use std::{
-	collections::{hash_map, HashMap},
+	collections::{hash_map::Entry, HashMap},
 	fmt::Debug,
 	sync::Arc,
 };
 
 use futures::{select, stream::FusedStream, StreamExt};
-use lru::LruCache;
-use smallvec::SmallVec;
-use std::fmt;
 
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -41,12 +38,6 @@ use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-/// How many slots are stack-reserved for active leaves updates
-///
-/// If there are fewer than this number of slots, then we've wasted some stack space.
-/// If there are greater than this number of slots, then we fall back to a heap vector.
-const ACTIVE_LEAVES_SMALLVEC_CAPACITY: usize = 8;
-
 /// Activated leaf.
 #[derive(Debug, Clone)]
 pub struct ActivatedLeaf {
@@ -55,58 +46,6 @@ pub struct ActivatedLeaf {
 	/// The block number.
 	pub number: BlockNumber,
 }
-
-/// Changes in the set of active leaves: the parachain heads which we care to work on.
-///
-/// Note that the activated and deactivated fields indicate deltas, not complete sets.
-#[derive(Clone, Default)]
-pub struct ActiveLeavesUpdate {
-	/// New relay chain block of interest.
-	pub activated: Option<ActivatedLeaf>,
-	/// Relay chain block hashes no longer of interest.
-	pub deactivated: SmallVec<[Hash; ACTIVE_LEAVES_SMALLVEC_CAPACITY]>,
-}
-
-impl ActiveLeavesUpdate {
-	/// Create a `ActiveLeavesUpdate` with a single activated hash
-	pub fn start_work(activated: ActivatedLeaf) -> Self {
-		Self { activated: Some(activated), ..Default::default() }
-	}
-
-	/// Create a `ActiveLeavesUpdate` with a single deactivated hash
-	pub fn stop_work(hash: Hash) -> Self {
-		Self { deactivated: [hash][..].into(), ..Default::default() }
-	}
-
-	/// Is this update empty and doesn't contain any information?
-	pub fn is_empty(&self) -> bool {
-		self.activated.is_none() && self.deactivated.is_empty()
-	}
-}
-
-impl PartialEq for ActiveLeavesUpdate {
-	/// Equality for `ActiveLeavesUpdate` doesn't imply bitwise equality.
-	///
-	/// Instead, it means equality when `activated` and `deactivated` are considered as sets.
-	fn eq(&self, other: &Self) -> bool {
-		self.activated.as_ref().map(|a| a.hash) == other.activated.as_ref().map(|a| a.hash) &&
-			self.deactivated.len() == other.deactivated.len() &&
-			self.deactivated.iter().all(|a| other.deactivated.contains(a))
-	}
-}
-
-impl fmt::Debug for ActiveLeavesUpdate {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ActiveLeavesUpdate")
-			.field("activated", &self.activated)
-			.field("deactivated", &self.deactivated)
-			.finish()
-	}
-}
-
-/// Store 2 days worth of blocks, not accounting for forks,
-/// in the LRU cache. Assumes a 6-second block time.
-pub const KNOWN_LEAVES_CACHE_SIZE: usize = 2 * 24 * 3600 / 6;
 
 /// A handle used to communicate with the [`Overseer`].
 ///
@@ -252,8 +191,6 @@ pub struct Overseer<Client> {
 	leaves: Vec<(Hash, BlockNumber)>,
 	/// A user specified addendum field.
 	active_leaves: HashMap<Hash, BlockNumber>,
-	/// A user specified addendum field.
-	known_leaves: LruCache<Hash, ()>,
 	/// Events that are sent to the overseer from the outside world.
 	events_rx: metered::MeteredReceiver<Event>,
 }
@@ -275,11 +212,9 @@ where
 		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
-		known_leaves: LruCache<Hash, ()>,
 	) -> (Self, Handle) {
 		let (handle, events_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer =
-			Overseer { collation_generation, leaves, active_leaves, known_leaves, events_rx };
+		let overseer = Overseer { collation_generation, leaves, active_leaves, events_rx };
 		(overseer, Handle::new(handle))
 	}
 
@@ -288,9 +223,8 @@ where
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			self.known_leaves.put(hash, ());
-			let update = ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number });
-			if let Err(error) = self.collation_generation.update_active_leaves(update).await {
+			let update = ActivatedLeaf { hash, number };
+			if let Err(error) = self.collation_generation.update_activated_leave(update).await {
 				tracing::error!(
 					target: LOG_TARGET,
 					"Collation generation processing error: {error}"
@@ -327,32 +261,23 @@ where
 
 	async fn block_imported(&mut self, block: BlockInfo) -> Result<(), ApiError> {
 		match self.active_leaves.entry(block.hash) {
-			hash_map::Entry::Vacant(entry) => entry.insert(block.number),
-			hash_map::Entry::Occupied(entry) => {
+			Entry::Vacant(entry) => entry.insert(block.number),
+			Entry::Occupied(entry) => {
 				debug_assert_eq!(*entry.get(), block.number);
 				return Ok(())
 			},
 		};
 
-		self.known_leaves.put(block.hash, ());
-		let mut update = ActiveLeavesUpdate::start_work(ActivatedLeaf {
-			hash: block.hash,
-			number: block.number,
-		});
+		let update = ActivatedLeaf { hash: block.hash, number: block.number };
 
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
-			update.deactivated.push(block.parent_hash);
 		}
 
-		if !update.is_empty() {
-			if let Err(error) = self.collation_generation.update_active_leaves(update).await {
-				tracing::error!(
-					target: LOG_TARGET,
-					"Collation generation processing error: {error}"
-				);
-			}
+		if let Err(error) = self.collation_generation.update_activated_leave(update).await {
+			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
+
 		Ok(())
 	}
 }
