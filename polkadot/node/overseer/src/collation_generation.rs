@@ -74,7 +74,10 @@ where
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	pub(crate) async fn handle_incoming(&mut self, incoming: crate::FromOverseer) -> bool {
+	pub(crate) async fn handle_incoming(
+		&mut self,
+		incoming: crate::FromOverseer,
+	) -> Result<(), ApiError> {
 		match incoming {
 			crate::FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
 				activated,
@@ -92,11 +95,9 @@ where
 						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new activations");
 					}
 				}
-
-				false
 			},
-			crate::FromOverseer::Signal(OverseerSignal::Conclude) => true,
-			crate::FromOverseer::Communication { msg } => {
+			crate::FromOverseer::Signal(OverseerSignal::Conclude) => {},
+			crate::FromOverseer::Communication(msg) => {
 				let client = &self.primary_chain_client;
 
 				match msg {
@@ -108,54 +109,35 @@ where
 						},
 					CollationGenerationMessage::FraudProof(fraud_proof) => {
 						// TODO: Handle returned result?
-						if let Err(err) = client.runtime_api().submit_fraud_proof_unsigned(
+						let _ = client.runtime_api().submit_fraud_proof_unsigned(
 							&BlockId::Hash(client.info().best_hash),
 							fraud_proof,
-						) {
-							tracing::warn!(
-								target: LOG_TARGET,
-								?err,
-								"failed to submit fraud proof"
-							);
-						}
+						)?;
 					},
 					CollationGenerationMessage::BundleEquivocationProof(
 						bundle_equivocation_proof,
-					) =>
-					// TODO: Handle returned result?
-						if let Err(err) =
-							client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-								&BlockId::Hash(client.info().best_hash),
-								bundle_equivocation_proof,
-							) {
-							tracing::warn!(
-								target: LOG_TARGET,
-								?err,
-								"failed to submit bundle equivocation proof"
-							);
-						},
+					) => {
+						// TODO: Handle returned result?
+						let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+							&BlockId::Hash(client.info().best_hash),
+							bundle_equivocation_proof,
+						)?;
+					},
 					CollationGenerationMessage::InvalidTransactionProof(
 						invalid_transaction_proof,
-					) =>
-					// TODO: Handle returned result?
-						if let Err(err) = self
+					) => {
+						// TODO: Handle returned result?
+						let _ = self
 							.primary_chain_client
 							.runtime_api()
 							.submit_invalid_transaction_proof_unsigned(
 								&BlockId::Hash(client.info().best_hash),
 								invalid_transaction_proof,
-							) {
-							tracing::warn!(
-								target: LOG_TARGET,
-								?err,
-								"failed to submit invalid transaction proof"
-							);
-						},
+							)?;
+					},
 				}
-				false
 			},
 			crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info)) => {
-				// TODO: Handle returned result?
 				if let Some(config) = &self.config {
 					let client = &self.primary_chain_client;
 					let best_hash = client.info().best_hash;
@@ -167,20 +149,20 @@ where
 								target: LOG_TARGET,
 								"executor returned no bundle on bundling",
 							);
-							return false
+							return Ok(())
 						},
 					};
 
-					if let Err(err) = client.runtime_api().submit_transaction_bundle_unsigned(
+					// TODO: Handle returned result?
+					let _ = client.runtime_api().submit_transaction_bundle_unsigned(
 						&BlockId::Hash(best_hash),
 						opaque_bundle,
-					) {
-						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to produce new bundle");
-					}
+					)?;
 				}
-				false
 			},
 		}
+
+		Ok(())
 	}
 }
 

@@ -102,10 +102,6 @@ pub enum Error {
     #[error(transparent)]
     Telemetry(#[from] sc_telemetry::Error),
 
-    /// Polkadot overseer error.
-    #[error("Failed to create an overseer")]
-    Overseer(#[from] polkadot_overseer::SubsystemError),
-
     /// Prometheus error.
     #[error(transparent)]
     Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
@@ -555,7 +551,7 @@ where
             .collect(),
         Default::default(),
         LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
-    )?;
+    );
 
     {
         let overseer_handle = overseer_handle.clone();
