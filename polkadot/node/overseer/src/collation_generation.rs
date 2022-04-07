@@ -48,21 +48,6 @@ type FromOverseer = polkadot_overseer_gen::FromOverseer<OverseerSignal>;
 /// Spawned subsystem.
 type SpawnedSubsystem = polkadot_overseer_gen::SpawnedSubsystem<SubsystemError>;
 
-/// Convenience trait specialization.
-trait SubsystemContext:
-	polkadot_overseer_gen::SubsystemContext<Signal = OverseerSignal, Error = SubsystemError>
-{
-	/// Sender type to communicate with other subsystems.
-	type Sender: polkadot_overseer_gen::SubsystemSender + Send + Clone + 'static;
-}
-
-impl<T> SubsystemContext for T
-where
-	T: polkadot_overseer_gen::SubsystemContext<Signal = OverseerSignal, Error = SubsystemError>,
-{
-	type Sender = <Self as polkadot_overseer_gen::SubsystemContext>::Sender;
-}
-
 #[derive(Debug, thiserror::Error)]
 enum Error {
 	#[error(transparent)]
@@ -105,14 +90,10 @@ where
 	///
 	/// If `err_tx` is not `None`, errors are forwarded onto that channel as they occur.
 	/// Otherwise, most are logged and then discarded.
-	async fn run<Context>(mut self, mut ctx: Context)
-	where
-		Context: SubsystemContext,
-		Context: overseer::SubsystemContext,
-	{
+	async fn run(mut self, mut ctx: crate::OverseerSubsystemContext) {
 		loop {
 			let incoming = ctx.recv().await;
-			if self.handle_incoming::<Context>(incoming).await {
+			if self.handle_incoming(incoming).await {
 				break
 			}
 		}
@@ -122,11 +103,7 @@ where
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	async fn handle_incoming<Context>(&mut self, incoming: SubsystemResult<FromOverseer>) -> bool
-	where
-		Context: SubsystemContext,
-		Context: overseer::SubsystemContext,
-	{
+	async fn handle_incoming(&mut self, incoming: SubsystemResult<FromOverseer>) -> bool {
 		match incoming {
 			Ok(FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
 				activated,
@@ -223,8 +200,7 @@ where
 	}
 }
 
-impl<Client, Context> overseer::Subsystem<Context, SubsystemError>
-	for CollationGenerationSubsystem<Client>
+impl<Client> overseer::Subsystem<SubsystemError> for CollationGenerationSubsystem<Client>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -233,10 +209,8 @@ where
 		+ 'static
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
-	Context: SubsystemContext,
-	Context: overseer::SubsystemContext,
 {
-	fn start(self, ctx: Context) -> SpawnedSubsystem {
+	fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem {
 		let future = async move {
 			self.run(ctx).await;
 			Ok(())

@@ -86,11 +86,10 @@ use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
+pub use polkadot_overseer_gen::Subsystem;
 use polkadot_overseer_gen::{
-	FromOverseer, MessagePacket, SignalsReceived, SubsystemIncomingMessages, SubsystemInstance,
-	SubsystemSender, TimeoutExt,
+	FromOverseer, MessagePacket, SignalsReceived, SubsystemInstance, TimeoutExt,
 };
-pub use polkadot_overseer_gen::{Subsystem, SubsystemContext};
 
 /// Store 2 days worth of blocks, not accounting for forks,
 /// in the LRU cache. Assumes a 6-second block time.
@@ -317,7 +316,7 @@ impl Overseer {
 	) -> OverseerBuilder<S, CollationGeneration>
 	where
 		S: SpawnNamed,
-		CollationGeneration: Subsystem<OverseerSubsystemContext, SubsystemError>,
+		CollationGeneration: Subsystem<SubsystemError>,
 	{
 		OverseerBuilder::new(collation_generation)
 	}
@@ -354,7 +353,7 @@ pub struct OverseerBuilder<S, CollationGeneration> {
 impl<S, CollationGeneration> OverseerBuilder<S, CollationGeneration>
 where
 	S: SpawnNamed,
-	CollationGeneration: Subsystem<OverseerSubsystemContext, SubsystemError>,
+	CollationGeneration: Subsystem<SubsystemError>,
 {
 	fn new(collation_generation: CollationGeneration) -> Self {
 		fn trait_from_must_be_implemented<E>()
@@ -411,26 +410,16 @@ where
 		let OverseerConnector { handle, consumer: events_rx } = connector;
 		let (collation_generation_tx, collation_generation_rx) =
 			polkadot_overseer_gen::metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
-		let (collation_generation_unbounded_tx, collation_generation_unbounded_rx) =
-			polkadot_overseer_gen::metered::unbounded::<MessagePacket>();
-		let channels_out = ChannelsOut {
-			collation_generation: collation_generation_tx.clone(),
-			collation_generation_unbounded: collation_generation_unbounded_tx,
-		};
 		let spawner = self.spawner.expect("Spawner is set. qed");
 		let running_subsystems = polkadot_overseer_gen::FuturesUnordered::<
 			BoxFuture<'static, ::std::result::Result<(), SubsystemError>>,
 		>::new();
 		let collation_generation = self.collation_generation;
-		let message_rx: SubsystemIncomingMessages = polkadot_overseer_gen::select(
-			collation_generation_rx,
-			collation_generation_unbounded_rx,
-		);
 		let (signal_tx, signal_rx) =
 			polkadot_overseer_gen::metered::channel(SIGNAL_CHANNEL_CAPACITY);
 		let subsystem_string = String::from(stringify!(collation_generation));
 		let subsystem_static_str = Box::leak(subsystem_string.replace("_", "-").into_boxed_str());
-		let ctx = OverseerSubsystemContext::new(signal_rx, message_rx, channels_out.clone());
+		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
 		let collation_generation: OverseenSubsystem = {
 			let polkadot_overseer_gen::SpawnedSubsystem { future, name } =
 				collation_generation.start(ctx);
@@ -558,73 +547,6 @@ impl OverseenSubsystem {
 		}
 	}
 }
-/// Collection of channels to the individual subsystems.
-///
-/// Naming is from the point of view of the overseer.
-#[derive(Debug, Clone)]
-pub struct ChannelsOut {
-	/// Bounded channel sender, connected to a subsystem.
-	pub collation_generation: polkadot_overseer_gen::metered::MeteredSender<MessagePacket>,
-	/// Unbounded channel sender, connected to a subsystem.
-	pub collation_generation_unbounded:
-		polkadot_overseer_gen::metered::UnboundedMeteredSender<MessagePacket>,
-}
-#[allow(unreachable_code)]
-impl ChannelsOut {
-	/// Send a message via a bounded channel.
-	pub async fn send_and_log_error(
-		&mut self,
-		signals_received: usize,
-		message: CollationGenerationMessage,
-	) {
-		let res: ::std::result::Result<_, _> = self
-			.collation_generation
-			.send(polkadot_overseer_gen::make_packet(signals_received, message))
-			.await
-			.map_err(|_| stringify!(collation_generation));
-		if let Err(subsystem_name) = res {
-			polkadot_overseer_gen::tracing::debug!(
-				target: LOG_TARGET,
-				"Failed to send (bounded) a message to {} subsystem",
-				subsystem_name
-			);
-		}
-	}
-	/// Send a message to another subsystem via an unbounded channel.
-	pub fn send_unbounded_and_log_error(
-		&self,
-		signals_received: usize,
-		message: CollationGenerationMessage,
-	) {
-		let res: ::std::result::Result<_, _> = self
-			.collation_generation_unbounded
-			.unbounded_send(polkadot_overseer_gen::make_packet(signals_received, message))
-			.map_err(|_| stringify!(collation_generation));
-		if let Err(subsystem_name) = res {
-			polkadot_overseer_gen::tracing::debug!(
-				target: LOG_TARGET,
-				"Failed to send_unbounded a message to {} subsystem",
-				subsystem_name
-			);
-		}
-	}
-}
-/// Connector to send messages towards all subsystems,
-/// while tracking the which signals where already received.
-#[derive(Debug, Clone)]
-pub struct OverseerSubsystemSender {
-	/// Collection of channels to all subsystems.
-	channels: ChannelsOut,
-	/// Systemwide tick for which signals were received by all subsystems.
-	signals_received: SignalsReceived,
-}
-/// implementation for wrapping message type...
-#[polkadot_overseer_gen::async_trait]
-impl SubsystemSender for OverseerSubsystemSender {
-	async fn send_message(&mut self, msg: CollationGenerationMessage) {
-		self.channels.send_and_log_error(self.signals_received.load(), msg).await;
-	}
-}
 /// A context type that is given to the [`Subsystem`] upon spawning.
 /// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
 /// or to spawn it's [`SubsystemJob`]s.
@@ -636,8 +558,7 @@ impl SubsystemSender for OverseerSubsystemSender {
 #[allow(missing_docs)]
 pub struct OverseerSubsystemContext {
 	signals: polkadot_overseer_gen::metered::MeteredReceiver<OverseerSignal>,
-	messages: SubsystemIncomingMessages,
-	to_subsystems: OverseerSubsystemSender,
+	messages: polkadot_overseer_gen::metered::MeteredReceiver<MessagePacket>,
 	signals_received: SignalsReceived,
 	pending_incoming: Option<(usize, CollationGenerationMessage)>,
 }
@@ -645,30 +566,13 @@ impl OverseerSubsystemContext {
 	/// Create a new context.
 	fn new(
 		signals: polkadot_overseer_gen::metered::MeteredReceiver<OverseerSignal>,
-		messages: SubsystemIncomingMessages,
-		to_subsystems: ChannelsOut,
+		messages: polkadot_overseer_gen::metered::MeteredReceiver<MessagePacket>,
 	) -> Self {
 		let signals_received = SignalsReceived::default();
-		OverseerSubsystemContext {
-			signals,
-			messages,
-			to_subsystems: OverseerSubsystemSender {
-				channels: to_subsystems,
-				signals_received: signals_received.clone(),
-			},
-			signals_received,
-			pending_incoming: None,
-		}
+		OverseerSubsystemContext { signals, messages, signals_received, pending_incoming: None }
 	}
 }
-#[polkadot_overseer_gen::async_trait]
-impl polkadot_overseer_gen::SubsystemContext for OverseerSubsystemContext
-where
-	OverseerSubsystemSender: polkadot_overseer_gen::SubsystemSender,
-{
-	type Signal = OverseerSignal;
-	type Sender = OverseerSubsystemSender;
-	type Error = SubsystemError;
+impl OverseerSubsystemContext {
 	async fn recv(
 		&mut self,
 	) -> ::std::result::Result<FromOverseer<OverseerSignal>, SubsystemError> {
@@ -719,9 +623,6 @@ where
 			}
 			return Ok(from_overseer)
 		}
-	}
-	fn sender(&mut self) -> &mut Self::Sender {
-		&mut self.to_subsystems
 	}
 }
 impl Overseer {

@@ -64,8 +64,6 @@ pub use metered;
 pub use tracing;
 
 #[doc(hidden)]
-pub use async_trait::async_trait;
-#[doc(hidden)]
 pub use futures::{
 	self,
 	channel::{mpsc, oneshot},
@@ -103,20 +101,6 @@ pub struct MessagePacket {
 	/// The message to be sent/consumed.
 	pub message: crate::CollationGenerationMessage,
 }
-
-/// Create a packet from its parts.
-pub fn make_packet(
-	signals_received: usize,
-	message: crate::CollationGenerationMessage,
-) -> MessagePacket {
-	MessagePacket { signals_received, message }
-}
-
-/// Incoming messages from both the bounded and unbounded channel.
-pub type SubsystemIncomingMessages = self::stream::Select<
-	self::metered::MeteredReceiver<MessagePacket>,
-	self::metered::UnboundedMeteredReceiver<MessagePacket>,
->;
 
 /// Watermark to track the received signals.
 #[derive(Debug, Default, Clone)]
@@ -228,28 +212,6 @@ impl<Signal> From<Signal> for FromOverseer<Signal> {
 	}
 }
 
-/// A context type that is given to the [`Subsystem`] upon spawning.
-/// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
-/// or spawn jobs.
-///
-/// [`Overseer`]: struct.Overseer.html
-/// [`SubsystemJob`]: trait.SubsystemJob.html
-#[async_trait::async_trait]
-pub trait SubsystemContext: Send + 'static {
-	/// And the same for signals.
-	type Signal: std::fmt::Debug + Send + 'static;
-	/// The sender type as provided by `sender()` and underlying.
-	type Sender: SubsystemSender + Send + 'static;
-	/// The error type.
-	type Error: ::std::error::Error + ::std::convert::From<OverseerError> + Sync + Send + 'static;
-
-	/// Receive a message.
-	async fn recv(&mut self) -> Result<FromOverseer<Self::Signal>, Self::Error>;
-
-	/// Obtain the sender.
-	fn sender(&mut self) -> &mut Self::Sender;
-}
-
 /// A trait that describes the [`Subsystem`]s that can run on the [`Overseer`].
 ///
 /// It is generic over the message type circulating in the system.
@@ -258,13 +220,12 @@ pub trait SubsystemContext: Send + 'static {
 ///
 /// [`Overseer`]: struct.Overseer.html
 /// [`Subsystem`]: trait.Subsystem.html
-pub trait Subsystem<Ctx, E>
+pub trait Subsystem<E>
 where
-	Ctx: SubsystemContext,
 	E: std::error::Error + Send + Sync + 'static + From<self::OverseerError>,
 {
 	/// Start this `Subsystem` and return `SpawnedSubsystem`.
-	fn start(self, ctx: Ctx) -> SpawnedSubsystem<E>;
+	fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem<E>;
 }
 
 /// Sender end of a channel to interface with a subsystem.
