@@ -18,7 +18,6 @@
 
 pub mod rpc;
 
-use polkadot_overseer::CollationGenerationSubsystem;
 use polkadot_overseer::{BlockInfo, Handle, Overseer};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
@@ -537,7 +536,7 @@ where
     let active_leaves = active_leaves(&select_chain, &*client).await?;
 
     let (overseer, overseer_handle) = Overseer::new(
-        CollationGenerationSubsystem::new(client.clone()),
+        client.clone(),
         active_leaves
             .into_iter()
             .map(

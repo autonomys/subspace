@@ -39,7 +39,7 @@ use subspace_runtime_primitives::{
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
-pub enum CollationGenerationMessage {
+enum CollationGenerationMessage {
 	/// Initialize the collation generation subsystem
 	Initialize(CollationGenerationConfig),
 	/// Fraud proof needs to be submitted to primary chain.
@@ -51,113 +51,6 @@ pub enum CollationGenerationMessage {
 }
 
 const LOG_TARGET: &str = "overseer";
-
-/// Collation Generation Subsystem
-pub struct CollationGenerationSubsystem<Client> {
-	primary_chain_client: Arc<Client>,
-	config: Option<Arc<CollationGenerationConfig>>,
-}
-
-impl<Client> CollationGenerationSubsystem<Client>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	/// Create a new instance of the `CollationGenerationSubsystem`.
-	pub fn new(primary_chain_client: Arc<Client>) -> Self {
-		Self { primary_chain_client, config: None }
-	}
-
-	pub(crate) async fn update_activated_leave(
-		&self,
-		activated_leaf: ActivatedLeaf,
-	) -> Result<(), ApiError> {
-		// follow the procedure from the guide
-		if let Some(config) = &self.config {
-			// TODO: invoke this on finalized block?
-			process_primary_block(
-				Arc::clone(&self.primary_chain_client),
-				config,
-				activated_leaf.hash,
-			)
-			.await?;
-		}
-
-		Ok(())
-	}
-
-	pub(crate) async fn update_new_slot(
-		&self,
-		slot_info: ExecutorSlotInfo,
-	) -> Result<(), ApiError> {
-		if let Some(config) = &self.config {
-			let client = &self.primary_chain_client;
-			let best_hash = client.info().best_hash;
-
-			let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
-				Some(bundle_result) => bundle_result.to_opaque_bundle(),
-				None => {
-					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
-					return Ok(())
-				},
-			};
-
-			// TODO: Handle returned result?
-			let _ = client
-				.runtime_api()
-				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-		}
-
-		Ok(())
-	}
-
-	pub(crate) async fn handle_message(
-		&mut self,
-		message: CollationGenerationMessage,
-	) -> Result<(), ApiError> {
-		let client = &self.primary_chain_client;
-
-		match message {
-			CollationGenerationMessage::Initialize(config) =>
-				if self.config.is_some() {
-					tracing::error!(target: LOG_TARGET, "double initialization");
-				} else {
-					self.config = Some(Arc::new(config));
-				},
-			CollationGenerationMessage::FraudProof(fraud_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_fraud_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					fraud_proof,
-				)?;
-			},
-			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					bundle_equivocation_proof,
-				)?;
-			},
-			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof) => {
-				// TODO: Handle returned result?
-				let _ = self
-					.primary_chain_client
-					.runtime_api()
-					.submit_invalid_transaction_proof_unsigned(
-						&BlockId::Hash(client.info().best_hash),
-						invalid_transaction_proof,
-					)?;
-			},
-		}
-
-		Ok(())
-	}
-}
 
 /// Apply the transaction bundles for given primary block as follows:
 ///
@@ -343,7 +236,7 @@ impl From<BlockImportNotification<Block>> for BlockInfo {
 
 /// An event from outside the overseer scope, such
 /// as the substrate framework or user interaction.
-pub enum Event {
+enum Event {
 	/// A new block was imported.
 	BlockImported(BlockInfo),
 	/// A new slot arrived.
@@ -388,8 +281,8 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
 /// The overseer.
 pub struct Overseer<Client> {
-	/// A subsystem instance.
-	collation_generation: CollationGenerationSubsystem<Client>,
+	primary_chain_client: Arc<Client>,
+	config: Option<Arc<CollationGenerationConfig>>,
 	/// A user specified addendum field.
 	leaves: Vec<(Hash, BlockNumber)>,
 	/// A user specified addendum field.
@@ -412,12 +305,13 @@ where
 {
 	/// Create a new overseer.
 	pub fn new(
-		collation_generation: CollationGenerationSubsystem<Client>,
+		primary_chain_client: Arc<Client>,
 		leaves: Vec<(Hash, BlockNumber)>,
 		active_leaves: HashMap<Hash, BlockNumber>,
 	) -> (Self, Handle) {
 		let (handle, events_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer = Overseer { collation_generation, leaves, active_leaves, events_rx };
+		let overseer =
+			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
 		(overseer, Handle::new(handle))
 	}
 
@@ -427,7 +321,7 @@ where
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
 			let update = ActivatedLeaf { hash, number };
-			if let Err(error) = self.collation_generation.update_activated_leave(update).await {
+			if let Err(error) = self.update_activated_leave(update).await {
 				tracing::error!(
 					target: LOG_TARGET,
 					"Collation generation processing error: {error}"
@@ -438,7 +332,7 @@ where
 		while let Some(msg) = self.events_rx.next().await {
 			match msg {
 				Event::MsgToSubsystem(message) => {
-					if let Err(error) = self.collation_generation.handle_message(message).await {
+					if let Err(error) = self.handle_message(message).await {
 						tracing::error!(
 							target: LOG_TARGET,
 							"Collation generation processing error: {error}"
@@ -449,7 +343,7 @@ where
 					self.block_imported(block).await?;
 				},
 				Event::NewSlot(slot_info) => {
-					if let Err(error) = self.collation_generation.update_new_slot(slot_info).await {
+					if let Err(error) = self.update_new_slot(slot_info).await {
 						tracing::error!(
 							target: LOG_TARGET,
 							"Collation generation processing error: {error}"
@@ -457,6 +351,85 @@ where
 					}
 				},
 			}
+		}
+
+		Ok(())
+	}
+
+	async fn update_activated_leave(&self, activated_leaf: ActivatedLeaf) -> Result<(), ApiError> {
+		// follow the procedure from the guide
+		if let Some(config) = &self.config {
+			// TODO: invoke this on finalized block?
+			process_primary_block(
+				Arc::clone(&self.primary_chain_client),
+				config,
+				activated_leaf.hash,
+			)
+			.await?;
+		}
+
+		Ok(())
+	}
+
+	async fn update_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
+		if let Some(config) = &self.config {
+			let client = &self.primary_chain_client;
+			let best_hash = client.info().best_hash;
+
+			let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
+				Some(bundle_result) => bundle_result.to_opaque_bundle(),
+				None => {
+					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+					return Ok(())
+				},
+			};
+
+			// TODO: Handle returned result?
+			let _ = client
+				.runtime_api()
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+		}
+
+		Ok(())
+	}
+
+	async fn handle_message(
+		&mut self,
+		message: CollationGenerationMessage,
+	) -> Result<(), ApiError> {
+		let client = &self.primary_chain_client;
+
+		match message {
+			CollationGenerationMessage::Initialize(config) =>
+				if self.config.is_some() {
+					tracing::error!(target: LOG_TARGET, "double initialization");
+				} else {
+					self.config = Some(Arc::new(config));
+				},
+			CollationGenerationMessage::FraudProof(fraud_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_fraud_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					fraud_proof,
+				)?;
+			},
+			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					bundle_equivocation_proof,
+				)?;
+			},
+			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof) => {
+				// TODO: Handle returned result?
+				let _ = self
+					.primary_chain_client
+					.runtime_api()
+					.submit_invalid_transaction_proof_unsigned(
+						&BlockId::Hash(client.info().best_hash),
+						invalid_transaction_proof,
+					)?;
+			},
 		}
 
 		Ok(())
@@ -477,7 +450,7 @@ where
 			debug_assert_eq!(block.number.saturating_sub(1), number);
 		}
 
-		if let Err(error) = self.collation_generation.update_activated_leave(update).await {
+		if let Err(error) = self.update_activated_leave(update).await {
 			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 
