@@ -93,7 +93,7 @@ pub use futures_timer::Delay;
 /// Includes a counter to synchronize signals with messages,
 /// such that no inconsistent message sequences are prevented.
 #[derive(Debug)]
-pub struct MessagePacket<T> {
+pub struct MessagePacket {
 	/// Signal level at the point of reception.
 	///
 	/// Required to assure signals were consumed _before_
@@ -101,18 +101,21 @@ pub struct MessagePacket<T> {
 	/// that a certain signal was assumed.
 	pub signals_received: usize,
 	/// The message to be sent/consumed.
-	pub message: T,
+	pub message: crate::CollationGenerationMessage,
 }
 
 /// Create a packet from its parts.
-pub fn make_packet<T>(signals_received: usize, message: T) -> MessagePacket<T> {
+pub fn make_packet(
+	signals_received: usize,
+	message: crate::CollationGenerationMessage,
+) -> MessagePacket {
 	MessagePacket { signals_received, message }
 }
 
 /// Incoming messages from both the bounded and unbounded channel.
-pub type SubsystemIncomingMessages<M> = self::stream::Select<
-	self::metered::MeteredReceiver<MessagePacket<M>>,
-	self::metered::UnboundedMeteredReceiver<MessagePacket<M>>,
+pub type SubsystemIncomingMessages = self::stream::Select<
+	self::metered::MeteredReceiver<MessagePacket>,
+	self::metered::UnboundedMeteredReceiver<MessagePacket>,
 >;
 
 /// Watermark to track the received signals.
@@ -189,11 +192,11 @@ pub enum OverseerError {
 /// [`Subsystem`]: trait.Subsystem.html
 ///
 /// `M` here is the inner message type, and _not_ the generated `enum AllMessages`.
-pub struct SubsystemInstance<Message, Signal> {
+pub struct SubsystemInstance<Signal> {
 	/// Send sink for `Signal`s to be sent to a subsystem.
 	pub tx_signal: metered::MeteredSender<Signal>,
 	/// Send sink for `Message`s to be sent to a subsystem.
-	pub tx_bounded: metered::MeteredSender<MessagePacket<Message>>,
+	pub tx_bounded: metered::MeteredSender<MessagePacket>,
 	/// The number of signals already received.
 	/// Required to assure messages and signals
 	/// are processed correctly.
@@ -208,18 +211,18 @@ pub struct SubsystemInstance<Message, Signal> {
 ///
 /// It is generic over over the message type `M` that a particular `Subsystem` may use.
 #[derive(Debug)]
-pub enum FromOverseer<Message, Signal> {
+pub enum FromOverseer<Signal> {
 	/// Signal from the `Overseer`.
 	Signal(Signal),
 
 	/// Some other `Subsystem`'s message.
 	Communication {
 		/// Contained message
-		msg: Message,
+		msg: crate::CollationGenerationMessage,
 	},
 }
 
-impl<Signal, Message> From<Signal> for FromOverseer<Message, Signal> {
+impl<Signal> From<Signal> for FromOverseer<Signal> {
 	fn from(signal: Signal) -> Self {
 		Self::Signal(signal)
 	}
@@ -233,22 +236,15 @@ impl<Signal, Message> From<Signal> for FromOverseer<Message, Signal> {
 /// [`SubsystemJob`]: trait.SubsystemJob.html
 #[async_trait::async_trait]
 pub trait SubsystemContext: Send + 'static {
-	/// The message type of this context. Subsystems launched with this context will expect
-	/// to receive messages of this type. Commonly uses the wrapping `enum` commonly called
-	/// `AllMessages`.
-	type Message: std::fmt::Debug + Send + 'static;
 	/// And the same for signals.
 	type Signal: std::fmt::Debug + Send + 'static;
-	/// The overarching all messages `enum`.
-	/// In some cases can be identical to `Self::Message`.
-	type AllMessages: From<Self::Message> + Send + 'static;
 	/// The sender type as provided by `sender()` and underlying.
-	type Sender: SubsystemSender<Self::AllMessages> + Send + 'static;
+	type Sender: SubsystemSender + Send + 'static;
 	/// The error type.
 	type Error: ::std::error::Error + ::std::convert::From<OverseerError> + Sync + Send + 'static;
 
 	/// Receive a message.
-	async fn recv(&mut self) -> Result<FromOverseer<Self::Message, Self::Signal>, Self::Error>;
+	async fn recv(&mut self) -> Result<FromOverseer<Self::Signal>, Self::Error>;
 
 	/// Obtain the sender.
 	fn sender(&mut self) -> &mut Self::Sender;
@@ -273,9 +269,9 @@ where
 
 /// Sender end of a channel to interface with a subsystem.
 #[async_trait::async_trait]
-pub trait SubsystemSender<Message>: Send + Clone + 'static {
+pub trait SubsystemSender: Send + Clone + 'static {
 	/// Send a direct message to some other `Subsystem`, routed based on message type.
-	async fn send_message(&mut self, msg: Message);
+	async fn send_message(&mut self, msg: crate::CollationGenerationMessage);
 }
 
 /// A future that wraps another future with a `Delay` allowing for time-limited futures.

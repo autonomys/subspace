@@ -43,39 +43,23 @@ use subspace_runtime_primitives::{
 // subsystems at once.
 
 /// Specialized message type originating from the overseer.
-type FromOverseer<M> = polkadot_overseer_gen::FromOverseer<M, OverseerSignal>;
-
-/// Sender trait for the `AllMessages` wrapper.
-trait SubsystemSender: polkadot_overseer_gen::SubsystemSender<crate::AllMessages> {}
-
-impl<T> SubsystemSender for T where T: polkadot_overseer_gen::SubsystemSender<crate::AllMessages> {}
+type FromOverseer = polkadot_overseer_gen::FromOverseer<OverseerSignal>;
 
 /// Spawned subsystem.
 type SpawnedSubsystem = polkadot_overseer_gen::SpawnedSubsystem<SubsystemError>;
 
 /// Convenience trait specialization.
 trait SubsystemContext:
-	polkadot_overseer_gen::SubsystemContext<
-	Signal = OverseerSignal,
-	AllMessages = crate::AllMessages,
-	Error = SubsystemError,
->
+	polkadot_overseer_gen::SubsystemContext<Signal = OverseerSignal, Error = SubsystemError>
 {
-	/// The message type the subsystem consumes.
-	type Message: std::fmt::Debug + Send + 'static;
 	/// Sender type to communicate with other subsystems.
-	type Sender: SubsystemSender + Send + Clone + 'static;
+	type Sender: polkadot_overseer_gen::SubsystemSender + Send + Clone + 'static;
 }
 
 impl<T> SubsystemContext for T
 where
-	T: polkadot_overseer_gen::SubsystemContext<
-		Signal = OverseerSignal,
-		AllMessages = crate::AllMessages,
-		Error = SubsystemError,
-	>,
+	T: polkadot_overseer_gen::SubsystemContext<Signal = OverseerSignal, Error = SubsystemError>,
 {
-	type Message = <Self as polkadot_overseer_gen::SubsystemContext>::Message;
 	type Sender = <Self as polkadot_overseer_gen::SubsystemContext>::Sender;
 }
 
@@ -123,8 +107,8 @@ where
 	/// Otherwise, most are logged and then discarded.
 	async fn run<Context>(mut self, mut ctx: Context)
 	where
-		Context: SubsystemContext<Message = CollationGenerationMessage>,
-		Context: overseer::SubsystemContext<Message = CollationGenerationMessage>,
+		Context: SubsystemContext,
+		Context: overseer::SubsystemContext,
 	{
 		loop {
 			let incoming = ctx.recv().await;
@@ -138,13 +122,10 @@ where
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	async fn handle_incoming<Context>(
-		&mut self,
-		incoming: SubsystemResult<FromOverseer<<Context as SubsystemContext>::Message>>,
-	) -> bool
+	async fn handle_incoming<Context>(&mut self, incoming: SubsystemResult<FromOverseer>) -> bool
 	where
-		Context: SubsystemContext<Message = CollationGenerationMessage>,
-		Context: overseer::SubsystemContext<Message = CollationGenerationMessage>,
+		Context: SubsystemContext,
+		Context: overseer::SubsystemContext,
 	{
 		match incoming {
 			Ok(FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
@@ -252,8 +233,8 @@ where
 		+ 'static
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
-	Context: SubsystemContext<Message = CollationGenerationMessage>,
-	Context: overseer::SubsystemContext<Message = CollationGenerationMessage>,
+	Context: SubsystemContext,
+	Context: overseer::SubsystemContext,
 {
 	fn start(self, ctx: Context) -> SpawnedSubsystem {
 		let future = async move {
