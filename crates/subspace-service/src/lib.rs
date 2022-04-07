@@ -20,7 +20,7 @@ pub mod rpc;
 
 use lru::LruCache;
 use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
-use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
+use polkadot_overseer::{BlockInfo, Handle, Overseer, KNOWN_LEAVES_CACHE_SIZE};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -407,23 +407,21 @@ where
     let overseer_handle = if config.role.is_authority() {
         let active_leaves = active_leaves(&select_chain, &*client).await?;
 
-        let (overseer, overseer_handle) =
-            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
-                .leaves(
-                    active_leaves
-                        .into_iter()
-                        .map(
-                            |BlockInfo {
-                                 hash,
-                                 parent_hash: _,
-                                 number,
-                             }| (hash, number),
-                        )
-                        .collect(),
+        let (overseer, overseer_handle) = Overseer::new(
+            CollationGenerationSubsystem::new(client.clone()),
+            active_leaves
+                .into_iter()
+                .map(
+                    |BlockInfo {
+                         hash,
+                         parent_hash: _,
+                         number,
+                     }| (hash, number),
                 )
-                .active_leaves(Default::default())
-                .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-                .build_with_connector(OverseerConnector::default())?;
+                .collect(),
+            Default::default(),
+            LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
+        )?;
 
         let handle = Handle::new(overseer_handle);
 

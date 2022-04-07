@@ -456,132 +456,9 @@ impl Overseer {
 		}
 	}
 }
-impl Overseer {
-	/// Create a new overseer utilizing the builder.
-	pub fn builder<Client>(
-		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
-	) -> OverseerBuilder<Client>
-	where
-		Client: HeaderBackend<Block>
-			+ BlockBackend<Block>
-			+ ProvideRuntimeApi<Block>
-			+ Send
-			+ 'static
-			+ Sync,
-		Client::Api: ExecutorApi<Block>,
-	{
-		OverseerBuilder::new(collation_generation)
-	}
-}
 /// Handle for an overseer.
 pub type OverseerHandle = metered::MeteredSender<Event>;
-/// External connector.
-pub struct OverseerConnector {
-	/// Publicly accessible handle, to be used for setting up
-	/// components that are _not_ subsystems but access is needed
-	/// due to other limitations.
-	///
-	/// For subsystems, use the `_with` variants of the builder.
-	handle: OverseerHandle,
-	/// The side consumed by the `spawned` side of the overseer pattern.
-	consumer: metered::MeteredReceiver<Event>,
-}
-impl ::std::default::Default for OverseerConnector {
-	fn default() -> Self {
-		let (events_tx, events_rx) = metered::channel::<Event>(SIGNAL_CHANNEL_CAPACITY);
-		Self { handle: events_tx, consumer: events_rx }
-	}
-}
-/// Initialization type to be used for a field of the overseer.
-#[allow(missing_docs)]
-pub struct OverseerBuilder<Client> {
-	collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
-	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
-	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
-	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
-}
-impl<Client> OverseerBuilder<Client>
-where
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ 'static
-		+ Sync,
-	Client::Api: ExecutorApi<Block>,
-{
-	fn new(
-		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
-	) -> Self {
-		Self { collation_generation, leaves: None, active_leaves: None, known_leaves: None }
-	}
-	/// Attach the user defined addendum type.
-	pub fn leaves(mut self, baggage: Vec<(Hash, BlockNumber)>) -> Self {
-		self.leaves = Some(baggage);
-		self
-	}
-	/// Attach the user defined addendum type.
-	pub fn active_leaves(mut self, baggage: HashMap<Hash, BlockNumber>) -> Self {
-		self.active_leaves = Some(baggage);
-		self
-	}
-	/// Attach the user defined addendum type.
-	pub fn known_leaves(mut self, baggage: LruCache<Hash, ()>) -> Self {
-		self.known_leaves = Some(baggage);
-		self
-	}
-	/// Complete the construction and create the overseer type based on an existing `connector`.
-	pub fn build_with_connector(
-		self,
-		connector: OverseerConnector,
-	) -> ::std::result::Result<(Overseer, OverseerHandle), SubsystemError> {
-		let OverseerConnector { handle, consumer: events_rx } = connector;
-		let (collation_generation_tx, collation_generation_rx) =
-			metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
-		let collation_generation = self.collation_generation;
-		let (signal_tx, signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
-		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
-		let running_subsystem = Box::pin(
-			collation_generation
-				.run(ctx)
-				.map(|e| {
-					tracing :: warn! (err = ? e, "dropping error");
-					Ok(())
-				})
-				.fuse(),
-		);
-		let collation_generation = SubsystemInstance {
-			tx_signal: signal_tx,
-			tx_bounded: collation_generation_tx,
-			signals_received: 0,
-			name: "collation-generation-subsystem",
-		};
-		let leaves = self.leaves.expect(&format!(
-			"Baggage variable `{0}` of `{1}` must be set by the user!",
-			stringify!(leaves),
-			stringify!(Overseer)
-		));
-		let active_leaves = self.active_leaves.expect(&format!(
-			"Baggage variable `{0}` of `{1}` must be set by the user!",
-			stringify!(active_leaves),
-			stringify!(Overseer)
-		));
-		let known_leaves = self.known_leaves.expect(&format!(
-			"Baggage variable `{0}` of `{1}` must be set by the user!",
-			stringify!(known_leaves),
-			stringify!(Overseer)
-		));
-		let overseer = Overseer {
-			collation_generation,
-			leaves,
-			active_leaves,
-			known_leaves,
-			running_subsystem,
-			events_rx,
-		};
-		Ok((overseer, handle))
-	}
-}
+
 /// A context type that is given to the [`Subsystem`] upon spawning.
 /// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
 /// or to spawn it's [`SubsystemJob`]s.
@@ -661,6 +538,53 @@ impl OverseerSubsystemContext {
 	}
 }
 impl Overseer {
+	/// Create a new overseer.
+	pub fn new<Client>(
+		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+		leaves: Vec<(Hash, BlockNumber)>,
+		active_leaves: HashMap<Hash, BlockNumber>,
+		known_leaves: LruCache<Hash, ()>,
+	) -> Result<(Overseer, OverseerHandle), SubsystemError>
+	where
+		Client: HeaderBackend<Block>
+			+ BlockBackend<Block>
+			+ ProvideRuntimeApi<Block>
+			+ Send
+			+ 'static
+			+ Sync,
+		Client::Api: ExecutorApi<Block>,
+	{
+		let (handle, events_rx) = metered::channel::<Event>(SIGNAL_CHANNEL_CAPACITY);
+		let (collation_generation_tx, collation_generation_rx) =
+			metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
+		let (signal_tx, signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
+		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
+		let running_subsystem = Box::pin(
+			collation_generation
+				.run(ctx)
+				.map(|e| {
+					tracing :: warn! (err = ? e, "dropping error");
+					Ok(())
+				})
+				.fuse(),
+		);
+		let collation_generation = SubsystemInstance {
+			tx_signal: signal_tx,
+			tx_bounded: collation_generation_tx,
+			signals_received: 0,
+			name: "collation-generation-subsystem",
+		};
+		let overseer = Overseer {
+			collation_generation,
+			leaves,
+			active_leaves,
+			known_leaves,
+			running_subsystem,
+			events_rx,
+		};
+		Ok((overseer, handle))
+	}
+
 	/// Run the `Overseer`.
 	pub async fn run(mut self) -> SubsystemResult<()> {
 		// Notify about active leaves on startup before starting the loop
@@ -723,8 +647,6 @@ impl Overseer {
 			update.deactivated.push(block.parent_hash);
 		}
 
-		self.clean_up_external_listeners();
-
 		if !update.is_empty() {
 			self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
 		}
@@ -747,6 +669,4 @@ impl Overseer {
 
 		Some(status)
 	}
-
-	fn clean_up_external_listeners(&mut self) {}
 }
