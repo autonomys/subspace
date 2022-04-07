@@ -31,6 +31,7 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::ensure_owner;
     use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -75,9 +76,10 @@ mod pallet {
     }
 
     #[derive(Debug, Decode, Encode, TypeInfo, Default)]
-    pub struct FeedConfig<FeedProcessorId> {
+    pub struct FeedConfig<FeedProcessorId, AccountId> {
         pub active: bool,
         pub feed_processor_id: FeedProcessorId,
+        pub owner: AccountId,
     }
 
     #[pallet::storage]
@@ -87,8 +89,13 @@ mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn feed_configs)]
-    pub(super) type FeedConfigs<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::FeedId, FeedConfig<T::FeedProcessorKind>, OptionQuery>;
+    pub(super) type FeedConfigs<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::FeedId,
+        FeedConfig<T::FeedProcessorKind, T::AccountId>,
+        OptionQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -142,6 +149,9 @@ mod pallet {
 
         /// Feed is closed
         FeedClosed,
+
+        /// Not a feed owner
+        NotFeedOwner,
     }
 
     #[pallet::call]
@@ -170,6 +180,7 @@ mod pallet {
                 FeedConfig {
                     active: true,
                     feed_processor_id,
+                    owner: who.clone(),
                 },
             );
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
@@ -187,12 +198,7 @@ mod pallet {
             feed_processor_id: T::FeedProcessorKind,
             init_data: Option<InitData>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(
-                FeedConfigs::<T>::contains_key(feed_id),
-                Error::<T>::UnknownFeedId
-            );
-
+            let (owner, feed_config) = ensure_owner!(origin, feed_id);
             let feed_processor = T::feed_processor(feed_processor_id);
             if let Some(init_data) = init_data {
                 feed_processor.init(feed_id, init_data.as_slice())?;
@@ -201,12 +207,16 @@ mod pallet {
             FeedConfigs::<T>::insert(
                 feed_id,
                 FeedConfig {
-                    active: true,
+                    active: feed_config.active,
                     feed_processor_id,
+                    owner: owner.clone(),
                 },
             );
 
-            Self::deposit_event(Event::FeedUpdated { feed_id, who });
+            Self::deposit_event(Event::FeedUpdated {
+                feed_id,
+                who: owner,
+            });
 
             Ok(())
         }
@@ -216,10 +226,7 @@ mod pallet {
         /// Put a new object into a feed
         #[pallet::weight((10_000, Pays::No))]
         pub fn put(origin: OriginFor<T>, feed_id: T::FeedId, object: Object) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
-            let feed_config = FeedConfigs::<T>::get(feed_id).ok_or(Error::<T>::UnknownFeedId)?;
-
+            let (owner, feed_config) = ensure_owner!(origin, feed_id);
             // ensure feed is active
             ensure!(feed_config.active, Error::<T>::FeedClosed);
 
@@ -238,7 +245,7 @@ mod pallet {
 
             Self::deposit_event(Event::ObjectSubmitted {
                 metadata,
-                who,
+                who: owner,
                 object_size,
             });
 
@@ -248,15 +255,13 @@ mod pallet {
         /// Closes the feed and stops accepting new feed.
         #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), Pays::No))]
         pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
-            FeedConfigs::<T>::mutate(feed_id, |maybe_config| -> DispatchResult {
-                let mut config = maybe_config.take().ok_or(Error::<T>::UnknownFeedId)?;
-                config.active = false;
-                *maybe_config = Some(config);
-                Ok(())
-            })?;
-            Self::deposit_event(Event::FeedClosed { feed_id, who });
+            let (owner, mut feed_config) = ensure_owner!(origin, feed_id);
+            feed_config.active = false;
+            FeedConfigs::<T>::insert(feed_id, feed_config);
+            Self::deposit_event(Event::FeedClosed {
+                feed_id,
+                who: owner,
+            });
             Ok(())
         }
 
@@ -264,12 +269,14 @@ mod pallet {
         /// FeedId can be reused
         #[pallet::weight((T::DbWeight::get().reads_writes(0, 3), Pays::No))]
         pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
+            let (owner, _feed_config) = ensure_owner!(origin, feed_id);
             FeedConfigs::<T>::remove(feed_id);
             Metadata::<T>::remove(feed_id);
             Totals::<T>::remove(feed_id);
-            Self::deposit_event(Event::FeedDeleted { feed_id, who });
+            Self::deposit_event(Event::FeedDeleted {
+                feed_id,
+                who: owner,
+            });
             Ok(())
         }
     }
@@ -298,4 +305,14 @@ impl<T: Config> Call<T> {
             _ => Default::default(),
         }
     }
+}
+
+#[macro_export]
+macro_rules! ensure_owner {
+    ( $origin:expr, $feed_id:expr ) => {{
+        let sender = ensure_signed($origin)?;
+        let feed_config = FeedConfigs::<T>::get($feed_id).ok_or(Error::<T>::UnknownFeedId)?;
+        ensure!(feed_config.owner == sender, Error::<T>::NotFeedOwner);
+        (sender, feed_config)
+    }};
 }

@@ -5,18 +5,19 @@ use crate::{
 use frame_support::{assert_noop, assert_ok};
 
 const FEED_ID: u64 = 0;
-const ACCOUNT_ID: u64 = 100;
+const OWNER: u64 = 100;
+const NOT_OWNER: u64 = 101;
 
 #[test]
 fn create_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedCreated {
             feed_id: FEED_ID,
-            who: ACCOUNT_ID,
+            who: OWNER,
         }));
         assert_eq!(Feeds::next_feed_id(), 1)
     });
@@ -28,9 +29,9 @@ fn can_do_put() {
         let object: Object = vec![1, 2, 3, 4, 5];
         let object_size = object.len() as u64;
         // create feed before putting any data
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
 
-        assert_ok!(Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object));
+        assert_ok!(Feeds::put(Origin::signed(OWNER), FEED_ID, object.clone()));
 
         // check Metadata hashmap for updated metadata
         assert_eq!(Feeds::metadata(FEED_ID), Some(vec![]));
@@ -46,9 +47,15 @@ fn can_do_put() {
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {
             metadata: vec![],
-            who: ACCOUNT_ID,
+            who: OWNER,
             object_size,
         }));
+
+        // only owner can put
+        assert_noop!(
+            Feeds::put(Origin::signed(NOT_OWNER), FEED_ID, object),
+            Error::<Test>::NotFeedOwner
+        );
     });
 }
 
@@ -57,7 +64,7 @@ fn cannot_do_put_without_creating_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         assert_noop!(
-            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object),
+            Feeds::put(Origin::signed(OWNER), FEED_ID, object),
             Error::<Test>::UnknownFeedId
         );
 
@@ -70,24 +77,26 @@ fn can_close_open_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         // create feed before putting any data
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
 
-        assert_ok!(Feeds::put(
-            Origin::signed(ACCOUNT_ID),
-            FEED_ID,
-            object.clone()
-        ));
+        assert_ok!(Feeds::put(Origin::signed(OWNER), FEED_ID, object.clone()));
 
-        assert_ok!(Feeds::close(Origin::signed(ACCOUNT_ID), FEED_ID));
+        // only owner can close
+        assert_noop!(
+            Feeds::close(Origin::signed(NOT_OWNER), FEED_ID),
+            Error::<Test>::NotFeedOwner
+        );
+
+        assert_ok!(Feeds::close(Origin::signed(OWNER), FEED_ID));
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedClosed {
             feed_id: FEED_ID,
-            who: ACCOUNT_ID,
+            who: OWNER,
         }));
 
         // cannot put a closed feed
         assert_noop!(
-            Feeds::put(Origin::signed(ACCOUNT_ID), FEED_ID, object),
+            Feeds::put(Origin::signed(OWNER), FEED_ID, object),
             Error::<Test>::FeedClosed
         );
     });
@@ -98,7 +107,7 @@ fn cannot_close_invalid_feed() {
     new_test_ext().execute_with(|| {
         let feed_id = 10; // invalid
         assert_noop!(
-            Feeds::close(Origin::signed(ACCOUNT_ID), feed_id),
+            Feeds::close(Origin::signed(OWNER), feed_id),
             Error::<Test>::UnknownFeedId
         );
     });
@@ -107,12 +116,17 @@ fn cannot_close_invalid_feed() {
 #[test]
 fn delete_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
 
         assert!(FeedConfigs::<Test>::contains_key(FEED_ID));
         assert!(Totals::<Test>::contains_key(FEED_ID));
 
-        assert_ok!(Feeds::delete(Origin::signed(ACCOUNT_ID), FEED_ID));
+        // only owner can delete
+        assert_noop!(
+            Feeds::delete(Origin::signed(NOT_OWNER), FEED_ID),
+            Error::<Test>::NotFeedOwner
+        );
+        assert_ok!(Feeds::delete(Origin::signed(OWNER), FEED_ID));
         assert!(!FeedConfigs::<Test>::contains_key(FEED_ID));
         assert!(!Metadata::<Test>::contains_key(FEED_ID));
         assert!(!Totals::<Test>::contains_key(FEED_ID));
@@ -122,11 +136,17 @@ fn delete_feed() {
 #[test]
 fn can_update_existing_feed() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(ACCOUNT_ID), (), None));
-        assert_ok!(Feeds::update(Origin::signed(ACCOUNT_ID), FEED_ID, (), None));
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
+        // only owner can update
+        assert_noop!(
+            Feeds::update(Origin::signed(NOT_OWNER), FEED_ID, (), None),
+            Error::<Test>::NotFeedOwner
+        );
+
+        assert_ok!(Feeds::update(Origin::signed(OWNER), FEED_ID, (), None));
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedUpdated {
             feed_id: FEED_ID,
-            who: ACCOUNT_ID,
+            who: OWNER,
         }));
     });
 }
@@ -135,7 +155,7 @@ fn can_update_existing_feed() {
 fn cannot_update_unknown_feed() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Feeds::update(Origin::signed(ACCOUNT_ID), FEED_ID, (), None),
+            Feeds::update(Origin::signed(OWNER), FEED_ID, (), None),
             Error::<Test>::UnknownFeedId
         );
     });
