@@ -14,48 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # Overseer
-//!
-//! `overseer` implements the Overseer architecture described in the
-//! [implementers-guide](https://w3f.github.io/parachain-implementers-guide/node/index.html).
-//! For the motivations behind implementing the overseer itself you should
-//! check out that guide, documentation in this crate will be mostly discussing
-//! technical stuff.
-//!
-//! An `Overseer` is something that allows spawning/stopping and overseeing
-//! asynchronous tasks as well as establishing a well-defined and easy to use
-//! protocol that the tasks can use to communicate with each other. It is desired
-//! that this protocol is the only way tasks communicate with each other, however
-//! at this moment there are no foolproof guards against other ways of communication.
-//!
-//! The `Overseer` is instantiated with a pre-defined set of `Subsystems` that
-//! share the same behavior from `Overseer`'s point of view.
-//!
-//! ```text
-//!                              +-----------------------------+
-//!                              |         Overseer            |
-//!                              +-----------------------------+
-//!
-//!             ................|  Overseer "holds" these and uses |..............
-//!             .                  them to (re)start things                      .
-//!             .                                                                .
-//!             .  +-------------------+                +---------------------+  .
-//!             .  |   Subsystem1      |                |   Subsystem2        |  .
-//!             .  +-------------------+                +---------------------+  .
-//!             .           |                                       |            .
-//!             ..................................................................
-//!                         |                                       |
-//!                       start()                                 start()
-//!                         V                                       V
-//!             ..................| Overseer "runs" these |.......................
-//!             .  +--------------------+               +---------------------+  .
-//!             .  | SubsystemInstance1 |               | SubsystemInstance2  |  .
-//!             .  +--------------------+               +---------------------+  .
-//!             ..................................................................
-//! ```
-
-// unused dependencies can not work for test and examples at the same time
-// yielding false positives
+//! TODO
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
@@ -72,9 +31,7 @@ use lru::LruCache;
 use smallvec::SmallVec;
 use std::fmt;
 
-use sc_client_api::{
-	BlockBackend, BlockImportNotification, BlockchainEvents, FinalityNotification,
-};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 
@@ -84,54 +41,11 @@ use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-/// A message type that a subsystem receives from an overseer.
-/// It wraps signals from an overseer and messages that are circulating
-/// between subsystems.
-///
-/// It is generic over over the message type `M` that a particular `Subsystem` may use.
-#[derive(Debug)]
-pub enum FromOverseer {
-	/// Signal from the `Overseer`.
-	Signal(crate::OverseerSignal),
-
-	/// Some other `Subsystem`'s message.
-	Communication(crate::CollationGenerationMessage),
-}
-
 /// How many slots are stack-reserved for active leaves updates
 ///
 /// If there are fewer than this number of slots, then we've wasted some stack space.
 /// If there are greater than this number of slots, then we fall back to a heap vector.
 const ACTIVE_LEAVES_SMALLVEC_CAPACITY: usize = 8;
-
-/// The status of an activated leaf.
-#[derive(Debug, Clone)]
-pub enum LeafStatus {
-	/// A leaf is fresh when it's the first time the leaf has been encountered.
-	/// Most leaves should be fresh.
-	Fresh,
-	/// A leaf is stale when it's encountered for a subsequent time. This will happen
-	/// when the chain is reverted or the fork-choice rule abandons some chain.
-	Stale,
-}
-
-impl LeafStatus {
-	/// Returns a `bool` indicating fresh status.
-	pub fn is_fresh(&self) -> bool {
-		match *self {
-			LeafStatus::Fresh => true,
-			LeafStatus::Stale => false,
-		}
-	}
-
-	/// Returns a `bool` indicating stale status.
-	pub fn is_stale(&self) -> bool {
-		match *self {
-			LeafStatus::Fresh => false,
-			LeafStatus::Stale => true,
-		}
-	}
-}
 
 /// Activated leaf.
 #[derive(Debug, Clone)]
@@ -140,8 +54,6 @@ pub struct ActivatedLeaf {
 	pub hash: Hash,
 	/// The block number.
 	pub number: BlockNumber,
-	/// The status of the leaf.
-	pub status: LeafStatus,
 }
 
 /// Changes in the set of active leaves: the parachain heads which we care to work on.
@@ -190,17 +102,6 @@ impl fmt::Debug for ActiveLeavesUpdate {
 			.field("deactivated", &self.deactivated)
 			.finish()
 	}
-}
-
-/// Signals sent by an overseer to a subsystem.
-#[derive(PartialEq, Clone, Debug)]
-pub enum OverseerSignal {
-	/// Subsystems should adjust their jobs to start and stop work on appropriate block hashes.
-	ActiveLeaves(ActiveLeavesUpdate),
-	/// `Subsystem` is informed of a new slot.
-	NewSlot(ExecutorSlotInfo),
-	/// Conclude the work of the `Overseer` and all `Subsystem`s.
-	Conclude,
 }
 
 /// Store 2 days worth of blocks, not accounting for forks,
@@ -296,12 +197,6 @@ impl From<BlockImportNotification<Block>> for BlockInfo {
 	}
 }
 
-impl From<FinalityNotification<Block>> for BlockInfo {
-	fn from(n: FinalityNotification<Block>) -> Self {
-		BlockInfo { hash: n.hash, parent_hash: n.header.parent_hash, number: n.header.number }
-	}
-}
-
 /// An event from outside the overseer scope, such
 /// as the substrate framework or user interaction.
 pub enum Event {
@@ -348,7 +243,7 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 /// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
 /// The log target tag.
-const LOG_TARGET: &'static str = "overseer";
+const LOG_TARGET: &str = "overseer";
 /// The overseer.
 pub struct Overseer<Client> {
 	/// A subsystem instance.
@@ -393,48 +288,41 @@ where
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			if let Some(status) = self.on_head_activated(&hash) {
-				let update = ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number, status });
-				self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await;
+			self.known_leaves.put(hash, ());
+			let update = ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number });
+			if let Err(error) = self.collation_generation.update_active_leaves(update).await {
+				tracing::error!(
+					target: LOG_TARGET,
+					"Collation generation processing error: {error}"
+				);
 			}
 		}
 
-		loop {
-			select! {
-				msg = self.events_rx.select_next_some() => {
-					match msg {
-						Event::MsgToSubsystem(msg) => {
-							self.send_message(msg).await;
-						}
-						Event::BlockImported(block) => {
-							self.block_imported(block).await?;
-						}
-						Event::NewSlot(slot_info) => {
-							self.on_new_slot(slot_info).await?;
-						}
+		while let Some(msg) = self.events_rx.next().await {
+			match msg {
+				Event::MsgToSubsystem(message) => {
+					if let Err(error) = self.collation_generation.handle_message(message).await {
+						tracing::error!(
+							target: LOG_TARGET,
+							"Collation generation processing error: {error}"
+						);
+					}
+				},
+				Event::BlockImported(block) => {
+					self.block_imported(block).await?;
+				},
+				Event::NewSlot(slot_info) => {
+					if let Err(error) = self.collation_generation.update_new_slot(slot_info).await {
+						tracing::error!(
+							target: LOG_TARGET,
+							"Collation generation processing error: {error}"
+						);
 					}
 				},
 			}
 		}
-	}
 
-	/// Broadcast a signal to all subsystems.
-	pub async fn broadcast_signal(&mut self, signal: OverseerSignal) {
-		if let Err(error) =
-			self.collation_generation.handle_incoming(FromOverseer::Signal(signal)).await
-		{
-			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
-		}
-	}
-	/// Route a particular message to a subsystem that consumes the message.
-	pub async fn send_message(&mut self, message: CollationGenerationMessage) {
-		if let Err(error) = self
-			.collation_generation
-			.handle_incoming(FromOverseer::Communication(message))
-			.await
-		{
-			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
-		}
+		Ok(())
 	}
 
 	async fn block_imported(&mut self, block: BlockInfo) -> Result<(), ApiError> {
@@ -446,14 +334,11 @@ where
 			},
 		};
 
-		let mut update = match self.on_head_activated(&block.hash) {
-			Some(status) => ActiveLeavesUpdate::start_work(ActivatedLeaf {
-				hash: block.hash,
-				number: block.number,
-				status,
-			}),
-			None => ActiveLeavesUpdate::default(),
-		};
+		self.known_leaves.put(block.hash, ());
+		let mut update = ActiveLeavesUpdate::start_work(ActivatedLeaf {
+			hash: block.hash,
+			number: block.number,
+		});
 
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
@@ -461,25 +346,13 @@ where
 		}
 
 		if !update.is_empty() {
-			self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await;
+			if let Err(error) = self.collation_generation.update_active_leaves(update).await {
+				tracing::error!(
+					target: LOG_TARGET,
+					"Collation generation processing error: {error}"
+				);
+			}
 		}
 		Ok(())
-	}
-
-	async fn on_new_slot(&mut self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
-		self.broadcast_signal(OverseerSignal::NewSlot(slot_info)).await;
-		Ok(())
-	}
-
-	/// Handles a header activation. If the header's state doesn't support the parachains API,
-	/// this returns `None`.
-	fn on_head_activated(&mut self, hash: &Hash) -> Option<LeafStatus> {
-		let status = if self.known_leaves.put(*hash, ()).is_some() {
-			LeafStatus::Stale
-		} else {
-			LeafStatus::Fresh
-		};
-
-		Some(status)
 	}
 }

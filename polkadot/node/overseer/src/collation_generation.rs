@@ -18,8 +18,8 @@
 
 #![deny(missing_docs)]
 
-use crate::{ActiveLeavesUpdate, OverseerSignal};
-use cirrus_node_primitives::CollationGenerationConfig;
+use crate::ActiveLeavesUpdate;
+use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -70,95 +70,84 @@ where
 		Self { primary_chain_client, config: None }
 	}
 
-	// handle an incoming message. return true if we should break afterwards.
-	// note: this doesn't strictly need to be a separate function; it's more an administrative function
-	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
-	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
-	pub(crate) async fn handle_incoming(
-		&mut self,
-		incoming: crate::FromOverseer,
+	pub(crate) async fn update_active_leaves(
+		&self,
+		ActiveLeavesUpdate { activated, .. }: ActiveLeavesUpdate,
 	) -> Result<(), ApiError> {
-		match incoming {
-			crate::FromOverseer::Signal(OverseerSignal::ActiveLeaves(ActiveLeavesUpdate {
-				activated,
-				..
-			})) => {
-				// follow the procedure from the guide
-				if let Some(config) = &self.config {
-					if let Err(err) = handle_new_activations(
-						&self.primary_chain_client,
-						config,
-						activated.into_iter().map(|v| v.hash),
-					)
-					.await
-					{
-						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new activations");
-					}
-				}
-			},
-			crate::FromOverseer::Signal(OverseerSignal::Conclude) => {},
-			crate::FromOverseer::Communication(msg) => {
-				let client = &self.primary_chain_client;
+		// follow the procedure from the guide
+		if let Some(config) = &self.config {
+			let _ = handle_new_activations(
+				&self.primary_chain_client,
+				config,
+				activated.into_iter().map(|v| v.hash),
+			)
+			.await?;
+		}
 
-				match msg {
-					CollationGenerationMessage::Initialize(config) =>
-						if self.config.is_some() {
-							tracing::error!(target: LOG_TARGET, "double initialization");
-						} else {
-							self.config = Some(Arc::new(config));
-						},
-					CollationGenerationMessage::FraudProof(fraud_proof) => {
-						// TODO: Handle returned result?
-						let _ = client.runtime_api().submit_fraud_proof_unsigned(
-							&BlockId::Hash(client.info().best_hash),
-							fraud_proof,
-						)?;
-					},
-					CollationGenerationMessage::BundleEquivocationProof(
-						bundle_equivocation_proof,
-					) => {
-						// TODO: Handle returned result?
-						let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-							&BlockId::Hash(client.info().best_hash),
-							bundle_equivocation_proof,
-						)?;
-					},
-					CollationGenerationMessage::InvalidTransactionProof(
+		Ok(())
+	}
+
+	pub(crate) async fn update_new_slot(
+		&self,
+		slot_info: ExecutorSlotInfo,
+	) -> Result<(), ApiError> {
+		if let Some(config) = &self.config {
+			let client = &self.primary_chain_client;
+			let best_hash = client.info().best_hash;
+
+			let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
+				Some(bundle_result) => bundle_result.to_opaque_bundle(),
+				None => {
+					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+					return Ok(())
+				},
+			};
+
+			// TODO: Handle returned result?
+			let _ = client
+				.runtime_api()
+				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+		}
+
+		Ok(())
+	}
+
+	pub(crate) async fn handle_message(
+		&mut self,
+		message: CollationGenerationMessage,
+	) -> Result<(), ApiError> {
+		let client = &self.primary_chain_client;
+
+		match message {
+			CollationGenerationMessage::Initialize(config) =>
+				if self.config.is_some() {
+					tracing::error!(target: LOG_TARGET, "double initialization");
+				} else {
+					self.config = Some(Arc::new(config));
+				},
+			CollationGenerationMessage::FraudProof(fraud_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_fraud_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					fraud_proof,
+				)?;
+			},
+			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof) => {
+				// TODO: Handle returned result?
+				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+					&BlockId::Hash(client.info().best_hash),
+					bundle_equivocation_proof,
+				)?;
+			},
+			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof) => {
+				// TODO: Handle returned result?
+				let _ = self
+					.primary_chain_client
+					.runtime_api()
+					.submit_invalid_transaction_proof_unsigned(
+						&BlockId::Hash(client.info().best_hash),
 						invalid_transaction_proof,
-					) => {
-						// TODO: Handle returned result?
-						let _ = self
-							.primary_chain_client
-							.runtime_api()
-							.submit_invalid_transaction_proof_unsigned(
-								&BlockId::Hash(client.info().best_hash),
-								invalid_transaction_proof,
-							)?;
-					},
-				}
-			},
-			crate::FromOverseer::Signal(OverseerSignal::NewSlot(slot_info)) => {
-				if let Some(config) = &self.config {
-					let client = &self.primary_chain_client;
-					let best_hash = client.info().best_hash;
-
-					let opaque_bundle = match (config.bundler)(best_hash, slot_info).await {
-						Some(bundle_result) => bundle_result.to_opaque_bundle(),
-						None => {
-							tracing::debug!(
-								target: LOG_TARGET,
-								"executor returned no bundle on bundling",
-							);
-							return Ok(())
-						},
-					};
-
-					// TODO: Handle returned result?
-					let _ = client.runtime_api().submit_transaction_bundle_unsigned(
-						&BlockId::Hash(best_hash),
-						opaque_bundle,
 					)?;
-				}
 			},
 		}
 
