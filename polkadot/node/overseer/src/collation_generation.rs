@@ -18,7 +18,6 @@
 
 #![deny(missing_docs)]
 
-use crate as overseer;
 use crate::{
 	polkadot_node_subsystem_types::{
 		errors::{SubsystemError, SubsystemResult},
@@ -200,7 +199,7 @@ where
 	}
 }
 
-impl<Client> overseer::Subsystem<SubsystemError> for CollationGenerationSubsystem<Client>
+impl<Client> CollationGenerationSubsystem<Client>
 where
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
@@ -210,7 +209,8 @@ where
 		+ Sync,
 	Client::Api: ExecutorApi<Block>,
 {
-	fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem {
+	/// TODO
+	pub fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem {
 		let future = async move {
 			self.run(ctx).await;
 			Ok(())

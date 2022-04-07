@@ -212,22 +212,6 @@ impl<Signal> From<Signal> for FromOverseer<Signal> {
 	}
 }
 
-/// A trait that describes the [`Subsystem`]s that can run on the [`Overseer`].
-///
-/// It is generic over the message type circulating in the system.
-/// The idea that we want some type containing persistent state that
-/// can spawn actually running subsystems when asked.
-///
-/// [`Overseer`]: struct.Overseer.html
-/// [`Subsystem`]: trait.Subsystem.html
-pub trait Subsystem<E>
-where
-	E: std::error::Error + Send + Sync + 'static + From<self::OverseerError>,
-{
-	/// Start this `Subsystem` and return `SpawnedSubsystem`.
-	fn start(self, ctx: crate::OverseerSubsystemContext) -> SpawnedSubsystem<E>;
-}
-
 /// Sender end of a channel to interface with a subsystem.
 #[async_trait::async_trait]
 pub trait SubsystemSender: Send + Clone + 'static {

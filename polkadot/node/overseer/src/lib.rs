@@ -74,7 +74,11 @@ use futures::{future::BoxFuture, select, stream::FusedStream, FutureExt, StreamE
 use lru::LruCache;
 use sp_core::traits::SpawnNamed;
 
-use sc_client_api::{BlockImportNotification, BlockchainEvents, FinalityNotification};
+use sc_client_api::{
+	BlockBackend, BlockImportNotification, BlockchainEvents, FinalityNotification,
+};
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
 
 pub use polkadot_node_subsystem_types::errors::SubsystemError;
 use polkadot_node_subsystem_types::{
@@ -83,10 +87,9 @@ use polkadot_node_subsystem_types::{
 };
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
-use sp_executor::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-pub use polkadot_overseer_gen::Subsystem;
 use polkadot_overseer_gen::{
 	FromOverseer, MessagePacket, SignalsReceived, SubsystemInstance, TimeoutExt,
 };
@@ -311,12 +314,18 @@ impl Overseer {
 }
 impl Overseer {
 	/// Create a new overseer utilizing the builder.
-	pub fn builder<S, CollationGeneration>(
-		collation_generation: CollationGeneration,
-	) -> OverseerBuilder<S, CollationGeneration>
+	pub fn builder<Client, S>(
+		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	) -> OverseerBuilder<Client, S>
 	where
+		Client: HeaderBackend<Block>
+			+ BlockBackend<Block>
+			+ ProvideRuntimeApi<Block>
+			+ Send
+			+ 'static
+			+ Sync,
+		Client::Api: ExecutorApi<Block>,
 		S: SpawnNamed,
-		CollationGeneration: Subsystem<SubsystemError>,
 	{
 		OverseerBuilder::new(collation_generation)
 	}
@@ -343,29 +352,27 @@ impl ::std::default::Default for OverseerConnector {
 }
 /// Initialization type to be used for a field of the overseer.
 #[allow(missing_docs)]
-pub struct OverseerBuilder<S, CollationGeneration> {
-	collation_generation: CollationGeneration,
+pub struct OverseerBuilder<Client, S> {
+	collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
 	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
 	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
 	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
 	spawner: ::std::option::Option<S>,
 }
-impl<S, CollationGeneration> OverseerBuilder<S, CollationGeneration>
+impl<Client, S> OverseerBuilder<Client, S>
 where
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ Send
+		+ 'static
+		+ Sync,
+	Client::Api: ExecutorApi<Block>,
 	S: SpawnNamed,
-	CollationGeneration: Subsystem<SubsystemError>,
 {
-	fn new(collation_generation: CollationGeneration) -> Self {
-		fn trait_from_must_be_implemented<E>()
-		where
-			E: std::error::Error
-				+ Send
-				+ Sync
-				+ 'static
-				+ From<polkadot_overseer_gen::OverseerError>,
-		{
-		}
-		trait_from_must_be_implemented::<SubsystemError>();
+	fn new(
+		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	) -> Self {
 		Self {
 			collation_generation,
 			leaves: None,
