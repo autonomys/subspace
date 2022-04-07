@@ -31,11 +31,10 @@ mod tests;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::ensure_owner;
     use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{CheckedAdd, One};
+    use sp_runtime::traits::{CheckedAdd, One, StaticLookup};
     use sp_runtime::ArithmeticError;
     use sp_std::prelude::*;
 
@@ -144,6 +143,13 @@ mod pallet {
             feed_id: T::FeedId,
             who: T::AccountId,
         },
+
+        /// feed ownership transferred
+        OwnershipTransferred {
+            feed_id: T::FeedId,
+            old_owner: T::AccountId,
+            new_owner: T::AccountId,
+        },
     }
 
     /// `pallet-feeds` errors
@@ -157,6 +163,15 @@ mod pallet {
 
         /// Not a feed owner
         NotFeedOwner,
+    }
+
+    macro_rules! ensure_owner {
+        ( $origin:expr, $feed_id:expr ) => {{
+            let sender = ensure_signed($origin)?;
+            let feed_config = FeedConfigs::<T>::get($feed_id).ok_or(Error::<T>::UnknownFeedId)?;
+            ensure!(feed_config.owner == sender, Error::<T>::NotFeedOwner);
+            (sender, feed_config)
+        }};
     }
 
     #[pallet::call]
@@ -272,8 +287,7 @@ mod pallet {
         }
 
         /// Deletes the complete state of the Feed.
-        /// FeedId can be reused
-        #[pallet::weight((T::DbWeight::get().reads_writes(0, 3), Pays::No))]
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 3), Pays::No))]
         pub fn delete(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
             let (owner, _feed_config) = ensure_owner!(origin, feed_id);
             FeedConfigs::<T>::remove(feed_id);
@@ -283,6 +297,27 @@ mod pallet {
             Self::deposit_event(Event::FeedDeleted {
                 feed_id,
                 who: owner,
+            });
+            Ok(())
+        }
+
+        /// Transfers feed from current owner to new owner
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 3), Pays::No))]
+        pub fn transfer(
+            origin: OriginFor<T>,
+            feed_id: T::FeedId,
+            new_owner: <T::Lookup as StaticLookup>::Source,
+        ) -> DispatchResult {
+            let (owner, mut feed_config) = ensure_owner!(origin, feed_id);
+            let new_owner = T::Lookup::lookup(new_owner)?;
+            feed_config.owner = new_owner.clone();
+            Feeds::<T>::remove(owner.clone(), feed_id);
+            Feeds::<T>::insert(new_owner.clone(), feed_id, ());
+            FeedConfigs::<T>::insert(feed_id, feed_config);
+            Self::deposit_event(Event::OwnershipTransferred {
+                feed_id,
+                old_owner: owner,
+                new_owner,
             });
             Ok(())
         }
@@ -312,14 +347,4 @@ impl<T: Config> Call<T> {
             _ => Default::default(),
         }
     }
-}
-
-#[macro_export]
-macro_rules! ensure_owner {
-    ( $origin:expr, $feed_id:expr ) => {{
-        let sender = ensure_signed($origin)?;
-        let feed_config = FeedConfigs::<T>::get($feed_id).ok_or(Error::<T>::UnknownFeedId)?;
-        ensure!(feed_config.owner == sender, Error::<T>::NotFeedOwner);
-        (sender, feed_config)
-    }};
 }

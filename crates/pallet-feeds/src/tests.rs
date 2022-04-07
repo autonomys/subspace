@@ -167,3 +167,21 @@ fn cannot_update_unknown_feed() {
         );
     });
 }
+
+#[test]
+fn transfer_feed_ownership() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
+        assert_eq!(Feeds::feeds(OWNER, FEED_ID), Some(()));
+
+        let new_owner = 102u64;
+        // only owner can transfer
+        assert_noop!(
+            Feeds::transfer(Origin::signed(NOT_OWNER), FEED_ID, new_owner),
+            Error::<Test>::NotFeedOwner
+        );
+        assert_ok!(Feeds::transfer(Origin::signed(OWNER), FEED_ID, new_owner));
+        assert_eq!(Feeds::feeds(OWNER, FEED_ID), None);
+        assert_eq!(Feeds::feeds(new_owner, FEED_ID), Some(()));
+    });
+}
