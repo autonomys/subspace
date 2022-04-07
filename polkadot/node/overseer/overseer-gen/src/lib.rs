@@ -114,17 +114,6 @@ pub enum ToOverseer {
 		/// The future to execute.
 		s: BoxFuture<'static, ()>,
 	},
-
-	/// Same as `SpawnJob` but for blocking tasks to be executed on a
-	/// dedicated thread pool.
-	SpawnBlockingJob {
-		/// Name of the task to spawn which be shown in jaeger and tracing logs.
-		name: &'static str,
-		/// Subsystem of the task to spawn which be shown in jaeger and tracing logs.
-		subsystem: Option<&'static str>,
-		/// The future to execute.
-		s: BoxFuture<'static, ()>,
-	},
 }
 
 impl fmt::Debug for ToOverseer {
@@ -132,9 +121,6 @@ impl fmt::Debug for ToOverseer {
 		match self {
 			Self::SpawnJob { name, subsystem, .. } => {
 				writeln!(f, "SpawnJob{{ {}, {} ..}}", name, subsystem.unwrap_or("default"))
-			},
-			Self::SpawnBlockingJob { name, subsystem, .. } => {
-				writeln!(f, "SpawnBlockingJob{{ {}, {} ..}}", name, subsystem.unwrap_or("default"))
 			},
 		}
 	}
@@ -202,19 +188,6 @@ impl SignalsReceived {
 	pub fn inc(&self) {
 		self.0.fetch_add(1, atomic::Ordering::Acquire);
 	}
-}
-
-/// A trait to support the origin annotation
-/// such that errors across subsystems can be easier tracked.
-pub trait AnnotateErrorOrigin: 'static + Send + Sync + std::error::Error {
-	/// Annotate the error with a origin `str`.
-	///
-	/// Commonly this is used to create nested enum variants.
-	///
-	/// ```rust,ignore
-	/// E::WithOrigin("I am originally from Cowtown.", E::Variant)
-	/// ```
-	fn with_origin(self, origin: &'static str) -> Self;
 }
 
 /// An asynchronous subsystem task..
@@ -380,13 +353,6 @@ pub trait SubsystemContext: Send + 'static {
 
 	/// Spawn a child task on the executor.
 	fn spawn(
-		&mut self,
-		name: &'static str,
-		s: ::std::pin::Pin<Box<dyn crate::Future<Output = ()> + Send>>,
-	) -> Result<(), Self::Error>;
-
-	/// Spawn a blocking child task on the executor's dedicated thread pool.
-	fn spawn_blocking(
 		&mut self,
 		name: &'static str,
 		s: ::std::pin::Pin<Box<dyn crate::Future<Output = ()> + Send>>,

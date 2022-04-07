@@ -211,6 +211,10 @@ mod pallet {
         #[pallet::constant]
         type RecordSize: Get<u32>;
 
+        /// Maximum number of pieces in each plot
+        #[pallet::constant]
+        type MaxPlotSize: Get<u64>;
+
         // TODO: This will probably become configurable later
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         #[pallet::constant]
@@ -422,6 +426,13 @@ impl<T: Config> Pallet<T> {
         // we double the minimum block-period so each author can always propose within
         // the majority of their slot.
         <T as pallet_timestamp::Config>::MinimumPeriod::get().saturating_mul(2u32.into())
+    }
+
+    /// Total number of pieces in the blockchain
+    pub fn total_pieces() -> u64 {
+        // TODO: This assumes fixed size segments, which might not be the case
+        let merkle_num_leaves = T::RecordedHistorySegmentSize::get() / T::RecordSize::get() * 2;
+        u64::from(RecordsRoot::<T>::count()) * u64::from(merkle_num_leaves)
     }
 
     /// Determine whether a randomness update should take place at this block.

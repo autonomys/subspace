@@ -54,7 +54,6 @@
 //!             ..................................................................
 //! ```
 
-// #![deny(unused_results)]
 // unused dependencies can not work for test and examples at the same time
 // yielding false positives
 #![warn(missing_docs)]
@@ -62,15 +61,13 @@
 
 use std::{
 	collections::{hash_map, HashMap},
-	fmt::{self, Debug},
+	fmt::Debug,
 	pin::Pin,
 	sync::Arc,
 	time::Duration,
 };
 
-use futures::{
-	channel::oneshot, future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt,
-};
+use futures::{future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt};
 use lru::LruCache;
 
 use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
@@ -80,21 +77,11 @@ use polkadot_node_subsystem_types::messages::{
 };
 pub use polkadot_node_subsystem_types::{
 	errors::{SubsystemError, SubsystemResult},
-	jaeger, ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
+	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
 };
 
 use cirrus_node_primitives::ExecutorSlotInfo;
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
-
-pub mod metrics;
-pub use self::metrics::Metrics as OverseerMetrics;
-
-pub use polkadot_node_metrics::{
-	metrics::{prometheus, Metrics as MetricsTrait},
-	Metronome,
-};
-
-use parity_util_mem::MemoryAllocationTracker;
 
 pub use polkadot_overseer_gen as gen;
 pub use polkadot_overseer_gen::{
@@ -129,38 +116,9 @@ impl Handle {
 		self.send_and_log_error(Event::MsgToSubsystem { msg: msg.into(), origin }).await
 	}
 
-	/// Send a message not providing an origin.
-	#[inline(always)]
-	pub async fn send_msg_anon(&mut self, msg: impl Into<AllMessages>) {
-		self.send_msg(msg, "").await
-	}
-
-	/// Inform the `Overseer` that some block was finalized.
-	pub async fn block_finalized(&mut self, block: BlockInfo) {
-		self.send_and_log_error(Event::BlockFinalized(block)).await
-	}
-
 	/// Inform the `Overseer` that a new slot was triggered.
 	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
-	/// Wait for a block with the given hash to be in the active-leaves set.
-	///
-	/// The response channel responds if the hash was activated and is closed if the hash was deactivated.
-	/// Note that due the fact the overseer doesn't store the whole active-leaves set, only deltas,
-	/// the response channel may never return if the hash was deactivated before this call.
-	/// In this case, it's the caller's responsibility to ensure a timeout is set.
-	pub async fn wait_for_activation(
-		&mut self,
-		hash: Hash,
-		response_channel: oneshot::Sender<SubsystemResult<()>>,
-	) {
-		self.send_and_log_error(Event::ExternalRequest(ExternalRequest::WaitForActivation {
-			hash,
-			response_channel,
-		}))
-		.await;
 	}
 
 	/// Tell `Overseer` to shutdown.
@@ -209,8 +167,6 @@ impl From<FinalityNotification<Block>> for BlockInfo {
 pub enum Event {
 	/// A new block was imported.
 	BlockImported(BlockInfo),
-	/// A block was finalized with i.e. babe or another consensus algorithm.
-	BlockFinalized(BlockInfo),
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
@@ -220,22 +176,8 @@ pub enum Event {
 		/// The originating subsystem name.
 		origin: &'static str,
 	},
-	/// A request from the outer world.
-	ExternalRequest(ExternalRequest),
 	/// Stop the overseer on i.e. a UNIX signal.
 	Stop,
-}
-
-/// Some request from outer world.
-pub enum ExternalRequest {
-	/// Wait for the activation of a particular hash
-	/// and be notified by means of the return channel.
-	WaitForActivation {
-		/// The relay parent for which activation to wait for.
-		hash: Hash,
-		/// Response channel to await on.
-		response_channel: oneshot::Sender<SubsystemResult<()>>,
-	},
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -245,19 +187,10 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: Handle,
 ) {
-	let mut finality = client.finality_notification_stream();
 	let mut imports = client.import_notification_stream();
 
 	loop {
 		select! {
-			f = finality.next() => {
-				match f {
-					Some(block) => {
-						handle.block_finalized(block.into()).await;
-					}
-					None => break,
-				}
-			},
 			i = imports.next() => {
 				match i {
 					Some(block) => {
@@ -408,12 +341,6 @@ pub struct Overseer {
 	#[subsystem(no_dispatch, CollationGenerationMessage)]
 	collation_generation: CollationGeneration,
 
-	/// External listeners waiting for a hash to be in the active-leave set.
-	pub activation_external_listeners: HashMap<Hash, Vec<oneshot::Sender<SubsystemResult<()>>>>,
-
-	/// Stores the [`jaeger::Span`] per active leaf.
-	pub span_per_active_leaf: HashMap<Hash, Arc<jaeger::Span>>,
-
 	/// A set of leaves that `Overseer` starts working with.
 	///
 	/// Drained at the beginning of `run` and never used again.
@@ -424,82 +351,6 @@ pub struct Overseer {
 
 	/// An LRU cache for keeping track of relay-chain heads that have already been seen.
 	pub known_leaves: LruCache<Hash, ()>,
-
-	/// Various Prometheus metrics.
-	pub metrics: OverseerMetrics,
-}
-
-/// Spawn the metrics metronome task.
-pub fn spawn_metronome_metrics<S>(
-	overseer: &mut Overseer<S>,
-	metronome_metrics: OverseerMetrics,
-) -> Result<(), SubsystemError>
-where
-	S: SpawnNamed,
-{
-	struct ExtractNameAndMeters;
-
-	impl<'a, T: 'a> MapSubsystem<&'a OverseenSubsystem<T>> for ExtractNameAndMeters {
-		type Output = Option<(&'static str, SubsystemMeters)>;
-
-		fn map_subsystem(&self, subsystem: &'a OverseenSubsystem<T>) -> Self::Output {
-			subsystem
-				.instance
-				.as_ref()
-				.map(|instance| (instance.name, instance.meters.clone()))
-		}
-	}
-	let subsystem_meters = overseer.map_subsystems(ExtractNameAndMeters);
-
-	let collect_memory_stats: Box<dyn Fn(&OverseerMetrics) + Send> =
-		match MemoryAllocationTracker::new() {
-			Ok(memory_stats) =>
-				Box::new(move |metrics: &OverseerMetrics| match memory_stats.snapshot() {
-					Ok(memory_stats_snapshot) => {
-						tracing::trace!(
-							target: LOG_TARGET,
-							"memory_stats: {:?}",
-							&memory_stats_snapshot
-						);
-						metrics.memory_stats_snapshot(memory_stats_snapshot);
-					},
-					Err(e) => tracing::debug!(
-						target: LOG_TARGET,
-						"Failed to obtain memory stats: {:?}",
-						e
-					),
-				}),
-			Err(_) => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Memory allocation tracking is not supported by the allocator.",
-				);
-
-				Box::new(|_| {})
-			},
-		};
-
-	let metronome = Metronome::new(std::time::Duration::from_millis(950)).for_each(move |_| {
-		collect_memory_stats(&metronome_metrics);
-
-		// We combine the amount of messages from subsystems to the overseer
-		// as well as the amount of messages from external sources to the overseer
-		// into one `to_overseer` value.
-		metronome_metrics.channel_fill_level_snapshot(
-			subsystem_meters
-				.iter()
-				.cloned()
-				.filter_map(|x| x)
-				.map(|(name, ref meters)| (name, meters.read())),
-		);
-
-		futures::future::ready(())
-	});
-	overseer
-		.spawner()
-		.spawn("metrics-metronome", Some("overseer"), Box::pin(metronome));
-
-	Ok(())
 }
 
 impl<S> Overseer<S>
@@ -513,15 +364,11 @@ where
 
 	/// Run the `Overseer`.
 	pub async fn run(mut self) -> SubsystemResult<()> {
-		let metrics = self.metrics.clone();
-		spawn_metronome_metrics(&mut self, metrics)?;
-
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			if let Some((span, status)) = self.on_head_activated(&hash, None) {
-				let update =
-					ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number, status, span });
+			if let Some(status) = self.on_head_activated(&hash) {
+				let update = ActiveLeavesUpdate::start_work(ActivatedLeaf { hash, number, status });
 				self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
 			}
 		}
@@ -531,8 +378,7 @@ where
 				msg = self.events_rx.select_next_some() => {
 					match msg {
 						Event::MsgToSubsystem { msg, origin } => {
-							self.route_message(msg.into(), origin).await?;
-							self.metrics.on_message_relayed();
+							self.route_message(msg, origin).await?;
 						}
 						Event::Stop => {
 							self.stop().await;
@@ -541,14 +387,8 @@ where
 						Event::BlockImported(block) => {
 							self.block_imported(block).await?;
 						}
-						Event::BlockFinalized(block) => {
-							self.block_finalized(block).await?;
-						}
 						Event::NewSlot(slot_info) => {
 							self.on_new_slot(slot_info).await?;
-						}
-						Event::ExternalRequest(request) => {
-							self.handle_external_request(request);
 						}
 					}
 				},
@@ -556,9 +396,6 @@ where
 					match msg {
 						ToOverseer::SpawnJob { name, subsystem, s } => {
 							self.spawn_job(name, subsystem, s);
-						}
-						ToOverseer::SpawnBlockingJob { name, subsystem, s } => {
-							self.spawn_blocking_job(name, subsystem, s);
 						}
 					}
 				},
@@ -584,12 +421,11 @@ where
 			},
 		};
 
-		let mut update = match self.on_head_activated(&block.hash, Some(block.parent_hash)) {
-			Some((span, status)) => ActiveLeavesUpdate::start_work(ActivatedLeaf {
+		let mut update = match self.on_head_activated(&block.hash) {
+			Some(status) => ActiveLeavesUpdate::start_work(ActivatedLeaf {
 				hash: block.hash,
 				number: block.number,
 				status,
-				span,
 			}),
 			None => ActiveLeavesUpdate::default(),
 		};
@@ -597,7 +433,6 @@ where
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
 			update.deactivated.push(block.parent_hash);
-			self.on_head_deactivated(&block.parent_hash);
 		}
 
 		self.clean_up_external_listeners();
@@ -608,37 +443,6 @@ where
 		Ok(())
 	}
 
-	async fn block_finalized(&mut self, block: BlockInfo) -> SubsystemResult<()> {
-		let mut update = ActiveLeavesUpdate::default();
-
-		self.active_leaves.retain(|h, n| {
-			// prune all orphaned leaves, but don't prune
-			// the finalized block if it is itself a leaf.
-			if *n <= block.number && *h != block.hash {
-				update.deactivated.push(*h);
-				false
-			} else {
-				true
-			}
-		});
-
-		for deactivated in &update.deactivated {
-			self.on_head_deactivated(deactivated)
-		}
-
-		self.broadcast_signal(OverseerSignal::BlockFinalized(block.hash, block.number))
-			.await?;
-
-		// If there are no leaves being deactivated, we don't need to send an update.
-		//
-		// Our peers will be informed about our finalized block the next time we activating/deactivating some leaf.
-		if !update.is_empty() {
-			self.broadcast_signal(OverseerSignal::ActiveLeaves(update)).await?;
-		}
-
-		Ok(())
-	}
-
 	async fn on_new_slot(&mut self, slot_info: ExecutorSlotInfo) -> SubsystemResult<()> {
 		self.broadcast_signal(OverseerSignal::NewSlot(slot_info)).await?;
 		Ok(())
@@ -646,70 +450,17 @@ where
 
 	/// Handles a header activation. If the header's state doesn't support the parachains API,
 	/// this returns `None`.
-	fn on_head_activated(
-		&mut self,
-		hash: &Hash,
-		parent_hash: Option<Hash>,
-	) -> Option<(Arc<jaeger::Span>, LeafStatus)> {
-		self.metrics.on_head_activated();
-		if let Some(listeners) = self.activation_external_listeners.remove(hash) {
-			for listener in listeners {
-				// it's fine if the listener is no longer interested
-				let _ = listener.send(Ok(()));
-			}
-		}
-
-		let mut span = jaeger::Span::new(*hash, "leaf-activated");
-
-		if let Some(parent_span) = parent_hash.and_then(|h| self.span_per_active_leaf.get(&h)) {
-			span.add_follows_from(&*parent_span);
-		}
-
-		let span = Arc::new(span);
-		self.span_per_active_leaf.insert(*hash, span.clone());
-
-		let status = if let Some(_) = self.known_leaves.put(*hash, ()) {
+	fn on_head_activated(&mut self, hash: &Hash) -> Option<LeafStatus> {
+		let status = if self.known_leaves.put(*hash, ()).is_some() {
 			LeafStatus::Stale
 		} else {
 			LeafStatus::Fresh
 		};
 
-		Some((span, status))
+		Some(status)
 	}
 
-	fn on_head_deactivated(&mut self, hash: &Hash) {
-		self.metrics.on_head_deactivated();
-		self.activation_external_listeners.remove(hash);
-		self.span_per_active_leaf.remove(hash);
-	}
-
-	fn clean_up_external_listeners(&mut self) {
-		self.activation_external_listeners.retain(|_, v| {
-			// remove dead listeners
-			v.retain(|c| !c.is_canceled());
-			!v.is_empty()
-		})
-	}
-
-	fn handle_external_request(&mut self, request: ExternalRequest) {
-		match request {
-			ExternalRequest::WaitForActivation { hash, response_channel } => {
-				// We use known leaves here because the `WaitForActivation` message
-				// is primarily concerned about leaves which subsystems have simply
-				// not been made aware of yet. Anything in the known leaves set,
-				// even if stale, has been activated in the past.
-				if self.known_leaves.peek(&hash).is_some() {
-					// it's fine if the listener is no longer interested
-					let _ = response_channel.send(Ok(()));
-				} else {
-					self.activation_external_listeners
-						.entry(hash)
-						.or_default()
-						.push(response_channel);
-				}
-			},
-		}
-	}
+	fn clean_up_external_listeners(&mut self) {}
 
 	fn spawn_job(
 		&mut self,
@@ -718,14 +469,5 @@ where
 		j: BoxFuture<'static, ()>,
 	) {
 		self.spawner.spawn(task_name, subsystem_name, j);
-	}
-
-	fn spawn_blocking_job(
-		&mut self,
-		task_name: &'static str,
-		subsystem_name: Option<&'static str>,
-		j: BoxFuture<'static, ()>,
-	) {
-		self.spawner.spawn_blocking(task_name, subsystem_name, j);
 	}
 }

@@ -8,4 +8,3 @@ description = "Subsystem traits and message definitions and the generated overse
 [dependencies]
 polkadot-overseer = { path = "../overseer" }
 polkadot-node-subsystem-types = { path = "../subsystem-types" }
-polkadot-node-jaeger = { path = "../jaeger" }

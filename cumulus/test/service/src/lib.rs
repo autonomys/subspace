@@ -22,7 +22,6 @@ pub mod chain_spec;
 
 use std::{future::Future, sync::Arc};
 
-use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -35,7 +34,7 @@ use sc_service::{
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{Pair, H256};
+use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
@@ -43,10 +42,8 @@ use substrate_test_client::{
 	BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
-use cirrus_client_service::{prepare_node_config, start_executor, StartExecutorParams};
-use cirrus_node_primitives::CollatorPair;
+use cirrus_client_service::{start_executor, StartExecutorParams};
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
-use cumulus_client_consensus_relay_chain::PrimaryChainConsensus;
 
 pub use cirrus_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
@@ -59,6 +56,15 @@ pub type Backend = TFullBackend<Block>;
 
 /// Code executor for the test service.
 pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
+
+/// Secondary executor for the test service.
+pub type Executor = cirrus_client_executor::Executor<
+	Block,
+	Client,
+	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
+	Backend,
+	CodeExecutor,
+>;
 
 /// Native executor instance.
 pub struct RuntimeExecutor;
@@ -120,8 +126,6 @@ pub fn new_partial(
 
 	let import_queue = cumulus_client_consensus_relay_chain::import_queue(
 		client.clone(),
-		client.clone(),
-		|_relay_parent, _validation_data| async { Ok(()) },
 		&task_manager.spawn_essential_handle(),
 		registry,
 	)?;
@@ -145,10 +149,8 @@ pub fn new_partial(
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
 async fn start_node_impl<RB>(
-	parachain_config: Configuration,
-	_collator_key: Option<CollatorPair>,
+	mut parachain_config: Configuration,
 	relay_chain_config: Configuration,
-	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	rpc_ext_builder: RB,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -157,6 +159,7 @@ async fn start_node_impl<RB>(
 	Arc<CodeExecutor>,
 	Arc<NetworkService<Block, H256>>,
 	RpcHandlers,
+	Executor,
 )>
 where
 	RB: Fn(Arc<Client>) -> Result<jsonrpc_core::IoHandler<sc_rpc::Metadata>, sc_service::Error>
@@ -167,12 +170,12 @@ where
 		return Err("Light client not supported!".into())
 	}
 
-	let mut parachain_config = prepare_node_config(parachain_config);
+	// TODO: Do we even need block announcement on secondary node?
+	// parachain_config.announce_block = false;
 
 	let params = new_partial(&mut parachain_config)?;
 
 	let validator = parachain_config.role.is_authority();
-	let prometheus_registry = parachain_config.prometheus_registry().cloned();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
 
@@ -194,14 +197,13 @@ where
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	let import_queue = cirrus_client_service::SharedImportQueue::new(params.import_queue);
 	let (network, system_rpc_tx, start_network) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &parachain_config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
-			import_queue: import_queue.clone(),
+			import_queue: params.import_queue,
 			block_announce_validator_builder: None,
 			warp_sync: None,
 		})?;
@@ -225,55 +227,24 @@ where
 		telemetry: None,
 	})?;
 
-	let announce_block = {
-		let network = network.clone();
-		Arc::new(move |hash, data| network.announce_block(hash, data))
-	};
-
-	let announce_block = wrap_announce_block
-		.map(|w| (w)(announce_block.clone()))
-		.unwrap_or_else(|| announce_block);
-
-	let parachain_consensus = {
-		let proposer_factory = ProposerFactory::with_proof_recording(
-			task_manager.spawn_handle(),
-			client.clone(),
-			transaction_pool.clone(),
-			prometheus_registry.as_ref(),
-			None,
-		);
-
-		Box::new(PrimaryChainConsensus::new(
-			proposer_factory,
-			move |_, (_relay_parent, _validation_data)| async move { Ok(()) },
-			client.clone(),
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.backend.clone(),
-		))
-	};
-
 	let code_executor = Arc::new(params.other);
 	let params = StartExecutorParams {
-		announce_block,
 		client: client.clone(),
 		spawner: Box::new(task_manager.spawn_handle()),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
-		parachain_consensus,
-		import_queue,
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),
-		create_inherent_data_providers: Arc::new(move |_, _relay_parent| async move { Ok(()) }),
 		code_executor: code_executor.clone(),
 		is_authority: validator,
 	};
 
-	start_executor(params).await?;
+	let executor = start_executor(params).await?;
 
 	start_network.start_network();
 
-	Ok((task_manager, client, backend, code_executor, network, rpc_handlers))
+	Ok((task_manager, client, backend, code_executor, network, rpc_handlers, executor))
 }
 
 /// A Cumulus test node instance used for testing.
@@ -293,17 +264,17 @@ pub struct TestNode {
 	pub addr: MultiaddrWithPeerId,
 	/// RPCHandlers to make RPC queries.
 	pub rpc_handlers: RpcHandlers,
+	/// Secondary executor.
+	pub executor: Executor,
 }
 
 /// A builder to create a [`TestNode`].
 pub struct TestNodeBuilder {
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
-	collator_key: Option<CollatorPair>,
 	parachain_nodes: Vec<MultiaddrWithPeerId>,
 	parachain_nodes_exclusive: bool,
 	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
-	wrap_announce_block: Option<Box<dyn FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn>>,
 	storage_update_func_parachain: Option<Box<dyn Fn()>>,
 	storage_update_func_relay_chain: Option<Box<dyn Fn()>>,
 }
@@ -318,21 +289,12 @@ impl TestNodeBuilder {
 		TestNodeBuilder {
 			key,
 			tokio_handle,
-			collator_key: None,
 			parachain_nodes: Vec::new(),
 			parachain_nodes_exclusive: false,
 			relay_chain_nodes: Vec::new(),
-			wrap_announce_block: None,
 			storage_update_func_parachain: None,
 			storage_update_func_relay_chain: None,
 		}
-	}
-
-	/// Enable collator for this node.
-	pub fn enable_collator(mut self) -> Self {
-		let collator_key = CollatorPair::generate().0;
-		self.collator_key = Some(collator_key);
-		self
 	}
 
 	/// Instruct the node to exclusively connect to registered parachain nodes.
@@ -389,15 +351,6 @@ impl TestNodeBuilder {
 		self
 	}
 
-	/// Wrap the announce block function of this node.
-	pub fn wrap_announce_block(
-		mut self,
-		wrap: impl FnOnce(WrapAnnounceBlockFn) -> WrapAnnounceBlockFn + 'static,
-	) -> Self {
-		self.wrap_announce_block = Some(Box::new(wrap));
-		self
-	}
-
 	/// Allows accessing the parachain storage before the test node is built.
 	pub fn update_storage_parachain(mut self, updater: impl Fn() + 'static) -> Self {
 		self.storage_update_func_parachain = Some(Box::new(updater));
@@ -417,7 +370,6 @@ impl TestNodeBuilder {
 			self.key,
 			self.parachain_nodes,
 			self.parachain_nodes_exclusive,
-			self.collator_key.is_some(),
 		)
 		.expect("could not generate Configuration");
 
@@ -432,21 +384,24 @@ impl TestNodeBuilder {
 			format!("{} (primary chain)", relay_chain_config.network.node_name);
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
-		let (task_manager, client, backend, code_executor, network, rpc_handlers) =
-			start_node_impl(
-				parachain_config,
-				self.collator_key,
-				relay_chain_config,
-				self.wrap_announce_block,
-				|_| Ok(Default::default()),
-			)
-			.await
-			.expect("could not create Cumulus test service");
+		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
+			start_node_impl(parachain_config, relay_chain_config, |_| Ok(Default::default()))
+				.await
+				.expect("could not create Cumulus test service");
 
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
-		TestNode { task_manager, client, backend, code_executor, network, addr, rpc_handlers }
+		TestNode {
+			task_manager,
+			client,
+			backend,
+			code_executor,
+			network,
+			addr,
+			rpc_handlers,
+			executor,
+		}
 	}
 }
 
@@ -461,11 +416,10 @@ pub fn node_config(
 	key: Sr25519Keyring,
 	nodes: Vec<MultiaddrWithPeerId>,
 	nodes_exlusive: bool,
-	is_collator: bool,
 ) -> Result<Configuration, ServiceError> {
 	let base_path = BasePath::new_temp_dir()?;
 	let root = base_path.path().to_path_buf();
-	let role = if is_collator { Role::Authority } else { Role::Full };
+	let role = Role::Full;
 	let key_seed = key.to_seed();
 
 	let mut spec = Box::new(chain_spec::get_chain_spec());

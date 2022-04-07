@@ -6,21 +6,7 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-# Substrate deps
-sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+async-trait = "0.1.52"
 sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
-
-# Other deps
-async-trait = "0.1.52"
-codec = { package = "parity-scale-codec", version = "3.1.2", features = [ "derive" ] }
-dyn-clone = "1.0.5"
-futures = { version = "0.3.21", features = ["compat"] }
-tracing = "0.1.32"
-
-cirrus-node-primitives = { path = "../../../../crates/cirrus-node-primitives" }
-subspace-runtime-primitives = { path = "../../../../crates/subspace-runtime-primitives" }

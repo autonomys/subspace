@@ -62,6 +62,7 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
 use std::collections::HashMap;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::{cell::RefCell, task::Poll, time::Duration};
@@ -86,8 +87,43 @@ enum Stage {
 
 type Mutator = Arc<dyn Fn(&mut TestHeader, Stage) + Send + Sync>;
 
-type SubspaceBlockImport =
-    PanickingBlockImport<crate::SubspaceBlockImport<TestBlock, TestClient, Arc<TestClient>>>;
+#[derive(Clone)]
+pub struct TestCreateInherentDataProviders {
+    inner: Arc<
+        dyn CreateInherentDataProviders<
+            TestBlock,
+            SubspaceLink<TestBlock>,
+            InherentDataProviders = (TimestampInherentDataProvider, InherentDataProvider),
+        >,
+    >,
+}
+
+#[async_trait::async_trait]
+impl CreateInherentDataProviders<TestBlock, SubspaceLink<TestBlock>>
+    for TestCreateInherentDataProviders
+{
+    type InherentDataProviders = (TimestampInherentDataProvider, InherentDataProvider);
+
+    async fn create_inherent_data_providers(
+        &self,
+        parent: <TestBlock as BlockT>::Hash,
+        extra_args: SubspaceLink<TestBlock>,
+    ) -> Result<Self::InherentDataProviders, Box<dyn std::error::Error + Send + Sync>> {
+        self.inner
+            .create_inherent_data_providers(parent, extra_args)
+            .await
+    }
+}
+
+type SubspaceBlockImport = PanickingBlockImport<
+    crate::SubspaceBlockImport<
+        TestBlock,
+        TestClient,
+        Arc<TestClient>,
+        AlwaysCanAuthor,
+        TestCreateInherentDataProviders,
+    >,
+>;
 
 #[derive(Clone)]
 struct DummyFactory {
@@ -255,14 +291,7 @@ pub struct TestVerifier {
         TestBlock,
         PeersFullClient,
         TestSelectChain,
-        AlwaysCanAuthor,
-        Box<
-            dyn CreateInherentDataProviders<
-                TestBlock,
-                (),
-                InherentDataProviders = (TimestampInherentDataProvider, InherentDataProvider),
-            >,
-        >,
+        Box<dyn Fn() -> Slot + Send + Sync + 'static>,
     >,
     mutator: Mutator,
 }
@@ -322,8 +351,25 @@ impl TestNetFactory for SubspaceTestNet {
         let client = client.as_client();
 
         let config = Config::get(&*client).expect("config available");
-        let (block_import, link) = crate::block_import(config, client.clone(), client)
-            .expect("can initialize block-import");
+        let (block_import, link) = crate::block_import(
+            config,
+            client.clone(),
+            client,
+            AlwaysCanAuthor,
+            TestCreateInherentDataProviders {
+                inner: Arc::new(|_, _| async {
+                    let timestamp = TimestampInherentDataProvider::from_system_time();
+                    let slot = InherentDataProvider::from_timestamp_and_slot_duration(
+                        *timestamp,
+                        SlotDuration::from_millis(6000),
+                        vec![],
+                    );
+
+                    Ok((timestamp, slot))
+                }),
+            },
+        )
+        .expect("can initialize block-import");
 
         let block_import = PanickingBlockImport {
             block_import,
@@ -346,17 +392,12 @@ impl TestNetFactory for SubspaceTestNet {
         &self,
         client: PeersClient,
         _cfg: &ProtocolConfig,
-        maybe_link: &Option<PeerData>,
+        _maybe_link: &Option<PeerData>,
     ) -> Self::Verifier {
         use substrate_test_runtime_client::DefaultTestClientBuilderExt;
 
         let client = client.as_client();
         trace!(target: "subspace", "Creating a verifier");
-
-        // ensure block import and verifier are linked correctly.
-        let data = maybe_link
-            .as_ref()
-            .expect("Subspace link always provided to verifier instantiation");
 
         let (_, longest_chain) = TestClientBuilder::new().build_with_longest_chain();
 
@@ -364,20 +405,14 @@ impl TestNetFactory for SubspaceTestNet {
             inner: SubspaceVerifier {
                 client,
                 select_chain: longest_chain,
-                create_inherent_data_providers: Box::new(|_, _| async {
+                slot_now: Box::new(|| {
                     let timestamp = TimestampInherentDataProvider::from_system_time();
-                    let slot = InherentDataProvider::from_timestamp_and_slot_duration(
-                        *timestamp,
-                        SlotDuration::from_millis(6000),
-                        vec![],
-                    );
 
-                    Ok((timestamp, slot))
+                    Slot::from_timestamp(*timestamp, SlotDuration::from_millis(6000))
                 }),
-                can_author_with: AlwaysCanAuthor,
-                root_blocks: Arc::clone(&data.link.root_blocks),
                 telemetry: None,
                 signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+                block: PhantomData::default(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
         }

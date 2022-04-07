@@ -6,12 +6,12 @@ use sc_consensus::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
 };
 use std::{
+	borrow::Cow,
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
 };
@@ -69,8 +69,8 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, Client, TransactionPool, Backend, CIDP, E>
-	Executor<Block, Client, TransactionPool, Backend, CIDP, E>
+impl<Block, Client, TransactionPool, Backend, E>
+	Executor<Block, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block>
@@ -90,7 +90,6 @@ where
 	>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
-	CIDP: CreateInherentDataProviders<Block, cirrus_primitives::Hash>,
 {
 	/// Actually implements `process_bundles`.
 	pub(super) async fn process_bundles_impl(
@@ -98,82 +97,32 @@ where
 		primary_hash: PHash,
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
+		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Result<Option<ProcessorResult>, sp_blockchain::Error> {
-		let mut extrinsics = bundles
-			.into_iter()
-			.flat_map(|bundle| {
-				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-					match <<Block as BlockT>::Extrinsic>::decode(
-						&mut opaque_extrinsic.encode().as_slice(),
-					) {
-						Ok(uxt) => Some(uxt),
-						Err(e) => {
-							tracing::error!(
-								target: LOG_TARGET,
-								error = ?e,
-								"Failed to decode the opaque extrisic in bundle, this should not happen"
-							);
-							None
-						},
-					}
-				})
-			})
-			.collect::<Vec<_>>();
-
-		// TODO: or just Vec::new()?
-		// Ideally there should be only a few duplicated transactions.
-		let mut seen = Vec::with_capacity(extrinsics.len());
-		extrinsics.retain(|uxt| match seen.contains(uxt) {
-			true => {
-				tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
-				false
-			},
-			false => {
-				seen.push(uxt.clone());
-				true
-			},
-		});
-		drop(seen);
-
-		tracing::trace!(target: LOG_TARGET, ?extrinsics, "Origin deduplicated extrinsics");
-
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
-		let extrinsics: Vec<_> = match self
-			.client
-			.runtime_api()
-			.extract_signer(&BlockId::Hash(parent_hash), extrinsics)
-		{
-			Ok(res) => res,
-			Err(e) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Error at calling runtime api: extract_signer"
-				);
-				return Err(e.into())
-			},
-		};
+		let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
-		let extrinsics =
-			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+		if let Some(new_runtime) = maybe_new_runtime {
+			let encoded_set_code = self
+				.client
+				.runtime_api()
+				.construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
+			let set_code_extrinsic =
+				Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
+			extrinsics.push(set_code_extrinsic);
+		}
 
-		let mut block_builder = BlockBuilder::new(
+		let block_builder = BlockBuilder::new(
 			&*self.client,
 			parent_hash,
 			parent_number,
 			RecordProof::No,
 			Default::default(),
 			&*self.backend,
+			extrinsics,
 		)?;
-
-		let inherent_data = self.inherent_data(parent_hash, primary_hash).await?;
-
-		let mut final_extrinsics = block_builder.create_inherents(inherent_data)?;
-		final_extrinsics.extend(extrinsics);
-
-		block_builder.set_extrinsics(final_extrinsics);
 
 		let BuiltBlock { block, storage_changes, proof: _ } = block_builder.build()?;
 
@@ -273,25 +222,70 @@ where
 		}
 	}
 
-	/// Get the inherent data.
-	async fn inherent_data(
+	fn bundles_to_extrinsics(
 		&self,
-		parent: Block::Hash,
-		relay_parent: PHash,
-	) -> Result<InherentData, sp_blockchain::Error> {
-		let inherent_data_providers = self
-			.create_inherent_data_providers
-			.create_inherent_data_providers(parent, relay_parent)
-			.await?;
+		parent_hash: Block::Hash,
+		bundles: Vec<OpaqueBundle>,
+		shuffling_seed: Randomness,
+	) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+		let mut extrinsics = bundles
+			.into_iter()
+			.flat_map(|bundle| {
+				bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+					match <<Block as BlockT>::Extrinsic>::decode(
+						&mut opaque_extrinsic.encode().as_slice(),
+					) {
+						Ok(uxt) => Some(uxt),
+						Err(e) => {
+							tracing::error!(
+								target: LOG_TARGET,
+								error = ?e,
+								"Failed to decode the opaque extrisic in bundle, this should not happen"
+							);
+							None
+						},
+					}
+				})
+			})
+			.collect::<Vec<_>>();
 
-		inherent_data_providers.create_inherent_data().map_err(|e| {
-			tracing::error!(
-				target: LOG_TARGET,
-				error = ?e,
-				"Failed to create inherent data.",
-			);
-			sp_blockchain::Error::Consensus(sp_consensus::Error::InherentData(e.into()))
-		})
+		// TODO: or just Vec::new()?
+		// Ideally there should be only a few duplicated transactions.
+		let mut seen = Vec::with_capacity(extrinsics.len());
+		extrinsics.retain(|uxt| match seen.contains(uxt) {
+			true => {
+				tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
+				false
+			},
+			false => {
+				seen.push(uxt.clone());
+				true
+			},
+		});
+		drop(seen);
+
+		tracing::trace!(target: LOG_TARGET, ?extrinsics, "Origin deduplicated extrinsics");
+
+		let extrinsics: Vec<_> = match self
+			.client
+			.runtime_api()
+			.extract_signer(&BlockId::Hash(parent_hash), extrinsics)
+		{
+			Ok(res) => res,
+			Err(e) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					"Error at calling runtime api: extract_signer"
+				);
+				return Err(e.into())
+			},
+		};
+
+		let extrinsics =
+			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+
+		Ok(extrinsics)
 	}
 }
 

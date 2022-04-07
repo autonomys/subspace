@@ -34,6 +34,7 @@ sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/paritytech/sub
 serde = "1.0.136"
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
+sp-executor = { version = "0.1.0", path = "../sp-executor" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

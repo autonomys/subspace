@@ -59,6 +59,7 @@ mod verification;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
+use crate::verification::VerifySolutionParams;
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -81,7 +82,7 @@ use sc_consensus_slots::{
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
@@ -93,15 +94,15 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::inherents::{InherentType, SubspaceInherentData};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
-use sp_core::{ExecutionContext, H256};
-use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_core::H256;
+use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::cmp::Ordering;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
@@ -185,6 +186,9 @@ pub enum Error<B: BlockT> {
     /// Solution is outside of solution range
     #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
+    /// Solution is outside of max plot size
+    #[error("Solution is outside of max plot size {0}")]
+    OutsideOfMaxPlot(Slot),
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
@@ -212,6 +216,12 @@ pub enum Error<B: BlockT> {
     /// Block has invalid associated salt
     #[error("Invalid salt for block {0}")]
     InvalidSalt(B::Hash),
+    /// Invalid set of root blocks
+    #[error("Invalid set of root blocks")]
+    InvalidSetOfRootBlocks,
+    /// Stored root block extrinsic was not found
+    #[error("Stored root block extrinsic was not found: {0:?}")]
+    RootBlocksExtrinsicNotFound(Vec<RootBlock>),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
@@ -229,10 +239,10 @@ pub enum Error<B: BlockT> {
     CreateInherents(sp_inherents::Error),
     /// Client error
     #[error(transparent)]
-    Client(sp_blockchain::Error),
+    Client(#[from] sp_blockchain::Error),
     /// Runtime Api error.
     #[error(transparent)]
-    RuntimeApi(sp_api::ApiError),
+    RuntimeApi(#[from] ApiError),
 }
 
 impl<B: BlockT> std::convert::From<Error<B>> for String {
@@ -369,13 +379,9 @@ where
     Client::Api: SubspaceApi<Block>,
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
-    E::Proposer:
-        Proposer<Block, Error = Error, Transaction = sp_api::TransactionFor<Client, Block>>,
-    I: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-        > + Send
+    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
+    I: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+        + Send
         + Sync
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
@@ -452,12 +458,12 @@ pub fn find_pre_digest<B: BlockT>(
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(subspace_err(Error::MultiplePreRuntimeDigests)),
+            (Some(_), true) => return Err(Error::MultiplePreRuntimeDigests),
             (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }
-    pre_digest.ok_or_else(|| subspace_err(Error::NoPreRuntimeDigest))
+    pre_digest.ok_or(Error::NoPreRuntimeDigest)
 }
 
 /// Extract the Subspace global randomness descriptor from the given header.
@@ -471,7 +477,7 @@ fn find_global_randomness_descriptor<B: BlockT>(
             log.as_global_randomness_descriptor(),
             global_randomness_descriptor.is_some(),
         ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleGlobalRandomnessDigests)),
+            (Some(_), true) => return Err(Error::MultipleGlobalRandomnessDigests),
             (Some(global_randomness), false) => {
                 global_randomness_descriptor = Some(global_randomness)
             }
@@ -493,7 +499,7 @@ fn find_solution_range_descriptor<B: BlockT>(
             log.as_solution_range_descriptor(),
             solution_range_descriptor.is_some(),
         ) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleSolutionRangeDigests)),
+            (Some(_), true) => return Err(Error::MultipleSolutionRangeDigests),
             (Some(solution_range), false) => solution_range_descriptor = Some(solution_range),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -508,7 +514,7 @@ fn find_salt_descriptor<B: BlockT>(header: &B::Header) -> Result<Option<SaltDesc
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         match (log.as_salt_descriptor(), salt_descriptor.is_some()) {
-            (Some(_), true) => return Err(subspace_err(Error::MultipleSaltDigests)),
+            (Some(_), true) => return Err(Error::MultipleSaltDigests),
             (Some(salt), false) => salt_descriptor = Some(salt),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -571,66 +577,22 @@ impl<Block: BlockT> SubspaceLink<Block> {
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, CAW, CIDP> {
+pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     client: Arc<Client>,
     select_chain: SelectChain,
-    create_inherent_data_providers: CIDP,
-    can_author_with: CAW,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
-    /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     signing_context: SigningContext,
+    block: PhantomData<Block>,
 }
 
-impl<Block, Client, SelectChain, CAW, CIDP> SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
+impl<Block, Client, SelectChain, SN> SubspaceVerifier<Block, Client, SelectChain, SN>
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block> + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
-    CAW: CanAuthorWith<Block>,
-    CIDP: CreateInherentDataProviders<Block, ()>,
 {
-    async fn check_inherents(
-        &self,
-        block: Block,
-        block_id: BlockId<Block>,
-        inherent_data: InherentData,
-        create_inherent_data_providers: CIDP::InherentDataProviders,
-        execution_context: ExecutionContext,
-    ) -> Result<(), Error<Block>> {
-        if let Err(e) = self.can_author_with.can_author_with(&block_id) {
-            debug!(
-                target: "subspace",
-                "Skipping `check_inherents` as authoring version is not compatible: {}",
-                e,
-            );
-
-            return Ok(());
-        }
-
-        let inherent_res = self
-            .client
-            .runtime_api()
-            .check_inherents_with_context(&block_id, execution_context, block, inherent_data)
-            .map_err(Error::RuntimeApi)?;
-
-        if !inherent_res.ok() {
-            for (i, e) in inherent_res.into_errors() {
-                match create_inherent_data_providers
-                    .try_handle_error(&i, &e)
-                    .await
-                {
-                    Some(res) => res.map_err(Error::CheckInherents)?,
-                    None => return Err(Error::CheckInherentsUnhandled(i)),
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     async fn check_and_report_equivocation(
         &self,
         slot_now: Slot,
@@ -691,8 +653,8 @@ type BlockVerificationResult<Block> = Result<
 >;
 
 #[async_trait::async_trait]
-impl<Block, Client, SelectChain, CAW, CIDP> Verifier<Block>
-    for SubspaceVerifier<Block, Client, SelectChain, CAW, CIDP>
+impl<Block, Client, SelectChain, SN> Verifier<Block>
+    for SubspaceVerifier<Block, Client, SelectChain, SN>
 where
     Block: BlockT,
     Client: HeaderMetadata<Block, Error = sp_blockchain::Error>
@@ -703,9 +665,7 @@ where
         + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
     SelectChain: sp_consensus::SelectChain<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+    SN: Fn() -> Slot + Send + Sync + 'static,
 {
     async fn verify(
         &mut self,
@@ -721,140 +681,47 @@ where
         );
 
         let hash = block.header.hash();
-        let parent_hash = *block.header.parent_hash();
-        let parent_block_id = BlockId::Hash(parent_hash);
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
-        let create_inherent_data_providers = self
-            .create_inherent_data_providers
-            .create_inherent_data_providers(parent_hash, ())
-            .await
-            .map_err(|e| Error::<Block>::Client(sp_consensus::Error::from(e).into()))?;
+        let slot_now = (self.slot_now)();
 
-        let slot_now = create_inherent_data_providers.slot();
-
+        // Only stateless checks that rely on the contents already contained in the block header.
         let checked_header = {
-            let pre_digest = find_pre_digest::<Block>(&block.header)?;
+            let pre_digest = find_pre_digest::<Block>(&block.header).map_err(subspace_err)?;
 
-            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)?
+            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
                 .global_randomness;
-            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                self.client.as_ref(),
-                &parent_block_id,
-            )
-            .map_err(Error::<Block>::RuntimeApi)?;
-            if global_randomness != correct_global_randomness {
-                return Err(Error::<Block>::InvalidGlobalRandomness(hash).into());
-            }
 
-            let solution_range = find_solution_range_descriptor::<Block>(&block.header)?
+            let solution_range = find_solution_range_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingSolutionRange(hash))?
                 .solution_range;
-            let correct_solution_range = slot_worker::extract_solution_range_for_block(
-                self.client.as_ref(),
-                &parent_block_id,
-            )
-            .map_err(Error::<Block>::RuntimeApi)?;
-            if solution_range != correct_solution_range {
-                return Err(Error::<Block>::InvalidSolutionRange(hash).into());
-            }
 
-            let salt = find_salt_descriptor::<Block>(&block.header)?
+            let salt = find_salt_descriptor::<Block>(&block.header)
+                .map_err(subspace_err)?
                 .ok_or(Error::<Block>::MissingSalt(hash))?
                 .salt;
-            let correct_salt =
-                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)
-                    .map_err(Error::<Block>::RuntimeApi)?
-                    .0;
-            if salt != correct_salt {
-                return Err(Error::<Block>::InvalidSalt(hash).into());
-            }
-
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)
-                .map_err(Error::<Block>::RuntimeApi)?
-            {
-                warn!(
-                    target: "subspace",
-                    "Ignoring block with solution provided by farmer in block list: {}",
-                    pre_digest.solution.public_key
-                );
-
-                return Err(
-                    Error::<Block>::FarmerInBlockList(pre_digest.solution.public_key).into(),
-                );
-            }
-
-            // TODO: This assumes fixed size segments, which might not be the case
-            let record_size = self
-                .client
-                .runtime_api()
-                .record_size(&parent_block_id)
-                .expect("Failed to get `record_size` from runtime API");
-            let recorded_history_segment_size = self
-                .client
-                .runtime_api()
-                .recorded_history_segment_size(&parent_block_id)
-                .expect("Failed to get `recorded_history_segment_size` from runtime API");
-            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-            let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
-            let position = pre_digest.solution.piece_index % merkle_num_leaves;
-            let mut maybe_records_root = self
-                .client
-                .runtime_api()
-                .records_root(&parent_block_id, segment_index)
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "Failed to get Merkle Root for segment {} from runtime API: {}",
-                        segment_index, error
-                    );
-                });
-
-            // This is not a very nice hack due to the fact that at the time first block is produced
-            // extrinsics with root blocks are not yet in runtime.
-            if maybe_records_root.is_none() && block.header.number().is_one() {
-                maybe_records_root =
-                    self.root_blocks
-                        .lock()
-                        .iter()
-                        .find_map(|(_block_number, root_blocks)| {
-                            root_blocks.iter().find_map(|root_block| {
-                                if root_block.segment_index() == segment_index {
-                                    Some(root_block.records_root())
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-            }
-
-            let records_root = match maybe_records_root {
-                Some(records_root) => records_root,
-                None => {
-                    return Err(Error::<Block>::RecordsRootNotFound(segment_index).into());
-                }
-            };
 
             // We add one to the current slot to allow for some small drift.
-            // FIXME #1019 in the future, alter this queue to allow deferring of headers
-            let v_params = verification::VerificationParams {
+            // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
+            //  queue to allow deferring of headers
+            let slot = pre_digest.slot;
+            verification::check_header::<Block>(verification::VerificationParams {
                 header: block.header.clone(),
                 pre_digest,
                 slot_now: slot_now + 1,
-                global_randomness: &global_randomness,
-                solution_range,
-                salt,
-                records_root: &records_root,
-                position,
-                record_size,
-                signing_context: &self.signing_context,
-            };
-
-            verification::check_header::<Block>(v_params)?
+                verify_solution_params: VerifySolutionParams {
+                    global_randomness: &global_randomness,
+                    solution_range,
+                    slot,
+                    salt,
+                    piece_check_params: None,
+                    signing_context: &self.signing_context,
+                },
+            })?
         };
 
         match checked_header {
@@ -879,37 +746,6 @@ where
                         "Error checking/reporting Subspace equivocation: {}",
                         err
                     );
-                }
-
-                // if the body is passed through, we need to use the runtime
-                // to check that the internally-set timestamp in the inherents
-                // actually matches the slot set in the seal.
-                if let Some(inner_body) = block.body {
-                    let mut inherent_data = create_inherent_data_providers
-                        .create_inherent_data()
-                        .map_err(Error::<Block>::CreateInherents)?;
-                    inherent_data.replace_subspace_inherent_data(InherentType {
-                        slot,
-                        root_blocks: self
-                            .root_blocks
-                            .lock()
-                            .peek(block.header.number())
-                            .cloned()
-                            .unwrap_or_default(),
-                    });
-                    let new_block = Block::new(pre_header.clone(), inner_body);
-
-                    self.check_inherents(
-                        new_block.clone(),
-                        BlockId::Hash(parent_hash),
-                        inherent_data,
-                        create_inherent_data_providers,
-                        block.origin.into(),
-                    )
-                    .await?;
-
-                    let (_, inner_body) = new_block.deconstruct();
-                    block.body = Some(inner_body);
                 }
 
                 trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
@@ -948,59 +784,233 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     inner: I,
     client: Arc<Client>,
-    config: Config,
     imported_block_notification_sender:
         SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
-    /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    subspace_link: SubspaceLink<Block>,
+    can_author_with: CAW,
+    create_inherent_data_providers: CIDP,
 }
 
-impl<Block: BlockT, I: Clone, Client> Clone for SubspaceBlockImport<Block, Client, I> {
+impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+where
+    Block: BlockT,
+    I: Clone,
+    CAW: Clone,
+    CIDP: Clone,
+{
     fn clone(&self) -> Self {
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            config: self.config.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
-            root_blocks: Arc::clone(&self.root_blocks),
+            subspace_link: self.subspace_link.clone(),
+            can_author_with: self.can_author_with.clone(),
+            create_inherent_data_providers: self.create_inherent_data_providers.clone(),
         }
     }
 }
 
-impl<Block: BlockT, Client, I> SubspaceBlockImport<Block, Client, I> {
+impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+{
     fn new(
         client: Arc<Client>,
         block_import: I,
-        config: Config,
         imported_block_notification_sender: SubspaceNotificationSender<(
             NumberFor<Block>,
             mpsc::Sender<RootBlock>,
         )>,
-        root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+        subspace_link: SubspaceLink<Block>,
+        can_author_with: CAW,
+        create_inherent_data_providers: CIDP,
     ) -> Self {
         SubspaceBlockImport {
             client,
             inner: block_import,
-            config,
             imported_block_notification_sender,
-            root_blocks,
+            subspace_link,
+            can_author_with,
+            create_inherent_data_providers,
         }
+    }
+
+    async fn block_import_verification(
+        &self,
+        block_hash: Block::Hash,
+        origin: BlockOrigin,
+        header: Block::Header,
+        extrinsics: Option<Vec<Block::Extrinsic>>,
+        pre_digest: &PreDigest<FarmerPublicKey>,
+    ) -> Result<(), Error<Block>> {
+        let parent_hash = *header.parent_hash();
+        let parent_block_id = BlockId::Hash(parent_hash);
+
+        // Check if farmer's plot is burned.
+        if self
+            .client
+            .runtime_api()
+            .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)?
+        {
+            warn!(
+                target: "subspace",
+                "Ignoring block with solution provided by farmer in block list: {}",
+                pre_digest.solution.public_key
+            );
+
+            return Err(Error::FarmerInBlockList(
+                pre_digest.solution.public_key.clone(),
+            ));
+        }
+
+        let parent_header = self
+            .client
+            .header(parent_block_id)?
+            .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
+
+        let global_randomness = find_global_randomness_descriptor(&header)?
+            .ok_or(Error::MissingGlobalRandomness(block_hash))?
+            .global_randomness;
+        let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+            self.client.as_ref(),
+            &parent_block_id,
+        )?;
+        if global_randomness != correct_global_randomness {
+            return Err(Error::InvalidGlobalRandomness(block_hash));
+        }
+
+        let solution_range = find_solution_range_descriptor(&header)?
+            .ok_or(Error::MissingSolutionRange(block_hash))?
+            .solution_range;
+        let correct_solution_range =
+            slot_worker::extract_solution_range_for_block(self.client.as_ref(), &parent_block_id)?;
+        if solution_range != correct_solution_range {
+            return Err(Error::InvalidSolutionRange(block_hash));
+        }
+
+        let salt = find_salt_descriptor(&header)?
+            .ok_or(Error::MissingSalt(block_hash))?
+            .salt;
+        let correct_salt =
+            slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
+        if salt != correct_salt {
+            return Err(Error::InvalidSalt(block_hash));
+        }
+
+        // TODO: This assumes fixed size segments, which might not be the case
+        let record_size = self.client.runtime_api().record_size(&parent_block_id)?;
+        let recorded_history_segment_size = self
+            .client
+            .runtime_api()
+            .recorded_history_segment_size(&parent_block_id)?;
+        let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+        let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
+        let position = pre_digest.solution.piece_index % merkle_num_leaves;
+        let mut maybe_records_root = self
+            .client
+            .runtime_api()
+            .records_root(&parent_block_id, segment_index)?;
+
+        // This is not a very nice hack due to the fact that at the time first block is produced
+        // extrinsics with root blocks are not yet in runtime.
+        if maybe_records_root.is_none() && header.number().is_one() {
+            maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+                |(_block_number, root_blocks)| {
+                    root_blocks.iter().find_map(|root_block| {
+                        if root_block.segment_index() == segment_index {
+                            Some(root_block.records_root())
+                        } else {
+                            None
+                        }
+                    })
+                },
+            );
+        }
+
+        let records_root = match maybe_records_root {
+            Some(records_root) => records_root,
+            None => {
+                return Err(Error::RecordsRootNotFound(segment_index));
+            }
+        };
+
+        // Piece is not checked during initial block verification because it requires access to
+        // root block, check it now.
+        verification::check_piece(
+            pre_digest.slot,
+            records_root,
+            position,
+            record_size,
+            &pre_digest.solution,
+        )?;
+
+        let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
+
+        // Make sure that slot number is strictly increasing
+        if pre_digest.slot <= parent_slot {
+            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
+        }
+
+        // If the body is passed through, we need to use the runtime to check that the
+        // internally-set timestamp in the inherents actually matches the slot set in the seal
+        // and root blocks in the inherents are set correctly.
+        if let Some(extrinsics) = extrinsics {
+            if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
+                debug!(
+                    target: "subspace",
+                    "Skipping `check_inherents` as authoring version is not compatible: {}",
+                    error,
+                );
+            } else {
+                let create_inherent_data_providers = self
+                    .create_inherent_data_providers
+                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                    .await
+                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+
+                let inherent_data = create_inherent_data_providers
+                    .create_inherent_data()
+                    .map_err(Error::CreateInherents)?;
+
+                let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                    &parent_block_id,
+                    origin.into(),
+                    Block::new(header, extrinsics),
+                    inherent_data,
+                )?;
+
+                if !inherent_res.ok() {
+                    for (i, e) in inherent_res.into_errors() {
+                        match create_inherent_data_providers
+                            .try_handle_error(&i, &e)
+                            .await
+                        {
+                            Some(res) => res.map_err(Error::CheckInherents)?,
+                            None => return Err(Error::CheckInherentsUnhandled(i)),
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner> BlockImport<Block> for SubspaceBlockImport<Block, Client, Inner>
+impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
+    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
 where
     Block: BlockT,
-    Inner: BlockImport<
-            Block,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-            Error = ConsensusError,
-        > + Send
+    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
+        + Send
         + Sync,
     Inner::Error: Into<ConsensusError>,
     Client: HeaderBackend<Block>
@@ -1009,10 +1019,12 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync,
-    Client::Api: SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     type Error = ConsensusError;
-    type Transaction = sp_api::TransactionFor<Client, Block>;
+    type Transaction = TransactionFor<Client, Block>;
 
     async fn import_block(
         &mut self,
@@ -1022,8 +1034,7 @@ where
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
-        // early exit if block already in chain, otherwise the check for
-        // epoch changes will error when trying to re-import an epoch change
+        // Early exit if block already in chain
         match self.client.status(BlockId::Hash(block_hash)) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
@@ -1037,41 +1048,25 @@ where
             Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
         }
 
-        let pre_digest = find_pre_digest::<Block>(&block.header).expect(
-            "valid Subspace headers must contain a predigest; header has been already verified; \
-            qed",
-        );
-        let slot = pre_digest.slot;
+        let pre_digest = find_pre_digest::<Block>(&block.header)
+            .map_err(subspace_err)
+            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        let parent_hash = *block.header.parent_hash();
-        let parent_header = self
-            .client
-            .header(BlockId::Hash(parent_hash))
-            .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
-            .ok_or_else(|| {
-                ConsensusError::ChainLookup(
-                    subspace_err(Error::<Block>::ParentUnavailable(parent_hash, block_hash)).into(),
-                )
-            })?;
+        self.block_import_verification(
+            block_hash,
+            block.origin,
+            block.header.clone(),
+            block.body.clone(),
+            &pre_digest,
+        )
+        .await
+        .map_err(subspace_err)
+        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        let parent_slot = find_pre_digest::<Block>(&parent_header)
-            .map(|d| d.slot)
-            .expect(
-                "parent is non-genesis; valid Subspace headers contain a pre-digest; header has \
-                already been verified; qed",
-            );
-
-        // Make sure that slot number is strictly increasing
-        if slot <= parent_slot {
-            return Err(ConsensusError::ClientImport(
-                subspace_err(Error::<Block>::SlotMustIncrease(parent_slot, slot)).into(),
-            ));
-        }
-
-        let parent_weight = if *parent_header.number() == Zero::zero() {
+        let parent_weight = if block_number.is_one() {
             0
         } else {
-            aux_schema::load_block_weight(&*self.client, parent_hash)
+            aux_schema::load_block_weight(&*self.client, block.header.parent_hash())
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
@@ -1119,59 +1114,6 @@ where
             ))
         };
 
-        // If there are root blocks expected to be included in this block, check them
-        if let Some(correct_root_blocks) = self.root_blocks.lock().peek(&block_number) {
-            let mut found = false;
-            for extrinsic in block
-                .body
-                .as_ref()
-                .expect("Light client or fast sync is unsupported; qed")
-            {
-                match self
-                    .client
-                    .runtime_api()
-                    .extract_root_blocks(&BlockId::Hash(parent_hash), extrinsic)
-                {
-                    Ok(Some(found_root_blocks)) => {
-                        if correct_root_blocks == &found_root_blocks {
-                            found = true;
-                            break;
-                        } else {
-                            warn!(
-                                target: "subspace",
-                                "Found root blocks: {:?}",
-                                found_root_blocks
-                            );
-                            warn!(
-                                target: "subspace",
-                                "Correct root blocks: {:?}",
-                                correct_root_blocks
-                            );
-                            return Err(ConsensusError::ClientImport(
-                                "Found incorrect set of root blocks".to_string(),
-                            ));
-                        }
-                    }
-                    Ok(None) => {
-                        // Some other extrinsic, ignore
-                    }
-                    Err(error) => {
-                        return Err(ConsensusError::ClientImport(format!(
-                            "Failed to make runtime API call: {:?}",
-                            error
-                        )));
-                    }
-                }
-            }
-
-            if !found {
-                return Err(ConsensusError::ClientImport(format!(
-                    "Stored root block extrinsics were not found: {:?}",
-                    correct_root_blocks,
-                )));
-            }
-        }
-
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
 
@@ -1181,7 +1123,8 @@ where
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 
         if !root_blocks.is_empty() {
-            self.root_blocks
+            self.subspace_link
+                .root_blocks
                 .lock()
                 .put(block_number + One::one(), root_blocks);
         }
@@ -1201,17 +1144,26 @@ where
 /// import-queue.
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
-pub fn block_import<Client, Block: BlockT, I>(
+#[allow(clippy::type_complexity)]
+pub fn block_import<Client, Block, I, CAW, CIDP>(
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
-) -> ClientResult<(SubspaceBlockImport<Block, Client, I>, SubspaceLink<Block>)>
+    can_author_with: CAW,
+    create_inherent_data_providers: CIDP,
+) -> ClientResult<(
+    SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
+    SubspaceLink<Block>,
+)>
 where
+    Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
@@ -1235,7 +1187,7 @@ where
     });
 
     let link = SubspaceLink {
-        config: config.clone(),
+        config,
         new_slot_notification_sender,
         new_slot_notification_stream,
         block_signing_notification_sender,
@@ -1249,9 +1201,10 @@ where
     let import = SubspaceBlockImport::new(
         client,
         wrapped_block_import,
-        config,
         imported_block_notification_sender,
-        Arc::clone(&link.root_blocks),
+        link.clone(),
+        can_author_with,
+        create_inherent_data_providers,
     );
 
     Ok((import, link))
@@ -1268,24 +1221,19 @@ where
 /// of it, otherwise crucial import logic will be omitted.
 // TODO: Create a struct for these parameters
 #[allow(clippy::too_many_arguments)]
-pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
-    subspace_link: &SubspaceLink<Block>,
+pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
     client: Arc<Client>,
     select_chain: SelectChain,
-    create_inherent_data_providers: CIDP,
+    slot_now: SN,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
-    can_author_with: CAW,
     telemetry: Option<TelemetryHandle>,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
-    Inner: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = sp_api::TransactionFor<Client, Block>,
-        > + Send
+    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+        + Send
         + Sync
         + 'static,
     Client: ProvideRuntimeApi<Block>
@@ -1297,19 +1245,16 @@ where
         + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send + Sync,
+    SN: Fn() -> Slot + Send + Sync + 'static,
 {
     let verifier = SubspaceVerifier {
         select_chain,
-        create_inherent_data_providers,
-        can_author_with,
-        root_blocks: Arc::clone(&subspace_link.root_blocks),
+        slot_now,
         telemetry,
         client,
         // TODO: Figure out how to remove explicit schnorrkel dependency
         signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        block: PhantomData::default(),
     };
 
     Ok(BasicQueue::new(

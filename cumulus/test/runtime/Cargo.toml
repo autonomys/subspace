@@ -80,3 +80,5 @@ std = [
 	"cirrus-pallet-executive/std",
 	"cirrus-primitives/std",
 ]
+# Internal implementation detail, enabled during building of wasm blob.
+wasm-builder = []

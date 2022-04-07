@@ -16,60 +16,8 @@
 
 #![allow(clippy::all)]
 
-use cirrus_node_primitives::PersistedValidationData;
 use sc_consensus::BlockImport;
-use sp_runtime::{
-	generic::BlockId,
-	traits::{Block as BlockT, NumberFor},
-};
-use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
-
-mod parachain_consensus;
-pub use parachain_consensus::{run_parachain_consensus, RelaychainClient};
-
-/// The result of [`ParachainConsensus::produce_candidate`].
-pub struct ParachainCandidate<B> {
-	/// The block that was built for this candidate.
-	pub block: B,
-	/// The proof that was recorded while building the block.
-	pub proof: sp_trie::StorageProof,
-}
-
-// TODO: this is no longer _parachain consensus related_, it might evolve as a
-// `PrimaryChainInterface` in the future. But we don't have to refactor it right now,
-// particularlly we'll have a major upgrade once https://github.com/paritytech/cumulus/issues/545
-// is resolved.
-/// A specific parachain consensus implementation that can be used by a collator to produce candidates.
-///
-/// The collator will call [`Self::produce_candidate`] every time there is a free core for the parachain
-/// this collator is collating for. It is the job of the consensus implementation to decide if this
-/// specific collator should build a candidate for the given relay chain block. The consensus
-/// implementation could, for example, check whether this specific collator is part of a staked set.
-#[async_trait::async_trait]
-pub trait ParachainConsensus<B: BlockT>: Send + Sync + dyn_clone::DynClone {
-	/// Produce a new candidate at the given parent block and relay-parent blocks.
-	///
-	/// Should return `None` if the consensus implementation decided that it shouldn't build a
-	/// candidate or if there occurred any error.
-	///
-	/// # NOTE
-	///
-	/// It is expected that the block is already imported when the future resolves.
-	async fn produce_candidate(
-		&mut self,
-		parent: &B::Header,
-		relay_parent: PHash,
-		validation_data: &PersistedValidationData,
-	) -> Option<ParachainCandidate<B>>;
-
-	/// Convert an arbitrary block ID into a block number.
-	fn block_number_from_id(
-		&self,
-		id: &BlockId<PBlock>,
-	) -> sp_blockchain::Result<Option<NumberFor<PBlock>>>;
-}
-
-dyn_clone::clone_trait_object!(<B> ParachainConsensus<B> where B: BlockT);
+use sp_runtime::traits::Block as BlockT;
 
 /// Parachain specific block import.
 ///
