@@ -904,7 +904,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
- "cirrus-node-primitives",
  "cirrus-primitives",
  "parking_lot 0.12.0",
  "sc-client-api",
@@ -5657,37 +5656,15 @@ dependencies = [
  "futures 0.3.21",
  "parity-scale-codec",
  "polkadot-node-subsystem",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
  "sp-core",
  "sp-executor",
  "sp-maybe-compressed-blob",
  "sp-runtime",
- "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "polkadot-node-core-chain-api"
-version = "0.9.13"
-dependencies = [
- "futures 0.3.21",
- "polkadot-node-subsystem",
- "sc-client-api",
- "sp-blockchain",
- "subspace-runtime-primitives",
-]
-
-[[package]]
-name = "polkadot-node-core-runtime-api"
-version = "0.9.13"
-dependencies = [
- "futures 0.3.21",
- "polkadot-node-subsystem",
- "sp-api",
- "sp-core",
- "sp-executor",
- "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -5709,8 +5686,6 @@ dependencies = [
  "sc-network",
  "smallvec",
  "sp-executor",
- "sp-runtime",
- "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -8778,8 +8753,6 @@ dependencies = [
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "polkadot-node-collation-generation",
- "polkadot-node-core-chain-api",
- "polkadot-node-core-runtime-api",
  "polkadot-overseer",
  "sc-basic-authorship",
  "sc-client-api",

@@ -63,10 +63,21 @@ use tracing::Instrument;
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
 
+/// Type alias for APIs required from primary chain client
+pub trait PrimaryChainClient:
+	HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+{
+}
+
+impl<T> PrimaryChainClient for T where
+	T: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+{
+}
+
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+	primary_chain_client: Arc<dyn PrimaryChainClient>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle,
@@ -125,7 +136,7 @@ where
 {
 	/// Create a new instance.
 	fn new(
-		primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+		primary_chain_client: Arc<dyn PrimaryChainClient>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		overseer_handle: OverseerHandle,
@@ -691,7 +702,7 @@ pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, 
 	pub client: Arc<Client>,
 	pub overseer_handle: OverseerHandle,
 	pub spawner: Box<Spawner>,
-	pub primary_chain_client: Arc<dyn HeaderBackend<PBlock>>,
+	pub primary_chain_client: Arc<dyn PrimaryChainClient>,
 	pub transaction_pool: Arc<TransactionPool>,
 	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
 	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
