@@ -53,12 +53,14 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
+    pub const MaxFeeds: u32 = 1;
 }
 
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
     type FeedProcessorKind = ();
+    type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
         _feed_processor_kind: Self::FeedProcessorKind,

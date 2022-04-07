@@ -49,6 +49,9 @@ mod pallet {
         // type that references to a particular impl of feed processor
         type FeedProcessorKind: Parameter + Member + Default + Copy;
 
+        #[pallet::constant]
+        type MaxFeeds: Get<u32>;
+
         fn feed_processor(
             feed_processor_kind: Self::FeedProcessorKind,
         ) -> Box<dyn FeedProcessorT<Self::FeedId>>;
@@ -99,7 +102,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn feeds)]
     pub(super) type Feeds<T: Config> =
-        StorageDoubleMap<_, Identity, T::AccountId, Identity, T::FeedId, (), OptionQuery>;
+        StorageMap<_, Identity, T::AccountId, BoundedVec<T::FeedId, T::MaxFeeds>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn totals)]
@@ -158,11 +161,14 @@ mod pallet {
         /// `FeedId` doesn't exist
         UnknownFeedId,
 
-        /// Feed is closed
+        /// Feed was closed
         FeedClosed,
 
         /// Not a feed owner
         NotFeedOwner,
+
+        /// Maximum feeds created by the caller
+        MaxFeedsReached,
     }
 
     macro_rules! ensure_owner {
@@ -194,6 +200,12 @@ mod pallet {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }
 
+            // check if max feeds are reached
+            let mut owned_feeds = Feeds::<T>::get(who.clone()).unwrap_or_default();
+            owned_feeds
+                .try_push(feed_id)
+                .map_err(|_| Error::<T>::MaxFeedsReached)?;
+
             NextFeedId::<T>::set(next_feed_id);
             FeedConfigs::<T>::insert(
                 feed_id,
@@ -203,7 +215,7 @@ mod pallet {
                     owner: who.clone(),
                 },
             );
-            Feeds::<T>::insert(who.clone(), feed_id, ());
+            Feeds::<T>::insert(who.clone(), owned_feeds);
             Totals::<T>::insert(feed_id, TotalObjectsAndSize::default());
 
             Self::deposit_event(Event::FeedCreated { feed_id, who });
@@ -287,7 +299,7 @@ mod pallet {
         }
 
         /// Transfers feed from current owner to new owner
-        #[pallet::weight((T::DbWeight::get().reads_writes(1, 3), Pays::No))]
+        #[pallet::weight((T::DbWeight::get().reads_writes(3, 3), Pays::No))]
         pub fn transfer(
             origin: OriginFor<T>,
             feed_id: T::FeedId,
@@ -295,9 +307,26 @@ mod pallet {
         ) -> DispatchResult {
             let (owner, mut feed_config) = ensure_owner!(origin, feed_id);
             let new_owner = T::Lookup::lookup(new_owner)?;
+
+            // remove current owner details
+            let mut current_owner_feeds = Feeds::<T>::get(owner.clone()).unwrap_or_default();
+            current_owner_feeds.retain(|x| *x != feed_id);
+
+            // update new owner details
             feed_config.owner = new_owner.clone();
-            Feeds::<T>::remove(owner.clone(), feed_id);
-            Feeds::<T>::insert(new_owner.clone(), feed_id, ());
+            let mut new_owner_feeds = Feeds::<T>::get(new_owner.clone()).unwrap_or_default();
+            new_owner_feeds
+                .try_push(feed_id)
+                .map_err(|_| Error::<T>::MaxFeedsReached)?;
+
+            // if the owner doesn't own any feed, then reclaim empty storage
+            if current_owner_feeds.is_empty() {
+                Feeds::<T>::remove(owner.clone());
+            } else {
+                Feeds::<T>::insert(owner.clone(), current_owner_feeds);
+            }
+
+            Feeds::<T>::insert(new_owner.clone(), new_owner_feeds);
             FeedConfigs::<T>::insert(feed_id, feed_config);
             Self::deposit_event(Event::OwnershipTransferred {
                 feed_id,

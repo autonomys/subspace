@@ -1,6 +1,6 @@
 use crate::{
     mock::{new_test_ext, Event, Feeds, Origin, System, Test},
-    Error, Feeds as FeedsStorage, Object, TotalObjectsAndSize,
+    Error, Object, TotalObjectsAndSize,
 };
 use frame_support::{assert_noop, assert_ok};
 
@@ -20,12 +20,7 @@ fn create_feed() {
             who: OWNER,
         }));
         assert_eq!(Feeds::next_feed_id(), 1);
-        assert_eq!(Feeds::feeds(OWNER, FEED_ID), Some(()));
-        assert_eq!(
-            FeedsStorage::<Test>::iter_prefix(OWNER).collect::<Vec<(u64, ())>>(),
-            vec![(FEED_ID, ())]
-        );
-        assert_eq!(Feeds::feeds(NOT_OWNER, FEED_ID), None);
+        assert_eq!(Feeds::feeds(OWNER).unwrap().to_vec(), vec![FEED_ID]);
     });
 }
 
@@ -151,7 +146,7 @@ fn cannot_update_unknown_feed() {
 fn transfer_feed_ownership() {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
-        assert_eq!(Feeds::feeds(OWNER, FEED_ID), Some(()));
+        assert_eq!(Feeds::feeds(OWNER).unwrap().to_vec(), vec![FEED_ID]);
 
         let new_owner = 102u64;
         // only owner can transfer
@@ -160,7 +155,21 @@ fn transfer_feed_ownership() {
             Error::<Test>::NotFeedOwner
         );
         assert_ok!(Feeds::transfer(Origin::signed(OWNER), FEED_ID, new_owner));
-        assert_eq!(Feeds::feeds(OWNER, FEED_ID), None);
-        assert_eq!(Feeds::feeds(new_owner, FEED_ID), Some(()));
+        assert_eq!(Feeds::feeds(OWNER), None);
+        assert_eq!(Feeds::feeds(new_owner).unwrap().to_vec(), vec![FEED_ID]);
+    });
+}
+
+#[test]
+fn cannot_create_after_max_feeds() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Feeds::create(Origin::signed(OWNER), (), None));
+        assert_eq!(Feeds::feeds(OWNER).unwrap().to_vec(), vec![FEED_ID]);
+
+        // mock limits one feed per user
+        assert_noop!(
+            Feeds::create(Origin::signed(OWNER), (), None),
+            Error::<Test>::MaxFeedsReached
+        );
     });
 }

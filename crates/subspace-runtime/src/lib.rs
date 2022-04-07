@@ -581,10 +581,16 @@ impl Default for FeedProcessorKind {
     }
 }
 
+parameter_types! {
+    // Limit maximum number of feeds per account
+    pub const MaxFeeds: u32 = 100;
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
     type FeedProcessorKind = FeedProcessorKind;
+    type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
         feed_processor_kind: FeedProcessorKind,
