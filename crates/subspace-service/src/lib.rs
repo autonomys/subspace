@@ -405,66 +405,15 @@ where
 
     // TODO: In the future we want `--executor` CLI flag instead
     let overseer_handle = if config.role.is_authority() {
-        let active_leaves = active_leaves(&select_chain, &*client).await?;
-
-        let (overseer, overseer_handle) = Overseer::new(
-            CollationGenerationSubsystem::new(client.clone()),
-            active_leaves
-                .into_iter()
-                .map(
-                    |BlockInfo {
-                         hash,
-                         parent_hash: _,
-                         number,
-                     }| (hash, number),
-                )
-                .collect(),
-            Default::default(),
-            LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
-        )?;
-
-        let handle = Handle::new(overseer_handle);
-
-        {
-            let handle = handle.clone();
-            let overseer_client = client.clone();
-            let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "collation-generation-subsystem",
-                Some("collation-generation-subsystem"),
-                Box::pin(async move {
-                    use cirrus_node_primitives::ExecutorSlotInfo;
-                    use futures::{pin_mut, select, FutureExt, StreamExt};
-
-                    let forward = polkadot_overseer::forward_events(
-                        overseer_client,
-                        Box::pin(new_slot_notification_stream_clone.subscribe().then(
-                            |slot_notification| async move {
-                                let slot_info = slot_notification.new_slot_info;
-                                ExecutorSlotInfo {
-                                    slot: slot_info.slot,
-                                    global_challenge: slot_info.global_challenge,
-                                }
-                            },
-                        )),
-                        handle,
-                    );
-
-                    let forward = forward.fuse();
-                    let overseer_fut = overseer.run().fuse();
-
-                    pin_mut!(overseer_fut);
-                    pin_mut!(forward);
-
-                    select! {
-                        _ = forward => (),
-                        _ = overseer_fut => (),
-                        complete => (),
-                    }
-                }),
-            );
-        }
-        Some(handle)
+        Some(
+            create_overseer(
+                client.clone(),
+                &task_manager,
+                select_chain.clone(),
+                new_slot_notification_stream.clone(),
+            )
+            .await?,
+        )
     } else {
         None
     };
@@ -585,4 +534,81 @@ where
         new_slot_notification_stream,
         block_signing_notification_stream,
     })
+}
+
+async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
+    client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+    task_manager: &TaskManager,
+    select_chain: SC,
+    new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+) -> Result<Handle, Error>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    RuntimeApi::RuntimeApi:
+        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    SC: SelectChain<Block>,
+{
+    let active_leaves = active_leaves(&select_chain, &*client).await?;
+
+    let (overseer, overseer_handle) = Overseer::new(
+        CollationGenerationSubsystem::new(client.clone()),
+        active_leaves
+            .into_iter()
+            .map(
+                |BlockInfo {
+                     hash,
+                     parent_hash: _,
+                     number,
+                 }| (hash, number),
+            )
+            .collect(),
+        Default::default(),
+        LruCache::new(KNOWN_LEAVES_CACHE_SIZE),
+    )?;
+
+    let handle = Handle::new(overseer_handle);
+
+    {
+        let handle = handle.clone();
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "collation-generation-subsystem",
+            Some("collation-generation-subsystem"),
+            Box::pin(async move {
+                use cirrus_node_primitives::ExecutorSlotInfo;
+                use futures::{pin_mut, select, FutureExt, StreamExt};
+
+                let forward = polkadot_overseer::forward_events(
+                    client,
+                    Box::pin(new_slot_notification_stream.subscribe().then(
+                        |slot_notification| async move {
+                            let slot_info = slot_notification.new_slot_info;
+                            ExecutorSlotInfo {
+                                slot: slot_info.slot,
+                                global_challenge: slot_info.global_challenge,
+                            }
+                        },
+                    )),
+                    handle,
+                );
+
+                let forward = forward.fuse();
+                let overseer_fut = overseer.run().fuse();
+
+                pin_mut!(overseer_fut);
+                pin_mut!(forward);
+
+                select! {
+                    _ = forward => (),
+                    _ = overseer_fut => (),
+                    complete => (),
+                }
+            }),
+        );
+    }
+
+    Ok(handle)
 }
