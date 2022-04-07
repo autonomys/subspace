@@ -18,10 +18,7 @@
 
 #![deny(missing_docs)]
 
-use crate::{
-	polkadot_node_subsystem_types::errors::{SubsystemError, SubsystemResult},
-	ActiveLeavesUpdate, OverseerSignal,
-};
+use crate::{ActiveLeavesUpdate, OverseerSignal, SubsystemError, SubsystemResult};
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};

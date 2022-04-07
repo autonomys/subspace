@@ -54,12 +54,6 @@
 //!             ..................................................................
 //! ```
 
-// #![deny(unused_results)]
-// unused dependencies can not work for test and examples at the same time
-// yielding false positives
-
-use metered;
-
 use futures::{
 	channel::oneshot,
 	future::Future,
@@ -163,12 +157,6 @@ pub enum FromOverseer {
 		/// Contained message
 		msg: crate::CollationGenerationMessage,
 	},
-}
-
-impl From<crate::OverseerSignal> for FromOverseer {
-	fn from(signal: crate::OverseerSignal) -> Self {
-		Self::Signal(signal)
-	}
 }
 
 /// A future that wraps another future with a `Delay` allowing for time-limited futures.
