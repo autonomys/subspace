@@ -190,9 +190,17 @@ where
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
 		>(relay_chain_config, false)
-		.await
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
+
+	let overseer_handle = subspace_service::create_overseer(
+		primary_chain_full_node.client.clone(),
+		&primary_chain_full_node.task_manager,
+		primary_chain_full_node.select_chain.clone(),
+		primary_chain_full_node.new_slot_notification_stream.clone(),
+	)
+	.await
+	.map_err(|error| sc_service::Error::Other(format!("Failed to create overseer: {}", error)))?;
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
@@ -233,6 +241,7 @@ where
 		spawner: Box::new(task_manager.spawn_handle()),
 		task_manager: &mut task_manager,
 		primary_chain_full_node,
+		overseer_handle,
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),

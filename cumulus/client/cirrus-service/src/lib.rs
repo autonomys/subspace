@@ -21,6 +21,7 @@
 use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_node_primitives::CollationGenerationConfig;
+use polkadot_overseer::Handle;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
@@ -42,6 +43,7 @@ pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, 
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<Arc<RClient>>,
+	pub overseer_handle: Handle,
 	pub task_manager: &'a mut TaskManager,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
@@ -55,6 +57,7 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 	StartExecutorParams {
 		client,
 		spawner,
+		mut overseer_handle,
 		task_manager,
 		primary_chain_full_node,
 		transaction_pool,
@@ -99,11 +102,6 @@ where
 	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
 	let (execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
-
-	let mut overseer_handle = primary_chain_full_node
-		.overseer_handle
-		.clone()
-		.ok_or("Subspace full node did not provide an `OverseerHandle`!")?;
 
 	let executor = Executor::new(
 		primary_chain_full_node.client.clone(),

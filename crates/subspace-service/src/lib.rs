@@ -116,7 +116,7 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
 type FullBackend = sc_service::TFullBackend<Block>;
-type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
+pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
@@ -337,8 +337,8 @@ pub struct NewFull<C> {
     pub task_manager: TaskManager,
     /// Full client.
     pub client: C,
-    /// Handle to communicate with the overseer.
-    pub overseer_handle: Option<Handle>,
+    /// Chain selection rule.
+    pub select_chain: FullSelectChain,
     /// Network.
     pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
     /// RPC handlers.
@@ -352,7 +352,7 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub async fn new_full<RuntimeApi, ExecutorDispatch>(
+pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: Configuration,
     enable_rpc_extensions: bool,
 ) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
@@ -403,21 +403,6 @@ where
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    // TODO: In the future we want `--executor` CLI flag instead
-    let overseer_handle = if config.role.is_authority() {
-        Some(
-            create_overseer(
-                client.clone(),
-                &task_manager,
-                select_chain.clone(),
-                new_slot_notification_stream.clone(),
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
-
     if config.role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
             task_manager.spawn_handle(),
@@ -429,7 +414,7 @@ where
 
         let subspace_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
-            select_chain,
+            select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
             sync_oracle: network.clone(),
@@ -527,7 +512,7 @@ where
     Ok(NewFull {
         task_manager,
         client,
-        overseer_handle,
+        select_chain,
         network,
         rpc_handlers,
         backend,
@@ -536,7 +521,9 @@ where
     })
 }
 
-async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
+/// TODO: This should change name and probably contents as well since we don't have proper overseer
+///  anymore
+pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
     client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
     task_manager: &TaskManager,
     select_chain: SC,

@@ -31,6 +31,7 @@ cirrus-client-executor = { path = "../cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
+polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 
 # Subspace
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
