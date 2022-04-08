@@ -59,6 +59,9 @@
 #![warn(missing_docs)]
 #![allow(clippy::all)]
 
+pub mod collation_generation;
+mod polkadot_overseer_gen;
+
 use std::{
 	collections::{hash_map, HashMap},
 	fmt::Debug,
@@ -67,26 +70,156 @@ use std::{
 	time::Duration,
 };
 
-use futures::{future::BoxFuture, select, stream::FusedStream, Future, FutureExt, StreamExt};
+use futures::{future::FusedFuture, select, stream::FusedStream, FutureExt, StreamExt};
 use lru::LruCache;
+use smallvec::SmallVec;
+use std::fmt;
 
-use client::{BlockImportNotification, BlockchainEvents, FinalityNotification};
-
-use polkadot_node_subsystem_types::messages::CollationGenerationMessage;
-pub use polkadot_node_subsystem_types::{
-	errors::{SubsystemError, SubsystemResult},
-	ActivatedLeaf, ActiveLeavesUpdate, LeafStatus, OverseerSignal,
+use sc_client_api::{
+	BlockBackend, BlockImportNotification, BlockchainEvents, FinalityNotification,
 };
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
 
-use cirrus_node_primitives::ExecutorSlotInfo;
+use crate::collation_generation::CollationGenerationMessage;
+
+use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
+use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
 use subspace_runtime_primitives::{opaque::Block, BlockNumber, Hash};
 
-pub use polkadot_overseer_gen as gen;
-pub use polkadot_overseer_gen::{
-	overlord, FromOverseer, MapSubsystem, MessagePacket, SignalsReceived, SpawnNamed, Subsystem,
-	SubsystemContext, SubsystemIncomingMessages, SubsystemInstance, SubsystemMeterReadouts,
-	SubsystemMeters, SubsystemSender, TimeoutExt, ToOverseer,
+use polkadot_overseer_gen::{
+	FromOverseer, MessagePacket, SignalsReceived, SubsystemInstance, TimeoutExt,
 };
+
+/// How many slots are stack-reserved for active leaves updates
+///
+/// If there are fewer than this number of slots, then we've wasted some stack space.
+/// If there are greater than this number of slots, then we fall back to a heap vector.
+const ACTIVE_LEAVES_SMALLVEC_CAPACITY: usize = 8;
+
+/// The status of an activated leaf.
+#[derive(Debug, Clone)]
+pub enum LeafStatus {
+	/// A leaf is fresh when it's the first time the leaf has been encountered.
+	/// Most leaves should be fresh.
+	Fresh,
+	/// A leaf is stale when it's encountered for a subsequent time. This will happen
+	/// when the chain is reverted or the fork-choice rule abandons some chain.
+	Stale,
+}
+
+impl LeafStatus {
+	/// Returns a `bool` indicating fresh status.
+	pub fn is_fresh(&self) -> bool {
+		match *self {
+			LeafStatus::Fresh => true,
+			LeafStatus::Stale => false,
+		}
+	}
+
+	/// Returns a `bool` indicating stale status.
+	pub fn is_stale(&self) -> bool {
+		match *self {
+			LeafStatus::Fresh => false,
+			LeafStatus::Stale => true,
+		}
+	}
+}
+
+/// Activated leaf.
+#[derive(Debug, Clone)]
+pub struct ActivatedLeaf {
+	/// The block hash.
+	pub hash: Hash,
+	/// The block number.
+	pub number: BlockNumber,
+	/// The status of the leaf.
+	pub status: LeafStatus,
+}
+
+/// Changes in the set of active leaves: the parachain heads which we care to work on.
+///
+/// Note that the activated and deactivated fields indicate deltas, not complete sets.
+#[derive(Clone, Default)]
+pub struct ActiveLeavesUpdate {
+	/// New relay chain block of interest.
+	pub activated: Option<ActivatedLeaf>,
+	/// Relay chain block hashes no longer of interest.
+	pub deactivated: SmallVec<[Hash; ACTIVE_LEAVES_SMALLVEC_CAPACITY]>,
+}
+
+impl ActiveLeavesUpdate {
+	/// Create a `ActiveLeavesUpdate` with a single activated hash
+	pub fn start_work(activated: ActivatedLeaf) -> Self {
+		Self { activated: Some(activated), ..Default::default() }
+	}
+
+	/// Create a `ActiveLeavesUpdate` with a single deactivated hash
+	pub fn stop_work(hash: Hash) -> Self {
+		Self { deactivated: [hash][..].into(), ..Default::default() }
+	}
+
+	/// Is this update empty and doesn't contain any information?
+	pub fn is_empty(&self) -> bool {
+		self.activated.is_none() && self.deactivated.is_empty()
+	}
+}
+
+impl PartialEq for ActiveLeavesUpdate {
+	/// Equality for `ActiveLeavesUpdate` doesn't imply bitwise equality.
+	///
+	/// Instead, it means equality when `activated` and `deactivated` are considered as sets.
+	fn eq(&self, other: &Self) -> bool {
+		self.activated.as_ref().map(|a| a.hash) == other.activated.as_ref().map(|a| a.hash) &&
+			self.deactivated.len() == other.deactivated.len() &&
+			self.deactivated.iter().all(|a| other.deactivated.contains(a))
+	}
+}
+
+impl fmt::Debug for ActiveLeavesUpdate {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ActiveLeavesUpdate")
+			.field("activated", &self.activated)
+			.field("deactivated", &self.deactivated)
+			.finish()
+	}
+}
+
+/// Signals sent by an overseer to a subsystem.
+#[derive(PartialEq, Clone, Debug)]
+pub enum OverseerSignal {
+	/// Subsystems should adjust their jobs to start and stop work on appropriate block hashes.
+	ActiveLeaves(ActiveLeavesUpdate),
+	/// `Subsystem` is informed of a new slot.
+	NewSlot(ExecutorSlotInfo),
+	/// Conclude the work of the `Overseer` and all `Subsystem`s.
+	Conclude,
+}
+
+/// An error type that describes faults that may happen
+///
+/// These are:
+///   * Channels being closed
+///   * Subsystems dying when they are not expected to
+///   * Subsystems not dying when they are told to die
+///   * etc.
+#[derive(thiserror::Error, Debug)]
+#[allow(missing_docs)]
+pub enum SubsystemError {
+	#[error(transparent)]
+	QueueError(#[from] futures::channel::mpsc::SendError),
+
+	/// Generated by the `#[overseer(..)]` proc-macro
+	#[error(transparent)]
+	Generated(#[from] crate::polkadot_overseer_gen::OverseerError),
+
+	/// Generated by the `#[overseer(..)]` proc-macro
+	#[error(transparent)]
+	RuntimeApi(#[from] sp_api::ApiError),
+}
+
+/// Ease the use of subsystem errors.
+type SubsystemResult<T> = Result<T, self::SubsystemError>;
 
 /// Store 2 days worth of blocks, not accounting for forks,
 /// in the LRU cache. Assumes a 6-second block time.
@@ -105,23 +238,18 @@ impl Handle {
 	}
 
 	/// Inform the `Overseer` that that some block was imported.
-	pub async fn block_imported(&mut self, block: BlockInfo) {
+	async fn block_imported(&mut self, block: BlockInfo) {
 		self.send_and_log_error(Event::BlockImported(block)).await
 	}
 
 	/// Send some message to one of the `Subsystem`s.
-	pub async fn send_msg(&mut self, msg: impl Into<AllMessages>, origin: &'static str) {
-		self.send_and_log_error(Event::MsgToSubsystem { msg: msg.into(), origin }).await
+	async fn send_msg(&mut self, msg: CollationGenerationMessage) {
+		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
 	}
 
 	/// Inform the `Overseer` that a new slot was triggered.
-	pub async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
+	async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
-	/// Tell `Overseer` to shutdown.
-	pub async fn stop(&mut self) {
-		self.send_and_log_error(Event::Stop).await;
 	}
 
 	/// Most basic operation, to stop a server.
@@ -129,6 +257,38 @@ impl Handle {
 		if self.0.send(event).await.is_err() {
 			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
 		}
+	}
+
+	/// TODO
+	pub async fn initialize(&mut self, config: CollationGenerationConfig) {
+		self.send_msg(CollationGenerationMessage::Initialize(config)).await;
+	}
+
+	/// TODO
+	pub async fn submit_bundle_equivocation_proof(
+		&mut self,
+		bundle_equivocation_proof: BundleEquivocationProof,
+	) {
+		self.send_msg(CollationGenerationMessage::BundleEquivocationProof(
+			bundle_equivocation_proof,
+		))
+		.await
+	}
+
+	/// TODO
+	pub async fn submit_fraud_proof(&mut self, fraud_proof: FraudProof) {
+		self.send_msg(CollationGenerationMessage::FraudProof(fraud_proof)).await;
+	}
+
+	/// TODO
+	pub async fn submit_invalid_transaction_proof(
+		&mut self,
+		invalid_transaction_proof: InvalidTransactionProof,
+	) {
+		self.send_msg(CollationGenerationMessage::InvalidTransactionProof(
+			invalid_transaction_proof,
+		))
+		.await;
 	}
 }
 
@@ -168,14 +328,7 @@ pub enum Event {
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
-	MsgToSubsystem {
-		/// The actual message.
-		msg: AllMessages,
-		/// The originating subsystem name.
-		origin: &'static str,
-	},
-	/// Stop the overseer on i.e. a UNIX signal.
-	Stop,
+	MsgToSubsystem(CollationGenerationMessage),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -210,150 +363,304 @@ pub async fn forward_events<P: BlockchainEvents<Block>>(
 	}
 }
 
-/// Create a new instance of the [`Overseer`] with a fixed set of [`Subsystem`]s.
-///
-/// This returns the overseer along with an [`OverseerHandle`] which can
-/// be used to send messages from external parts of the codebase.
-///
-/// The [`OverseerHandle`] returned from this function is connected to
-/// the returned [`Overseer`].
-///
-/// ```text
-///                  +------------------------------------+
-///                  |            Overseer                |
-///                  +------------------------------------+
-///                    /            |             |      \
-///      ................. subsystems...................................
-///      . +-----------+    +-----------+   +----------+   +---------+ .
-///      . |           |    |           |   |          |   |         | .
-///      . +-----------+    +-----------+   +----------+   +---------+ .
-///      ...............................................................
-///                              |
-///                        probably `spawn`
-///                            a `job`
-///                              |
-///                              V
-///                         +-----------+
-///                         |           |
-///                         +-----------+
-///
-/// ```
-///
-/// [`Subsystem`]: trait.Subsystem.html
-///
-/// # Example
-///
-/// The [`Subsystems`] may be any type as long as they implement an expected interface.
-/// Here, we create a mock validation subsystem and a few dummy ones and start the `Overseer` with them.
-/// For the sake of simplicity the termination of the example is done with a timeout.
-/// ```
-/// # use std::time::Duration;
-/// # use futures::{executor, pin_mut, select, FutureExt};
-/// # use futures_timer::Delay;
-/// # use polkadot_primitives::v1::Hash;
-/// # use polkadot_overseer::{
-/// # 	self as overseer,
-/// #   OverseerSignal,
-/// # 	SubsystemSender as _,
-/// # 	AllMessages,
-/// # 	HeadSupportsParachains,
-/// # 	Overseer,
-/// # 	SubsystemError,
-/// # 	gen::{
-/// # 		SubsystemContext,
-/// # 		FromOverseer,
-/// # 		SpawnedSubsystem,
-/// # 	},
-/// # };
-/// # use polkadot_node_subsystem_types::messages::{
-/// # 	CandidateValidationMessage, CandidateBackingMessage,
-/// # 	NetworkBridgeMessage,
-/// # };
-///
-/// struct ValidationSubsystem;
-///
-/// impl<Ctx> overseer::Subsystem<Ctx, SubsystemError> for ValidationSubsystem
-/// where
-///     Ctx: overseer::SubsystemContext<
-///				Message=CandidateValidationMessage,
-///				AllMessages=AllMessages,
-///				Signal=OverseerSignal,
-///				Error=SubsystemError,
-///			>,
-/// {
-///     fn start(
-///         self,
-///         mut ctx: Ctx,
-///     ) -> SpawnedSubsystem<SubsystemError> {
-///         SpawnedSubsystem {
-///             name: "validation-subsystem",
-///             future: Box::pin(async move {
-///                 loop {
-///                     Delay::new(Duration::from_secs(1)).await;
-///                 }
-///             }),
-///         }
-///     }
-/// }
-///
-/// # fn main() { executor::block_on(async move {
-///
-/// struct AlwaysSupportsParachains;
-/// impl HeadSupportsParachains for AlwaysSupportsParachains {
-///      fn head_supports_parachains(&self, _head: &Hash) -> bool { true }
-/// }
-/// let spawner = sp_core::testing::TaskExecutor::new();
-/// let (overseer, _handle) = dummy_overseer_builder(spawner, AlwaysSupportsParachains, None)
-///		.unwrap()
-///		.replace_candidate_validation(|_| ValidationSubsystem)
-///		.build()
-///		.unwrap();
-///
-/// let timer = Delay::new(Duration::from_millis(50)).fuse();
-///
-/// let overseer_fut = overseer.run().fuse();
-/// pin_mut!(timer);
-/// pin_mut!(overseer_fut);
-///
-/// select! {
-///     _ = overseer_fut => (),
-///     _ = timer => (),
-/// }
-/// #
-/// # 	});
-/// # }
-/// ```
-#[overlord(
-	gen=AllMessages,
-	event=Event,
-	signal=OverseerSignal,
-	error=SubsystemError,
-)]
+// SystemTime { tv_sec: 1649250089, tv_nsec: 861080098 }
+/// Capacity of a bounded message channel between overseer and subsystem
+/// but also for bounded channels between two subsystems.
+const CHANNEL_CAPACITY: usize = 1024usize;
+/// Capacity of a signal channel between a subsystem and the overseer.
+const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
+/// The log target tag.
+const LOG_TARGET: &'static str = "overseer";
+/// The overseer.
 pub struct Overseer {
-	#[subsystem(no_dispatch, CollationGenerationMessage)]
-	collation_generation: CollationGeneration,
-
-	/// A set of leaves that `Overseer` starts working with.
-	///
-	/// Drained at the beginning of `run` and never used again.
+	/// A subsystem instance.
+	collation_generation: polkadot_overseer_gen::SubsystemInstance,
+	/// A user specified addendum field.
 	pub leaves: Vec<(Hash, BlockNumber)>,
-
-	/// The set of the "active leaves".
+	/// A user specified addendum field.
 	pub active_leaves: HashMap<Hash, BlockNumber>,
-
-	/// An LRU cache for keeping track of relay-chain heads that have already been seen.
+	/// A user specified addendum field.
 	pub known_leaves: LruCache<Hash, ()>,
+	/// The set of running subsystems.
+	running_subsystem:
+		Pin<Box<dyn FusedFuture<Output = ::std::result::Result<(), SubsystemError>> + Send>>,
+	/// Events that are sent to the overseer from the outside world.
+	events_rx: metered::MeteredReceiver<Event>,
 }
-
-impl<S> Overseer<S>
-where
-	S: SpawnNamed,
-{
-	/// Stop the overseer.
-	async fn stop(mut self) {
-		let _ = self.wait_terminate(OverseerSignal::Conclude, Duration::from_secs(1_u64)).await;
+impl Overseer {
+	/// Send the given signal, a termination signal, to all subsystems
+	/// and wait for all subsystems to go down.
+	///
+	/// The definition of a termination signal is up to the user and
+	/// implementation specific.
+	pub async fn wait_terminate(
+		mut self,
+		signal: OverseerSignal,
+		timeout: ::std::time::Duration,
+	) -> ::std::result::Result<(), SubsystemError> {
+		::std::mem::drop(self.broadcast_signal(signal).await);
+		let mut timeout_fut = futures_timer::Delay::new(timeout).fuse();
+		select! {
+			_ = self.running_subsystem => {},
+			_ = timeout_fut => {},
+		}
+		Ok(())
 	}
-
+	/// Broadcast a signal to all subsystems.
+	pub async fn broadcast_signal(
+		&mut self,
+		signal: OverseerSignal,
+	) -> ::std::result::Result<(), SubsystemError> {
+		const SIGNAL_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(10);
+		match self.collation_generation.tx_signal.send(signal).timeout(SIGNAL_TIMEOUT).await {
+			None =>
+				Err(SubsystemError::from(polkadot_overseer_gen::OverseerError::SubsystemStalled(
+					self.collation_generation.name,
+				))),
+			Some(res) => {
+				let res = res.map_err(Into::into);
+				if res.is_ok() {
+					self.collation_generation.signals_received += 1;
+				}
+				res
+			},
+		}
+	}
+	/// Route a particular message to a subsystem that consumes the message.
+	pub async fn send_message(
+		&mut self,
+		message: CollationGenerationMessage,
+	) -> ::std::result::Result<(), SubsystemError> {
+		const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
+		match self
+			.collation_generation
+			.tx_bounded
+			.send(MessagePacket {
+				signals_received: self.collation_generation.signals_received,
+				message,
+			})
+			.timeout(MESSAGE_TIMEOUT)
+			.await
+		{
+			None => {
+				tracing::error!(
+					target: LOG_TARGET,
+					"Subsystem {} appears unresponsive.",
+					self.collation_generation.name,
+				);
+				Err(SubsystemError::from(polkadot_overseer_gen::OverseerError::SubsystemStalled(
+					self.collation_generation.name,
+				)))
+			},
+			Some(res) => res.map_err(Into::into),
+		}
+	}
+}
+impl Overseer {
+	/// Create a new overseer utilizing the builder.
+	pub fn builder<Client>(
+		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	) -> OverseerBuilder<Client>
+	where
+		Client: HeaderBackend<Block>
+			+ BlockBackend<Block>
+			+ ProvideRuntimeApi<Block>
+			+ Send
+			+ 'static
+			+ Sync,
+		Client::Api: ExecutorApi<Block>,
+	{
+		OverseerBuilder::new(collation_generation)
+	}
+}
+/// Handle for an overseer.
+pub type OverseerHandle = metered::MeteredSender<Event>;
+/// External connector.
+pub struct OverseerConnector {
+	/// Publicly accessible handle, to be used for setting up
+	/// components that are _not_ subsystems but access is needed
+	/// due to other limitations.
+	///
+	/// For subsystems, use the `_with` variants of the builder.
+	handle: OverseerHandle,
+	/// The side consumed by the `spawned` side of the overseer pattern.
+	consumer: metered::MeteredReceiver<Event>,
+}
+impl ::std::default::Default for OverseerConnector {
+	fn default() -> Self {
+		let (events_tx, events_rx) = metered::channel::<Event>(SIGNAL_CHANNEL_CAPACITY);
+		Self { handle: events_tx, consumer: events_rx }
+	}
+}
+/// Initialization type to be used for a field of the overseer.
+#[allow(missing_docs)]
+pub struct OverseerBuilder<Client> {
+	collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	leaves: ::std::option::Option<Vec<(Hash, BlockNumber)>>,
+	active_leaves: ::std::option::Option<HashMap<Hash, BlockNumber>>,
+	known_leaves: ::std::option::Option<LruCache<Hash, ()>>,
+}
+impl<Client> OverseerBuilder<Client>
+where
+	Client: HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ ProvideRuntimeApi<Block>
+		+ Send
+		+ 'static
+		+ Sync,
+	Client::Api: ExecutorApi<Block>,
+{
+	fn new(
+		collation_generation: crate::collation_generation::CollationGenerationSubsystem<Client>,
+	) -> Self {
+		Self { collation_generation, leaves: None, active_leaves: None, known_leaves: None }
+	}
+	/// Attach the user defined addendum type.
+	pub fn leaves(mut self, baggage: Vec<(Hash, BlockNumber)>) -> Self {
+		self.leaves = Some(baggage);
+		self
+	}
+	/// Attach the user defined addendum type.
+	pub fn active_leaves(mut self, baggage: HashMap<Hash, BlockNumber>) -> Self {
+		self.active_leaves = Some(baggage);
+		self
+	}
+	/// Attach the user defined addendum type.
+	pub fn known_leaves(mut self, baggage: LruCache<Hash, ()>) -> Self {
+		self.known_leaves = Some(baggage);
+		self
+	}
+	/// Complete the construction and create the overseer type based on an existing `connector`.
+	pub fn build_with_connector(
+		self,
+		connector: OverseerConnector,
+	) -> ::std::result::Result<(Overseer, OverseerHandle), SubsystemError> {
+		let OverseerConnector { handle, consumer: events_rx } = connector;
+		let (collation_generation_tx, collation_generation_rx) =
+			metered::channel::<MessagePacket>(CHANNEL_CAPACITY);
+		let collation_generation = self.collation_generation;
+		let (signal_tx, signal_rx) = metered::channel(SIGNAL_CHANNEL_CAPACITY);
+		let ctx = OverseerSubsystemContext::new(signal_rx, collation_generation_rx);
+		let running_subsystem = Box::pin(
+			collation_generation
+				.run(ctx)
+				.map(|e| {
+					tracing :: warn! (err = ? e, "dropping error");
+					Ok(())
+				})
+				.fuse(),
+		);
+		let collation_generation = SubsystemInstance {
+			tx_signal: signal_tx,
+			tx_bounded: collation_generation_tx,
+			signals_received: 0,
+			name: "collation-generation-subsystem",
+		};
+		let leaves = self.leaves.expect(&format!(
+			"Baggage variable `{0}` of `{1}` must be set by the user!",
+			stringify!(leaves),
+			stringify!(Overseer)
+		));
+		let active_leaves = self.active_leaves.expect(&format!(
+			"Baggage variable `{0}` of `{1}` must be set by the user!",
+			stringify!(active_leaves),
+			stringify!(Overseer)
+		));
+		let known_leaves = self.known_leaves.expect(&format!(
+			"Baggage variable `{0}` of `{1}` must be set by the user!",
+			stringify!(known_leaves),
+			stringify!(Overseer)
+		));
+		let overseer = Overseer {
+			collation_generation,
+			leaves,
+			active_leaves,
+			known_leaves,
+			running_subsystem,
+			events_rx,
+		};
+		Ok((overseer, handle))
+	}
+}
+/// A context type that is given to the [`Subsystem`] upon spawning.
+/// It can be used by [`Subsystem`] to communicate with other [`Subsystem`]s
+/// or to spawn it's [`SubsystemJob`]s.
+///
+/// [`Overseer`]: struct.Overseer.html
+/// [`Subsystem`]: trait.Subsystem.html
+/// [`SubsystemJob`]: trait.SubsystemJob.html
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct OverseerSubsystemContext {
+	signals: metered::MeteredReceiver<OverseerSignal>,
+	messages: metered::MeteredReceiver<MessagePacket>,
+	signals_received: SignalsReceived,
+	pending_incoming: Option<(usize, CollationGenerationMessage)>,
+}
+impl OverseerSubsystemContext {
+	/// Create a new context.
+	fn new(
+		signals: metered::MeteredReceiver<OverseerSignal>,
+		messages: metered::MeteredReceiver<MessagePacket>,
+	) -> Self {
+		let signals_received = SignalsReceived::default();
+		OverseerSubsystemContext { signals, messages, signals_received, pending_incoming: None }
+	}
+}
+impl OverseerSubsystemContext {
+	async fn recv(
+		&mut self,
+	) -> ::std::result::Result<polkadot_overseer_gen::FromOverseer, SubsystemError> {
+		loop {
+			if let Some((needs_signals_received, msg)) = self.pending_incoming.take() {
+				if needs_signals_received <= self.signals_received.load() {
+					return Ok(polkadot_overseer_gen::FromOverseer::Communication { msg })
+				} else {
+					self.pending_incoming = Some((needs_signals_received, msg));
+					let signal = self.signals.next().await.ok_or(
+						polkadot_overseer_gen::OverseerError::Context(
+							"Signal channel is terminated and empty.".to_owned(),
+						),
+					)?;
+					self.signals_received.inc();
+					return Ok(polkadot_overseer_gen::FromOverseer::Signal(signal))
+				}
+			}
+			let mut await_message = self.messages.next().fuse();
+			let mut await_signal = self.signals.next().fuse();
+			let signals_received = self.signals_received.load();
+			let pending_incoming = &mut self.pending_incoming;
+			let from_overseer = futures::select_biased! {
+				signal = await_signal =>
+				{
+					let signal =
+					signal.ok_or(polkadot_overseer_gen :: OverseerError ::
+					Context("Signal channel is terminated and empty.".to_owned()))
+					? ; polkadot_overseer_gen :: FromOverseer :: Signal(signal)
+				} msg = await_message =>
+				{
+					let packet =
+					msg.ok_or(polkadot_overseer_gen :: OverseerError ::
+					Context("Message channel is terminated and empty.".to_owned()))
+					? ; if packet.signals_received > signals_received
+					{
+						* pending_incoming =
+						Some((packet.signals_received, packet.message)) ; continue ;
+					} else
+					{
+						polkadot_overseer_gen :: FromOverseer :: Communication
+						{ msg : packet.message }
+					}
+				}
+			};
+			if let polkadot_overseer_gen::FromOverseer::Signal(_) = from_overseer {
+				self.signals_received.inc();
+			}
+			return Ok(from_overseer)
+		}
+	}
+}
+impl Overseer {
 	/// Run the `Overseer`.
 	pub async fn run(mut self) -> SubsystemResult<()> {
 		// Notify about active leaves on startup before starting the loop
@@ -369,12 +676,8 @@ where
 			select! {
 				msg = self.events_rx.select_next_some() => {
 					match msg {
-						Event::MsgToSubsystem { msg, origin } => {
-							self.route_message(msg, origin).await?;
-						}
-						Event::Stop => {
-							self.stop().await;
-							return Ok(());
+						Event::MsgToSubsystem(msg) => {
+							self.send_message(msg).await?;
 						}
 						Event::BlockImported(block) => {
 							self.block_imported(block).await?;
@@ -384,20 +687,13 @@ where
 						}
 					}
 				},
-				msg = self.to_overseer_rx.select_next_some() => {
-					match msg {
-						ToOverseer::SpawnJob { name, subsystem, s } => {
-							self.spawn_job(name, subsystem, s);
-						}
-					}
-				},
-				res = self.running_subsystems.select_next_some() => {
+				res = &mut self.running_subsystem => {
 					tracing::error!(
 						target: LOG_TARGET,
 						subsystem = ?res,
 						"subsystem finished unexpectedly",
 					);
-					self.stop().await;
+					let _ = self.wait_terminate(OverseerSignal::Conclude, Duration::from_secs(1_u64)).await;
 					return res;
 				},
 			}
@@ -453,13 +749,4 @@ where
 	}
 
 	fn clean_up_external_listeners(&mut self) {}
-
-	fn spawn_job(
-		&mut self,
-		task_name: &'static str,
-		subsystem_name: Option<&'static str>,
-		j: BoxFuture<'static, ()>,
-	) {
-		self.spawner.spawn(task_name, subsystem_name, j);
-	}
 }

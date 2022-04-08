@@ -19,7 +19,7 @@
 pub mod rpc;
 
 use lru::LruCache;
-use polkadot_node_collation_generation::CollationGenerationSubsystem;
+use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
 use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
@@ -407,26 +407,23 @@ where
     let overseer_handle = if config.role.is_authority() {
         let active_leaves = active_leaves(&select_chain, &*client).await?;
 
-        let spawner = task_manager.spawn_handle();
-
-        let (overseer, overseer_handle) = Overseer::builder()
-            .collation_generation(CollationGenerationSubsystem::new(client.clone()))
-            .leaves(
-                active_leaves
-                    .into_iter()
-                    .map(
-                        |BlockInfo {
-                             hash,
-                             parent_hash: _,
-                             number,
-                         }| (hash, number),
-                    )
-                    .collect(),
-            )
-            .active_leaves(Default::default())
-            .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-            .spawner(spawner)
-            .build_with_connector(OverseerConnector::default())?;
+        let (overseer, overseer_handle) =
+            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
+                .leaves(
+                    active_leaves
+                        .into_iter()
+                        .map(
+                            |BlockInfo {
+                                 hash,
+                                 parent_hash: _,
+                                 number,
+                             }| (hash, number),
+                        )
+                        .collect(),
+                )
+                .active_leaves(Default::default())
+                .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
+                .build_with_connector(OverseerConnector::default())?;
 
         let handle = Handle::new(overseer_handle);
 
@@ -435,8 +432,8 @@ where
             let overseer_client = client.clone();
             let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
             task_manager.spawn_essential_handle().spawn_blocking(
-                "overseer",
-                Some("overseer"),
+                "collation-generation-subsystem",
+                Some("collation-generation-subsystem"),
                 Box::pin(async move {
                     use cirrus_node_primitives::ExecutorSlotInfo;
                     use futures::{pin_mut, select, FutureExt, StreamExt};
