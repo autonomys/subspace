@@ -292,7 +292,7 @@ impl<
 
 	/// Wrapped `frame_executive::Executive::execute_block`.
 	///
-	/// The purpose is to use our custom [`initialize_block`] and [`apply_extrinsic`].
+	/// The purpose is to use our custom [`Self::initialize_block`] and [`Self::apply_extrinsic`].
 	pub fn execute_block(block: Block) {
 		sp_io::init_tracing();
 		sp_tracing::within_span! {
