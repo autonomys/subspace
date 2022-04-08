@@ -19,7 +19,6 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use futures::future::Future;
-use polkadot_overseer::Handle;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::{
@@ -61,10 +60,10 @@ pub fn new_full(
         config.max_runtime_instances,
         config.runtime_cache_size,
     );
-    let new_full = futures::executor::block_on(subspace_service::new_full::<
+    let new_full = subspace_service::new_full::<
         subspace_test_runtime::RuntimeApi,
         TestExecutorDispatch,
-    >(config, enable_rpc_extensions))
+    >(config, enable_rpc_extensions)
     .expect("Failed to create Subspace full client");
     if run_farmer {
         start_farmer(&new_full);
@@ -182,7 +181,6 @@ pub fn run_validator_node(
             backend,
             network,
             rpc_handlers,
-            overseer_handle,
             ..
         },
         executor,
@@ -196,7 +194,6 @@ pub fn run_validator_node(
         client,
         backend,
         executor,
-        overseer_handle,
         addr,
         rpc_handlers,
     }
@@ -212,8 +209,6 @@ pub struct SubspaceTestNode {
     pub backend: Arc<Backend>,
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
-    /// A handle to Overseer.
-    pub overseer_handle: Option<Handle>,
     /// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node" to other nodes.
     pub addr: MultiaddrWithPeerId,
     /// `RPCHandlers` to make RPC queries.

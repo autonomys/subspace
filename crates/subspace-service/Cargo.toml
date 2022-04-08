@@ -20,7 +20,6 @@ cirrus-node-primitives = { version = "0.1.0", path = "../cirrus-node-primitives"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 futures = "0.3.21"
 jsonrpc-core = "18.0.0"
-lru = "0.7.3"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 polkadot-overseer = { path = "../../polkadot/node/overseer" }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }

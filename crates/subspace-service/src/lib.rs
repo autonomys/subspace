@@ -18,9 +18,7 @@
 
 pub mod rpc;
 
-use lru::LruCache;
-use polkadot_overseer::collation_generation::CollationGenerationSubsystem;
-use polkadot_overseer::{BlockInfo, Handle, Overseer, OverseerConnector, KNOWN_LEAVES_CACHE_SIZE};
+use polkadot_overseer::{BlockInfo, Handle, Overseer};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -102,10 +100,6 @@ pub enum Error {
     #[error(transparent)]
     Telemetry(#[from] sc_telemetry::Error),
 
-    /// Polkadot overseer error.
-    #[error("Failed to create an overseer")]
-    Overseer(#[from] polkadot_overseer::SubsystemError),
-
     /// Prometheus error.
     #[error(transparent)]
     Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
@@ -116,7 +110,7 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
 type FullBackend = sc_service::TFullBackend<Block>;
-type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
+pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
@@ -337,8 +331,8 @@ pub struct NewFull<C> {
     pub task_manager: TaskManager,
     /// Full client.
     pub client: C,
-    /// Handle to communicate with the overseer.
-    pub overseer_handle: Option<Handle>,
+    /// Chain selection rule.
+    pub select_chain: FullSelectChain,
     /// Network.
     pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
     /// RPC handlers.
@@ -352,7 +346,7 @@ pub struct NewFull<C> {
 }
 
 /// Builds a new service for a full client.
-pub async fn new_full<RuntimeApi, ExecutorDispatch>(
+pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: Configuration,
     enable_rpc_extensions: bool,
 ) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
@@ -403,74 +397,6 @@ where
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    // TODO: In the future we want `--executor` CLI flag instead
-    let overseer_handle = if config.role.is_authority() {
-        let active_leaves = active_leaves(&select_chain, &*client).await?;
-
-        let (overseer, overseer_handle) =
-            Overseer::builder(CollationGenerationSubsystem::new(client.clone()))
-                .leaves(
-                    active_leaves
-                        .into_iter()
-                        .map(
-                            |BlockInfo {
-                                 hash,
-                                 parent_hash: _,
-                                 number,
-                             }| (hash, number),
-                        )
-                        .collect(),
-                )
-                .active_leaves(Default::default())
-                .known_leaves(LruCache::new(KNOWN_LEAVES_CACHE_SIZE))
-                .build_with_connector(OverseerConnector::default())?;
-
-        let handle = Handle::new(overseer_handle);
-
-        {
-            let handle = handle.clone();
-            let overseer_client = client.clone();
-            let new_slot_notification_stream_clone = new_slot_notification_stream.clone();
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "collation-generation-subsystem",
-                Some("collation-generation-subsystem"),
-                Box::pin(async move {
-                    use cirrus_node_primitives::ExecutorSlotInfo;
-                    use futures::{pin_mut, select, FutureExt, StreamExt};
-
-                    let forward = polkadot_overseer::forward_events(
-                        overseer_client,
-                        Box::pin(new_slot_notification_stream_clone.subscribe().then(
-                            |slot_notification| async move {
-                                let slot_info = slot_notification.new_slot_info;
-                                ExecutorSlotInfo {
-                                    slot: slot_info.slot,
-                                    global_challenge: slot_info.global_challenge,
-                                }
-                            },
-                        )),
-                        handle,
-                    );
-
-                    let forward = forward.fuse();
-                    let overseer_fut = overseer.run().fuse();
-
-                    pin_mut!(overseer_fut);
-                    pin_mut!(forward);
-
-                    select! {
-                        _ = forward => (),
-                        _ = overseer_fut => (),
-                        complete => (),
-                    }
-                }),
-            );
-        }
-        Some(handle)
-    } else {
-        None
-    };
-
     if config.role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
             task_manager.spawn_handle(),
@@ -482,7 +408,7 @@ where
 
         let subspace_config = sc_consensus_subspace::SubspaceParams {
             client: client.clone(),
-            select_chain,
+            select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
             sync_oracle: network.clone(),
@@ -580,11 +506,87 @@ where
     Ok(NewFull {
         task_manager,
         client,
-        overseer_handle,
+        select_chain,
         network,
         rpc_handlers,
         backend,
         new_slot_notification_stream,
         block_signing_notification_stream,
     })
+}
+
+/// TODO: This should change name and probably contents as well since we don't have proper overseer
+///  anymore
+pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
+    client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+    task_manager: &TaskManager,
+    select_chain: SC,
+    new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+) -> Result<Handle, Error>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    RuntimeApi::RuntimeApi:
+        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    SC: SelectChain<Block>,
+{
+    let active_leaves = active_leaves(&select_chain, &*client).await?;
+
+    let (overseer, overseer_handle) = Overseer::new(
+        client.clone(),
+        active_leaves
+            .into_iter()
+            .map(
+                |BlockInfo {
+                     hash,
+                     parent_hash: _,
+                     number,
+                 }| (hash, number),
+            )
+            .collect(),
+        Default::default(),
+    );
+
+    {
+        let overseer_handle = overseer_handle.clone();
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "collation-generation-subsystem",
+            Some("collation-generation-subsystem"),
+            Box::pin(async move {
+                use cirrus_node_primitives::ExecutorSlotInfo;
+                use futures::{pin_mut, select, FutureExt, StreamExt};
+
+                let forward = polkadot_overseer::forward_events(
+                    client,
+                    Box::pin(new_slot_notification_stream.subscribe().then(
+                        |slot_notification| async move {
+                            let slot_info = slot_notification.new_slot_info;
+                            ExecutorSlotInfo {
+                                slot: slot_info.slot,
+                                global_challenge: slot_info.global_challenge,
+                            }
+                        },
+                    )),
+                    overseer_handle,
+                );
+
+                let forward = forward.fuse();
+                let overseer_fut = overseer.run().fuse();
+
+                pin_mut!(overseer_fut);
+                pin_mut!(forward);
+
+                select! {
+                    _ = forward => (),
+                    _ = overseer_fut => (),
+                    complete => (),
+                }
+            }),
+        );
+    }
+
+    Ok(overseer_handle)
 }

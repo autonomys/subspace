@@ -44,9 +44,7 @@ use sp_trie::StorageProof;
 use polkadot_overseer::Handle as OverseerHandle;
 
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
-use cirrus_node_primitives::{
-	BundleResult, CollationGenerationConfig, ExecutorSlotInfo, ProcessorResult,
-};
+use cirrus_node_primitives::{BundleResult, ExecutorSlotInfo, ProcessorResult};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, FraudProof,
@@ -57,7 +55,6 @@ use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
 
 use futures::FutureExt;
 use std::{borrow::Cow, sync::Arc};
-use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -134,7 +131,7 @@ where
 	E: CodeExecutor,
 {
 	/// Create a new instance.
-	fn new(
+	pub fn new(
 		primary_chain_client: Arc<dyn PrimaryChainClient>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -378,7 +375,7 @@ where
 		}
 	}
 
-	async fn produce_bundle(
+	pub async fn produce_bundle(
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
@@ -679,105 +676,4 @@ where
 			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}
-}
-
-/// Parameters for [`start_executor`].
-pub struct StartExecutorParams<Block: BlockT, Spawner, Client, TransactionPool, Backend, E> {
-	pub client: Arc<Client>,
-	pub overseer_handle: OverseerHandle,
-	pub spawner: Box<Spawner>,
-	pub primary_chain_client: Arc<dyn PrimaryChainClient>,
-	pub transaction_pool: Arc<TransactionPool>,
-	pub bundle_sender: TracingUnboundedSender<Bundle<Block::Extrinsic>>,
-	pub execution_receipt_sender: TracingUnboundedSender<ExecutionReceipt<Block::Hash>>,
-	pub backend: Arc<Backend>,
-	pub code_executor: Arc<E>,
-	pub is_authority: bool,
-}
-
-/// Start the executor.
-pub async fn start_executor<Block, Spawner, Client, TransactionPool, Backend, E>(
-	StartExecutorParams {
-		client,
-		mut overseer_handle,
-		spawner,
-		primary_chain_client,
-		transaction_pool,
-		bundle_sender,
-		execution_receipt_sender,
-		backend,
-		code_executor,
-		is_authority,
-	}: StartExecutorParams<Block, Spawner, Client, TransactionPool, Backend, E>,
-) -> Executor<Block, Client, TransactionPool, Backend, E>
-where
-	Block: BlockT,
-	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ AuxStore
-		+ ProvideRuntimeApi<Block>
-		+ Send
-		+ Sync
-		+ 'static,
-	Client::Api: SecondaryApi<Block, AccountId>
-		+ sp_block_builder::BlockBuilder<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-		>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<Client, Block>,
-		Error = sp_consensus::Error,
-	>,
-	TransactionPool:
-		sc_transaction_pool_api::TransactionPool<Block = Block> + Send + Sync + 'static,
-	E: CodeExecutor,
-{
-	let executor = Executor::new(
-		primary_chain_client,
-		client,
-		spawner,
-		overseer_handle.clone(),
-		transaction_pool,
-		Arc::new(bundle_sender),
-		Arc::new(execution_receipt_sender),
-		backend,
-		code_executor,
-		is_authority,
-	);
-
-	let span = tracing::Span::current();
-	let config = CollationGenerationConfig {
-		bundler: {
-			let executor = executor.clone();
-			let span = span.clone();
-
-			Box::new(move |primary_hash, slot_info| {
-				let executor = executor.clone();
-				executor
-					.produce_bundle(primary_hash, slot_info)
-					.instrument(span.clone())
-					.boxed()
-			})
-		},
-		processor: {
-			let executor = executor.clone();
-
-			Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-				let executor = executor.clone();
-				executor
-					.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
-					.instrument(span.clone())
-					.boxed()
-			})
-		},
-	};
-
-	overseer_handle.initialize(config).await;
-
-	executor
 }

@@ -199,7 +199,6 @@ fn main() -> std::result::Result<(), Error> {
                 subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
                     config, true,
                 )
-                .await
                 .map(|full| full.task_manager)
             })?;
         }

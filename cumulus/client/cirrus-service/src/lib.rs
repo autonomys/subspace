@@ -19,6 +19,9 @@
 //! Provides functions for starting an executor node or a normal full node.
 
 use cirrus_client_executor::Executor;
+use cirrus_client_executor_gossip::ExecutorGossipParams;
+use cirrus_node_primitives::CollationGenerationConfig;
+use polkadot_overseer::Handle;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
@@ -33,12 +36,14 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
+use tracing::Instrument;
 
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
 	pub primary_chain_full_node: subspace_service::NewFull<Arc<RClient>>,
+	pub overseer_handle: Handle,
 	pub task_manager: &'a mut TaskManager,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
@@ -52,6 +57,7 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 	StartExecutorParams {
 		client,
 		spawner,
+		mut overseer_handle,
 		task_manager,
 		primary_chain_full_node,
 		transaction_pool,
@@ -97,34 +103,53 @@ where
 	let (execution_receipt_sender, execution_receipt_receiver) =
 		tracing_unbounded("execution_receipt_stream");
 
-	let overseer_handle = primary_chain_full_node
-		.overseer_handle
-		.clone()
-		.ok_or("Subspace full node did not provide an `OverseerHandle`!")?;
+	let executor = Executor::new(
+		primary_chain_full_node.client.clone(),
+		client,
+		spawner,
+		overseer_handle.clone(),
+		transaction_pool,
+		Arc::new(bundle_sender),
+		Arc::new(execution_receipt_sender),
+		backend,
+		code_executor,
+		is_authority,
+	);
 
-	let executor =
-		cirrus_client_executor::start_executor(cirrus_client_executor::StartExecutorParams {
-			client,
-			overseer_handle,
-			spawner,
-			primary_chain_client: primary_chain_full_node.client.clone(),
-			transaction_pool,
-			bundle_sender,
-			execution_receipt_sender,
-			backend,
-			code_executor,
-			is_authority,
-		})
-		.await;
+	let span = tracing::Span::current();
+	let config = CollationGenerationConfig {
+		bundler: {
+			let executor = executor.clone();
+			let span = span.clone();
 
-	let executor_gossip = cirrus_client_executor_gossip::start_gossip_worker(
-		cirrus_client_executor_gossip::ExecutorGossipParams {
+			Box::new(move |primary_hash, slot_info| {
+				let executor = executor.clone();
+				Box::pin(executor.produce_bundle(primary_hash, slot_info).instrument(span.clone()))
+			})
+		},
+		processor: {
+			let executor = executor.clone();
+
+			Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+				let executor = executor.clone();
+				Box::pin(
+					executor
+						.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+						.instrument(span.clone()),
+				)
+			})
+		},
+	};
+
+	overseer_handle.initialize(config).await;
+
+	let executor_gossip =
+		cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
 			network,
 			executor: executor.clone(),
 			bundle_receiver,
 			execution_receipt_receiver,
-		},
-	);
+		});
 	task_manager
 		.spawn_essential_handle()
 		.spawn_blocking("cirrus-gossip", None, executor_gossip);
