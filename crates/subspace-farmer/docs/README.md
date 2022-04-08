@@ -14,3 +14,12 @@ solution range. In order to find solution we derive local challenge as our targe
 query in RocksDB. For that we interpret target as 64-bit unsigned integer, and find all of the
 keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
 converted back to bytes.
+
+## Table of contents
+
+- [Multi replica farming](./multi_farming.md)
+- [Single replica farming](./farming.md)
+- [Single replica plotting](./plotting.md)
+- [Plot internals](./plot.md)
+- [Object mappings](./object_mappings.md)
+- [Commitments](./commitments.md)
