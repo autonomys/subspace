@@ -521,10 +521,15 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     }
 }
 
+parameter_types! {
+    pub const MaxFeeds: u32 = 10;
+}
+
 impl pallet_feeds::Config for Runtime {
     type Event = Event;
     type FeedId = FeedId;
     type FeedProcessorKind = ();
+    type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
         _feed_processor_id: Self::FeedProcessorKind,
