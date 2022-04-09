@@ -1,7 +1,6 @@
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
-use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
@@ -53,7 +52,6 @@ async fn plotting_happy_path() {
     tokio::task::spawn_blocking(move || archiving.archive());
     let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     client.send_metadata(farmer_metadata).await;
 
@@ -64,7 +62,7 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(plot.clone(), commitments, object_mappings, farmer_metadata);
+    let farmer_data = FarmerData::new(plot.clone(), commitments, farmer_metadata);
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -170,7 +168,6 @@ async fn plotting_continue() {
     tokio::task::spawn_blocking(move || archiving.archive());
     let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     client.send_metadata(farmer_metadata).await;
 
@@ -181,12 +178,7 @@ async fn plotting_continue() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
@@ -243,12 +235,7 @@ async fn plotting_continue() {
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata.clone());
 
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
@@ -400,7 +387,6 @@ async fn plotting_piece_eviction() {
     tokio::task::spawn_blocking(move || archiving.archive());
     let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
@@ -424,12 +410,7 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings,
-        farmer_metadata,
-    );
+    let farmer_data = FarmerData::new(plot.clone(), commitments.clone(), farmer_metadata);
 
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: {

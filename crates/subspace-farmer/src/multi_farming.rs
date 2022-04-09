@@ -19,7 +19,8 @@ pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,
     plottings: Vec<Plotting>,
-    archiving: JoinHandle<()>,
+    archiving_handle: JoinHandle<()>,
+    update_object_mapping_handle: JoinHandle<()>,
 }
 
 async fn create_archiver(
@@ -142,7 +143,6 @@ impl MultiFarming {
             let farmer_data = FarmerData::new(
                 plot.clone(),
                 commitments,
-                object_mappings.clone(),
                 client
                     .farmer_metadata()
                     .await
@@ -164,13 +164,30 @@ impl MultiFarming {
             plottings.push(plotting_instance);
         }
 
-        let archiving = tokio::task::spawn_blocking(move || archiving.archive());
+        let archiving_handle = tokio::task::spawn_blocking(move || archiving.archive());
+        let update_object_mapping_handle = tokio::task::spawn_blocking({
+            let archived_segments_receiver = archived_segments_subscriber.subscribe();
+            let FarmerMetadata {
+                record_size,
+                recorded_history_segment_size,
+                ..
+            } = client
+                .farmer_metadata()
+                .await
+                .map_err(|error| anyhow!(error))?;
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            move || {
+                object_mappings
+                    .update_with_info_from_archiver(archived_segments_receiver, merkle_num_leaves)
+            }
+        });
 
         Ok(Self {
             plots: Arc::new(plots),
             farmings,
             plottings,
-            archiving,
+            archiving_handle,
+            update_object_mapping_handle,
         })
     }
 
@@ -197,7 +214,8 @@ impl MultiFarming {
         if let Some(res) = farming_plotting.next().await {
             res?;
         }
-        self.archiving.await?;
+        self.archiving_handle.await?;
+        self.update_object_mapping_handle.await?;
         Ok(())
     }
 }

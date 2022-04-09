@@ -1,11 +1,13 @@
 #[cfg(test)]
 mod tests;
 
+use log::error;
 use parity_scale_codec::{Decode, Encode};
 use rocksdb::DB;
 use std::path::Path;
 use std::sync::Arc;
-use subspace_core_primitives::objects::GlobalObject;
+use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use thiserror::Error;
 
@@ -59,4 +61,51 @@ impl ObjectMappings {
 
         Ok(())
     }
+
+    // TODO: This assumes fixed size segments, which might not be the case
+    pub fn update_with_info_from_archiver(
+        &self,
+        mut archived_segments_receiver: tokio::sync::broadcast::Receiver<Vec<ArchivedSegment>>,
+        merkle_num_leaves: u64,
+    ) {
+        let runtime_handle = tokio::runtime::Handle::current();
+        while let Ok(archived_segments) = runtime_handle.block_on(archived_segments_receiver.recv())
+        {
+            for archived_segment in archived_segments {
+                let ArchivedSegment {
+                    root_block,
+                    object_mapping,
+                    ..
+                } = archived_segment;
+                let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+                let object_mapping =
+                    create_global_object_mapping(piece_index_offset, object_mapping);
+                if let Err(error) = self.store(&object_mapping) {
+                    error!("Failed to store object mappings for pieces: {}", error);
+                }
+            }
+        }
+    }
+}
+
+fn create_global_object_mapping(
+    piece_index_offset: u64,
+    object_mapping: Vec<PieceObjectMapping>,
+) -> Vec<(Sha256Hash, GlobalObject)> {
+    object_mapping
+        .iter()
+        .enumerate()
+        .flat_map(move |(position, object_mapping)| {
+            object_mapping.objects.iter().map(move |piece_object| {
+                let PieceObject::V0 { hash, offset } = piece_object;
+                (
+                    *hash,
+                    GlobalObject::V0 {
+                        piece_index: piece_index_offset + position as u64,
+                        offset: *offset,
+                    },
+                )
+            })
+        })
+        .collect()
 }

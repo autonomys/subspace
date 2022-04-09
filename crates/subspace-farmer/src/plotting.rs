@@ -2,7 +2,6 @@
 mod tests;
 
 use crate::commitments::Commitments;
-use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
 use futures::channel::mpsc;
@@ -13,8 +12,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{PieceIndex, Sha256Hash};
+use subspace_core_primitives::PieceIndex;
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -50,21 +48,14 @@ pub struct Plotting {
 pub struct FarmerData {
     plot: Plot,
     commitments: Commitments,
-    object_mappings: ObjectMappings,
     metadata: FarmerMetadata,
 }
 
 impl FarmerData {
-    pub fn new(
-        plot: Plot,
-        commitments: Commitments,
-        object_mappings: ObjectMappings,
-        metadata: FarmerMetadata,
-    ) -> Self {
+    pub fn new(plot: Plot, commitments: Commitments, metadata: FarmerMetadata) -> Self {
         Self {
             plot,
             commitments,
-            object_mappings,
             metadata,
         }
     }
@@ -165,12 +156,9 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                     let ArchivedSegment {
                         root_block,
                         mut pieces,
-                        object_mapping,
+                        ..
                     } = archived_segment;
                     let piece_index_offset = merkle_num_leaves * root_block.segment_index();
-
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
 
                     // TODO: Batch encoding with more than 1 archived segment worth of data
                     if let Some(plot) = weak_plot.upgrade() {
@@ -207,9 +195,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                 }
                             }
                             Err(error) => error!("Failed to write encoded pieces: {}", error),
-                        }
-                        if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
-                            error!("Failed to store object mappings for pieces: {}", error);
                         }
                         let segment_index = root_block.segment_index();
                         last_root_block.replace(root_block);
@@ -337,26 +322,4 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     }
 
     Ok(())
-}
-
-fn create_global_object_mapping(
-    piece_index_offset: u64,
-    object_mapping: Vec<PieceObjectMapping>,
-) -> Vec<(Sha256Hash, GlobalObject)> {
-    object_mapping
-        .iter()
-        .enumerate()
-        .flat_map(move |(position, object_mapping)| {
-            object_mapping.objects.iter().map(move |piece_object| {
-                let PieceObject::V0 { hash, offset } = piece_object;
-                (
-                    *hash,
-                    GlobalObject::V0 {
-                        piece_index: piece_index_offset + position as u64,
-                        offset: *offset,
-                    },
-                )
-            })
-        })
-        .collect()
 }
