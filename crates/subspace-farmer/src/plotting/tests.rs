@@ -5,6 +5,7 @@ use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
+use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
@@ -33,20 +34,26 @@ async fn plotting_happy_path() {
 
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
-
     let address = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
-
     let client = MockRpc::new();
-
     let farmer_metadata = FarmerMetadata {
         confirmation_depth_k: 0,
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
     };
+
+    let archiver = Archiver::new(
+        farmer_metadata.record_size as usize,
+        farmer_metadata.recorded_history_segment_size as usize,
+    )
+    .unwrap();
+    let (archiving, new_block_sender, archived_segment_subscriber) =
+        Archiving::new(archiver, client.clone());
+    tokio::task::spawn_blocking(move || archiving.archive());
+    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
+    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     client.send_metadata(farmer_metadata).await;
 
@@ -83,6 +90,8 @@ async fn plotting_happy_path() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+        new_block_sender,
+        archived_segment_subscriber.subscribe(),
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -142,10 +151,6 @@ async fn plotting_continue() {
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
     let address = identity.public_key().to_bytes().into();
 
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
-    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
-
     let client = MockRpc::new();
 
     let farmer_metadata = FarmerMetadata {
@@ -154,6 +159,18 @@ async fn plotting_continue() {
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
     };
+
+    let archiver = Archiver::new(
+        farmer_metadata.record_size as usize,
+        farmer_metadata.recorded_history_segment_size as usize,
+    )
+    .unwrap();
+    let (archiving, new_block_sender, archived_segment_subscriber) =
+        Archiving::new(archiver, client.clone());
+    tokio::task::spawn_blocking(move || archiving.archive());
+    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
+    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
     client.send_metadata(farmer_metadata).await;
 
@@ -195,6 +212,8 @@ async fn plotting_continue() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+        new_block_sender.clone(),
+        archived_segment_subscriber.subscribe(),
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -221,7 +240,6 @@ async fn plotting_continue() {
     if let Err(e) = plotting_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
-
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
 
@@ -261,11 +279,38 @@ async fn plotting_continue() {
     // putting 250 milliseconds here to give plotter some time
     sleep(Duration::from_millis(250)).await;
 
+    let archiver = {
+        let last_root_block = plot.get_last_root_block().unwrap().unwrap();
+        let last_archived_block_number = last_root_block.last_archived_block().number;
+        let EncodedBlockWithObjectMapping {
+            block,
+            object_mapping,
+        } = client
+            .block_by_number(last_archived_block_number)
+            .await
+            .unwrap()
+            .unwrap();
+
+        Archiver::with_initial_state(
+            farmer_metadata.record_size as usize,
+            farmer_metadata.recorded_history_segment_size as usize,
+            last_root_block,
+            &block,
+            object_mapping,
+        )
+        .unwrap()
+    };
+    let (archiving, new_block_sender, archived_segment_subscriber) =
+        Archiving::new(archiver, client.clone());
+    tokio::task::spawn_blocking(move || archiving.archive());
+
     let plotting_instance = Plotting::start(
         farmer_data,
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+        new_block_sender.clone(),
+        archived_segment_subscriber.subscribe(),
     );
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
@@ -336,6 +381,23 @@ async fn plotting_piece_eviction() {
 
     let address = identity.public_key().to_bytes().into();
     let salt = Salt::default();
+    let client = MockRpc::new();
+
+    let farmer_metadata = FarmerMetadata {
+        confirmation_depth_k: 0,
+        record_size: RECORD_SIZE as u32,
+        recorded_history_segment_size: SEGMENT_SIZE as u32,
+        max_plot_size: u64::MAX,
+    };
+
+    let archiver = Archiver::new(
+        farmer_metadata.record_size as usize,
+        farmer_metadata.recorded_history_segment_size as usize,
+    )
+    .unwrap();
+    let (archiving, new_block_sender, archived_segment_subscriber) =
+        Archiving::new(archiver, client.clone());
+    tokio::task::spawn_blocking(move || archiving.archive());
     let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
@@ -401,6 +463,8 @@ async fn plotting_piece_eviction() {
         client.clone(),
         subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+        new_block_sender.clone(),
+        archived_segment_subscriber.subscribe(),
     );
 
     for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {

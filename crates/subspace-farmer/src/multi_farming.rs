@@ -1,13 +1,21 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::{atomic::AtomicU32, Arc},
+    time::Duration,
+};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::PublicKey;
+use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
+use tokio::task::JoinHandle;
 
 use crate::{
-    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
+    Archiving, Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting,
+    RpcClient, WsRpc,
 };
 
 /// Abstraction around having multiple plots, farmings and plottings
@@ -15,6 +23,70 @@ pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,
     plottings: Vec<Plotting>,
+    archiving: JoinHandle<()>,
+}
+
+async fn create_archiver(
+    client: WsRpc,
+    base_directory: impl AsRef<Path>,
+) -> anyhow::Result<Archiver> {
+    let first_plot = base_directory.as_ref().join("plot0");
+    let (plot_is_empty, maybe_last_root_block) = if first_plot.is_dir() {
+        let identity = Identity::open_or_create(&base_directory)?;
+        let public_key = identity.public_key().to_bytes().into();
+        let plot = Plot::open_or_create(first_plot, public_key, u64::MAX)?;
+
+        (plot.is_empty(), plot.get_last_root_block()?)
+    } else {
+        (true, None)
+    };
+    let FarmerMetadata {
+        record_size,
+        recorded_history_segment_size,
+        ..
+    } = client
+        .farmer_metadata()
+        .await
+        .map_err(|error| anyhow!(error))?;
+
+    if let Some(last_root_block) = maybe_last_root_block {
+        // Continuing from existing initial state
+        if plot_is_empty {
+            return Err(anyhow!("Plot is empty on restart, can't continue"));
+        }
+
+        let last_archived_block_number = last_root_block.last_archived_block().number;
+        info!("Last archived block {}", last_archived_block_number);
+
+        let maybe_last_archived_block = client
+            .block_by_number(last_archived_block_number)
+            .await
+            .map_err(|err| anyhow!("jsonrpsee error: {err}"))?;
+
+        match maybe_last_archived_block {
+                Some(EncodedBlockWithObjectMapping {
+                    block,
+                    object_mapping,
+                }) => Archiver::with_initial_state(
+                    record_size as usize,
+                    recorded_history_segment_size as usize,
+                    last_root_block,
+                    &block,
+                    object_mapping,
+                )
+                .context("Archiver instantiation error"),
+                None => return Err(anyhow!("Failed to get block {last_archived_block_number} from the chain, probably need to erase existing plot")),
+            }
+    } else {
+        // Starting from genesis
+        if !plot_is_empty {
+            // Restart before first block was archived, erase the plot
+            // TODO: Erase plot
+        }
+
+        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
+            .context("Archiver instantiation error")
+    }
 }
 
 impl MultiFarming {
@@ -27,6 +99,9 @@ impl MultiFarming {
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
     ) -> anyhow::Result<Self> {
+        let archiver = create_archiver(client.clone(), base_directory.as_ref()).await?;
+        let (archiving, new_block_to_archive_sender, archived_segments_subscriber) =
+            Archiving::new(archiver, client.clone());
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut plottings = Vec::with_capacity(plot_sizes.len());
@@ -41,6 +116,8 @@ impl MultiFarming {
                 object_mappings.clone(),
                 max_plot_pieces,
                 best_block_number_check_interval,
+                new_block_to_archive_sender.clone(),
+                archived_segments_subscriber.subscribe(),
             )
             .await?;
             plots.push(plot);
@@ -48,10 +125,13 @@ impl MultiFarming {
             plottings.push(plotting);
         }
 
+        let archiving = tokio::task::spawn_blocking(move || archiving.archive());
+
         Ok(Self {
             plots: Arc::new(plots),
             farmings,
             plottings,
+            archiving,
         })
     }
 
@@ -78,6 +158,7 @@ impl MultiFarming {
         if let Some(res) = farming_plotting.next().await {
             res?;
         }
+        self.archiving.await?;
         Ok(())
     }
 }
@@ -90,6 +171,8 @@ pub(crate) async fn farm_single_plot(
     object_mappings: ObjectMappings,
     max_plot_pieces: u64,
     best_block_number_check_interval: Duration,
+    new_block_to_archive_sender: std::sync::mpsc::SyncSender<Arc<AtomicU32>>,
+    archived_segments_receiver: tokio::sync::broadcast::Receiver<Vec<ArchivedSegment>>,
 ) -> anyhow::Result<(Plot, Plotting, Farming)> {
     let identity = Identity::open_or_create(&base_directory)?;
     let public_key = identity.public_key().to_bytes().into();
@@ -140,6 +223,8 @@ pub(crate) async fn farm_single_plot(
         client,
         subspace_codec,
         best_block_number_check_interval,
+        new_block_to_archive_sender,
+        archived_segments_receiver,
     );
 
     Ok((plot, plotting_instance, farming_instance))
