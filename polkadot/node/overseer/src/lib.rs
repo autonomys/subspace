@@ -318,8 +318,8 @@ where
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			let update = ActivatedLeaf { hash, number };
-			if let Err(error) = self.update_activated_leave(update).await {
+			let updated_leaf = ActivatedLeaf { hash, number };
+			if let Err(error) = self.on_activated_leaf(updated_leaf).await {
 				tracing::error!(
 					target: LOG_TARGET,
 					"Collation generation processing error: {error}"
@@ -340,21 +340,20 @@ where
 				Event::BlockImported(block) => {
 					self.block_imported(block).await?;
 				},
-				Event::NewSlot(slot_info) => {
-					if let Err(error) = self.update_new_slot(slot_info).await {
+				Event::NewSlot(slot_info) =>
+					if let Err(error) = self.on_new_slot(slot_info).await {
 						tracing::error!(
 							target: LOG_TARGET,
 							"Collation generation processing error: {error}"
 						);
-					}
-				},
+					},
 			}
 		}
 
 		Ok(())
 	}
 
-	async fn update_activated_leave(&self, activated_leaf: ActivatedLeaf) -> Result<(), ApiError> {
+	async fn on_activated_leaf(&self, activated_leaf: ActivatedLeaf) -> Result<(), ApiError> {
 		// follow the procedure from the guide
 		if let Some(config) = &self.config {
 			// TODO: invoke this on finalized block?
@@ -369,7 +368,7 @@ where
 		Ok(())
 	}
 
-	async fn update_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
+	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
 		if let Some(config) = &self.config {
 			let client = &self.primary_chain_client;
 			let best_hash = client.info().best_hash;
@@ -442,13 +441,13 @@ where
 			},
 		};
 
-		let update = ActivatedLeaf { hash: block.hash, number: block.number };
+		let updated_leaf = ActivatedLeaf { hash: block.hash, number: block.number };
 
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
 		}
 
-		if let Err(error) = self.update_activated_leave(update).await {
+		if let Err(error) = self.on_activated_leaf(updated_leaf).await {
 			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 
