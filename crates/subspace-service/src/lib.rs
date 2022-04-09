@@ -18,6 +18,7 @@
 
 pub mod rpc;
 
+use futures::channel::mpsc;
 use polkadot_overseer::{BlockInfo, Handle, Overseer};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
@@ -29,12 +30,13 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ConstructRuntimeApi, TransactionFor};
+use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
+use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::{
     opaque::{Block, BlockId},
     AccountId, Balance, Index as Nonce,
@@ -343,6 +345,9 @@ pub struct NewFull<C> {
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// Block signing stream.
     pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    /// Imported block stream.
+    pub imported_block_notification_stream:
+        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
 }
 
 /// Builds a new service for a full client.
@@ -396,6 +401,7 @@ where
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
+    let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
 
     if config.role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -512,6 +518,7 @@ where
         backend,
         new_slot_notification_stream,
         block_signing_notification_stream,
+        imported_block_notification_stream,
     })
 }
 
@@ -522,6 +529,10 @@ pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
     task_manager: &TaskManager,
     select_chain: SC,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    imported_block_notification_stream: SubspaceNotificationStream<(
+        NumberFor<Block>,
+        mpsc::Sender<RootBlock>,
+    )>,
 ) -> Result<Handle, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -561,6 +572,11 @@ where
 
                 let forward = polkadot_overseer::forward_events(
                     client,
+                    Box::pin(
+                        imported_block_notification_stream
+                            .subscribe()
+                            .then(|(block_number, _)| async move { block_number }),
+                    ),
                     Box::pin(new_slot_notification_stream.subscribe().then(
                         |slot_notification| async move {
                             let slot_info = slot_notification.new_slot_info;

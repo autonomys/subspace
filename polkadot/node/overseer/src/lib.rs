@@ -25,10 +25,13 @@ use std::{
 
 use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
 
-use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
+use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_runtime::generic::DigestItem;
+use sp_runtime::{
+	generic::DigestItem,
+	traits::{Header as HeaderT, NumberFor},
+};
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
@@ -247,19 +250,27 @@ enum Event {
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<P: BlockchainEvents<Block>>(
-	client: Arc<P>,
+pub async fn forward_events<C: HeaderBackend<Block>>(
+	client: Arc<C>,
+	mut imports: impl FusedStream<Item = NumberFor<Block>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: Handle,
 ) {
-	let mut imports = client.import_notification_stream();
-
 	loop {
 		select! {
 			i = imports.next() => {
 				match i {
-					Some(block) => {
-						handle.block_imported(block.into()).await;
+					Some(block_number) => {
+						let header = client
+							.header(BlockId::Number(block_number))
+							.expect("Header of imported block must exist; qed")
+							.expect("Header of imported block must exist; qed");
+						let block = BlockInfo {
+							hash: header.hash(),
+							parent_hash: *header.parent_hash(),
+							number: *header.number(),
+						};
+						handle.block_imported(block).await;
 					}
 					None => break,
 				}

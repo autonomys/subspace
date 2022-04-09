@@ -198,6 +198,7 @@ where
 		&primary_chain_full_node.task_manager,
 		primary_chain_full_node.select_chain.clone(),
 		primary_chain_full_node.new_slot_notification_stream.clone(),
+		primary_chain_full_node.imported_block_notification_stream.clone(),
 	)
 	.await
 	.map_err(|error| sc_service::Error::Other(format!("Failed to create overseer: {}", error)))?;
