@@ -9,8 +9,8 @@ use sp_runtime::{
 };
 use std::time;
 
+use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
-use polkadot_overseer::ExecutorSlotInfo;
 use sp_executor::{Bundle, BundleHeader, OpaqueBundle};
 
 use subspace_runtime_primitives::Hash as PHash;

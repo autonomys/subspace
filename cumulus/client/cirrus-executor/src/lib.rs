@@ -19,16 +19,18 @@
 mod aux_schema;
 mod bundler;
 mod merkle_tree;
+mod overseer;
 mod processor;
 #[cfg(test)]
 mod tests;
 
+use crate::overseer::CollationGenerationConfig;
+pub use crate::overseer::{forward_events, BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::FutureExt;
-use polkadot_overseer::{CollationGenerationConfig, ExecutorSlotInfo, OverseerHandle};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;

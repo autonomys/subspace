@@ -18,9 +18,8 @@
 //!
 //! Provides functions for starting an executor node or a normal full node.
 
-use cirrus_client_executor::Executor;
+use cirrus_client_executor::{Executor, OverseerHandle};
 use cirrus_client_executor_gossip::ExecutorGossipParams;
-use polkadot_overseer::OverseerHandle;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };

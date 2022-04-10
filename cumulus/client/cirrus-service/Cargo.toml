@@ -30,7 +30,6 @@ tracing = "0.1.32"
 cirrus-client-executor = { path = "../cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-primitives = { path = "../../primitives" }
-polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 
 # Subspace
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

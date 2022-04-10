@@ -18,9 +18,9 @@
 
 pub mod rpc;
 
+use cirrus_client_executor::{BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
 use futures::channel::mpsc;
 use futures::{pin_mut, select, FutureExt, StreamExt};
-use polkadot_overseer::{BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -568,7 +568,7 @@ where
             "collation-generation-subsystem",
             Some("collation-generation-subsystem"),
             Box::pin(async move {
-                let forward = polkadot_overseer::forward_events(
+                let forward = cirrus_client_executor::forward_events(
                     client,
                     Box::pin(
                         imported_block_notification_stream
