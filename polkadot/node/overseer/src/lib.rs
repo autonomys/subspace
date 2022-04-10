@@ -353,6 +353,8 @@ where
 						);
 					}
 				},
+				// TODO: we still need the context of block, e.g., executor gossips no message
+				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
 					if !config_initialized {
 						if self.config.is_some() {
