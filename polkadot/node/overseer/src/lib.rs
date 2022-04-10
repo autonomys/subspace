@@ -25,10 +25,13 @@ use std::{
 
 use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
 
-use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
+use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_runtime::generic::DigestItem;
+use sp_runtime::{
+	generic::DigestItem,
+	traits::{Header as HeaderT, NumberFor},
+};
 
 use cirrus_node_primitives::{CollationGenerationConfig, ExecutorSlotInfo};
 use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof};
@@ -247,19 +250,27 @@ enum Event {
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<P: BlockchainEvents<Block>>(
-	client: Arc<P>,
+pub async fn forward_events<C: HeaderBackend<Block>>(
+	client: Arc<C>,
+	mut imports: impl FusedStream<Item = NumberFor<Block>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: Handle,
 ) {
-	let mut imports = client.import_notification_stream();
-
 	loop {
 		select! {
 			i = imports.next() => {
 				match i {
-					Some(block) => {
-						handle.block_imported(block.into()).await;
+					Some(block_number) => {
+						let header = client
+							.header(BlockId::Number(block_number))
+							.expect("Header of imported block must exist; qed")
+							.expect("Header of imported block must exist; qed");
+						let block = BlockInfo {
+							hash: header.hash(),
+							parent_hash: *header.parent_hash(),
+							number: *header.number(),
+						};
+						handle.block_imported(block).await;
 					}
 					None => break,
 				}
@@ -318,14 +329,19 @@ where
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			let update = ActivatedLeaf { hash, number };
-			if let Err(error) = self.update_activated_leave(update).await {
+			let updated_leaf = ActivatedLeaf { hash, number };
+			if let Err(error) = self.on_activated_leaf(updated_leaf).await {
 				tracing::error!(
 					target: LOG_TARGET,
 					"Collation generation processing error: {error}"
 				);
 			}
 		}
+
+		// TODO: remove this once the config can be initialized in [`Self::new`].
+		let mut config_initialized = false;
+		// Only a few dozens of backlog blocks.
+		let mut imports_backlog = Vec::new();
 
 		while let Some(msg) = self.events_rx.next().await {
 			match msg {
@@ -337,24 +353,40 @@ where
 						);
 					}
 				},
+				// TODO: we still need the context of block, e.g., executor gossips no message
+				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
-					self.block_imported(block).await?;
+					if !config_initialized {
+						if self.config.is_some() {
+							// Process the backlog first once the config has been initialized.
+							if !imports_backlog.is_empty() {
+								for b in imports_backlog.drain(..) {
+									self.block_imported(b).await?;
+								}
+							}
+							config_initialized = true;
+							self.block_imported(block).await?;
+						} else {
+							imports_backlog.push(block);
+						}
+					} else {
+						self.block_imported(block).await?;
+					}
 				},
-				Event::NewSlot(slot_info) => {
-					if let Err(error) = self.update_new_slot(slot_info).await {
+				Event::NewSlot(slot_info) =>
+					if let Err(error) = self.on_new_slot(slot_info).await {
 						tracing::error!(
 							target: LOG_TARGET,
 							"Collation generation processing error: {error}"
 						);
-					}
-				},
+					},
 			}
 		}
 
 		Ok(())
 	}
 
-	async fn update_activated_leave(&self, activated_leaf: ActivatedLeaf) -> Result<(), ApiError> {
+	async fn on_activated_leaf(&self, activated_leaf: ActivatedLeaf) -> Result<(), ApiError> {
 		// follow the procedure from the guide
 		if let Some(config) = &self.config {
 			// TODO: invoke this on finalized block?
@@ -369,7 +401,7 @@ where
 		Ok(())
 	}
 
-	async fn update_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
+	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
 		if let Some(config) = &self.config {
 			let client = &self.primary_chain_client;
 			let best_hash = client.info().best_hash;
@@ -442,13 +474,13 @@ where
 			},
 		};
 
-		let update = ActivatedLeaf { hash: block.hash, number: block.number };
+		let updated_leaf = ActivatedLeaf { hash: block.hash, number: block.number };
 
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(1), number);
 		}
 
-		if let Err(error) = self.update_activated_leave(update).await {
+		if let Err(error) = self.on_activated_leaf(updated_leaf).await {
 			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 
