@@ -338,6 +338,11 @@ where
 			}
 		}
 
+		// TODO: remove this once the config can be initialized in [`Self::new`].
+		let mut config_initialized = false;
+		// Only a few dozens of backlog blocks.
+		let mut imports_backlog = Vec::new();
+
 		while let Some(msg) = self.events_rx.next().await {
 			match msg {
 				Event::MsgToSubsystem(message) => {
@@ -349,7 +354,22 @@ where
 					}
 				},
 				Event::BlockImported(block) => {
-					self.block_imported(block).await?;
+					if !config_initialized {
+						if self.config.is_some() {
+							// Process the backlog first once the config has been initialized.
+							if !imports_backlog.is_empty() {
+								for b in imports_backlog.drain(..) {
+									self.block_imported(b).await?;
+								}
+							}
+							config_initialized = true;
+							self.block_imported(block).await?;
+						} else {
+							imports_backlog.push(block);
+						}
+					} else {
+						self.block_imported(block).await?;
+					}
 				},
 				Event::NewSlot(slot_info) =>
 					if let Err(error) = self.on_new_slot(slot_info).await {
