@@ -86,7 +86,10 @@ impl Action {
 }
 
 /// Handler for the messages received from the executor gossip network.
-pub trait GossipMessageHandler<Block: BlockT> {
+pub trait GossipMessageHandler<Block>
+where
+	Block: BlockT,
+{
 	/// Error type.
 	type Error: Debug;
 
@@ -101,14 +104,23 @@ pub trait GossipMessageHandler<Block: BlockT> {
 }
 
 /// Validator for the gossip messages.
-pub struct GossipValidator<Block: BlockT, Executor> {
+pub struct GossipValidator<Block, Executor>
+where
+	Block: BlockT,
+
+	Executor: GossipMessageHandler<Block>,
+{
 	topic: Block::Hash,
 	executor: Executor,
 	next_rebroadcast: Mutex<Instant>,
 	known_rebroadcasted: RwLock<HashSet<MessageHash>>,
 }
 
-impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block, Executor> {
+impl<Block, Executor> GossipValidator<Block, Executor>
+where
+	Block: BlockT,
+	Executor: GossipMessageHandler<Block>,
+{
 	pub fn new(executor: Executor) -> Self {
 		Self {
 			topic: topic::<Block>(),
@@ -161,8 +173,10 @@ impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipValidator<Block
 	}
 }
 
-impl<Block: BlockT, Executor: GossipMessageHandler<Block> + Send + Sync> Validator<Block>
-	for GossipValidator<Block, Executor>
+impl<Block, Executor> Validator<Block> for GossipValidator<Block, Executor>
+where
+	Block: BlockT,
+	Executor: GossipMessageHandler<Block> + Send + Sync,
 {
 	fn new_peer(
 		&self,

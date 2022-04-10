@@ -32,5 +32,4 @@ cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-primitives = { path = "../../primitives" }
 
 # Subspace
-subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../../crates/subspace-service" }

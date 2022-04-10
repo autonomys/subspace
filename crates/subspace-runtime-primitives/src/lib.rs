@@ -146,9 +146,6 @@ pub mod opaque {
             (header, extrinsics).encode()
         }
     }
-
-    /// Opaque block identifier type.
-    pub type BlockId = generic::BlockId<Block>;
 }
 
 /// A trait for finding the address for a block reward based on the `PreRuntime` digests contained within it.

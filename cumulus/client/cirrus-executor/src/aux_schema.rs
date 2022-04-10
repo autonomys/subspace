@@ -90,10 +90,14 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 }
 
 /// Load the execution receipt associated with a block.
-pub(super) fn load_execution_receipt<Backend: AuxStore, Block: BlockT>(
+pub(super) fn load_execution_receipt<Block, Backend>(
 	backend: &Backend,
 	block_hash: Block::Hash,
-) -> ClientResult<Option<ExecutionReceipt<Block::Hash>>> {
+) -> ClientResult<Option<ExecutionReceipt<Block::Hash>>>
+where
+	Block: BlockT,
+	Backend: AuxStore,
+{
 	load_decode(backend, execution_receipt_key(block_hash).as_slice())
 }
 
@@ -139,7 +143,7 @@ mod tests {
 		};
 
 		let receipt_at =
-			|block_hash: Hash| load_execution_receipt::<_, Block>(&client, block_hash).unwrap();
+			|block_hash: Hash| load_execution_receipt::<Block, _>(&client, block_hash).unwrap();
 
 		let write_receipt_at = |hash: Hash, number: BlockNumber, receipt: &ExecutionReceipt| {
 			write_execution_receipt::<_, Block>(&client, hash, number, receipt).unwrap()

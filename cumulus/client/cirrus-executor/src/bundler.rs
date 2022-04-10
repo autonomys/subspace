@@ -17,10 +17,11 @@ use subspace_runtime_primitives::Hash as PHash;
 
 use super::{Executor, LOG_TARGET};
 
-impl<Block, Client, TransactionPool, Backend, E>
-	Executor<Block, Client, TransactionPool, Backend, E>
+impl<Block, RBlock, Client, TransactionPool, Backend, E>
+	Executor<Block, RBlock, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
+	RBlock: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>

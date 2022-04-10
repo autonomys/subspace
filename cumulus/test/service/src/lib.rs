@@ -38,6 +38,7 @@ use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
+use subspace_runtime_primitives::opaque::Block as PBlock;
 use substrate_test_client::{
 	BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
@@ -60,6 +61,7 @@ pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 /// Secondary executor for the test service.
 pub type Executor = cirrus_client_executor::Executor<
 	Block,
+	PBlock,
 	Client,
 	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
 	Backend,

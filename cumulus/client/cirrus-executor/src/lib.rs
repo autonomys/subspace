@@ -50,31 +50,39 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::{opaque::Block as PBlock, Hash as PHash};
+use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// Type alias for APIs required from primary chain client
-pub trait PrimaryChainClient:
-	HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+pub trait PrimaryChainClient<Block>:
+	HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
+where
+	Block: BlockT,
 {
 }
 
-impl<T> PrimaryChainClient for T where
-	T: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static
+impl<Block, T> PrimaryChainClient<Block> for T
+where
+	Block: BlockT,
+	T: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
 {
 }
 
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
+pub struct Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+where
+	Block: BlockT,
+	PBlock: BlockT,
+{
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<dyn PrimaryChainClient>,
+	primary_chain_client: Arc<dyn PrimaryChainClient<PBlock>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle,
+	overseer_handle: OverseerHandle<PBlock>,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
@@ -83,8 +91,11 @@ pub struct Executor<Block: BlockT, Client, TransactionPool, Backend, E> {
 	is_authority: bool,
 }
 
-impl<Block: BlockT, Client, TransactionPool, Backend, E> Clone
-	for Executor<Block, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, TransactionPool, Backend, E> Clone
+	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+where
+	Block: BlockT,
+	PBlock: BlockT,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -107,10 +118,11 @@ type TransactionFor<Backend, Block> =
 		HashFor<Block>,
 	>>::Transaction;
 
-impl<Block, Client, TransactionPool, Backend, E>
-	Executor<Block, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
+	PBlock: BlockT,
 	Client:
 		HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
 	Client::Api: SecondaryApi<Block, AccountId>
@@ -132,10 +144,10 @@ where
 	/// Create a new instance.
 	#[allow(clippy::too_many_arguments)]
 	pub async fn new(
-		primary_chain_client: Arc<dyn PrimaryChainClient>,
+		primary_chain_client: Arc<dyn PrimaryChainClient<PBlock>>,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
-		overseer_handle: OverseerHandle,
+		overseer_handle: OverseerHandle<PBlock>,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
@@ -372,12 +384,15 @@ where
 
 	async fn wait_for_local_receipt(
 		&self,
-		block_hash: Block::Hash,
-		block_number: <Block::Header as HeaderT>::Number,
+		secondary_block_hash: Block::Hash,
+		secondary_block_number: <Block::Header as HeaderT>::Number,
 		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
 	) -> Result<(), GossipMessageError> {
 		loop {
-			match crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_hash) {
+			match crate::aux_schema::load_execution_receipt::<Block, _>(
+				&*self.client,
+				secondary_block_hash,
+			) {
 				Ok(Some(local_receipt)) =>
 					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
 				Ok(None) => {
@@ -387,11 +402,11 @@ where
 					// The local client has moved to the next block, that means the receipt
 					// of `block_hash` received from the network does not match the local one,
 					// we should just send back the local receipt at the same height.
-					if self.client.info().best_number >= block_number {
+					if self.client.info().best_number >= secondary_block_number {
 						let local_block_hash = self
 							.client
-							.expect_block_hash_from_id(&BlockId::Number(block_number))?;
-						let local_receipt_result = aux_schema::load_execution_receipt::<_, Block>(
+							.expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
+						let local_receipt_result = aux_schema::load_execution_receipt::<Block, _>(
 							&*self.client,
 							local_block_hash,
 						)?
@@ -470,10 +485,11 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
-impl<Block, Client, TransactionPool, Backend, E> GossipMessageHandler<Block>
-	for Executor<Block, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, TransactionPool, Backend, E> GossipMessageHandler<Block>
+	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
+	PBlock: BlockT,
 	Client: HeaderBackend<Block>
 		+ BlockBackend<Block>
 		+ ProvideRuntimeApi<Block>
@@ -547,21 +563,31 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		execution_receipt: &ExecutionReceipt<<Block as BlockT>::Hash>,
+		execution_receipt: &ExecutionReceipt<Block::Hash>,
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
 
 		let block_hash = execution_receipt.secondary_hash;
-		let block_number = self
-			.primary_chain_client
-			.block_number_from_id(&BlockId::Hash(execution_receipt.primary_hash))?
-			.ok_or_else(|| {
-				sp_blockchain::Error::Backend(format!(
-					"Primary block number not found for {:?}",
-					execution_receipt.primary_hash
-				))
-			})?
-			.into();
+		let primary_chain_primary_hash =
+			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
+				.expect("Hash type must be correct");
+
+		let block_number = TryInto::<BlockNumber>::try_into(
+			self.primary_chain_client
+				.block_number_from_id(&BlockId::Hash(primary_chain_primary_hash))?
+				.ok_or_else(|| {
+					sp_blockchain::Error::Backend(format!(
+						"Primary block number not found for {:?}",
+						execution_receipt.primary_hash
+					))
+				})?,
+		)
+		.unwrap_or_else(|_error| {
+			panic!(
+				"Block number must be exactly the same size for both primary and secondary chains; qed"
+			)
+		})
+		.into();
 
 		let best_number = self.client.info().best_number;
 
@@ -572,7 +598,7 @@ where
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
-			crate::aux_schema::load_execution_receipt::<_, Block>(&*self.client, block_hash)?
+			crate::aux_schema::load_execution_receipt::<Block, _>(&*self.client, block_hash)?
 		{
 			local_receipt
 		} else {

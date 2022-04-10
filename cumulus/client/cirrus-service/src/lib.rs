@@ -33,14 +33,23 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Parameters given to [`start_executor`].
-pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, Backend, E> {
+pub struct StartExecutorParams<
+	'a,
+	Block: BlockT,
+	PBlock: BlockT,
+	Client,
+	Spawner,
+	PClient,
+	TP,
+	Backend,
+	E,
+> {
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
-	pub primary_chain_full_node: subspace_service::NewFull<Arc<RClient>>,
-	pub overseer_handle: OverseerHandle,
+	pub primary_chain_full_node: subspace_service::NewFull<Arc<PClient>>,
+	pub overseer_handle: OverseerHandle<PBlock>,
 	pub task_manager: &'a mut TaskManager,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
@@ -50,7 +59,7 @@ pub struct StartExecutorParams<'a, Block: BlockT, Client, Spawner, RClient, TP, 
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>(
+pub async fn start_executor<'a, Block, PBlock, Client, Backend, Spawner, PClient, TP, E>(
 	StartExecutorParams {
 		client,
 		spawner,
@@ -62,10 +71,11 @@ pub async fn start_executor<'a, Block, Client, Backend, Spawner, RClient, TP, E>
 		backend,
 		code_executor,
 		is_authority,
-	}: StartExecutorParams<'a, Block, Client, Spawner, RClient, TP, Backend, E>,
-) -> sc_service::error::Result<Executor<Block, Client, TP, Backend, E>>
+	}: StartExecutorParams<'a, Block, PBlock, Client, Spawner, PClient, TP, Backend, E>,
+) -> sc_service::error::Result<Executor<Block, PBlock, Client, TP, Backend, E>>
 where
 	Block: BlockT,
+	PBlock: BlockT,
 	Client: Finalizer<Block, Backend>
 		+ UsageProvider<Block>
 		+ HeaderBackend<Block>
@@ -82,7 +92,7 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	RClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,

@@ -26,14 +26,14 @@ use sc_client_api::BlockBackend;
 use sc_consensus_subspace::{
     notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
 };
-use sp_api::ProvideRuntimeApi;
+use sp_api::{BlockId, ProvideRuntimeApi};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
 use std::sync::Arc;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
-use subspace_runtime_primitives::opaque::{Block, BlockId};
+use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
 use zeroize::Zeroizing;

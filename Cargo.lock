@@ -912,7 +912,6 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-trie",
- "subspace-runtime-primitives",
  "subspace-service",
  "tracing",
 ]
@@ -1013,6 +1012,7 @@ dependencies = [
  "sp-runtime",
  "sp-timestamp",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
