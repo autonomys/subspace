@@ -24,29 +24,29 @@ mod processor;
 #[cfg(test)]
 mod tests;
 
-use crate::overseer::CollationGenerationConfig;
-pub use crate::overseer::{forward_events, BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
+pub use crate::overseer::ExecutorSlotInfo;
+use crate::overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle};
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::FutureExt;
+use futures::{pin_mut, select, FutureExt, Stream, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::BlockStatus;
+use sp_consensus::{BlockStatus, SelectChain};
 use sp_core::{
-	traits::{CodeExecutor, SpawnNamed},
+	traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed},
 	H256,
 };
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, FraudProof,
+	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, FraudProof,
 	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
 };
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, HashFor, Header as HeaderT, Zero},
+	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
@@ -58,7 +58,7 @@ use tracing::Instrument;
 const LOG_TARGET: &str = "cirrus::executor";
 
 /// Type alias for APIs required from primary chain client
-pub trait PrimaryChainClient<Block>:
+trait PrimaryChainClient<Block>:
 	HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
 where
 	Block: BlockT,
@@ -143,18 +143,78 @@ where
 {
 	/// Create a new instance.
 	#[allow(clippy::too_many_arguments)]
-	pub async fn new(
-		primary_chain_client: Arc<dyn PrimaryChainClient<PBlock>>,
+	pub async fn new<PClient, SE, SC, IBNS, NSNS>(
+		primary_chain_client: Arc<PClient>,
+		spawn_essential: &SE,
+		select_chain: &SC,
+		imported_block_notification_stream: IBNS,
+		new_slot_notification_stream: NSNS,
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
-		overseer_handle: OverseerHandle<PBlock>,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
 		is_authority: bool,
-	) -> Self {
+	) -> Result<Self, sp_consensus::Error>
+	where
+		PClient: HeaderBackend<PBlock>
+			+ BlockBackend<PBlock>
+			+ ProvideRuntimeApi<PBlock>
+			+ Send
+			+ 'static
+			+ Sync,
+		PClient::Api: ExecutorApi<PBlock>,
+		SE: SpawnEssentialNamed,
+		SC: SelectChain<PBlock>,
+		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+		NSNS: Stream<Item = ExecutorSlotInfo> + Send + 'static,
+	{
+		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
+
+		let overseer_handle = {
+			let (overseer, overseer_handle) = Overseer::new(
+				primary_chain_client.clone(),
+				active_leaves
+					.into_iter()
+					.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
+					.collect(),
+				Default::default(),
+			);
+
+			{
+				let primary_chain_client = primary_chain_client.clone();
+				let overseer_handle = overseer_handle.clone();
+				spawn_essential.spawn_essential_blocking(
+					"collation-generation-subsystem",
+					Some("collation-generation-subsystem"),
+					Box::pin(async move {
+						let forward = overseer::forward_events(
+							primary_chain_client,
+							Box::pin(imported_block_notification_stream.fuse()),
+							Box::pin(new_slot_notification_stream.fuse()),
+							overseer_handle,
+						);
+
+						let forward = forward.fuse();
+						let overseer_fut = overseer.run().fuse();
+
+						pin_mut!(overseer_fut);
+						pin_mut!(forward);
+
+						select! {
+							_ = forward => (),
+							_ = overseer_fut => (),
+							complete => (),
+						}
+					}),
+				);
+			}
+
+			overseer_handle
+		};
+
 		let mut executor = Self {
 			primary_chain_client,
 			client,
@@ -202,7 +262,7 @@ where
 
 		executor.overseer_handle.initialize(config).await;
 
-		executor
+		Ok(executor)
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -748,4 +808,51 @@ where
 			Ok(Action::RebroadcastExecutionReceipt)
 		}
 	}
+}
+
+/// Returns the active leaves the overseer should start with.
+async fn active_leaves<PBlock, PClient, SC>(
+	client: &PClient,
+	select_chain: &SC,
+) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
+where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+	SC: SelectChain<PBlock>,
+{
+	let best_block = select_chain.best_chain().await?;
+
+	let mut leaves = select_chain
+		.leaves()
+		.await
+		.unwrap_or_default()
+		.into_iter()
+		.filter_map(|hash| {
+			let number = client.number(hash).ok()??;
+
+			// Only consider leaves that are in maximum an uncle of the best block.
+			if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
+			{
+				return None
+			};
+
+			let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
+
+			Some(BlockInfo { hash, parent_hash, number })
+		})
+		.collect::<Vec<_>>();
+
+	// Sort by block number and get the maximum number of leaves
+	leaves.sort_by_key(|b| b.number);
+
+	leaves.push(BlockInfo {
+		hash: best_block.hash(),
+		parent_hash: *best_block.parent_hash(),
+		number: *best_block.number(),
+	});
+
+	/// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+	const MAX_ACTIVE_LEAVES: usize = 4;
+
+	Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }

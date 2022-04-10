@@ -896,6 +896,7 @@ dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
  "cirrus-primitives",
+ "futures 0.3.21",
  "parking_lot 0.12.0",
  "sc-client-api",
  "sc-consensus",
@@ -910,6 +911,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "sp-trie",
  "subspace-service",
@@ -5166,6 +5168,7 @@ dependencies = [
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
+ "futures 0.3.21",
  "hex-literal",
  "jsonrpc-core",
  "log",
@@ -8617,7 +8620,6 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "cirrus-client-executor",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",

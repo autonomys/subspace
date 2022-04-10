@@ -7,6 +7,9 @@ use std::sync::Arc;
 use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
 
 // Substrate Imports
+use cirrus_client_executor::ExecutorSlotInfo;
+use cirrus_client_service::StartExecutorParams;
+use futures::StreamExt;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClient, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
@@ -220,16 +223,6 @@ where
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
 
-	let overseer_handle = subspace_service::create_overseer(
-		primary_chain_full_node.client.clone(),
-		&primary_chain_full_node.task_manager,
-		primary_chain_full_node.select_chain.clone(),
-		primary_chain_full_node.new_slot_notification_stream.clone(),
-		primary_chain_full_node.imported_block_notification_stream.clone(),
-	)
-	.await
-	.map_err(|error| sc_service::Error::Other(format!("Failed to create overseer: {}", error)))?;
-
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
@@ -278,13 +271,27 @@ where
 
 	let spawner = task_manager.spawn_handle();
 
-	let params = cirrus_client_service::StartExecutorParams {
+	let params = StartExecutorParams {
+		primary_chain_client: primary_chain_full_node.client.clone(),
+		spawn_essential: &task_manager.spawn_essential_handle(),
+		select_chain: &primary_chain_full_node.select_chain,
+		imported_block_notification_stream: primary_chain_full_node
+			.imported_block_notification_stream
+			.subscribe()
+			.then(|(block_number, _)| async move { block_number }),
+		new_slot_notification_stream: primary_chain_full_node
+			.new_slot_notification_stream
+			.subscribe()
+			.then(|slot_notification| async move {
+				let slot_info = slot_notification.new_slot_info;
+				ExecutorSlotInfo {
+					slot: slot_info.slot,
+					global_challenge: slot_info.global_challenge,
+				}
+			}),
 		client: client.clone(),
-		task_manager: &mut task_manager,
-		primary_chain_full_node,
 		spawner: Box::new(spawner),
 		transaction_pool,
-		overseer_handle,
 		network,
 		backend,
 		code_executor: Arc::new(code_executor),
@@ -292,6 +299,8 @@ where
 	};
 
 	cirrus_client_service::start_executor(params).await?;
+
+	task_manager.add_child(primary_chain_full_node.task_manager);
 
 	start_network.start_network();
 
