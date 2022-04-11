@@ -394,20 +394,20 @@ where
 	events_rx: mpsc::Receiver<Event<PBlock>>,
 }
 
-impl<PBlock, Client> Overseer<PBlock, Client>
+impl<PBlock, PClient> Overseer<PBlock, PClient>
 where
 	PBlock: BlockT,
-	Client: HeaderBackend<PBlock>
+	PClient: HeaderBackend<PBlock>
 		+ BlockBackend<PBlock>
 		+ ProvideRuntimeApi<PBlock>
 		+ Send
 		+ 'static
 		+ Sync,
-	Client::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock>,
 {
 	/// Create a new overseer.
 	pub fn new(
-		primary_chain_client: Arc<Client>,
+		primary_chain_client: Arc<PClient>,
 		leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
 	) -> (Self, OverseerHandle<PBlock>) {

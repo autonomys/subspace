@@ -18,39 +18,48 @@
 //!
 //! Provides functions for starting an executor node or a normal full node.
 
-use cirrus_client_executor::{Executor, OverseerHandle};
+use cirrus_client_executor::{Executor, ExecutorSlotInfo};
 use cirrus_client_executor_gossip::ExecutorGossipParams;
+use futures::Stream;
 use sc_client_api::{
 	AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, UsageProvider,
 };
 use sc_consensus::BlockImport;
 use sc_network::NetworkService;
-use sc_service::TaskManager;
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_runtime::traits::Block as BlockT;
+use sp_consensus::SelectChain;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
+use sp_executor::ExecutorApi;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
 /// Parameters given to [`start_executor`].
 pub struct StartExecutorParams<
 	'a,
-	Block: BlockT,
-	PBlock: BlockT,
+	Block,
 	Client,
-	Spawner,
 	PClient,
+	SE,
+	SC,
+	IBNS,
+	NSNS,
+	Spawner,
 	TP,
 	Backend,
 	E,
-> {
+> where
+	Block: BlockT,
+{
+	pub primary_chain_client: Arc<PClient>,
+	pub spawn_essential: &'a SE,
+	pub select_chain: &'a SC,
+	pub imported_block_notification_stream: IBNS,
+	pub new_slot_notification_stream: NSNS,
 	pub client: Arc<Client>,
 	pub spawner: Box<Spawner>,
-	pub primary_chain_full_node: subspace_service::NewFull<Arc<PClient>>,
-	pub overseer_handle: OverseerHandle<PBlock>,
-	pub task_manager: &'a mut TaskManager,
 	pub transaction_pool: Arc<TP>,
 	pub network: Arc<NetworkService<Block, Block::Hash>>,
 	pub backend: Arc<Backend>,
@@ -59,19 +68,35 @@ pub struct StartExecutorParams<
 }
 
 /// Start an executor node.
-pub async fn start_executor<'a, Block, PBlock, Client, Backend, Spawner, PClient, TP, E>(
+pub async fn start_executor<
+	'a,
+	Block,
+	PBlock,
+	Client,
+	PClient,
+	SE,
+	SC,
+	IBNS,
+	NSNS,
+	Backend,
+	Spawner,
+	TP,
+	E,
+>(
 	StartExecutorParams {
+		primary_chain_client,
+		spawn_essential,
+		select_chain,
+		imported_block_notification_stream,
+		new_slot_notification_stream,
 		client,
 		spawner,
-		overseer_handle,
-		task_manager,
-		primary_chain_full_node,
 		transaction_pool,
 		network,
 		backend,
 		code_executor,
 		is_authority,
-	}: StartExecutorParams<'a, Block, PBlock, Client, Spawner, PClient, TP, Backend, E>,
+	}: StartExecutorParams<'a, Block, Client, PClient, SE, SC, IBNS, NSNS, Spawner, TP, Backend, E>,
 ) -> sc_service::error::Result<Executor<Block, PBlock, Client, TP, Backend, E>>
 where
 	Block: BlockT,
@@ -92,12 +117,22 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + Send + Sync + 'static,
 	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ 'static
+		+ Sync,
+	PClient::Api: ExecutorApi<PBlock>,
+	SE: SpawnEssentialNamed,
+	SC: SelectChain<PBlock>,
+	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+	NSNS: Stream<Item = ExecutorSlotInfo> + Send + 'static,
 	Spawner: SpawnNamed + Clone + Send + Sync + 'static,
 	Backend: BackendT<Block> + 'static,
 	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
@@ -111,10 +146,13 @@ where
 		tracing_unbounded("execution_receipt_stream");
 
 	let executor = Executor::new(
-		primary_chain_full_node.client.clone(),
+		primary_chain_client,
+		spawn_essential,
+		select_chain,
+		imported_block_notification_stream,
+		new_slot_notification_stream,
 		client,
 		spawner,
-		overseer_handle,
 		transaction_pool,
 		Arc::new(bundle_sender),
 		Arc::new(execution_receipt_sender),
@@ -122,7 +160,7 @@ where
 		code_executor,
 		is_authority,
 	)
-	.await;
+	.await?;
 
 	let executor_gossip =
 		cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
@@ -131,11 +169,7 @@ where
 			bundle_receiver,
 			execution_receipt_receiver,
 		});
-	task_manager
-		.spawn_essential_handle()
-		.spawn_blocking("cirrus-gossip", None, executor_gossip);
-
-	task_manager.add_child(primary_chain_full_node.task_manager);
+	spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
 
 	Ok(executor)
 }

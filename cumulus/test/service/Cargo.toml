@@ -12,8 +12,9 @@ include = [
 ]
 
 [dependencies]
-rand = "0.8.5"
 async-trait = "0.1.42"
+futures = "0.3.21"
+rand = "0.8.5"
 tokio = { version = "1.17.0", features = ["macros"] }
 tracing = "0.1.32"
 
