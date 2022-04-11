@@ -1,36 +1,25 @@
-# Subspace Proof-of-Storage Consensus
+# Subspace Proof-of-Archival-Storage consensus
 
-TODO: Update this description, it is out of date
+Subspace is a slot-based block production mechanism which uses a Proof-of-Archival-Storage to randomly perform the slot
+allocation. On every slot, all the farmers evaluate their disk-based plot. If they have a tag (reflecting a commitment
+to a valid encoding) that it is lower than a given threshold (which is proportional to the total space pledged by the
+network) they may produce a new block.
 
-Subspace is a slot-based block production mechanism which uses a Proof-of-Storage to randomly
-perform the slot allocation. On every slot, all the farmers evaluate their disk-based plot. If
-they have a tag (reflecting a commitment to a valid encoding) that it is lower than a given
-threshold (which is proportional to the total space pledged by the network) they may produce a
-new block. The proof of the Subspace function execution will be used by other peers to validate
-the legitimacy of the slot claim.
+Core inputs to the Proof-of-Archival-Storage, such as global randomness, solution range and salt come from the runtime,
+see `pallet-subspace` for details.
 
-The engine is also responsible for collecting entropy on-chain which will be used to seed the
-given PoR (Proof-of-Replication) challenge. An epoch is a contiguous number of slots under which
-we will be using the same base PoR challenge. During an epoch all PoR outputs produced as a
-result of block production will be collected into an on-chain randomness pool. Epoch changes are
-announced one epoch in advance, i.e. when ending epoch N, we announce the parameters (i.e, new
-randomness) for epoch N+2.
+The fork choice rule is weight-based, where weight is derived from the distance between solution proposed in a block and
+the local challenge for particular farmer. The heaviest chain (represents a chain with more storage pledged to it)
+will be preferred over alternatives or longest chain is in case of a tie.
 
-Since the slot assignment is randomized, it is possible that a slot is claimed by multiple
-farmers, in which case we will have a temporary fork, or that a slot is not claimed by any
-farmer, in which case no block is produced. This means that block times are probabilistic.
+For a more in-depth analysis of Subspace consensus can be found in our
+[consensus whitepaper](https://subspace.network/news/subspace-network-whitepaper).
 
-The protocol has a parameter `c` [0, 1] for which `1 - c` is the probability of a slot being
-empty. The choice of this parameter affects the security of the protocol relating to maximum
-tolerable network delays.
-
-The fork choice rule is weight-based, where weight equals the number of primary blocks in the
-chain. We will pick the heaviest chain (more blocks) and will go with the longest one in case of
-a tie.
-
-This module is based on a fork of `sc_consensus_babe`.  An in-depth description and analysis of the BABE protocol, can be found here:
-<https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html>
-
-For a more in-depth analysis of Subspace consensus can be found in our [technical whitepaper](https://drive.google.com/file/d/1v847u_XeVf0SBz7Y7LEMXi72QfqirstL/view)
+This crate contains following major components:
+* worker (`sc-consensus-slots`) for claiming slots (block production)
+* block verifier that stateless verification of signature and Proof-of-Space
+* block import that verifies Proof-of-Archival-Storage and triggers archiving of the history
+* archiver worker triggered by block import that ensures history is archived and root blocks are produced at precisely 
+  the right time before finishing block import
 
 License: GPL-3.0-or-later WITH Classpath-exception-2.0
