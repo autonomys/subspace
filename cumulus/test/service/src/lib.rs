@@ -606,7 +606,7 @@ pub fn construct_extrinsic(
 /// Run a primary-chain validator node.
 ///
 /// This is essentially a wrapper around
-/// [`run_validator_node`](polkadot_test_service::run_validator_node).
+/// [`run_validator_node`](subspace_test_service::run_validator_node).
 pub fn run_primary_chain_validator_node(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,

@@ -14,9 +14,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-//! Subspace consensus pallet.
-
+#![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
@@ -105,14 +103,14 @@ impl EraChangeTrigger for NormalEraChange {
     }
 }
 
-/// Trigger an era change, if any should take place.
+/// Trigger an eon change, if any should take place.
 pub trait EonChangeTrigger {
-    /// Trigger an era change, if any should take place. This should be called
+    /// Trigger an eon change, if any should take place. This should be called
     /// during every block, after initialization is done.
     fn trigger<T: Config>(block_number: T::BlockNumber);
 }
 
-/// A type signifying to Subspace that it should perform era changes with an internal trigger.
+/// A type signifying to Subspace that it should perform eon changes with an internal trigger.
 pub struct NormalEonChange;
 
 impl EonChangeTrigger for NormalEonChange {
@@ -225,18 +223,22 @@ mod pallet {
 
         /// Subspace requires some logic to be triggered on every block to query for whether an era
         /// has ended and to perform the transition to the next era.
+        ///
+        /// Era is normally used to update solution range used for challenges.
         type EraChangeTrigger: EraChangeTrigger;
 
         /// Subspace requires some logic to be triggered on every block to query for whether an eon
         /// has ended and to perform the transition to the next eon.
+        ///
+        /// Era is normally used to update salt used for plot commitments.
         type EonChangeTrigger: EonChangeTrigger;
 
-        /// The equivocation handling subsystem, defines methods to report an
-        /// offence (after the equivocation has been validated) and for submitting a
-        /// transaction to report an equivocation (from an offchain context).
-        /// NOTE: when enabling equivocation handling (i.e. this type isn't set to
-        /// `()`) you must use this pallet's `ValidateUnsigned` in the runtime
-        /// definition.
+        /// The equivocation handling subsystem, defines methods to report an offence (after the
+        /// equivocation has been validated) and for submitting a transaction to report an
+        /// equivocation (from an offchain context).
+        ///
+        /// NOTE: when enabling equivocation handling (i.e. this type isn't set to `()`) you must
+        /// use this pallet's `ValidateUnsigned` in the runtime definition.
         type HandleEquivocation: HandleEquivocation<Self>;
 
         /// Weight information for extrinsics in this pallet.
@@ -295,7 +297,7 @@ mod pallet {
     #[pallet::getter(fn salts)]
     pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
 
-    /// The solution range for *current* era.
+    /// Slot at which current era started.
     #[pallet::storage]
     pub type EraStartSlot<T> = StorageValue<_, Slot>;
 
@@ -467,6 +469,8 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
     /// returned `true`, and the caller is the only caller of this function.
+    ///
+    /// This will update solution range used in consensus.
     pub fn enact_era_change(block_number: T::BlockNumber) {
         let slot_probability = T::SlotProbability::get();
 
