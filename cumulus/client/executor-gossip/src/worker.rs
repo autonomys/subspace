@@ -23,7 +23,6 @@ where
 impl<Block, Executor> GossipWorker<Block, Executor>
 where
 	Block: BlockT,
-
 	Executor: GossipMessageHandler<Block>,
 {
 	pub(super) fn new(

@@ -107,7 +107,6 @@ where
 pub struct GossipValidator<Block, Executor>
 where
 	Block: BlockT,
-
 	Executor: GossipMessageHandler<Block>,
 {
 	topic: Block::Hash,

@@ -628,13 +628,13 @@ where
 		// TODO: validate the Proof-of-Election
 
 		let block_hash = execution_receipt.secondary_hash;
-		let primary_chain_primary_hash =
+		let primary_hash =
 			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
 				.expect("Hash type must be correct");
 
 		let block_number = TryInto::<BlockNumber>::try_into(
 			self.primary_chain_client
-				.block_number_from_id(&BlockId::Hash(primary_chain_primary_hash))?
+				.block_number_from_id(&BlockId::Hash(primary_hash))?
 				.ok_or_else(|| {
 					sp_blockchain::Error::Backend(format!(
 						"Primary block number not found for {:?}",
