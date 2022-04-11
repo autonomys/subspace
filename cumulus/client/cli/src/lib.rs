@@ -17,7 +17,6 @@
 //! Cumulus CLI library.
 
 #![warn(missing_docs)]
-#![allow(clippy::all)]
 
 use clap::Parser;
 use sc_service::{
@@ -83,7 +82,7 @@ impl PurgeChainCmd {
 			io::stdin().read_line(&mut input)?;
 			let input = input.trim();
 
-			match input.chars().nth(0) {
+			match input.chars().next() {
 				Some('y') | Some('Y') => {},
 				_ => {
 					println!("Aborted");

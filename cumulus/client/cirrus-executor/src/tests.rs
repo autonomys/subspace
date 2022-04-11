@@ -85,7 +85,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
 		},
-		Alice.into(),
+		Alice,
 		false,
 		0,
 	);
@@ -95,7 +95,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			dest: cirrus_test_service::runtime::Address::Id(Dave.public().into()),
 			value: 8,
 		},
-		Alice.into(),
+		Alice,
 		false,
 		1,
 	);
@@ -105,7 +105,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 88,
 		},
-		Alice.into(),
+		Alice,
 		false,
 		2,
 	);
@@ -299,7 +299,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	let fraud_proof = FraudProof {
 		parent_hash: parent_hash_alice,
 		pre_state_root: intermediate_roots.last().unwrap().into(),
-		post_state_root: post_execution_root.into(),
+		post_state_root: post_execution_root,
 		proof: storage_proof,
 		execution_phase,
 	};
@@ -339,7 +339,7 @@ async fn invalid_execution_proof_should_not_work() {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
 		},
-		Alice.into(),
+		Alice,
 		false,
 		0,
 	);
@@ -350,7 +350,7 @@ async fn invalid_execution_proof_should_not_work() {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
 		},
-		Alice.into(),
+		Alice,
 		false,
 		1,
 	);
@@ -403,7 +403,7 @@ async fn invalid_execution_proof_should_not_work() {
 			.prove_execution(
 				BlockId::Hash(parent_header.hash()),
 				&execution_phase,
-				Some((delta.clone(), post_delta_root.clone())),
+				Some((delta, post_delta_root)),
 			)
 			.expect("Create extrinsic execution proof");
 

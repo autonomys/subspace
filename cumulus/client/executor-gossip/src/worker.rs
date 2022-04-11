@@ -9,14 +9,23 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<Block: BlockT, Executor> {
+pub struct GossipWorker<Block, Executor>
+where
+	Block: BlockT,
+	Executor: GossipMessageHandler<Block>,
+{
 	gossip_validator: Arc<GossipValidator<Block, Executor>>,
 	gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 	bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
 	execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
 }
 
-impl<Block: BlockT, Executor: GossipMessageHandler<Block>> GossipWorker<Block, Executor> {
+impl<Block, Executor> GossipWorker<Block, Executor>
+where
+	Block: BlockT,
+
+	Executor: GossipMessageHandler<Block>,
+{
 	pub(super) fn new(
 		gossip_validator: Arc<GossipValidator<Block, Executor>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,

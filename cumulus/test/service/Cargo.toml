@@ -46,6 +46,7 @@ cirrus-client-service = { path = "../../client/cirrus-service" }
 cirrus-test-runtime = { path = "../runtime" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../../crates/subspace-service" }
 subspace-test-client = { path = "../../../test/subspace-test-client" }
 subspace-test-runtime = { path = "../../../test/subspace-test-runtime" }

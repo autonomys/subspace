@@ -20,7 +20,7 @@ pub(crate) struct Account(pub u16);
 
 impl Account {
     pub(crate) fn public(&self) -> PublicKey {
-        (&self.secret()).into()
+        PublicKey::from(&self.secret())
     }
 
     pub(crate) fn secret(&self) -> SecretKey {

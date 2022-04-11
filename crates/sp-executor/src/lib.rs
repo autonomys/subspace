@@ -28,7 +28,7 @@ use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::{Randomness, Sha256Hash};
-use subspace_runtime_primitives::AccountId;
+use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -99,7 +99,7 @@ impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> 
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
     /// Primary block hash.
-    pub primary_hash: H256,
+    pub primary_hash: PHash,
     /// Secondary block hash.
     pub secondary_hash: Hash,
     /// List of storage roots collected during the block execution.

@@ -18,9 +18,10 @@
 
 pub mod rpc;
 
+use cirrus_client_executor::{BlockInfo, ExecutorSlotInfo, Overseer, OverseerHandle};
 use futures::channel::mpsc;
-use polkadot_overseer::{BlockInfo, Handle, Overseer};
-use sc_client_api::ExecutorProvider;
+use futures::{pin_mut, select, FutureExt, StreamExt};
+use sc_client_api::{BlockBackend, ExecutorProvider};
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
@@ -30,17 +31,16 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
+use sp_api::{ConstructRuntimeApi, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError, SelectChain};
 use sp_consensus_slots::Slot;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
+use sp_executor::ExecutorApi;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, One, Saturating};
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
-use subspace_runtime_primitives::{
-    opaque::{Block, BlockId},
-    AccountId, Balance, Index as Nonce,
-};
+use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
 
 /// A set of APIs that subspace-like runtimes must implement.
 pub trait RuntimeApiCollection:
@@ -274,18 +274,13 @@ where
 }
 
 /// Returns the active leaves the overseer should start with.
-async fn active_leaves<RuntimeApi, ExecutorDispatch>(
+async fn active_leaves<Block, Client>(
     select_chain: &impl SelectChain<Block>,
-    client: &FullClient<RuntimeApi, ExecutorDispatch>,
-) -> Result<Vec<BlockInfo>, Error>
+    client: &Client,
+) -> Result<Vec<BlockInfo<Block>>, Error>
 where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
 {
     let best_block = select_chain.best_chain().await?;
 
@@ -298,11 +293,12 @@ where
             let number = client.number(hash).ok()??;
 
             // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(1) || hash == best_block.hash() {
+            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
+            {
                 return None;
             };
 
-            let parent_hash = client.header(&BlockId::Hash(hash)).ok()??.parent_hash;
+            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
 
             Some(BlockInfo {
                 hash,
@@ -524,8 +520,8 @@ where
 
 /// TODO: This should change name and probably contents as well since we don't have proper overseer
 ///  anymore
-pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
-    client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+pub async fn create_overseer<Block, Client, SC>(
+    client: Arc<Client>,
     task_manager: &TaskManager,
     select_chain: SC,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -533,15 +529,11 @@ pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
         NumberFor<Block>,
         mpsc::Sender<RootBlock>,
     )>,
-) -> Result<Handle, Error>
+) -> Result<OverseerHandle<Block>, Error>
 where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: ExecutorApi<Block>,
     SC: SelectChain<Block>,
 {
     let active_leaves = active_leaves(&select_chain, &*client).await?;
@@ -567,10 +559,7 @@ where
             "collation-generation-subsystem",
             Some("collation-generation-subsystem"),
             Box::pin(async move {
-                use cirrus_node_primitives::ExecutorSlotInfo;
-                use futures::{pin_mut, select, FutureExt, StreamExt};
-
-                let forward = polkadot_overseer::forward_events(
+                let forward = cirrus_client_executor::forward_events(
                     client,
                     Box::pin(
                         imported_block_notification_stream

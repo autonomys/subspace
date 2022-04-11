@@ -9,18 +9,19 @@ use sp_runtime::{
 };
 use std::time;
 
-use cirrus_node_primitives::{BundleResult, ExecutorSlotInfo};
+use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader};
+use sp_executor::{Bundle, BundleHeader, OpaqueBundle};
 
 use subspace_runtime_primitives::Hash as PHash;
 
 use super::{Executor, LOG_TARGET};
 
-impl<Block, Client, TransactionPool, Backend, E>
-	Executor<Block, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
 where
 	Block: BlockT,
+	PBlock: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
@@ -35,7 +36,7 @@ where
 		self,
 		_primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<BundleResult> {
+	) -> Option<OpaqueBundle> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let parent_number = self.client.info().best_number;
@@ -44,7 +45,7 @@ where
 		// TODO: proper timeout
 		let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
-		let mut pending_iterator = select! {
+		let pending_iterator = select! {
 			res = t1 => res,
 			_ = t2 => {
 				tracing::warn!(
@@ -68,7 +69,7 @@ where
 		// - maximize the executor computation power.
 		let mut extrinsics = Vec::new();
 
-		while let Some(pending_tx) = pending_iterator.next() {
+		for pending_tx in pending_iterator {
 			if start.elapsed() >= pushing_duration {
 				break
 			}
@@ -93,6 +94,6 @@ where
 			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
 		}
 
-		Some(BundleResult { opaque_bundle: bundle.into() })
+		Some(bundle.into())
 	}
 }
