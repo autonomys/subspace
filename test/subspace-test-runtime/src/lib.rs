@@ -491,7 +491,7 @@ pub struct GrandpaValidator<C>(PhantomData<C>);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
+        pallet_grandpa_finality_verifier::initialize::<Runtime, C>(feed_id, data)
     }
 
     fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {

@@ -14,7 +14,7 @@ use justification::*;
 use keyring::*;
 use mock::{run_test, ChainId, TestRuntime};
 use sp_core::Hasher as HasherT;
-use sp_finality_grandpa::{ConsensusLog, GRANDPA_ENGINE_ID};
+use sp_finality_grandpa::{ConsensusLog, ScheduledChange, GRANDPA_ENGINE_ID};
 use sp_runtime::{
     generic, generic::SignedBlock, traits::BlakeTwo256, Digest, DigestItem, DispatchError,
     OpaqueExtrinsic,
@@ -204,15 +204,21 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
 }
 
 fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchError> {
-    let genesis = test_header::<TestHeader>(0);
-
+    let mut genesis = test_header::<TestHeader>(0);
+    genesis.digest.push(DigestItem::Consensus(
+        GRANDPA_ENGINE_ID,
+        ConsensusLog::ScheduledChange::<u32>(ScheduledChange {
+            next_authorities: authority_list(),
+            delay: 0,
+        })
+        .encode(),
+    ));
     let init_data = crate::InitializationData {
         header: genesis.encode(),
-        authority_list: authority_list(),
         set_id: 1,
     };
 
-    initialize::<TestRuntime>(chain_id, init_data.encode().as_slice())?;
+    initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice())?;
     Ok(init_data)
 }
 
@@ -250,7 +256,7 @@ fn init_storage_entries_are_correctly_initialized() {
         );
         assert_eq!(
             CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
-            init_data.authority_list
+            authority_list()
         );
     })
 }
@@ -322,16 +328,22 @@ fn does_not_import_header_with_invalid_finality_proof() {
 fn disallows_invalid_authority_set() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let genesis = test_header::<TestHeader>(0);
-
         let invalid_authority_list = vec![(ALICE.into(), u64::MAX), (BOB.into(), u64::MAX)];
-        let init_data = InitializationData {
+        let mut genesis = test_header::<TestHeader>(0);
+        genesis.digest.push(DigestItem::Consensus(
+            GRANDPA_ENGINE_ID,
+            ConsensusLog::ScheduledChange::<u32>(ScheduledChange {
+                next_authorities: invalid_authority_list,
+                delay: 0,
+            })
+            .encode(),
+        ));
+        let init_data = crate::InitializationData {
             header: genesis.encode(),
-            authority_list: invalid_authority_list,
             set_id: 1,
         };
 
-        assert_ok!(initialize::<TestRuntime>(
+        assert_ok!(initialize::<TestRuntime, TestFeedChain>(
             chain_id,
             init_data.encode().as_slice()
         ));
