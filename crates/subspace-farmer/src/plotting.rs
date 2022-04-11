@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{PieceIndex, Sha256Hash};
+use subspace_core_primitives::{BlockNumber, PieceIndex, RootBlock, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -120,7 +120,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     client: T,
     mut subspace_codec: SubspaceCodec,
     best_block_number_check_interval: Duration,
-    mut stop_receiver: Receiver<()>,
+    stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
     let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
@@ -318,6 +318,27 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     });
 
+    spawn_listening_to_blocks(
+        client,
+        maybe_last_root_block,
+        new_block_to_archive_sender,
+        stop_receiver,
+        best_block_number_check_interval,
+        confirmation_depth_k,
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn spawn_listening_to_blocks(
+    client: impl RpcClient + Clone + Send + Sync + 'static,
+    maybe_last_root_block: Option<RootBlock>,
+    new_block_to_archive_sender: std::sync::mpsc::SyncSender<Arc<AtomicU32>>,
+    mut stop_receiver: oneshot::Receiver<()>,
+    best_block_number_check_interval: Duration,
+    confirmation_depth_k: BlockNumber,
+) -> Result<JoinHandle<()>, PlottingError> {
     info!("Subscribing to new heads");
     let mut new_head = client
         .subscribe_new_head()
@@ -358,74 +379,76 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
     let mut last_best_block_number_error = false;
 
     // Listen for new blocks produced on the network
-    loop {
-        tokio::select! {
-            _ = &mut stop_receiver => {
-                info!("Plotting stopped!");
-                break;
-            }
-            result = new_head.recv() => {
-                match result {
-                    Some(head) => {
-                        let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
-                        debug!("Last block number: {:#?}", block_number);
+    let handle = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut stop_receiver => {
+                    info!("Plotting stopped!");
+                    break;
+                }
+                result = new_head.recv() => {
+                    match result {
+                        Some(head) => {
+                            let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
+                            debug!("Last block number: {:#?}", block_number);
 
-                        if let Some(block_number) = block_number.checked_sub(confirmation_depth_k) {
-                            // We send block that should be archived over channel that doesn't have
-                            // a buffer, atomic integer is used to make sure archiving process
-                            // always read up to date value
-                            block_to_archive.store(block_number, Ordering::Relaxed);
-                            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                            if let Some(block_number) = block_number.checked_sub(confirmation_depth_k) {
+                                // We send block that should be archived over channel that doesn't have
+                                // a buffer, atomic integer is used to make sure archiving process
+                                // always read up to date value
+                                block_to_archive.store(block_number, Ordering::Relaxed);
+                                let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                            }
+                        },
+                        None => {
+                            debug!("Subscription has forcefully closed from node side!");
+                            break;
                         }
-                    },
-                    None => {
-                        debug!("Subscription has forcefully closed from node side!");
-                        break;
                     }
                 }
-            }
-            maybe_result = best_block_number_receiver.next() => {
-                match maybe_result {
-                    Some(Ok(Ok(best_block_number))) => {
-                        debug!("Best block number: {:#?}", best_block_number);
-                        last_best_block_number_error = false;
+                maybe_result = best_block_number_receiver.next() => {
+                    match maybe_result {
+                        Some(Ok(Ok(best_block_number))) => {
+                            debug!("Best block number: {:#?}", best_block_number);
+                            last_best_block_number_error = false;
 
-                        if let Some(block_number) = best_block_number.checked_sub(confirmation_depth_k) {
-                            // We send block that should be archived over channel that doesn't have
-                            // a buffer, atomic integer is used to make sure archiving process
-                            // always read up to date value
-                            block_to_archive.fetch_max(block_number, Ordering::Relaxed);
-                            let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                            if let Some(block_number) = best_block_number.checked_sub(confirmation_depth_k) {
+                                // We send block that should be archived over channel that doesn't have
+                                // a buffer, atomic integer is used to make sure archiving process
+                                // always read up to date value
+                                block_to_archive.fetch_max(block_number, Ordering::Relaxed);
+                                let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
+                            }
                         }
-                    }
-                    Some(Ok(Err(error))) => {
-                        if last_best_block_number_error {
-                            error!("Request to get new best block failed second time: {error}");
+                        Some(Ok(Err(error))) => {
+                            if last_best_block_number_error {
+                                error!("Request to get new best block failed second time: {error}");
+                                break;
+                            } else {
+                                warn!("Request to get new best block failed: {error}");
+                                last_best_block_number_error = true;
+                            }
+                        }
+                        Some(Err(_error)) => {
+                            if last_best_block_number_error {
+                                error!("Request to get new best block timed out second time");
+                                break;
+                            } else {
+                                warn!("Request to get new best block timed out");
+                                last_best_block_number_error = true;
+                            }
+                        }
+                        None => {
+                            debug!("Best block number channel closed!");
                             break;
-                        } else {
-                            warn!("Request to get new best block failed: {error}");
-                            last_best_block_number_error = true;
                         }
-                    }
-                    Some(Err(_error)) => {
-                        if last_best_block_number_error {
-                            error!("Request to get new best block timed out second time");
-                            break;
-                        } else {
-                            warn!("Request to get new best block timed out");
-                            last_best_block_number_error = true;
-                        }
-                    }
-                    None => {
-                        debug!("Best block number channel closed!");
-                        break;
                     }
                 }
             }
         }
-    }
+    });
 
-    Ok(())
+    Ok(handle)
 }
 
 fn create_global_object_mapping(
