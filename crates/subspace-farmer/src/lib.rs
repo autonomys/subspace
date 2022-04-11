@@ -17,6 +17,7 @@
 
 #![feature(try_blocks, hash_drain_filter, int_log, io_error_other)]
 
+pub(crate) mod archiving;
 pub(crate) mod commitments;
 pub(crate) mod farming;
 pub(crate) mod identity;

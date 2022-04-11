@@ -1,48 +1,41 @@
 #[cfg(test)]
 mod tests;
 
+use crate::archiving::{self, Archiving};
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
-use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
-use std::sync::atomic::{AtomicU32, Ordering};
+use log::{error, info};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{BlockNumber, PieceIndex, RootBlock, Sha256Hash};
-use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
+use subspace_core_primitives::{BlockNumber, PieceIndex, Sha256Hash};
+use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
-use tokio::sync::oneshot::Receiver;
-use tokio::{sync::oneshot, task::JoinHandle};
-
-const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Error)]
 pub enum PlottingError {
-    #[error("Plot is empty on restart, can't continue")]
-    ContinueError,
-    #[error("Failed to get block {0} from the chain, probably need to erase existing plot")]
-    GetBlockError(u32),
-    #[error("jsonrpsee error: {0}")]
-    RpcError(Box<dyn std::error::Error + Send + Sync>),
     #[error("Last block retrieval from plot, rocksdb error: {0}")]
     LastBlock(rocksdb::Error),
     #[error("Error joining task: {0}")]
     JoinTask(tokio::task::JoinError),
-    #[error("Archiver instantiation error: {0}")]
-    Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
+    #[error("Error during archiving start")]
+    ArchivingStart(
+        #[from]
+        #[source]
+        archiving::Error,
+    ),
 }
 /// `Plotting` struct is the abstraction of the plotting process
 ///
 /// Plotting Instance that stores a channel to stop/pause the background farming task
 /// and a handle to make it possible to wait on this background task
 pub struct Plotting {
-    stop_sender: Option<oneshot::Sender<()>>,
+    archiving: Archiving,
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
@@ -72,32 +65,50 @@ impl FarmerData {
 /// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
 impl Plotting {
     /// Returns an instance of plotting, and also starts a concurrent background plotting task
-    pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
+    pub async fn start<T: RpcClient + Clone + Send + Sync + 'static>(
         farmer_data: FarmerData,
         client: T,
         subspace_codec: SubspaceCodec,
         best_block_number_check_interval: Duration,
-    ) -> Self {
-        // Oneshot channels, that will be used for interrupt/stop the process
-        let (stop_sender, stop_receiver) = oneshot::channel();
+    ) -> Result<Self, PlottingError> {
+        let (archived_blocks_sender, archived_blocks_receiver) =
+            std::sync::mpsc::sync_channel::<(BlockNumber, Vec<ArchivedSegment>)>(0);
+        let maybe_last_root_block = tokio::task::spawn_blocking({
+            let plot = farmer_data.plot.clone();
+
+            move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
+        })
+        .await
+        .unwrap()?;
+
+        let archiving = Archiving::start(
+            client.clone(),
+            maybe_last_root_block,
+            best_block_number_check_interval,
+            farmer_data.plot.is_empty(),
+            archived_blocks_sender,
+        )
+        .await?;
 
         // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(background_plotting(
             farmer_data,
-            client,
             subspace_codec,
-            best_block_number_check_interval,
-            stop_receiver,
+            archived_blocks_receiver,
         ));
 
-        Plotting {
-            stop_sender: Some(stop_sender),
+        Ok(Plotting {
+            archiving,
             handle: Some(plotting_handle),
-        }
+        })
     }
 
     /// Waits for the background plotting to finish
     pub async fn wait(mut self) -> Result<(), PlottingError> {
+        self.archiving
+            .wait()
+            .await
+            .map_err(PlottingError::JoinTask)?;
         self.handle
             .take()
             .unwrap()
@@ -106,25 +117,16 @@ impl Plotting {
     }
 }
 
-impl Drop for Plotting {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
-    }
-}
-
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
+async fn background_plotting(
     farmer_data: FarmerData,
-    client: T,
     mut subspace_codec: SubspaceCodec,
-    best_block_number_check_interval: Duration,
-    stop_receiver: Receiver<()>,
+    archived_blocks_receiver: std::sync::mpsc::Receiver<(BlockNumber, Vec<ArchivedSegment>)>,
 ) -> Result<(), PlottingError> {
     let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
-        confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
         ..
@@ -132,69 +134,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-
-    let maybe_last_root_block = tokio::task::spawn_blocking({
-        let plot = farmer_data.plot.clone();
-
-        move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
-    })
-    .await
-    .unwrap()?;
-
-    let archiver = if let Some(last_root_block) = maybe_last_root_block {
-        // Continuing from existing initial state
-        if farmer_data.plot.is_empty() {
-            return Err(PlottingError::ContinueError);
-        }
-
-        let last_archived_block_number = last_root_block.last_archived_block().number;
-        info!("Last archived block {}", last_archived_block_number);
-
-        let maybe_last_archived_block = client
-            .block_by_number(last_archived_block_number)
-            .await
-            .map_err(PlottingError::RpcError)?;
-
-        match maybe_last_archived_block {
-            Some(EncodedBlockWithObjectMapping {
-                block,
-                object_mapping,
-            }) => Archiver::with_initial_state(
-                record_size as usize,
-                recorded_history_segment_size as usize,
-                last_root_block,
-                &block,
-                object_mapping,
-            )
-            .map_err(PlottingError::Archiver)?,
-            None => {
-                return Err(PlottingError::GetBlockError(last_archived_block_number));
-            }
-        }
-    } else {
-        // Starting from genesis
-        if !farmer_data.plot.is_empty() {
-            // Restart before first block was archived, erase the plot
-            // TODO: Erase plot
-        }
-
-        drop(farmer_data.plot);
-
-        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
-            .map_err(PlottingError::Archiver)?
-    };
-
-    let (new_block_to_archive_sender, new_block_to_archive_receiver) =
-        std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
-    let (archived_blocks_sender, archived_blocks_receiver) =
-        std::sync::mpsc::sync_channel::<(BlockNumber, Vec<ArchivedSegment>)>(0);
-
-    spawn_archiving(
-        client.clone(),
-        archiver,
-        new_block_to_archive_receiver,
-        archived_blocks_sender,
-    );
 
     // Erasure coding in archiver and piece encoding are CPU-intensive operations.
     tokio::task::spawn_blocking({
@@ -276,204 +215,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     });
 
-    spawn_listening_to_blocks(
-        client,
-        maybe_last_root_block,
-        new_block_to_archive_sender,
-        stop_receiver,
-        best_block_number_check_interval,
-        confirmation_depth_k,
-    )
-    .await?;
-
     Ok(())
-}
-
-async fn spawn_listening_to_blocks(
-    client: impl RpcClient + Clone + Send + Sync + 'static,
-    maybe_last_root_block: Option<RootBlock>,
-    new_block_to_archive_sender: std::sync::mpsc::SyncSender<Arc<AtomicU32>>,
-    mut stop_receiver: oneshot::Receiver<()>,
-    best_block_number_check_interval: Duration,
-    confirmation_depth_k: BlockNumber,
-) -> Result<JoinHandle<()>, PlottingError> {
-    info!("Subscribing to new heads");
-    let mut new_head = client
-        .subscribe_new_head()
-        .await
-        .map_err(PlottingError::RpcError)?;
-
-    let block_to_archive = Arc::new(AtomicU32::default());
-
-    if maybe_last_root_block.is_none() {
-        // If not continuation, archive genesis block
-        new_block_to_archive_sender
-            .send(Arc::clone(&block_to_archive))
-            .expect("Failed to send genesis block archiving message");
-    }
-
-    let (mut best_block_number_sender, mut best_block_number_receiver) = mpsc::channel(1);
-
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(best_block_number_check_interval).await;
-
-            // In case connection dies, we need to disconnect from the node
-            let best_block_number_result =
-                tokio::time::timeout(BEST_BLOCK_REQUEST_TIMEOUT, client.best_block_number()).await;
-
-            let is_error = !matches!(best_block_number_result, Ok(Ok(_)));
-            // Result doesn't matter here
-            let _ = best_block_number_sender
-                .send(best_block_number_result)
-                .await;
-
-            if is_error {
-                break;
-            }
-        }
-    });
-
-    let mut last_best_block_number_error = false;
-
-    // Listen for new blocks produced on the network
-    let handle = tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = &mut stop_receiver => {
-                    info!("Plotting stopped!");
-                    break;
-                }
-                result = new_head.recv() => {
-                    match result {
-                        Some(head) => {
-                            let block_number = u32::from_str_radix(&head.number[2..], 16).unwrap();
-                            debug!("Last block number: {:#?}", block_number);
-
-                            if let Some(block_number) = block_number.checked_sub(confirmation_depth_k) {
-                                // We send block that should be archived over channel that doesn't have
-                                // a buffer, atomic integer is used to make sure archiving process
-                                // always read up to date value
-                                block_to_archive.store(block_number, Ordering::Relaxed);
-                                let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
-                            }
-                        },
-                        None => {
-                            debug!("Subscription has forcefully closed from node side!");
-                            break;
-                        }
-                    }
-                }
-                maybe_result = best_block_number_receiver.next() => {
-                    match maybe_result {
-                        Some(Ok(Ok(best_block_number))) => {
-                            debug!("Best block number: {:#?}", best_block_number);
-                            last_best_block_number_error = false;
-
-                            if let Some(block_number) = best_block_number.checked_sub(confirmation_depth_k) {
-                                // We send block that should be archived over channel that doesn't have
-                                // a buffer, atomic integer is used to make sure archiving process
-                                // always read up to date value
-                                block_to_archive.fetch_max(block_number, Ordering::Relaxed);
-                                let _ = new_block_to_archive_sender.try_send(Arc::clone(&block_to_archive));
-                            }
-                        }
-                        Some(Ok(Err(error))) => {
-                            if last_best_block_number_error {
-                                error!("Request to get new best block failed second time: {error}");
-                                break;
-                            } else {
-                                warn!("Request to get new best block failed: {error}");
-                                last_best_block_number_error = true;
-                            }
-                        }
-                        Some(Err(_error)) => {
-                            if last_best_block_number_error {
-                                error!("Request to get new best block timed out second time");
-                                break;
-                            } else {
-                                warn!("Request to get new best block timed out");
-                                last_best_block_number_error = true;
-                            }
-                        }
-                        None => {
-                            debug!("Best block number channel closed!");
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    Ok(handle)
-}
-
-fn spawn_archiving(
-    client: impl RpcClient + Clone + Send + Sync + 'static,
-    mut archiver: Archiver,
-    new_block_to_archive_receiver: std::sync::mpsc::Receiver<Arc<AtomicU32>>,
-    archived_blocks_sender: std::sync::mpsc::SyncSender<(BlockNumber, Vec<ArchivedSegment>)>,
-) -> JoinHandle<()> {
-    // Process blocks since last fully archived block (or genesis) up to the current head minus K
-    let mut blocks_to_archive_from = archiver
-        .last_archived_block_number()
-        .map(|n| n + 1)
-        .unwrap_or_default();
-
-    // Erasure coding in archiver and piece encoding are CPU-intensive operations.
-    tokio::task::spawn_blocking({
-        #[allow(clippy::mut_range_bound)]
-        move || {
-            let runtime_handle = tokio::runtime::Handle::current();
-
-            'outer: for blocks_to_archive_to in new_block_to_archive_receiver.into_iter() {
-                let blocks_to_archive_to = blocks_to_archive_to.load(Ordering::Relaxed);
-                if blocks_to_archive_to >= blocks_to_archive_from {
-                    debug!(
-                        "Archiving blocks {}..={}",
-                        blocks_to_archive_from, blocks_to_archive_to,
-                    );
-                }
-
-                for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
-                    let EncodedBlockWithObjectMapping {
-                        block,
-                        object_mapping,
-                    } = match runtime_handle.block_on(client.block_by_number(block_to_archive)) {
-                        Ok(Some(block)) => block,
-                        Ok(None) => {
-                            error!(
-                                "Failed to get block #{} from RPC: Block not found",
-                                block_to_archive,
-                            );
-
-                            blocks_to_archive_from = block_to_archive;
-                            continue 'outer;
-                        }
-                        Err(error) => {
-                            error!(
-                                "Failed to get block #{} from RPC: {}",
-                                block_to_archive, error,
-                            );
-
-                            blocks_to_archive_from = block_to_archive;
-                            continue 'outer;
-                        }
-                    };
-
-                    if archived_blocks_sender
-                        .send((block_to_archive, archiver.add_block(block, object_mapping)))
-                        .is_err()
-                    {
-                        break 'outer;
-                    }
-                }
-
-                blocks_to_archive_from = blocks_to_archive_to + 1;
-            }
-        }
-    })
 }
 
 fn create_global_object_mapping(

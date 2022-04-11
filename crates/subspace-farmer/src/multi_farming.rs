@@ -140,7 +140,8 @@ pub(crate) async fn farm_single_plot(
         client,
         subspace_codec,
         best_block_number_check_interval,
-    );
+    )
+    .await?;
 
     Ok((plot, plotting_instance, farming_instance))
 }
