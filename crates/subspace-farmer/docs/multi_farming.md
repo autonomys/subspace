@@ -1,8 +1,12 @@
 Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 
-Each plot is limited by `max_plot_size` constant (which says how many pieces can
-be stored inside individual plot) from the consensus, so if there will be some
-piece out of this max plot size solution with it will be rejected by the
-consensus.
+## Motivation of this abstraction
 
-So in order to utilize any amount of disk space we want to create multiple plots.
+We need to support to any amount of disk space for plotting, but we also want
+to preserve a property of having same replication factor for all pieces. So
+that's why we have a consensus side limit for maximum amount of pieces for each
+plot (`max_plot_size` consensus constant). That forces farmers to create new
+random keys for each individual plot in order to utilize all the space.
+
+This structure abstracts creation of multiple `Plot`s, `Farming`s and
+`Plotting`s, while glueing them up together.

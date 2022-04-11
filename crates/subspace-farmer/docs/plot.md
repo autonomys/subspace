@@ -1,7 +1,7 @@
 `Plot` struct is an abstraction on top of plot database. Pieces plotted for single identity,
 that's why it is required to supply both address of single replica farmer and maximum amount
 of pieces to be stored. It offloads disk writing to separate `PlotWorker` structure, which
-plots in the background.
+runs in the background.
 
 `PlotWorker` converts requests to internal reads/writes to the plot database to bare disk writes.
 It prioritizes reads over writes by having separate queues for reads and writes requests, read

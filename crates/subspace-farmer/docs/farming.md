@@ -14,13 +14,15 @@ for receiving challenges from network.
 Each `SlotInfo` contains:
 - The global challenge for the slot
 - Solution range for the global challenge
-- Current and next epoch salt
+- Current and next eon salt
 
 ## Updating commitments
 
-We need to update in advance commitments if salts changed (because of epoch
-change). We spawn several background workers to recommit tags for pieces from
-plot.
+As tag commitment is a long process we need to know in advance the next salt
+in order to be ready for its change, so it is revealed beforehand.
+
+In order to do update of commitments in advance we spawn several background
+workers to recommit tags for pieces from plot.
 
 ## Deriving local challenge
 
@@ -41,4 +43,6 @@ encoded piece and its index from `Plot` and construct `Solution` structure.
 We just send `SolutionResponse` which has `Option<Solution>` there.
 
 If we have solution, we also wait for block signing request from node and sign
-block header hash.
+block header hash, in order to authenticate farmer.
+
+Take a look for docs for this stage in `sc-consensus-subspace-rpc` crate.

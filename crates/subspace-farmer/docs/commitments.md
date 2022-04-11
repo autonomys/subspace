@@ -1,6 +1,6 @@
 `Commitments` is database for commitments.
 
-You can think of it as database from piece tags to plot offsets.
+You can think of it as mapping from piece tags to plot offsets.
 
 As piece tags are created in `subspace_solving::create_tag` which requires
 encoding and salt therefore it needs separate databases for each salt.

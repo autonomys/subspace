@@ -12,7 +12,7 @@ record with 8-bytes tag and 8-bytes index (+some overhead of RocksDB itself).
 During farming we receive a global challenge and need to find a solution, given target and
 solution range. In order to find solution we derive local challenge as our target and do range
 query in RocksDB. For that we interpret target as 64-bit unsigned integer, and find all of the
-keys in tags database that are `target ± solution range` (while also handing overflow/underflow)
+keys in tags database that are `target ± ½ * solution range` (while also handing overflow/underflow)
 converted back to bytes.
 
 ## Table of contents

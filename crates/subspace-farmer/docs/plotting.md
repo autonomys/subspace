@@ -16,18 +16,23 @@ TODO: make plotting account for forks
 
 ### Archiving blocks
 
-After that we request finalized (blocks under some confirmation depth from the
-best block) blocks. On each of those we call `Archiver::add_block`. It segments
-each of them into several segments (each having pieces, objects, and root block).
+After that we request blocks under some confirmation depth from the
+best block.
+
+This is currently necessary due to implementation challenge where archiving
+that happens on the node is not waiting for farmer, also farmer can
+connect/disconnect from node at any time, thus resulting in farmer potentially
+missing some of the archived pieces altogether. As such, farmer temporarily has
+its own archiving process as well. It will eventually be replaced with DNS-based
+subscriptions where pieces are disseminated by executors.
+
+Each of blocks gets passed through the `Archiver::add_block`. It segments
+block into several segments (each having pieces, objects, and root block).
 
 ## Global object mapping
 
-Each segment has `Vec<PieceObjectMapping>`. `PieceObjectMapping` is just a
-wrapper around vector of `PieceObject` which is just a structure with object
-hash and its offset.
-
-So in order to keep all object mappings we just store those by hash in
-`ObjectMappings` db (also just a wrapper around rocksdb).
+After receiving new block we also need to add newly added objects in a block.
+So we store objects' location by their hash in `ObjectMappings` db.
 
 TODO: Creation of global object mapping should be created once for all replicas
 and shared between them.
