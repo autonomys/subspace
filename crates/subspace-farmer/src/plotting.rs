@@ -107,87 +107,79 @@ async fn background_plotting(
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     // Erasure coding in archiver and piece encoding are CPU-intensive operations.
-    tokio::task::spawn_blocking({
-        let weak_plot = weak_plot.clone();
+    tokio::task::spawn_blocking(move || {
+        info!("Plotting new blocks in the background");
+        let handle = tokio::runtime::Handle::current();
 
-        move || {
-            info!("Plotting new blocks in the background");
-            let handle = tokio::runtime::Handle::current();
-
-            loop {
-                let ArchivedBlock { number, segments } =
-                    match handle.block_on(archived_blocks_receiver.recv()) {
-                        Ok(block) => block,
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            debug!("Skipped {n} blocks");
-                            continue;
-                        }
-                        Err(broadcast::error::RecvError::Closed) => break,
-                    };
-                let mut last_root_block = None;
-
-                for segment in segments {
-                    let ArchivedSegment {
-                        root_block,
-                        mut pieces,
-                        object_mapping,
-                    } = segment;
-                    let piece_index_offset = merkle_num_leaves * root_block.segment_index();
-
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
-
-                    // TODO: Batch encoding with more than 1 archived segment worth of data
-                    if let Some(plot) = weak_plot.upgrade() {
-                        let piece_indexes = (piece_index_offset..)
-                            .take(pieces.count())
-                            .collect::<Vec<PieceIndex>>();
-
-                        if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes)
-                        {
-                            error!("Failed to encode a piece: error: {}", error);
-                            continue;
-                        }
-                        let pieces = Arc::new(pieces);
-
-                        match plot.write_many(Arc::clone(&pieces), piece_indexes) {
-                            Ok(write_result) => {
-                                if let Err(error) = farmer_data
-                                    .commitments
-                                    .remove_pieces(write_result.evicted_pieces())
-                                {
-                                    error!(
-                                        "Failed to remove old commitments for pieces: {}",
-                                        error
-                                    );
-                                }
-
-                                // TODO: This will not create commitments properly if pieces are
-                                //  evicted during plotting
-                                if let Err(error) = farmer_data
-                                    .commitments
-                                    .create_for_pieces(|| write_result.to_recommitment_iterator())
-                                {
-                                    error!("Failed to create commitments for pieces: {}", error);
-                                }
-                            }
-                            Err(error) => error!("Failed to write encoded pieces: {}", error),
-                        }
-                        if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
-                            error!("Failed to store object mappings for pieces: {}", error);
-                        }
-                        let segment_index = root_block.segment_index();
-                        last_root_block.replace(root_block);
-
-                        info!("Archived segment {} at block {}", segment_index, number);
+        loop {
+            let ArchivedBlock { number, segments } =
+                match handle.block_on(archived_blocks_receiver.recv()) {
+                    Ok(block) => block,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        debug!("Skipped {n} blocks");
+                        continue;
                     }
-                }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                };
+            let mut last_root_block = None;
 
-                if let Some(last_root_block) = last_root_block {
-                    if let Some(plot) = weak_plot.upgrade() {
-                        if let Err(error) = plot.set_last_root_block(&last_root_block) {
-                            error!("Failed to store last root block: {}", error);
+            for segment in segments {
+                let ArchivedSegment {
+                    root_block,
+                    mut pieces,
+                    object_mapping,
+                } = segment;
+                let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+
+                let object_mapping =
+                    create_global_object_mapping(piece_index_offset, object_mapping);
+
+                // TODO: Batch encoding with more than 1 archived segment worth of data
+                if let Some(plot) = weak_plot.upgrade() {
+                    let piece_indexes = (piece_index_offset..)
+                        .take(pieces.count())
+                        .collect::<Vec<PieceIndex>>();
+
+                    if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes) {
+                        error!("Failed to encode a piece: error: {}", error);
+                        continue;
+                    }
+                    let pieces = Arc::new(pieces);
+
+                    match plot.write_many(Arc::clone(&pieces), piece_indexes) {
+                        Ok(write_result) => {
+                            if let Err(error) = farmer_data
+                                .commitments
+                                .remove_pieces(write_result.evicted_pieces())
+                            {
+                                error!("Failed to remove old commitments for pieces: {}", error);
+                            }
+
+                            // TODO: This will not create commitments properly if pieces are
+                            //  evicted during plotting
+                            if let Err(error) = farmer_data
+                                .commitments
+                                .create_for_pieces(|| write_result.to_recommitment_iterator())
+                            {
+                                error!("Failed to create commitments for pieces: {}", error);
+                            }
                         }
+                        Err(error) => error!("Failed to write encoded pieces: {}", error),
+                    }
+                    if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
+                        error!("Failed to store object mappings for pieces: {}", error);
+                    }
+                    let segment_index = root_block.segment_index();
+                    last_root_block.replace(root_block);
+
+                    info!("Archived segment {} at block {}", segment_index, number);
+                }
+            }
+
+            if let Some(last_root_block) = last_root_block {
+                if let Some(plot) = weak_plot.upgrade() {
+                    if let Err(error) = plot.set_last_root_block(&last_root_block) {
+                        error!("Failed to store last root block: {}", error);
                     }
                 }
             }
