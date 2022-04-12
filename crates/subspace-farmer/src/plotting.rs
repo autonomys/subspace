@@ -6,7 +6,7 @@ use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc::RpcClient;
-use log::{error, info};
+use log::{debug, error, info};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -15,6 +15,7 @@ use subspace_core_primitives::{PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Error)]
@@ -30,10 +31,8 @@ pub enum PlottingError {
         archiving::Error,
     ),
 }
+
 /// `Plotting` struct is the abstraction of the plotting process
-///
-/// Plotting Instance that stores a channel to stop/pause the background farming task
-/// and a handle to make it possible to wait on this background task
 pub struct Plotting {
     archiving: Archiving,
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
@@ -71,8 +70,6 @@ impl Plotting {
         subspace_codec: SubspaceCodec,
         best_block_number_check_interval: Duration,
     ) -> Result<Self, PlottingError> {
-        let (archived_blocks_sender, archived_blocks_receiver) =
-            std::sync::mpsc::sync_channel::<ArchivedBlock>(0);
         let maybe_last_root_block = tokio::task::spawn_blocking({
             let plot = farmer_data.plot.clone();
 
@@ -86,7 +83,6 @@ impl Plotting {
             maybe_last_root_block,
             best_block_number_check_interval,
             farmer_data.plot.is_empty(),
-            archived_blocks_sender,
         )
         .await?;
 
@@ -94,7 +90,7 @@ impl Plotting {
         let plotting_handle = tokio::spawn(background_plotting(
             farmer_data,
             subspace_codec,
-            archived_blocks_receiver,
+            archiving.subscribe(),
         ));
 
         Ok(Plotting {
@@ -123,7 +119,7 @@ impl Plotting {
 async fn background_plotting(
     farmer_data: FarmerData,
     mut subspace_codec: SubspaceCodec,
-    archived_blocks_receiver: std::sync::mpsc::Receiver<ArchivedBlock>,
+    mut archived_blocks_receiver: broadcast::Receiver<ArchivedBlock>,
 ) -> Result<(), PlottingError> {
     let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
@@ -141,9 +137,20 @@ async fn background_plotting(
 
         move || {
             info!("Plotting new blocks in the background");
+            let handle = tokio::runtime::Handle::current();
 
-            for ArchivedBlock { number, segments } in archived_blocks_receiver {
+            loop {
+                let ArchivedBlock { number, segments } =
+                    match handle.block_on(archived_blocks_receiver.recv()) {
+                        Ok(block) => block,
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            debug!("Skipped {n} blocks");
+                            continue;
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    };
                 let mut last_root_block = None;
+
                 for segment in segments {
                     let ArchivedSegment {
                         root_block,

@@ -8,11 +8,13 @@ use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{BlockNumber, RootBlock};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
+use tokio::sync::broadcast;
 use tokio::task::JoinError;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Clone, Debug)]
 pub struct ArchivedBlock {
     pub number: BlockNumber,
     pub segments: Vec<ArchivedSegment>,
@@ -23,6 +25,7 @@ pub struct Archiving {
     stop_sender: Option<oneshot::Sender<()>>,
     new_blocks_handle: Option<JoinHandle<()>>,
     archiving_handle: Option<JoinHandle<()>>,
+    subscriber: broadcast::Sender<ArchivedBlock>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -44,7 +47,6 @@ impl Archiving {
         maybe_last_root_block: Option<RootBlock>,
         best_block_number_check_interval: Duration,
         plot_is_empty: bool,
-        archived_blocks_sender: std::sync::mpsc::SyncSender<ArchivedBlock>,
     ) -> Result<Self, Error> {
         let FarmerMetadata {
             record_size,
@@ -96,6 +98,7 @@ impl Archiving {
         let (new_block_to_archive_sender, new_block_to_archive_receiver) =
             std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
         let (stop_sender, stop_receiver) = oneshot::channel::<()>();
+        let (archived_blocks_sender, _) = broadcast::channel(1);
 
         let new_blocks_handle = spawn_listening_to_blocks(
             client.clone(),
@@ -111,13 +114,19 @@ impl Archiving {
             client,
             archiver,
             new_block_to_archive_receiver,
-            archived_blocks_sender,
+            archived_blocks_sender.clone(),
         );
         Ok(Self {
             stop_sender: Some(stop_sender),
             new_blocks_handle: Some(new_blocks_handle),
             archiving_handle: Some(archiving_handle),
+            subscriber: archived_blocks_sender,
         })
+    }
+
+    /// Subscribe for new archived blocks
+    pub fn subscribe(&self) -> broadcast::Receiver<ArchivedBlock> {
+        self.subscriber.subscribe()
     }
 
     /// Waits for the background block archiving to finish
@@ -255,7 +264,7 @@ fn spawn_archiving(
     client: impl RpcClient + Clone + Send + Sync + 'static,
     mut archiver: Archiver,
     new_block_to_archive_receiver: std::sync::mpsc::Receiver<Arc<AtomicU32>>,
-    archived_blocks_sender: std::sync::mpsc::SyncSender<ArchivedBlock>,
+    archived_blocks_sender: broadcast::Sender<ArchivedBlock>,
 ) -> JoinHandle<()> {
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     let mut blocks_to_archive_from = archiver
@@ -304,6 +313,7 @@ fn spawn_archiving(
                         }
                     };
 
+                    // The only case when broadcast channel might fail is when no-one is listening
                     if archived_blocks_sender
                         .send(ArchivedBlock {
                             number: block_to_archive,
@@ -311,6 +321,7 @@ fn spawn_archiving(
                         })
                         .is_err()
                     {
+                        debug!("No subscribers. Exiting");
                         break 'outer;
                     }
                 }
