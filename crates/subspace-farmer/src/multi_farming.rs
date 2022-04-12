@@ -2,10 +2,15 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
-use log::info;
-use subspace_core_primitives::PublicKey;
+use log::{debug, error, info};
+use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::{
+    objects::{GlobalObject, PieceObject, PieceObjectMapping},
+    PublicKey, Sha256Hash,
+};
+use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, task::JoinHandle};
 
 use crate::{
     archiving::{ArchivedBlock, Archiving},
@@ -18,6 +23,7 @@ pub struct MultiFarming {
     farmings: Vec<Farming>,
     plottings: Vec<Plotting>,
     archiving: Archiving,
+    update_object_mapping_handle: Option<JoinHandle<()>>,
 }
 
 impl MultiFarming {
@@ -63,7 +69,6 @@ impl MultiFarming {
                 base_directory,
                 reward_address,
                 client.clone(),
-                object_mappings.clone(),
                 max_plot_pieces,
                 archiving.subscribe(),
             )
@@ -73,16 +78,63 @@ impl MultiFarming {
             plottings.push(plotting);
         }
 
+        let update_object_mapping_handle = tokio::spawn({
+            let mut archived_blocks_receiver = archiving.subscribe();
+            let FarmerMetadata {
+                record_size,
+                recorded_history_segment_size,
+                ..
+            } = client
+                .farmer_metadata()
+                .await
+                .map_err(|err| anyhow!("Getting metadata failed: {err}"))?;
+
+            // TODO: This assumes fixed size segments, which might not be the case
+            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+            async move {
+                loop {
+                    let segments = match archived_blocks_receiver.recv().await {
+                        Ok(ArchivedBlock { segments, .. }) => segments,
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            debug!("Skipped {n} blocks");
+                            continue;
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    };
+
+                    for segment in segments {
+                        let ArchivedSegment {
+                            object_mapping,
+                            root_block,
+                            ..
+                        } = segment;
+                        let piece_index_offset = merkle_num_leaves * root_block.segment_index();
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
+                        if let Err(error) = tokio::task::spawn_blocking({
+                            let object_mappings = object_mappings.clone();
+                            move || object_mappings.store(&object_mapping)
+                        })
+                        .await
+                        {
+                            error!("Failed to store object mappings for pieces: {}", error);
+                        }
+                    }
+                }
+            }
+        });
+
         Ok(Self {
             plots: Arc::new(plots),
             farmings,
             plottings,
             archiving,
+            update_object_mapping_handle: Some(update_object_mapping_handle),
         })
     }
 
     /// Waits for farming and plotting completion (or errors)
-    pub async fn wait(self) -> anyhow::Result<()> {
+    pub async fn wait(mut self) -> anyhow::Result<()> {
         let mut farming_plotting = self
             .farmings
             .into_iter()
@@ -112,6 +164,8 @@ impl MultiFarming {
              }
         }
 
+        self.update_object_mapping_handle.take().unwrap().await?;
+
         Ok(())
     }
 }
@@ -121,7 +175,6 @@ pub(crate) async fn farm_single_plot(
     base_directory: impl AsRef<Path>,
     reward_address: PublicKey,
     client: WsRpc,
-    object_mappings: ObjectMappings,
     max_plot_pieces: u64,
     archived_blocks_receiver: broadcast::Receiver<ArchivedBlock>,
 ) -> anyhow::Result<(Plot, Plotting, Farming)> {
@@ -161,7 +214,6 @@ pub(crate) async fn farm_single_plot(
     let farmer_data = FarmerData::new(
         plot.clone(),
         commitments,
-        object_mappings,
         client
             .farmer_metadata()
             .await
@@ -172,4 +224,26 @@ pub(crate) async fn farm_single_plot(
     let plotting_instance = Plotting::start(farmer_data, subspace_codec, archived_blocks_receiver);
 
     Ok((plot, plotting_instance, farming_instance))
+}
+
+fn create_global_object_mapping(
+    piece_index_offset: u64,
+    object_mapping: Vec<PieceObjectMapping>,
+) -> Vec<(Sha256Hash, GlobalObject)> {
+    object_mapping
+        .iter()
+        .enumerate()
+        .flat_map(move |(position, object_mapping)| {
+            object_mapping.objects.iter().map(move |piece_object| {
+                let PieceObject::V0 { hash, offset } = piece_object;
+                (
+                    *hash,
+                    GlobalObject::V0 {
+                        piece_index: piece_index_offset + position as u64,
+                        offset: *offset,
+                    },
+                )
+            })
+        })
+        .collect()
 }
