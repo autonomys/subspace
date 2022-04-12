@@ -1,14 +1,12 @@
 #[cfg(test)]
 mod tests;
 
-use crate::archiving::{self, ArchivedBlock, Archiving};
+use crate::archiving::{self, ArchivedBlock};
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
 use log::{debug, error, info};
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{PieceIndex, Sha256Hash};
@@ -34,7 +32,6 @@ pub enum PlottingError {
 
 /// `Plotting` struct is the abstraction of the plotting process
 pub struct Plotting {
-    archiving: Archiving,
     handle: Option<JoinHandle<Result<(), PlottingError>>>,
 }
 
@@ -64,47 +61,25 @@ impl FarmerData {
 /// Assumes `plot`, `commitment`, `object_mappings`, `client` and `identity` are already initialized
 impl Plotting {
     /// Returns an instance of plotting, and also starts a concurrent background plotting task
-    pub async fn start<T: RpcClient + Clone + Send + Sync + 'static>(
+    pub fn start(
         farmer_data: FarmerData,
-        client: T,
         subspace_codec: SubspaceCodec,
-        best_block_number_check_interval: Duration,
-    ) -> Result<Self, PlottingError> {
-        let maybe_last_root_block = tokio::task::spawn_blocking({
-            let plot = farmer_data.plot.clone();
-
-            move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
-        })
-        .await
-        .unwrap()?;
-
-        let archiving = Archiving::start(
-            client.clone(),
-            maybe_last_root_block,
-            best_block_number_check_interval,
-            farmer_data.plot.is_empty(),
-        )
-        .await?;
-
+        archived_blocks_receiver: broadcast::Receiver<ArchivedBlock>,
+    ) -> Self {
         // Get a handle for the background task, so that we can wait on it later if we want to
         let plotting_handle = tokio::spawn(background_plotting(
             farmer_data,
             subspace_codec,
-            archiving.subscribe(),
+            archived_blocks_receiver,
         ));
 
-        Ok(Plotting {
-            archiving,
+        Self {
             handle: Some(plotting_handle),
-        })
+        }
     }
 
     /// Waits for the background plotting to finish
     pub async fn wait(mut self) -> Result<(), PlottingError> {
-        self.archiving
-            .wait()
-            .await
-            .map_err(PlottingError::JoinTask)?;
         self.handle
             .take()
             .unwrap()

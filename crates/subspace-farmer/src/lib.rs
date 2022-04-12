@@ -32,6 +32,7 @@ pub mod ws_rpc_server;
 #[cfg(test)]
 mod mock_rpc;
 
+pub use archiving::{Archiving, Error as ArchivingError};
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;

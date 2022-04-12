@@ -5,8 +5,10 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
 use subspace_core_primitives::PublicKey;
 use subspace_solving::SubspaceCodec;
+use tokio::sync::broadcast;
 
 use crate::{
+    archiving::{ArchivedBlock, Archiving},
     Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
 };
 
@@ -15,6 +17,7 @@ pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,
     plottings: Vec<Plotting>,
+    archiving: Archiving,
 }
 
 impl MultiFarming {
@@ -31,6 +34,28 @@ impl MultiFarming {
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut plottings = Vec::with_capacity(plot_sizes.len());
 
+        let archiving = {
+            let plot = tokio::task::spawn_blocking({
+                let base_directory = base_directory.as_ref().join("plot0");
+
+                move || -> anyhow::Result<Plot> {
+                    let identity = Identity::open_or_create(&base_directory)?;
+                    let public_key = identity.public_key().to_bytes().into();
+                    std::fs::create_dir_all(&base_directory)?;
+                    Ok(Plot::open_or_create(&base_directory, public_key, u64::MAX)?)
+                }
+            })
+            .await
+            .unwrap()?;
+            Archiving::start(
+                client.clone(),
+                plot.get_last_root_block()?,
+                best_block_number_check_interval,
+                plot.is_empty(),
+            )
+            .await?
+        };
+
         for (plot_index, max_plot_pieces) in plot_sizes.into_iter().enumerate() {
             let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
             std::fs::create_dir_all(&base_directory)?;
@@ -40,7 +65,7 @@ impl MultiFarming {
                 client.clone(),
                 object_mappings.clone(),
                 max_plot_pieces,
-                best_block_number_check_interval,
+                archiving.subscribe(),
             )
             .await?;
             plots.push(plot);
@@ -52,6 +77,7 @@ impl MultiFarming {
             plots: Arc::new(plots),
             farmings,
             plottings,
+            archiving,
         })
     }
 
@@ -75,9 +101,17 @@ impl MultiFarming {
             })
             .collect::<FuturesUnordered<_>>();
 
-        if let Some(res) = farming_plotting.next().await {
-            res?;
+        tokio::select! {
+             res = farming_plotting.next() => {
+                if let Some(res) = res {
+                    res?;
+                }
+             }
+             res = self.archiving.wait() => {
+                res?;
+             }
         }
+
         Ok(())
     }
 }
@@ -89,7 +123,7 @@ pub(crate) async fn farm_single_plot(
     client: WsRpc,
     object_mappings: ObjectMappings,
     max_plot_pieces: u64,
-    best_block_number_check_interval: Duration,
+    archived_blocks_receiver: broadcast::Receiver<ArchivedBlock>,
 ) -> anyhow::Result<(Plot, Plotting, Farming)> {
     let identity = Identity::open_or_create(&base_directory)?;
     let public_key = identity.public_key().to_bytes().into();
@@ -135,13 +169,7 @@ pub(crate) async fn farm_single_plot(
     );
 
     // start the background plotting
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        client,
-        subspace_codec,
-        best_block_number_check_interval,
-    )
-    .await?;
+    let plotting_instance = Plotting::start(farmer_data, subspace_codec, archived_blocks_receiver);
 
     Ok((plot, plotting_instance, farming_instance))
 }
