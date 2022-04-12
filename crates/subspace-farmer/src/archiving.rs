@@ -13,6 +13,11 @@ use tokio::{sync::oneshot, task::JoinHandle};
 
 const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+pub struct ArchivedBlock {
+    pub number: BlockNumber,
+    pub segments: Vec<ArchivedSegment>,
+}
+
 // Abstraction around background block querying and archiving
 pub struct Archiving {
     stop_sender: Option<oneshot::Sender<()>>,
@@ -39,7 +44,7 @@ impl Archiving {
         maybe_last_root_block: Option<RootBlock>,
         best_block_number_check_interval: Duration,
         plot_is_empty: bool,
-        archived_blocks_sender: std::sync::mpsc::SyncSender<(BlockNumber, Vec<ArchivedSegment>)>,
+        archived_blocks_sender: std::sync::mpsc::SyncSender<ArchivedBlock>,
     ) -> Result<Self, Error> {
         let FarmerMetadata {
             record_size,
@@ -250,7 +255,7 @@ fn spawn_archiving(
     client: impl RpcClient + Clone + Send + Sync + 'static,
     mut archiver: Archiver,
     new_block_to_archive_receiver: std::sync::mpsc::Receiver<Arc<AtomicU32>>,
-    archived_blocks_sender: std::sync::mpsc::SyncSender<(BlockNumber, Vec<ArchivedSegment>)>,
+    archived_blocks_sender: std::sync::mpsc::SyncSender<ArchivedBlock>,
 ) -> JoinHandle<()> {
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     let mut blocks_to_archive_from = archiver
@@ -300,7 +305,10 @@ fn spawn_archiving(
                     };
 
                     if archived_blocks_sender
-                        .send((block_to_archive, archiver.add_block(block, object_mapping)))
+                        .send(ArchivedBlock {
+                            number: block_to_archive,
+                            segments: archiver.add_block(block, object_mapping),
+                        })
                         .is_err()
                     {
                         break 'outer;

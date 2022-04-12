@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::archiving::{self, Archiving};
+use crate::archiving::{self, ArchivedBlock, Archiving};
 use crate::commitments::Commitments;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{BlockNumber, PieceIndex, Sha256Hash};
+use subspace_core_primitives::{PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -72,7 +72,7 @@ impl Plotting {
         best_block_number_check_interval: Duration,
     ) -> Result<Self, PlottingError> {
         let (archived_blocks_sender, archived_blocks_receiver) =
-            std::sync::mpsc::sync_channel::<(BlockNumber, Vec<ArchivedSegment>)>(0);
+            std::sync::mpsc::sync_channel::<ArchivedBlock>(0);
         let maybe_last_root_block = tokio::task::spawn_blocking({
             let plot = farmer_data.plot.clone();
 
@@ -123,7 +123,7 @@ impl Plotting {
 async fn background_plotting(
     farmer_data: FarmerData,
     mut subspace_codec: SubspaceCodec,
-    archived_blocks_receiver: std::sync::mpsc::Receiver<(BlockNumber, Vec<ArchivedSegment>)>,
+    archived_blocks_receiver: std::sync::mpsc::Receiver<ArchivedBlock>,
 ) -> Result<(), PlottingError> {
     let weak_plot = farmer_data.plot.downgrade();
     let FarmerMetadata {
@@ -142,14 +142,14 @@ async fn background_plotting(
         move || {
             info!("Plotting new blocks in the background");
 
-            for (block_number, archived_block) in archived_blocks_receiver {
+            for ArchivedBlock { number, segments } in archived_blocks_receiver {
                 let mut last_root_block = None;
-                for archived_segment in archived_block {
+                for segment in segments {
                     let ArchivedSegment {
                         root_block,
                         mut pieces,
                         object_mapping,
-                    } = archived_segment;
+                    } = segment;
                     let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
                     let object_mapping =
@@ -197,10 +197,7 @@ async fn background_plotting(
                         let segment_index = root_block.segment_index();
                         last_root_block.replace(root_block);
 
-                        info!(
-                            "Archived segment {} at block {}",
-                            segment_index, block_number
-                        );
+                        info!("Archived segment {} at block {}", segment_index, number);
                     }
                 }
 
