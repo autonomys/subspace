@@ -1,7 +1,7 @@
 `Plotting` structure is the abstraction on top of the plotting process on the
 single replica.
 
-Plotting Instance that stores a channel to stop/pause the background farming
+Plotting Instance stores a channel to stop/pause the background plotting
 task and a handle to make it possible to wait on this background task.
 
 It does several things.
@@ -16,11 +16,11 @@ TODO: make plotting account for forks
 
 ### Archiving blocks
 
-After that we request blocks under some confirmation depth from the
-best block.
+After listening for new blocks, we request blocks under some
+confirmation depth from the best block.
 
 This is currently necessary due to implementation challenge where archiving
-that happens on the node is not waiting for farmer, also farmer can
+that happens on the node is not waiting for farmer. Also farmer can
 connect/disconnect from node at any time, thus resulting in farmer potentially
 missing some of the archived pieces altogether. As such, farmer temporarily has
 its own archiving process as well. It will eventually be replaced with DNS-based
@@ -37,17 +37,17 @@ So we store objects' location by their hash in `ObjectMappings` db.
 TODO: Creation of global object mapping should be created once for all replicas
 and shared between them.
 
-## Pieces encoding and plot writing
+## Encoding pieces and writing to plot
 
-After receiving block archiving each segment has several raw pieces. Each of
+After receiving block, archiving each segment has several raw pieces. Each of
 those needs to be encoded using time asymmetric permutation
 `subspace_solving::SubspaceCodec` (wrapper around `sloth256_189`).
 
-After that pieces are written to the `Plot` by their indexes.
+Then, pieces are written to the `Plot` by their indexes.
 
 ## Updating commitments
 
-Right after writing is done `Plot` returns `WriteResult` which is needed to
+When writing to plot is done, `Plot` returns `WriteResult` which is needed to
 update the `Commitments` for the consensus puzzle solving. We will just iterate
 over evicted pieces and remove them. After that we just add new pieces written to
 the plot.
