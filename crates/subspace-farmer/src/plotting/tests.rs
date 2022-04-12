@@ -4,7 +4,8 @@ use crate::mock_rpc::MockRpc;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::plotting::{FarmerData, Plotting};
-use crate::rpc::{NewHead, RpcClient};
+use crate::rpc::NewHead;
+use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
@@ -48,12 +49,8 @@ async fn plotting_happy_path() {
         max_plot_size: u64::MAX,
     };
 
-    client.send_metadata(farmer_metadata).await;
-
-    let farmer_metadata = client
-        .farmer_metadata()
-        .await
-        .expect("Could not retrieve farmer_metadata");
+    client.send_metadata(farmer_metadata.clone()).await;
+    client.send_metadata(farmer_metadata.clone()).await;
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
@@ -78,12 +75,16 @@ async fn plotting_happy_path() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let archiving = Archiving::start(
         client.clone(),
-        subspace_codec,
+        plot.get_last_root_block().unwrap(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plot.is_empty(),
+    )
+    .await
+    .unwrap();
+
+    let plotting_instance = Plotting::start(farmer_data, subspace_codec, archiving.subscribe());
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -126,6 +127,8 @@ async fn plotting_happy_path() {
     // let the farmer know we are done by closing the channel(s)
     client.drop_new_head_sender().await;
 
+    drop(archiving);
+
     // wait for farmer to finish
     if let Err(e) = plotting_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
@@ -155,12 +158,8 @@ async fn plotting_continue() {
         max_plot_size: u64::MAX,
     };
 
-    client.send_metadata(farmer_metadata).await;
-
-    let farmer_metadata = client
-        .farmer_metadata()
-        .await
-        .expect("Could not retrieve farmer_metadata");
+    client.send_metadata(farmer_metadata.clone()).await;
+    client.send_metadata(farmer_metadata.clone()).await;
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
@@ -190,12 +189,16 @@ async fn plotting_continue() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let archiving = Archiving::start(
         client.clone(),
-        subspace_codec,
+        plot.get_last_root_block().unwrap(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plot.is_empty(),
+    )
+    .await
+    .unwrap();
+
+    let plotting_instance = Plotting::start(farmer_data, subspace_codec, archiving.subscribe());
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -216,6 +219,8 @@ async fn plotting_continue() {
 
     // let the farmer know we are done by closing the channel(s)
     client.drop_new_head_sender().await;
+
+    drop(archiving);
 
     // wait for farmer to finish
     if let Err(e) = plotting_instance.wait().await {
@@ -261,12 +266,19 @@ async fn plotting_continue() {
     // putting 250 milliseconds here to give plotter some time
     sleep(Duration::from_millis(250)).await;
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    client.send_metadata(farmer_metadata.clone()).await;
+    client.send_metadata(farmer_metadata.clone()).await;
+
+    let archiving = Archiving::start(
         client.clone(),
-        subspace_codec,
+        plot.get_last_root_block().unwrap(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plot.is_empty(),
+    )
+    .await
+    .unwrap();
+
+    let plotting_instance = Plotting::start(farmer_data, subspace_codec, archiving.subscribe());
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -309,6 +321,8 @@ async fn plotting_continue() {
 
     // let the farmer know we are done by closing the channel(s)
     client.drop_new_head_sender().await;
+
+    drop(archiving);
 
     // wait for farmer to finish
     if let Err(e) = plotting_instance.wait().await {
@@ -353,12 +367,8 @@ async fn plotting_piece_eviction() {
         max_plot_size: u64::MAX,
     };
 
-    client.send_metadata(farmer_metadata).await;
-
-    let farmer_metadata = client
-        .farmer_metadata()
-        .await
-        .expect("Could not retrieve farmer_metadata");
+    client.send_metadata(farmer_metadata.clone()).await;
+    client.send_metadata(farmer_metadata.clone()).await;
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
@@ -396,12 +406,16 @@ async fn plotting_piece_eviction() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let archiving = Archiving::start(
         client.clone(),
-        subspace_codec,
+        plot.get_last_root_block().unwrap(),
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plot.is_empty(),
+    )
+    .await
+    .unwrap();
+
+    let plotting_instance = Plotting::start(farmer_data, subspace_codec, archiving.subscribe());
 
     for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -414,6 +428,8 @@ async fn plotting_piece_eviction() {
 
     // let the farmer know we are done by closing the channel(s)
     client.drop_new_head_sender().await;
+
+    drop(archiving);
 
     // wait for farmer to finish
     if let Err(e) = plotting_instance.wait().await {

@@ -100,8 +100,15 @@ impl Archiving {
         let (stop_sender, stop_receiver) = oneshot::channel::<()>();
         let (archived_blocks_sender, _) = broadcast::channel(1);
 
-        let new_blocks_handle = spawn_listening_to_blocks(
+        let archiving_handle = spawn_archiving(
             client.clone(),
+            archiver,
+            new_block_to_archive_receiver,
+            archived_blocks_sender.clone(),
+        );
+
+        let new_blocks_handle = spawn_listening_to_blocks(
+            client,
             maybe_last_root_block,
             new_block_to_archive_sender,
             stop_receiver,
@@ -110,12 +117,6 @@ impl Archiving {
         .await
         .map_err(Error::RpcError)?;
 
-        let archiving_handle = spawn_archiving(
-            client,
-            archiver,
-            new_block_to_archive_receiver,
-            archived_blocks_sender.clone(),
-        );
         Ok(Self {
             stop_sender: Some(stop_sender),
             new_blocks_handle: Some(new_blocks_handle),
