@@ -16,7 +16,6 @@ The structure of this repository is the following:
   - `subspace-node` is an implementation of the node for Subspace protocol
   - `subspace-farmer` is a CLI farmer app
 - `cumulus` contains modified copies of Cumulus crates that we use right now
-- `polkadot` contains modified copies of Polkadot crates that we use right now
 - `substrate` contains modified copies of Substrate's crates that we use for testing
 
 ## How to run

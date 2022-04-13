@@ -363,18 +363,19 @@ impl<T: Config> Call<T> {
                 let feed_processor = T::feed_processor(feed_processor_id);
                 let objects_mappings = feed_processor.object_mappings(*feed_id, object);
 
-                let mut objects = vec![];
-                objects_mappings.into_iter().for_each(|object_mapping| {
-                    objects.push(CallObject {
-                        // scope the key of the object to the feed_id namespace
-                        key: crypto::sha256_hash((feed_id, object_mapping.key).encode()),
-                        // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
-                        // enum variant encoding.
-                        // update the offset to include the absolute offset in the extrinsic
-                        offset: 1 + mem::size_of::<T::FeedId>() as u32 + object_mapping.offset,
+                objects_mappings
+                    .into_iter()
+                    .map(|object_mapping| {
+                        CallObject {
+                            // scope the key of the object to the feed_id namespace
+                            key: crypto::sha256_hash((feed_id, object_mapping.key).encode()),
+                            // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
+                            // enum variant encoding.
+                            // update the offset to include the absolute offset in the extrinsic
+                            offset: 1 + mem::size_of::<T::FeedId>() as u32 + object_mapping.offset,
+                        }
                     })
-                });
-                objects
+                    .collect()
             }
             _ => Default::default(),
         }
