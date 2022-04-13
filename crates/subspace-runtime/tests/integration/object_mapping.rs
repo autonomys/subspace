@@ -97,13 +97,34 @@ fn object_mapping() {
     assert_eq!(objects.len(), 7);
 
     // Hashes should be computed correctly.
-    assert_eq!(objects[0].hash(), crypto::sha256_hash(&data0));
-    assert_eq!(objects[1].hash(), crypto::sha256_hash(&data1));
-    assert_eq!(objects[2].hash(), crypto::sha256_hash(&data2));
-    assert_eq!(objects[3].hash(), crypto::sha256_hash(&data3));
-    assert_eq!(objects[4].hash(), crypto::sha256_hash(&data0));
-    assert_eq!(objects[5].hash(), crypto::sha256_hash(&data2));
-    assert_eq!(objects[6].hash(), crypto::sha256_hash(&data3));
+    assert_eq!(
+        objects[0].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data0).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[1].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data1).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[2].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data2).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[3].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data3).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[4].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data0).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[5].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data2).to_vec()).encode())
+    );
+    assert_eq!(
+        objects[6].hash(),
+        crypto::sha256_hash((0u64, crypto::sha256_hash(&data3).to_vec()).encode())
+    );
 
     // Offsets for mapped objects should be correct
     assert_eq!(
@@ -208,7 +229,17 @@ fn get_encoded_blocks() -> (Vec<u8>, Sha256Hash, Vec<u8>) {
 
     (
         init_data,
-        hex!("b9e292877e74b5632ff9cb7253204c8810932bec4b4713a03a41c54b0b245e04"),
+        crypto::sha256_hash(
+            (
+                0u64,
+                (
+                    1u32,
+                    hex!("b9e292877e74b5632ff9cb7253204c8810932bec4b4713a03a41c54b0b245e04"),
+                )
+                    .encode(),
+            )
+                .encode(),
+        ),
         vec![
             220, 221, 137, 146, 125, 138, 52, 142, 0, 37, 126, 30, 204, 134, 23, 244, 94, 219, 81,
             24, 239, 255, 62, 162, 249, 150, 27, 42, 217, 183, 105, 10, 4, 0, 0, 0, 0, 0, 0, 0, 0,

@@ -17,13 +17,13 @@
 
 use sp_runtime::{DispatchError, DispatchResult};
 use sp_std::{vec, vec::Vec};
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::crypto;
 
 /// Object mapping that points to an object in a block
 #[derive(Debug)]
 pub struct FeedObjectMapping {
     /// Key scoped to the feed
-    pub key: Sha256Hash,
+    pub key: Vec<u8>,
     /// Offset of the data within object
     pub offset: u32,
 }
@@ -48,7 +48,7 @@ pub trait FeedProcessor<FeedId> {
     /// returns any object mappings inside the given object
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
         vec![FeedObjectMapping {
-            key: crypto::sha256_hash(object),
+            key: crypto::sha256_hash(object).to_vec(),
             offset: 0,
         }]
     }

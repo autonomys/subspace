@@ -536,11 +536,10 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
             // we just return empty if we failed to decode as this is not called in runtime
             Err(_) => return vec![],
         };
-        // for substrate, we store the block as is. so offset is 0
-        vec![FeedObjectMapping {
-            key: block.block.header.hash().into(),
-            offset: 0,
-        }]
+
+        // for substrate, we store the height and block hash at that height
+        let key = (*block.block.header.number(), block.block.header.hash()).encode();
+        vec![FeedObjectMapping { key, offset: 0 }]
     }
 
     fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
@@ -572,10 +571,9 @@ impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
         self.decode_block(object)
             .ok()
             .map(|block| {
-                vec![FeedObjectMapping {
-                    key: block.block.header.hash().into(),
-                    offset: 0,
-                }]
+                // for substrate, we store the height and block hash at that height
+                let key = (*block.block.header.number(), block.block.header.hash()).encode();
+                vec![FeedObjectMapping { key, offset: 0 }]
             })
             .unwrap_or_default()
     }
