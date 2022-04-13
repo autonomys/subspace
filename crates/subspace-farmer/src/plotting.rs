@@ -247,9 +247,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
-                        let object_mapping =
-                            create_global_object_mapping(piece_index_offset, object_mapping);
-
                         // TODO: Batch encoding with more than 1 archived segment worth of data
                         if let Some(plot) = weak_plot.upgrade() {
                             let plot_pieces_result = plot_pieces(
@@ -262,6 +259,10 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                             if plot_pieces_result.is_err() {
                                 continue;
                             }
+
+                            let object_mapping =
+                                create_global_object_mapping(piece_index_offset, object_mapping);
+
                             if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
                             }
