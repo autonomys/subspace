@@ -276,8 +276,6 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                                         );
                                     }
 
-                                    // TODO: This will not create commitments properly if pieces are
-                                    //  evicted during plotting
                                     if let Err(error) =
                                         farmer_data.commitments.create_for_pieces(|| {
                                             write_result.to_recommitment_iterator()
