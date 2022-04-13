@@ -21,7 +21,6 @@ COPY Cargo.toml /code/Cargo.toml
 
 COPY crates /code/crates
 COPY cumulus /code/cumulus
-COPY polkadot /code/polkadot
 COPY substrate /code/substrate
 COPY test /code/test
 
