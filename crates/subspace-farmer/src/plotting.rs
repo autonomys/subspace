@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{PieceIndex, Sha256Hash};
+use subspace_core_primitives::{FlatPieces, PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -242,7 +242,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                     for archived_segment in archiver.add_block(block, object_mapping) {
                         let ArchivedSegment {
                             root_block,
-                            mut pieces,
+                            pieces,
                             object_mapping,
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
@@ -252,42 +252,15 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
                         // TODO: Batch encoding with more than 1 archived segment worth of data
                         if let Some(plot) = weak_plot.upgrade() {
-                            let piece_indexes = (piece_index_offset..)
-                                .take(pieces.count())
-                                .collect::<Vec<PieceIndex>>();
-
-                            if let Err(error) =
-                                subspace_codec.batch_encode(&mut pieces, &piece_indexes)
-                            {
-                                error!("Failed to encode a piece: error: {}", error);
+                            let plot_pieces_result = plot_pieces(
+                                &mut subspace_codec,
+                                &plot,
+                                &farmer_data.commitments,
+                                piece_index_offset,
+                                pieces,
+                            );
+                            if plot_pieces_result.is_err() {
                                 continue;
-                            }
-                            let pieces = Arc::new(pieces);
-
-                            match plot.write_many(Arc::clone(&pieces), piece_indexes) {
-                                Ok(write_result) => {
-                                    if let Err(error) = farmer_data
-                                        .commitments
-                                        .remove_pieces(write_result.evicted_pieces())
-                                    {
-                                        error!(
-                                            "Failed to remove old commitments for pieces: {}",
-                                            error
-                                        );
-                                    }
-
-                                    if let Err(error) =
-                                        farmer_data.commitments.create_for_pieces(|| {
-                                            write_result.to_recommitment_iterator()
-                                        })
-                                    {
-                                        error!(
-                                            "Failed to create commitments for pieces: {}",
-                                            error
-                                        );
-                                    }
-                                }
-                                Err(error) => error!("Failed to write encoded pieces: {}", error),
                             }
                             if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
                                 error!("Failed to store object mappings for pieces: {}", error);
@@ -421,6 +394,42 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+/// Plot a set of pieces into a particular plot and commitment database.
+fn plot_pieces(
+    subspace_codec: &mut SubspaceCodec,
+    plot: &Plot,
+    commitments: &Commitments,
+    piece_index_offset: u64,
+    mut pieces: FlatPieces,
+) -> Result<(), ()> {
+    let piece_indexes = (piece_index_offset..)
+        .take(pieces.count())
+        .collect::<Vec<PieceIndex>>();
+
+    if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes) {
+        error!("Failed to encode a piece: error: {}", error);
+        return Err(());
+    }
+    let pieces = Arc::new(pieces);
+
+    match plot.write_many(Arc::clone(&pieces), piece_indexes) {
+        Ok(write_result) => {
+            if let Err(error) = commitments.remove_pieces(write_result.evicted_pieces()) {
+                error!("Failed to remove old commitments for pieces: {}", error);
+            }
+
+            if let Err(error) =
+                commitments.create_for_pieces(|| write_result.to_recommitment_iterator())
+            {
+                error!("Failed to create commitments for pieces: {}", error);
+            }
+        }
+        Err(error) => error!("Failed to write encoded pieces: {}", error),
     }
 
     Ok(())
