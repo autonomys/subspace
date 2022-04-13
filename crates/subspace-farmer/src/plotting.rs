@@ -15,7 +15,7 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{FlatPieces, PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::{EncodedBlockWithObjectMapping, FarmerMetadata};
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::sync::oneshot::Receiver;
 use tokio::{sync::oneshot, task::JoinHandle};
@@ -37,13 +37,21 @@ pub enum PlottingError {
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
 }
+
+struct PiecesToPlot {
+    /// Offset of the index of the first piece in `pieces`
+    piece_index_offset: u64,
+    pieces: FlatPieces,
+}
+
 /// `Plotting` struct is the abstraction of the plotting process
 ///
 /// Plotting Instance that stores a channel to stop/pause the background farming task
 /// and a handle to make it possible to wait on this background task
 pub struct Plotting {
     stop_sender: Option<oneshot::Sender<()>>,
-    handle: Option<JoinHandle<Result<(), PlottingError>>>,
+    archiving_handle: Option<JoinHandle<Result<(), PlottingError>>>,
+    plotting_handle: Option<JoinHandle<()>>,
 }
 
 pub struct FarmerData {
@@ -75,34 +83,72 @@ impl Plotting {
     pub fn start<T: RpcClient + Clone + Send + Sync + 'static>(
         farmer_data: FarmerData,
         client: T,
-        subspace_codec: SubspaceCodec,
+        mut subspace_codec: SubspaceCodec,
         best_block_number_check_interval: Duration,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = oneshot::channel();
 
+        let FarmerData {
+            plot,
+            commitments,
+            object_mappings,
+            metadata,
+        } = farmer_data;
+        let weak_plot = plot.downgrade();
+
+        let (pieces_to_plot_sender, pieces_to_plot_receiver) =
+            std::sync::mpsc::sync_channel::<PiecesToPlot>(0);
+
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let plotting_handle = tokio::spawn(background_plotting(
-            farmer_data,
+        let archiving_handle = tokio::spawn(background_archiving(
+            pieces_to_plot_sender,
+            plot,
+            metadata,
+            object_mappings,
             client,
-            subspace_codec,
             best_block_number_check_interval,
             stop_receiver,
         ));
 
+        // Get a handle for the background task, so that we can wait on it later if we want to
+        let plotting_handle = tokio::task::spawn_blocking(move || {
+            // TODO: Batch encoding with more than 1 archived segment worth of data
+            while let Ok(pieces_to_plot) = pieces_to_plot_receiver.recv() {
+                if let Some(plot) = weak_plot.upgrade() {
+                    if let Err(error) = plot_pieces(
+                        &mut subspace_codec,
+                        &plot,
+                        &commitments,
+                        pieces_to_plot.piece_index_offset,
+                        pieces_to_plot.pieces,
+                    ) {
+                        error!("Failed to encode a piece: error: {}", error);
+                        break;
+                    }
+                }
+            }
+        });
+
         Plotting {
             stop_sender: Some(stop_sender),
-            handle: Some(plotting_handle),
+            archiving_handle: Some(archiving_handle),
+            plotting_handle: Some(plotting_handle),
         }
     }
 
     /// Waits for the background plotting to finish
     pub async fn wait(mut self) -> Result<(), PlottingError> {
-        self.handle
+        self.archiving_handle
             .take()
             .unwrap()
             .await
-            .map_err(PlottingError::JoinTask)?
+            .map_err(PlottingError::JoinTask)??;
+        self.plotting_handle
+            .take()
+            .unwrap()
+            .await
+            .map_err(PlottingError::JoinTask)
     }
 }
 
@@ -115,26 +161,28 @@ impl Drop for Plotting {
 // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
 //  don't want eventually
 /// Maintains plot in up to date state plotting new pieces as they are produced on the network.
-async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
-    farmer_data: FarmerData,
+async fn background_archiving<T: RpcClient + Clone + Send + 'static>(
+    pieces_to_plot_sender: std::sync::mpsc::SyncSender<PiecesToPlot>,
+    plot: Plot,
+    metadata: FarmerMetadata,
+    object_mappings: ObjectMappings,
     client: T,
-    mut subspace_codec: SubspaceCodec,
     best_block_number_check_interval: Duration,
     mut stop_receiver: Receiver<()>,
 ) -> Result<(), PlottingError> {
-    let weak_plot = farmer_data.plot.downgrade();
+    let weak_plot = plot.downgrade();
     let FarmerMetadata {
         confirmation_depth_k,
         record_size,
         recorded_history_segment_size,
         ..
-    } = farmer_data.metadata;
+    } = metadata;
 
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let maybe_last_root_block = tokio::task::spawn_blocking({
-        let plot = farmer_data.plot.clone();
+        let plot = plot.clone();
 
         move || plot.get_last_root_block().map_err(PlottingError::LastBlock)
     })
@@ -143,7 +191,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
-        if farmer_data.plot.is_empty() {
+        if plot.is_empty() {
             return Err(PlottingError::ContinueError);
         }
 
@@ -173,7 +221,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
         }
     } else {
         // Starting from genesis
-        if !farmer_data.plot.is_empty() {
+        if !plot.is_empty() {
             // Restart before first block was archived, erase the plot
             // TODO: Erase plot
         }
@@ -182,7 +230,7 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             .map_err(PlottingError::Archiver)?
     };
 
-    drop(farmer_data.plot);
+    drop(plot);
 
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =
         std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
@@ -247,33 +295,28 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
                         } = archived_segment;
                         let piece_index_offset = merkle_num_leaves * root_block.segment_index();
 
-                        // TODO: Batch encoding with more than 1 archived segment worth of data
-                        if let Some(plot) = weak_plot.upgrade() {
-                            let plot_pieces_result = plot_pieces(
-                                &mut subspace_codec,
-                                &plot,
-                                &farmer_data.commitments,
-                                piece_index_offset,
-                                pieces,
-                            );
-                            if plot_pieces_result.is_err() {
-                                continue;
-                            }
-
-                            let object_mapping =
-                                create_global_object_mapping(piece_index_offset, object_mapping);
-
-                            if let Err(error) = farmer_data.object_mappings.store(&object_mapping) {
-                                error!("Failed to store object mappings for pieces: {}", error);
-                            }
-                            let segment_index = root_block.segment_index();
-                            last_root_block.replace(root_block);
-
-                            info!(
-                                "Archived segment {} at block {}",
-                                segment_index, block_to_archive
-                            );
+                        let pieces_to_plot = PiecesToPlot {
+                            piece_index_offset,
+                            pieces,
+                        };
+                        if let Err(_error) = pieces_to_plot_sender.send(pieces_to_plot) {
+                            // No receivers, exiting
+                            break 'outer;
                         }
+
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
+
+                        if let Err(error) = object_mappings.store(&object_mapping) {
+                            error!("Failed to store object mappings for pieces: {}", error);
+                        }
+                        let segment_index = root_block.segment_index();
+                        last_root_block.replace(root_block);
+
+                        info!(
+                            "Archived segment {} at block {}",
+                            segment_index, block_to_archive
+                        );
                     }
 
                     if let Some(last_root_block) = last_root_block {
@@ -407,15 +450,13 @@ fn plot_pieces(
     commitments: &Commitments,
     piece_index_offset: u64,
     mut pieces: FlatPieces,
-) -> Result<(), ()> {
+) -> Result<(), BatchEncodeError> {
     let piece_indexes = (piece_index_offset..)
         .take(pieces.count())
         .collect::<Vec<PieceIndex>>();
 
-    if let Err(error) = subspace_codec.batch_encode(&mut pieces, &piece_indexes) {
-        error!("Failed to encode a piece: error: {}", error);
-        return Err(());
-    }
+    subspace_codec.batch_encode(&mut pieces, &piece_indexes)?;
+
     let pieces = Arc::new(pieces);
 
     match plot.write_many(Arc::clone(&pieces), piece_indexes) {
