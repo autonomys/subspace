@@ -178,11 +178,11 @@ async fn background_plotting<T: RpcClient + Clone + Send + 'static>(
             // TODO: Erase plot
         }
 
-        drop(farmer_data.plot);
-
         Archiver::new(record_size as usize, recorded_history_segment_size as usize)
             .map_err(PlottingError::Archiver)?
     };
+
+    drop(farmer_data.plot);
 
     let (new_block_to_archive_sender, new_block_to_archive_receiver) =
         std::sync::mpsc::sync_channel::<Arc<AtomicU32>>(0);
