@@ -1,5 +1,5 @@
 [package]
-name = "parachain-template-node"
+name = "cirrus-node"
 version = "0.1.0"
 authors = ["Anonymous"]
 description = "A new Cumulus FRAME-based Substrate Node, ready for hacking together a parachain."
@@ -23,7 +23,7 @@ clap = { version = "3.1.6", features = ["derive"] }
 jsonrpc-core = "18.0.0"
 
 # Local Dependencies
-parachain-template-runtime = { path = "../runtime" }
+cirrus-runtime = { path = "../runtime" }
 
 # Substrate Dependencies
 frame-benchmarking = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
@@ -62,23 +62,23 @@ sp-session = { git = "https://github.com/paritytech/substrate", rev = "c364008a6
 sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
 # Cumulus dependencies
-cumulus-client-cli = { path = "../../client/cli" }
-cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
-cirrus-client-executor = { path = "../../client/cirrus-executor" }
-cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
-cirrus-client-service = { path = "../../client/cirrus-service" }
-cirrus-primitives = { path = "../../primitives" }
+cumulus-client-cli = { path = "../client/cli" }
+cumulus-client-consensus-relay-chain = { path = "../client/consensus/relay-chain" }
+cirrus-client-executor = { path = "../client/cirrus-executor" }
+cirrus-client-executor-gossip = { path = "../client/executor-gossip" }
+cirrus-client-service = { path = "../client/cirrus-service" }
+cirrus-primitives = { path = "../primitives" }
 
 # Subspace dependencies
-subspace-node = { path = "../../../crates/subspace-node" }
-subspace-runtime = { path = "../../../crates/subspace-runtime" }
-subspace-service = { path = "../../../crates/subspace-service" }
+subspace-node = { path = "../../crates/subspace-node" }
+subspace-runtime = { path = "../../crates/subspace-runtime" }
+subspace-service = { path = "../../crates/subspace-service" }
 
 [build-dependencies]
 substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
 [features]
 runtime-benchmarks = [
-    "parachain-template-runtime/runtime-benchmarks",
+    "cirrus-runtime/runtime-benchmarks",
     "subspace-node/runtime-benchmarks",
 ]

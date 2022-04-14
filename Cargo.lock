@@ -919,6 +919,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "cirrus-node"
+version = "0.1.0"
+dependencies = [
+ "cirrus-client-executor",
+ "cirrus-client-executor-gossip",
+ "cirrus-client-service",
+ "cirrus-primitives",
+ "cirrus-runtime",
+ "clap 3.1.6",
+ "cumulus-client-cli",
+ "cumulus-client-consensus-relay-chain",
+ "frame-benchmarking",
+ "frame-benchmarking-cli",
+ "futures 0.3.21",
+ "hex-literal",
+ "jsonrpc-core",
+ "log",
+ "pallet-transaction-payment-rpc",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-executor",
+ "sc-network",
+ "sc-rpc",
+ "sc-rpc-api",
+ "sc-service",
+ "sc-telemetry",
+ "sc-tracing",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core",
+ "sp-inherents",
+ "sp-keystore",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-transaction-pool",
+ "subspace-node",
+ "subspace-runtime",
+ "subspace-service",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+]
+
+[[package]]
 name = "cirrus-pallet-executive"
 version = "0.1.0"
 dependencies = [
@@ -948,6 +999,40 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "cirrus-runtime"
+version = "0.1.0"
+dependencies = [
+ "cirrus-pallet-executive",
+ "cirrus-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "smallvec",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "substrate-wasm-builder",
 ]
 
 [[package]]
@@ -5156,91 +5241,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parachain-template-node"
-version = "0.1.0"
-dependencies = [
- "cirrus-client-executor",
- "cirrus-client-executor-gossip",
- "cirrus-client-service",
- "cirrus-primitives",
- "clap 3.1.6",
- "cumulus-client-cli",
- "cumulus-client-consensus-relay-chain",
- "frame-benchmarking",
- "frame-benchmarking-cli",
- "futures 0.3.21",
- "hex-literal",
- "jsonrpc-core",
- "log",
- "pallet-transaction-payment-rpc",
- "parachain-template-runtime",
- "sc-chain-spec",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-executor",
- "sc-network",
- "sc-rpc",
- "sc-rpc-api",
- "sc-service",
- "sc-telemetry",
- "sc-tracing",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "serde",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-core",
- "sp-inherents",
- "sp-keystore",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-transaction-pool",
- "subspace-node",
- "subspace-runtime",
- "subspace-service",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
-]
-
-[[package]]
-name = "parachain-template-runtime"
-version = "0.1.0"
-dependencies = [
- "cirrus-pallet-executive",
- "cirrus-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "smallvec",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-inherents",
- "sp-io",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "parity-db"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8559,6 +8559,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-runtime",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8581,7 +8582,6 @@ dependencies = [
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-utility",
- "parachain-template-runtime",
  "parity-scale-codec",
  "scale-info",
  "sp-api",

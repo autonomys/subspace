@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 // Local Runtime Types
-use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
+use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
 
 // Substrate Imports
 use cirrus_client_executor::ExecutorSlotInfo;
@@ -24,11 +24,11 @@ impl NativeExecutionDispatch for TemplateRuntimeExecutor {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-		parachain_template_runtime::api::dispatch(method, data)
+		cirrus_runtime::api::dispatch(method, data)
 	}
 
 	fn native_version() -> sc_executor::NativeVersion {
-		parachain_template_runtime::native_version()
+		cirrus_runtime::native_version()
 	}
 }
 

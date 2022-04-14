@@ -1,6 +1,6 @@
 //! Secondary chain configurations.
 
-use parachain_template_runtime::{AccountId, Signature};
+use cirrus_runtime::{AccountId, Signature};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,7 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
-pub type ChainSpec =
-	sc_service::GenericChainSpec<parachain_template_runtime::GenesisConfig, Extensions>;
+pub type ChainSpec = sc_service::GenericChainSpec<cirrus_runtime::GenesisConfig, Extensions>;
 
 /// Helper function to generate a crypto pair from seed
 pub fn get_pair_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -128,15 +127,15 @@ pub fn local_testnet_config() -> ChainSpec {
 	)
 }
 
-fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> parachain_template_runtime::GenesisConfig {
-	parachain_template_runtime::GenesisConfig {
-		system: parachain_template_runtime::SystemConfig {
-			code: parachain_template_runtime::WASM_BINARY
+fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> cirrus_runtime::GenesisConfig {
+	cirrus_runtime::GenesisConfig {
+		system: cirrus_runtime::SystemConfig {
+			code: cirrus_runtime::WASM_BINARY
 				.expect("WASM binary was not build, please build it!")
 				.to_vec(),
 		},
 		transaction_payment: Default::default(),
-		balances: parachain_template_runtime::BalancesConfig {
+		balances: cirrus_runtime::BalancesConfig {
 			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 		},
 	}
