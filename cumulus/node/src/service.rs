@@ -305,6 +305,8 @@ where
 
 	start_network.start_network();
 
+	primary_chain_full_node.network_starter.start_network();
+
 	Ok((task_manager, client))
 }
 

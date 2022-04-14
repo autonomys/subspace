@@ -27,6 +27,7 @@ use sc_consensus_subspace::{
     SubspaceLink,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_service::NetworkStarter;
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
@@ -287,6 +288,8 @@ pub struct NewFull<C> {
     /// Imported block stream.
     pub imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Network starter.
+    pub network_starter: NetworkStarter,
 }
 
 /// Builds a new service for a full client.
@@ -446,8 +449,6 @@ where
         telemetry: telemetry.as_mut(),
     })?;
 
-    network_starter.start_network();
-
     Ok(NewFull {
         task_manager,
         client,
@@ -458,5 +459,6 @@ where
         new_slot_notification_stream,
         block_signing_notification_stream,
         imported_block_notification_stream,
+        network_starter,
     })
 }
