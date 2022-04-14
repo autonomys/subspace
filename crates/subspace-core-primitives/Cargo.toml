@@ -19,13 +19,14 @@ serde = { version = "1.0.136", optional = true, features = ["derive"] }
 serde_arrays = { version = "0.1", optional = true }
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
-[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
-features = ["asm"]
-version = "0.10.0"
+#[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
+#features = ["asm"]
+#version = "0.10.0"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 # `asm` feature is not supported on Windows except with GNU toolchain
-[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
+#[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
+[dependencies.sha2]
 default-features = false
 version = "0.10.0"
 
