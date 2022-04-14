@@ -1,3 +1,5 @@
+//! Secondary chain CLI.
+
 use crate::chain_spec;
 use clap::Parser;
 use sc_chain_spec::ChainSpec;

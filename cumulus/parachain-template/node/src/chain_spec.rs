@@ -1,3 +1,5 @@
+//! Secondary chain configurations.
+
 use parachain_template_runtime::{AccountId, Signature};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
