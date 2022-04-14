@@ -1,20 +1,18 @@
-use std::{path::Path, sync::Arc, time::Duration};
-
+use crate::{
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
+};
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
+use std::{path::Path, sync::Arc, time::Duration};
 use subspace_core_primitives::PublicKey;
 use subspace_solving::SubspaceCodec;
 
-use crate::{
-    Commitments, FarmerData, Farming, Identity, ObjectMappings, Plot, Plotting, RpcClient, WsRpc,
-};
-
-/// Abstraction around having multiple plots, farmings and plottings
+/// Abstraction around having multiple plots, farmings and archivings
 pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,
-    plottings: Vec<Plotting>,
+    archivings: Vec<Archiving>,
 }
 
 impl MultiFarming {
@@ -29,12 +27,12 @@ impl MultiFarming {
     ) -> anyhow::Result<Self> {
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
-        let mut plottings = Vec::with_capacity(plot_sizes.len());
+        let mut archivings = Vec::with_capacity(plot_sizes.len());
 
         for (plot_index, max_plot_pieces) in plot_sizes.into_iter().enumerate() {
             let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
             std::fs::create_dir_all(&base_directory)?;
-            let (plot, plotting, farming) = farm_single_plot(
+            let (plot, archiving, farming) = farm_single_plot(
                 base_directory,
                 reward_address,
                 client.clone(),
@@ -45,13 +43,13 @@ impl MultiFarming {
             .await?;
             plots.push(plot);
             farmings.push(farming);
-            plottings.push(plotting);
+            archivings.push(archiving);
         }
 
         Ok(Self {
             plots: Arc::new(plots),
             farmings,
-            plottings,
+            archivings,
         })
     }
 
@@ -60,7 +58,7 @@ impl MultiFarming {
         let mut farming_plotting = self
             .farmings
             .into_iter()
-            .zip(self.plottings)
+            .zip(self.archivings)
             .into_iter()
             .map(|(farming, plotting)| async move {
                 tokio::select! {
@@ -90,7 +88,7 @@ pub(crate) async fn farm_single_plot(
     object_mappings: ObjectMappings,
     max_plot_pieces: u64,
     best_block_number_check_interval: Duration,
-) -> anyhow::Result<(Plot, Plotting, Farming)> {
+) -> anyhow::Result<(Plot, Archiving, Farming)> {
     let identity = Identity::open_or_create(&base_directory)?;
     let public_key = identity.public_key().to_bytes().into();
 
@@ -115,7 +113,7 @@ pub(crate) async fn farm_single_plot(
 
     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-    // start the farming task
+    // Start the farming task
     let farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
@@ -124,23 +122,21 @@ pub(crate) async fn farm_single_plot(
         reward_address,
     );
 
-    let farmer_data = FarmerData::new(
+    let farmer_metadata = client
+        .farmer_metadata()
+        .await
+        .map_err(|error| anyhow!(error))?;
+
+    // Start archiving task
+    let archiving_instance = Archiving::start(
         plot.clone(),
-        commitments,
+        farmer_metadata,
         object_mappings,
-        client
-            .farmer_metadata()
-            .await
-            .map_err(|error| anyhow!(error))?,
-    );
-
-    // start the background plotting
-    let plotting_instance = Plotting::start(
-        farmer_data,
-        client,
-        subspace_codec,
+        client.clone(),
         best_block_number_check_interval,
-    );
+        plotting::plot_pieces(subspace_codec, &plot, commitments),
+    )
+    .await?;
 
-    Ok((plot, plotting_instance, farming_instance))
+    Ok((plot, archiving_instance, farming_instance))
 }

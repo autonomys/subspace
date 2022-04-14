@@ -31,12 +31,13 @@ pub(crate) mod rpc;
 pub(crate) mod ws_rpc;
 pub mod ws_rpc_server;
 
+pub use archiving::{Archiving, ArchivingError, PiecesToPlot};
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{retrieve_piece_from_plots, Plot, PlotError};
-pub use plotting::{FarmerData, Plotting, PlottingError};
+pub use plotting::plot_pieces;
 pub use rpc::RpcClient;
 pub use ws_rpc::WsRpc;
