@@ -14,26 +14,6 @@
 //!
 //! TODO: make plotting account for forks
 //!
-//! ### Archiving blocks
-//!
-//! After listening for new blocks, we request blocks under some
-//! confirmation depth from the best block.
-//!
-//! This is currently necessary due to implementation challenge where archiving
-//! that happens on the node is not waiting for farmer. Also farmer can
-//! connect/disconnect from node at any time, thus resulting in farmer potentially
-//! missing some of the archived pieces altogether. As such, farmer temporarily has
-//! its own archiving process as well. It will eventually be replaced with DNS-based
-//! subscriptions where pieces are disseminated by executors.
-//!
-//! Each of blocks gets passed through the `Archiver::add_block`. It segments
-//! block into several segments (each having pieces, objects, and root block).
-//!
-//! ## Global object mapping
-//!
-//! After receiving new block we also need to add newly added objects in a block.
-//! So we store objects' location by their hash in `ObjectMappings` db.
-//!
 //! ## Encoding pieces and writing to plot
 //!
 //! After receiving block, archiving each segment has several raw pieces. Each of
