@@ -1,16 +1,21 @@
-## Design
+# Design
 
 The farmer typically runs two processes in parallel: plotting and farming.
 
-### Plotting
-0. A new Schnorr key pair is generated, and the farmer ID is derived from the public key.
-1. For every archived piece of the history encoding is created by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`
-2. Each encoding is written directly to disk.
-3. A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST).
+## Plotting
+
+Think of it as the following pipeline:
+
+1. [Farmer receives new blocks from the blockchain](./src/archiving.rs)
+2. [Archives each of them](./src/archiving.rs)
+3. [Encodes each archived piece by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`](./src/plotting.rs)
+4. [Each encoding is written to the disk](./src/plotting.rs)
+3. [A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST)](./src/plotting.rs).
 
 This process currently takes ~ 36 hours per TiB on a quad-core machine, but for 1 GiB plotting should take between a few seconds and a few minutes.
 
-### Solving
+## [Farming](./src/farming.rs)
+
 1. Connect to a client and subscribe to `slot_notifications` via JSON-RPC.
 2. Given a global challenge as `hash(randomness || slot_index)` and `SOLUTION_RANGE`.
 3. Derive local challenge as `hash(global_challenge || farmer_public_key_hash)`.
