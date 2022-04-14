@@ -1,33 +1,7 @@
-//! `Plotting` structure is the abstraction on top of the plotting process on the
-//! single replica.
-//!
-//! Plotting Instance stores a channel to stop/pause the background plotting
-//! task and a handle to make it possible to wait on this background task.
-//!
-//! It does several things.
-//!
-//! ### Listen for new blocks produced by network
-//!
-//! In order to plot whole blockchain history we need to receive network updates,
-//! for that we regularly ask node for its best block number and after that plot
-//! block which is under some confirmation depth constant.
-//!
-//! TODO: make plotting account for forks
-//!
-//! ## Encoding pieces and writing to plot
-//!
-//! After receiving block, archiving each segment has several raw pieces. Each of
-//! those needs to be encoded using time asymmetric permutation
-//! `subspace_solving::SubspaceCodec` (wrapper around `sloth256_189`).
-//!
-//! Then, pieces are written to the `Plot` by their indexes.
-//!
-//! ## Updating commitments
-//!
-//! When writing to plot is done, `Plot` returns `WriteResult` which is needed to
-//! update the `Commitments` for the consensus puzzle solving. We will just iterate
-//! over evicted pieces and remove them. After that we just add new pieces written to
-//! the plot.
+//! Module with callbacks related to plotting pieces. It will:
+//! - encode pieces
+//! - write them to the plot
+//! - update commitment in regards to the plot update
 
 #[cfg(test)]
 mod tests;
