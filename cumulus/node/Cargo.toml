@@ -72,6 +72,7 @@ cirrus-primitives = { path = "../primitives" }
 # Subspace dependencies
 subspace-node = { path = "../../crates/subspace-node" }
 subspace-runtime = { path = "../../crates/subspace-runtime" }
+subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
 
 [build-dependencies]

@@ -964,6 +964,7 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-node",
  "subspace-runtime",
+ "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
