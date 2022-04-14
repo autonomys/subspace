@@ -1,4 +1,4 @@
-use crate::{chain_spec, command};
+use crate::chain_spec;
 use clap::Parser;
 use sc_chain_spec::ChainSpec;
 use sc_cli::{
@@ -119,7 +119,13 @@ impl SubstrateCli for Cli {
 	}
 
 	fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-		command::load_spec(id)
+		Ok(match id {
+			"dev" => Box::new(chain_spec::development_config()),
+			"template-rococo" => Box::new(chain_spec::local_testnet_config()),
+			"" | "local" => Box::new(chain_spec::local_testnet_config()),
+			path =>
+				Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
+		})
 	}
 
 	fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {

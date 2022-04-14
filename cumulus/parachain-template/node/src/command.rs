@@ -1,20 +1,10 @@
 use crate::{
-	chain_spec,
 	cli::{Cli, RelayChainCli, Subcommand},
 	service::{new_partial, TemplateRuntimeExecutor},
 };
 use log::info;
 use parachain_template_runtime::{Block, RuntimeApi};
 use sc_cli::{Result, SubstrateCli};
-
-pub(crate) fn load_spec(id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-	Ok(match id {
-		"dev" => Box::new(chain_spec::development_config()),
-		"template-rococo" => Box::new(chain_spec::local_testnet_config()),
-		"" | "local" => Box::new(chain_spec::local_testnet_config()),
-		path => Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
-	})
-}
 
 macro_rules! construct_async_run {
 	(|$components:ident, $cli:ident, $cmd:ident, $config:ident| $( $code:tt )* ) => {{
