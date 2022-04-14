@@ -34,9 +34,6 @@
 //! After receiving new block we also need to add newly added objects in a block.
 //! So we store objects' location by their hash in `ObjectMappings` db.
 //!
-//! TODO: Creation of global object mapping should be created once for all replicas
-//! and shared between them.
-//!
 //! ## Encoding pieces and writing to plot
 //!
 //! After receiving block, archiving each segment has several raw pieces. Each of
