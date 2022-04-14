@@ -229,3 +229,30 @@ Examples:
 ./FARMER_FILE_NAME farm --help
 ./FARMER_FILE_NAME wipe
 ```
+
+## [Advanced] Build from source (Linux)
+
+If you're running unsupported Linux distribution or CPU architecture, you may try to build binaries yourself from source.
+
+NOTE: This is primarily targeted at tech-savvy users and not recommended unless you know what you're doing.
+Please try to find answer to your question online before reaching out to maintainers.
+
+You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM and Clang in addition to usual developer tooling (Ubuntu example):
+```bash
+sudo apt-get install llvm clang
+```
+
+Now clone the source and build snapshot `snapshot-2022-mar-09` (replace occurrences with the snapshot you want to build):
+```bash
+git clone https://github.com/subspace/subspace.git
+cd subspace
+git checkout snapshot-2022-mar-09
+wget -O chain-spec.json https://github.com/subspace/subspace/releases/download/snapshot-2022-mar-09/chain-spec-raw-snapshot-2022-mar-09.json
+cargo build \
+    --profile production \
+    --bin subspace-node \
+    --bin subspace-farmer \
+    --features=subspace-node/json-chain-spec
+```
+
+You'll find two binaries under `target/production` directory once it succeeds, after which refer to instructions above on how to use them.
