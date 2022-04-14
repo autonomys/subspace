@@ -17,9 +17,12 @@
 
 #![feature(try_blocks, hash_drain_filter, int_log, io_error_other)]
 
+pub(crate) mod archiving;
 pub(crate) mod commitments;
 pub(crate) mod farming;
 pub(crate) mod identity;
+#[cfg(test)]
+mod mock_rpc;
 pub mod multi_farming;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
@@ -27,9 +30,6 @@ pub(crate) mod plotting;
 pub(crate) mod rpc;
 pub(crate) mod ws_rpc;
 pub mod ws_rpc_server;
-
-#[cfg(test)]
-mod mock_rpc;
 
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
