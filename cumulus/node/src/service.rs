@@ -18,9 +18,9 @@ use sp_api::ConstructRuntimeApi;
 use sp_runtime::traits::BlakeTwo256;
 
 /// Native executor instance.
-pub struct TemplateRuntimeExecutor;
+pub struct CirrusRuntimeExecutor;
 
-impl NativeExecutionDispatch for TemplateRuntimeExecutor {
+impl NativeExecutionDispatch for CirrusRuntimeExecutor {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -310,14 +310,14 @@ where
 /// Build the import queue for the parachain runtime.
 #[allow(clippy::type_complexity)]
 pub fn parachain_build_import_queue(
-	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
+	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
 	_config: &Configuration,
 	_telemetry: Option<TelemetryHandle>,
 	task_manager: &TaskManager,
 ) -> Result<
 	sc_consensus::DefaultImportQueue<
 		Block,
-		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>,
+		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>,
 	>,
 	sc_service::Error,
 > {
@@ -335,9 +335,9 @@ pub async fn start_parachain_node(
 	polkadot_config: Configuration,
 ) -> sc_service::error::Result<(
 	TaskManager,
-	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
+	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
 )> {
-	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _>(
+	start_node_impl::<RuntimeApi, CirrusRuntimeExecutor, _, _>(
 		parachain_config,
 		polkadot_config,
 		|_| Ok(Default::default()),
