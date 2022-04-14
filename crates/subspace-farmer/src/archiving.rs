@@ -34,6 +34,7 @@ pub enum ArchivingError {
 }
 
 /// Collection of pieces that potentially need to be plotted
+#[derive(Debug, Clone)]
 pub struct PiecesToPlot {
     /// Offset of the index of the first piece in `pieces`
     pub piece_index_offset: u64,
