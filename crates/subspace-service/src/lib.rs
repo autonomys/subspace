@@ -18,7 +18,7 @@
 
 pub mod rpc;
 
-use polkadot_overseer::{BlockInfo, Handle, Overseer};
+use futures::channel::mpsc;
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
@@ -29,17 +29,16 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ConstructRuntimeApi, TransactionFor};
-use sp_blockchain::HeaderBackend;
-use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError, SelectChain};
+use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
+use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use std::sync::Arc;
-use subspace_runtime_primitives::{
-    opaque::{Block, BlockId},
-    AccountId, Balance, Index as Nonce,
-};
+use subspace_core_primitives::RootBlock;
+use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
 
+// TODO: Check if this is still necessary and remove if not
 /// A set of APIs that subspace-like runtimes must implement.
 pub trait RuntimeApiCollection:
     sp_api::ApiExt<Block>
@@ -87,10 +86,6 @@ pub enum Error {
     /// Substrate service error.
     #[error(transparent)]
     Sub(#[from] sc_service::Error),
-
-    /// Substrate client error.
-    #[error(transparent)]
-    Blockchain(#[from] sp_blockchain::Error),
 
     /// Substrate consensus error.
     #[error(transparent)]
@@ -271,60 +266,6 @@ where
     })
 }
 
-/// Returns the active leaves the overseer should start with.
-async fn active_leaves<RuntimeApi, ExecutorDispatch>(
-    select_chain: &impl SelectChain<Block>,
-    client: &FullClient<RuntimeApi, ExecutorDispatch>,
-) -> Result<Vec<BlockInfo>, Error>
-where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
-{
-    let best_block = select_chain.best_chain().await?;
-
-    let mut leaves = select_chain
-        .leaves()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|hash| {
-            let number = client.number(hash).ok()??;
-
-            // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(1) || hash == best_block.hash() {
-                return None;
-            };
-
-            let parent_hash = client.header(&BlockId::Hash(hash)).ok()??.parent_hash;
-
-            Some(BlockInfo {
-                hash,
-                parent_hash,
-                number,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    // Sort by block number and get the maximum number of leaves
-    leaves.sort_by_key(|b| b.number);
-
-    leaves.push(BlockInfo {
-        hash: best_block.hash(),
-        parent_hash: *best_block.parent_hash(),
-        number: *best_block.number(),
-    });
-
-    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
-    const MAX_ACTIVE_LEAVES: usize = 4;
-
-    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
-}
-
 /// Full client along with some other components.
 pub struct NewFull<C> {
     /// Task manager.
@@ -343,6 +284,9 @@ pub struct NewFull<C> {
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// Block signing stream.
     pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    /// Imported block stream.
+    pub imported_block_notification_stream:
+        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
 }
 
 /// Builds a new service for a full client.
@@ -396,6 +340,7 @@ where
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
+    let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
 
     if config.role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
@@ -512,81 +457,6 @@ where
         backend,
         new_slot_notification_stream,
         block_signing_notification_stream,
+        imported_block_notification_stream,
     })
-}
-
-/// TODO: This should change name and probably contents as well since we don't have proper overseer
-///  anymore
-pub async fn create_overseer<RuntimeApi, ExecutorDispatch, SC>(
-    client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
-    task_manager: &TaskManager,
-    select_chain: SC,
-    new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-) -> Result<Handle, Error>
-where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
-    SC: SelectChain<Block>,
-{
-    let active_leaves = active_leaves(&select_chain, &*client).await?;
-
-    let (overseer, overseer_handle) = Overseer::new(
-        client.clone(),
-        active_leaves
-            .into_iter()
-            .map(
-                |BlockInfo {
-                     hash,
-                     parent_hash: _,
-                     number,
-                 }| (hash, number),
-            )
-            .collect(),
-        Default::default(),
-    );
-
-    {
-        let overseer_handle = overseer_handle.clone();
-        task_manager.spawn_essential_handle().spawn_blocking(
-            "collation-generation-subsystem",
-            Some("collation-generation-subsystem"),
-            Box::pin(async move {
-                use cirrus_node_primitives::ExecutorSlotInfo;
-                use futures::{pin_mut, select, FutureExt, StreamExt};
-
-                let forward = polkadot_overseer::forward_events(
-                    client,
-                    Box::pin(new_slot_notification_stream.subscribe().then(
-                        |slot_notification| async move {
-                            let slot_info = slot_notification.new_slot_info;
-                            ExecutorSlotInfo {
-                                slot: slot_info.slot,
-                                global_challenge: slot_info.global_challenge,
-                            }
-                        },
-                    )),
-                    overseer_handle,
-                );
-
-                let forward = forward.fuse();
-                let overseer_fut = overseer.run().fuse();
-
-                pin_mut!(overseer_fut);
-                pin_mut!(forward);
-
-                select! {
-                    _ = forward => (),
-                    _ = overseer_fut => (),
-                    complete => (),
-                }
-            }),
-        );
-    }
-
-    Ok(overseer_handle)
 }

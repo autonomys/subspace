@@ -48,8 +48,8 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
 /// the future, an error will be returned. If successful, returns the pre-header
 /// and the digest item containing the seal.
 ///
-/// The seal must be the last digest.  Otherwise, the whole header is considered
-/// unsigned.  This is required for security and must not be changed.
+/// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This is
+/// required for security and must not be changed.
 ///
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
 pub(super) fn check_header<B: BlockT + Sized>(

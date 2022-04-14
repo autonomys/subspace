@@ -25,7 +25,6 @@
 //! initialize a block, to push extrinsics and to finalize a block.
 
 #![warn(missing_docs)]
-#![allow(clippy::all)]
 
 use codec::Encode;
 
@@ -229,7 +228,7 @@ where
 	) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
 		for (index, xt) in self.extrinsics.iter().enumerate() {
 			if index == extrinsic_index {
-				return Ok(self.collect_storage_changes()?)
+				return self.collect_storage_changes()
 			}
 
 			// TODO: rethink what to do if an error occurs when executing the transaction.
@@ -367,7 +366,7 @@ mod tests {
 		.unwrap();
 
 		assert!(backend
-			.storage(&sp_core::storage::well_known_keys::CODE)
+			.storage(sp_core::storage::well_known_keys::CODE)
 			.unwrap_err()
 			.contains("Database missing expected key"),);
 	}

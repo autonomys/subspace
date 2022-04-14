@@ -834,7 +834,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-node-primitives",
  "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
@@ -844,7 +843,6 @@ dependencies = [
  "pallet-balances",
  "parity-scale-codec",
  "parking_lot 0.12.0",
- "polkadot-overseer",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "sc-cli",
@@ -897,10 +895,9 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
- "cirrus-node-primitives",
  "cirrus-primitives",
+ "futures 0.3.21",
  "parking_lot 0.12.0",
- "polkadot-overseer",
  "sc-client-api",
  "sc-consensus",
  "sc-network",
@@ -914,27 +911,11 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-runtime",
- "sp-trie",
- "subspace-runtime-primitives",
- "subspace-service",
- "tracing",
-]
-
-[[package]]
-name = "cirrus-node-primitives"
-version = "0.1.0"
-dependencies = [
- "futures 0.3.21",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-consensus-slots",
- "sp-core",
  "sp-executor",
  "sp-runtime",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
+ "sp-trie",
+ "subspace-service",
+ "tracing",
 ]
 
 [[package]]
@@ -1033,6 +1014,7 @@ dependencies = [
  "sp-runtime",
  "sp-timestamp",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
@@ -5186,6 +5168,7 @@ dependencies = [
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
+ "futures 0.3.21",
  "hex-literal",
  "jsonrpc-core",
  "log",
@@ -5627,25 +5610,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521fa9638fa597e1dc53e9412a4f9cefb01187ee1f7413076f9e6749e2885ba9"
 dependencies = [
  "plotters-backend",
-]
-
-[[package]]
-name = "polkadot-overseer"
-version = "0.9.13"
-dependencies = [
- "async-trait",
- "cirrus-node-primitives",
- "futures 0.3.21",
- "parking_lot 0.12.0",
- "pin-project 1.0.10",
- "sc-client-api",
- "sp-api",
- "sp-blockchain",
- "sp-executor",
- "sp-runtime",
- "subspace-runtime-primitives",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -8656,14 +8620,12 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "cirrus-node-primitives",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
  "jsonrpc-core",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
- "polkadot-overseer",
  "sc-basic-authorship",
  "sc-client-api",
  "sc-consensus",
@@ -8694,6 +8656,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",

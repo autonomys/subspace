@@ -20,8 +20,10 @@
 
 pub mod chain_spec;
 
-use std::{future::Future, sync::Arc};
-
+use cirrus_client_executor::ExecutorSlotInfo;
+use cirrus_client_service::StartExecutorParams;
+use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
+use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -38,12 +40,11 @@ use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
+use std::{future::Future, sync::Arc};
+use subspace_runtime_primitives::opaque::Block as PBlock;
 use substrate_test_client::{
 	BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
-
-use cirrus_client_service::{start_executor, StartExecutorParams};
-use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 
 pub use cirrus_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
@@ -60,6 +61,7 @@ pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 /// Secondary executor for the test service.
 pub type Executor = cirrus_client_executor::Executor<
 	Block,
+	PBlock,
 	Client,
 	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
 	Backend,
@@ -193,15 +195,6 @@ where
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
 
-	let overseer_handle = subspace_service::create_overseer(
-		primary_chain_full_node.client.clone(),
-		&primary_chain_full_node.task_manager,
-		primary_chain_full_node.select_chain.clone(),
-		primary_chain_full_node.new_slot_notification_stream.clone(),
-	)
-	.await
-	.map_err(|error| sc_service::Error::Other(format!("Failed to create overseer: {}", error)))?;
-
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
@@ -237,11 +230,25 @@ where
 
 	let code_executor = Arc::new(params.other);
 	let params = StartExecutorParams {
+		primary_chain_client: primary_chain_full_node.client.clone(),
+		spawn_essential: &task_manager.spawn_essential_handle(),
+		select_chain: &primary_chain_full_node.select_chain,
+		imported_block_notification_stream: primary_chain_full_node
+			.imported_block_notification_stream
+			.subscribe()
+			.then(|(block_number, _)| async move { block_number }),
+		new_slot_notification_stream: primary_chain_full_node
+			.new_slot_notification_stream
+			.subscribe()
+			.then(|slot_notification| async move {
+				let slot_info = slot_notification.new_slot_info;
+				ExecutorSlotInfo {
+					slot: slot_info.slot,
+					global_challenge: slot_info.global_challenge,
+				}
+			}),
 		client: client.clone(),
 		spawner: Box::new(task_manager.spawn_handle()),
-		task_manager: &mut task_manager,
-		primary_chain_full_node,
-		overseer_handle,
 		transaction_pool,
 		network: network.clone(),
 		backend: backend.clone(),
@@ -249,7 +256,9 @@ where
 		is_authority: validator,
 	};
 
-	let executor = start_executor(params).await?;
+	let executor = cirrus_client_service::start_executor(params).await?;
+
+	task_manager.add_child(primary_chain_full_node.task_manager);
 
 	start_network.start_network();
 

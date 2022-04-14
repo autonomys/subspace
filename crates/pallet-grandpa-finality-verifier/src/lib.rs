@@ -39,7 +39,7 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_finality_grandpa::{AuthorityList, SetId};
+use sp_finality_grandpa::SetId;
 use sp_std::{fmt::Debug, vec::Vec};
 
 // Re-export in crate namespace for `construct_runtime!`
@@ -51,8 +51,6 @@ pub use pallet::*;
 pub struct InitializationData {
     /// Scale encoded header from which we should start syncing.
     pub header: Vec<u8>,
-    /// The initial authorities of the pallet.
-    pub authority_list: AuthorityList,
     /// The ID of the initial authority set.
     pub set_id: SetId,
 }
@@ -117,18 +115,17 @@ pub mod pallet {
         UnsupportedScheduledChange,
     }
 
-    pub(crate) fn initialize_chain<T: Config>(
+    pub(crate) fn initialize_chain<T: Config, C: Chain>(
         chain_id: T::ChainId,
         init_params: InitializationData,
     ) -> DispatchResult {
-        let InitializationData {
-            header,
-            authority_list,
-            set_id,
-        } = init_params;
+        let InitializationData { header, set_id } = init_params;
+        let header_decoded = C::decode_header::<T>(header.as_slice())?;
+        let change =
+            find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
         BestFinalized::<T>::insert(chain_id, header);
         let authority_set = AuthoritySet {
-            authorities: authority_list,
+            authorities: change.next_authorities,
             set_id,
         };
         CurrentAuthoritySet::<T>::insert(chain_id, authority_set);
@@ -240,13 +237,16 @@ pub mod pallet {
     /// This function is only allowed to be called from a trusted origin and writes to storage
     /// with practically no checks in terms of the validity of the data. It is important that
     /// you ensure that valid data is being passed in.
-    pub fn initialize<T: Config>(chain_id: T::ChainId, init_data: &[u8]) -> DispatchResult {
+    pub fn initialize<T: Config, C: Chain>(
+        chain_id: T::ChainId,
+        init_data: &[u8],
+    ) -> DispatchResult {
         let data = InitializationData::decode(&mut &*init_data).map_err(|error| {
             log::error!("Cannot decode init data, error: {:?}", error);
             Error::<T>::FailedDecodingInitData
         })?;
 
-        initialize_chain::<T>(chain_id, data)?;
+        initialize_chain::<T, C>(chain_id, data)?;
         Ok(())
     }
 

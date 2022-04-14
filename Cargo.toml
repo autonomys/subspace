@@ -15,7 +15,6 @@ members = [
     "cumulus/primitives",
     "cumulus/test/runtime",
     "cumulus/test/service",
-    "polkadot/node/overseer",
     "substrate/*",
     "test/subspace-test-client",
     "test/subspace-test-runtime",

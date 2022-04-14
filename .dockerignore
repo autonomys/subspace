@@ -1,7 +1,6 @@
 *
 !/crates
 !/cumulus
-!/polkadot
 !/substrate
 !/test
 !/Cargo.lock

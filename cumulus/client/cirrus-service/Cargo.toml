@@ -23,16 +23,15 @@ sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c364008a6
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c364008a6c7da8456e17967f55edf51e45146998" }
 
 # Other deps
+futures = "0.3.21"
 parking_lot = "0.12.0"
 tracing = "0.1.32"
 
 # Cirrus
 cirrus-client-executor = { path = "../cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
-cirrus-node-primitives = { path = "../../../crates/cirrus-node-primitives" }
 cirrus-primitives = { path = "../../primitives" }
-polkadot-overseer = { path = "../../../polkadot/node/overseer" }
 
 # Subspace
-subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
+sp-executor = { path = "../../../crates/sp-executor" }
 subspace-service = { path = "../../../crates/subspace-service" }

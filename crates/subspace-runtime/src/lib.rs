@@ -28,6 +28,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
+use frame_support::traits::Contains;
 use frame_support::{
     construct_runtime, parameter_types,
     traits::{
@@ -43,7 +44,7 @@ use frame_system::{
     limits::{BlockLength, BlockWeights},
     EnsureNever,
 };
-use pallet_balances::NegativeImbalance;
+use pallet_balances::{Call as BalancesCall, NegativeImbalance};
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 use scale_info::TypeInfo;
@@ -185,9 +186,25 @@ pub type SS58Prefix = ConstU16<2254>;
 
 // Configure FRAME pallets to include in runtime.
 
+pub struct CallFilter;
+
+impl Contains<Call> for CallFilter {
+    fn contains(c: &Call) -> bool {
+        // Disable all balance transfers
+        !matches!(
+            c,
+            Call::Balances(
+                BalancesCall::transfer { .. }
+                    | BalancesCall::transfer_keep_alive { .. }
+                    | BalancesCall::transfer_all { .. }
+            )
+        )
+    }
+}
+
 impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
-    type BaseCallFilter = frame_support::traits::Everything;
+    type BaseCallFilter = CallFilter;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = SubspaceBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -501,7 +518,7 @@ pub struct GrandpaValidator<C>(C);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::initialize::<Runtime>(feed_id, data)
+        pallet_grandpa_finality_verifier::initialize::<Runtime, C>(feed_id, data)
     }
 
     fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {

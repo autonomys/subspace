@@ -23,16 +23,12 @@ use sp_executor::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
 };
 
-// TODO: proper error value
-const INVALID_FRAUD_PROOF: u8 = 100;
 const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
 const INVALID_TRANSACTION_PROOF: u8 = 102;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{
-        INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_FRAUD_PROOF, INVALID_TRANSACTION_PROOF,
-    };
+    use crate::{INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_TRANSACTION_PROOF};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
@@ -212,12 +208,13 @@ mod pallet {
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     // TODO: prevent the spamming of fraud proof transaction.
-                    if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
-                        log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
-                        return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
-                    }
+                    // TODO: verify the fraud proof on the client side.
+                    // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
+                    // log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
+                    // return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
+                    // }
                     // TODO: proper tag value.
-                    unsigned_validity("SubspaceSubmitFraudProof", fraud_proof.clone())
+                    unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
                 }
                 Call::submit_bundle_equivocation_proof {
                     bundle_equivocation_proof,
