@@ -3,8 +3,8 @@ use crate::identity::Identity;
 use crate::mock_rpc::MockRpc;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::plotting::{FarmerData, Plotting};
 use crate::rpc::{NewHead, RpcClient};
+use crate::{plotting, Archiving};
 use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
@@ -55,10 +55,6 @@ async fn plotting_happy_path() {
         .await
         .expect("Could not retrieve farmer_metadata");
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    let farmer_data = FarmerData::new(plot.clone(), commitments, object_mappings, farmer_metadata);
-
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
         object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
@@ -78,12 +74,19 @@ async fn plotting_happy_path() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
+
+    // Start archiving task
+    let archiving_instance = Archiving::start(
+        plot.clone(),
+        farmer_metadata,
+        object_mappings,
         client.clone(),
-        subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plotting::plot_pieces(subspace_codec, &plot, commitments),
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -127,7 +130,7 @@ async fn plotting_happy_path() {
     client.drop_new_head_sender().await;
 
     // wait for farmer to finish
-    if let Err(e) = plotting_instance.wait().await {
+    if let Err(e) = archiving_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
 }
@@ -162,15 +165,6 @@ async fn plotting_continue() {
         .await
         .expect("Could not retrieve farmer_metadata");
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
-
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: vec![0u8; SEGMENT_SIZE / 2],
         object_mapping: Default::default(), // This test does not concern with the object mappings at the moment.
@@ -190,12 +184,19 @@ async fn plotting_continue() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
+
+    // Start archiving task
+    let archiving_instance = Archiving::start(
+        plot.clone(),
+        farmer_metadata.clone(),
+        object_mappings.clone(),
         client.clone(),
-        subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plotting::plot_pieces(subspace_codec, &plot, commitments.clone()),
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -218,19 +219,12 @@ async fn plotting_continue() {
     client.drop_new_head_sender().await;
 
     // wait for farmer to finish
-    if let Err(e) = plotting_instance.wait().await {
+    if let Err(e) = archiving_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
 
     // phase 2 - continue with new blocks after dropping the old plotting
     let client = MockRpc::new();
-
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings.clone(),
-        farmer_metadata.clone(),
-    );
 
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
@@ -261,12 +255,17 @@ async fn plotting_continue() {
     // putting 250 milliseconds here to give plotter some time
     sleep(Duration::from_millis(250)).await;
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    // Start archiving task
+    let archiving_instance = Archiving::start(
+        plot.clone(),
+        farmer_metadata,
+        object_mappings,
         client.clone(),
-        subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plotting::plot_pieces(subspace_codec, &plot, commitments.clone()),
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -311,7 +310,7 @@ async fn plotting_continue() {
     client.drop_new_head_sender().await;
 
     // wait for farmer to finish
-    if let Err(e) = plotting_instance.wait().await {
+    if let Err(e) = archiving_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
 }
@@ -360,15 +359,6 @@ async fn plotting_piece_eviction() {
         .await
         .expect("Could not retrieve farmer_metadata");
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    let farmer_data = FarmerData::new(
-        plot.clone(),
-        commitments.clone(),
-        object_mappings,
-        farmer_metadata,
-    );
-
     let encoded_block0 = EncodedBlockWithObjectMapping {
         block: {
             let mut block = vec![0u8; SEGMENT_SIZE];
@@ -396,12 +386,19 @@ async fn plotting_piece_eviction() {
         },
     ];
 
-    let plotting_instance = Plotting::start(
-        farmer_data,
+    let subspace_codec = SubspaceCodec::new(identity.public_key());
+
+    // Start archiving task
+    let archiving_instance = Archiving::start(
+        plot.clone(),
+        farmer_metadata,
+        object_mappings,
         client.clone(),
-        subspace_codec,
         BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-    );
+        plotting::plot_pieces(subspace_codec, &plot, commitments.clone()),
+    )
+    .await
+    .unwrap();
 
     for (block, new_head) in encoded_blocks.clone().into_iter().zip(new_heads) {
         // putting 250 milliseconds here to give plotter some time
@@ -416,7 +413,7 @@ async fn plotting_piece_eviction() {
     client.drop_new_head_sender().await;
 
     // wait for farmer to finish
-    if let Err(e) = plotting_instance.wait().await {
+    if let Err(e) = archiving_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
 

@@ -21,7 +21,7 @@
 
 mod codec;
 
-pub use codec::SubspaceCodec;
+pub use codec::{BatchEncodeError, SubspaceCodec};
 pub use construct_uint::PieceDistance;
 use schnorrkel::SignatureResult;
 use sha2::{Digest, Sha256};
