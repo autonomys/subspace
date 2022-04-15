@@ -31,11 +31,7 @@ pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {
 }
 
 /// Simple Sha2-256 hashing of a pair of values.
-pub fn sha256_hash_pair<A, B>(a: A, b: B) -> Sha256Hash
-where
-    A: AsRef<[u8]>,
-    B: AsRef<[u8]>,
-{
+pub fn sha256_hash_pair(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Sha256Hash {
     let mut hasher = Sha256::new();
     hasher.update(a.as_ref());
     hasher.update(b.as_ref());
