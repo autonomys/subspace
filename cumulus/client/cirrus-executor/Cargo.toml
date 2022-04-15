@@ -21,14 +21,14 @@ sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621e
 
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "3.1.2", features = [ "derive" ] }
-crossbeam = "0.8"
+crossbeam = "0.8.1"
 futures = { version = "0.3.21", features = ["compat"] }
 futures-timer = "3.0.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 merkletree = "0.21.0"
 parking_lot = "0.12.0"
-tracing = "0.1.23"
+tracing = "0.1.34"
 thiserror = "1.0.29"
 tokio = "1.17.0"
 
@@ -43,12 +43,12 @@ subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primiti
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
 features = ["asm"]
-version = "0.10.0"
+version = "0.10.2"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 # `asm` feature is not supported on Windows except with GNU toolchain
 [target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
-version = "0.10.0"
+version = "0.10.2"
 
 [dev-dependencies]
 cirrus-test-service = { path = "../../test/service" }

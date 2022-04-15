@@ -12,9 +12,9 @@ include = [
 ]
 
 [dependencies]
-log = "0.4.14"
+log = "0.4.16"
 num_cpus = "1.13.0"
-rayon = "1.5.1"
+rayon = "1.5.2"
 schnorrkel = "0.9.1"
 sloth256-189 = "0.2.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
@@ -24,12 +24,12 @@ uint = "0.9"
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
 features = ["asm"]
-version = "0.10.0"
+version = "0.10.2"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 # `asm` feature is not supported on Windows except with GNU toolchain
 [target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
-version = "0.10.0"
+version = "0.10.2"
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["min_const_gen"] }

@@ -33,4 +33,4 @@ substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-r
 substrate-test-runtime = { version = "2.0.0", path = "../substrate-test-runtime" }
 sp-tracing = { version = "5.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-service = { version = "0.10.0-dev", default-features = false, features = ["test-helpers"],  git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
-async-trait = "0.1.52"
+async-trait = "0.1.53"
