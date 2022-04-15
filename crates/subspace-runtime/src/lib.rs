@@ -67,10 +67,8 @@ use sp_std::{borrow::Cow, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{
-    objects::{BlockObject, BlockObjectMapping},
-    Randomness, RootBlock, Sha256Hash, PIECE_SIZE,
-};
+use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
+use subspace_core_primitives::{crypto, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -536,9 +534,11 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
             // we just return empty if we failed to decode as this is not called in runtime
             Err(_) => return vec![],
         };
-        // for substrate, we store the block as is. so offset is 0
+
+        // for substrate, we store the height and block hash at that height
+        let key = (*block.block.header.number(), block.block.header.hash()).encode();
         vec![FeedObjectMapping {
-            key: block.block.header.hash().into(),
+            key: crypto::sha256_hash(key.as_slice()),
             offset: 0,
         }]
     }
@@ -572,8 +572,10 @@ impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
         self.decode_block(object)
             .ok()
             .map(|block| {
+                // for substrate, we store the height and block hash at that height
+                let key = (*block.block.header.number(), block.block.header.hash()).encode();
                 vec![FeedObjectMapping {
-                    key: block.block.header.hash().into(),
+                    key: crypto::sha256_hash(key.as_slice()),
                     offset: 0,
                 }]
             })
