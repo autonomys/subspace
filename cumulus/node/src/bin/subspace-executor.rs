@@ -3,8 +3,10 @@ use cirrus_node::{
 	service::{self, new_partial, start_parachain_node, CirrusRuntimeExecutor},
 };
 use cirrus_runtime::{Block, RuntimeApi};
+use frame_benchmarking_cli::BenchmarkCmd;
 use log::info;
 use sc_cli::{Result, SubstrateCli};
+use sc_service::PartialComponents;
 
 macro_rules! construct_async_run {
 	(|$components:ident, $cli:ident, $cmd:ident, $config:ident| $( $code:tt )* ) => {{
@@ -74,19 +76,46 @@ pub fn main() -> Result<()> {
 		},
 		Some(Subcommand::Revert(cmd)) => {
 			construct_async_run!(|components, cli, cmd, config| {
-				Ok(cmd.run(components.client, components.backend))
+				Ok(cmd.run(components.client, components.backend, None))
 			})
 		},
-		Some(Subcommand::Benchmark(cmd)) =>
-			if cfg!(feature = "runtime-benchmarks") {
-				let runner = cli.create_runner(cmd)?;
+		Some(Subcommand::Benchmark(cmd)) => {
+			let runner = cli.create_runner(cmd)?;
 
-				runner.sync_run(|config| cmd.run::<Block, CirrusRuntimeExecutor>(config))
-			} else {
-				Err("Benchmarking wasn't enabled when building the node. \
-				You can enable it with `--features runtime-benchmarks`."
-					.into())
-			},
+			runner.sync_run(|config| {
+				let PartialComponents { client, backend, .. } =
+					service::new_partial(&config, service::parachain_build_import_queue)?;
+
+				// This switch needs to be in the client, since the client decides
+				// which sub-commands it wants to support.
+				match cmd {
+					BenchmarkCmd::Pallet(cmd) => {
+						if !cfg!(feature = "runtime-benchmarks") {
+							return Err(
+								"Runtime benchmarking wasn't enabled when building the node. \
+                                You can enable it with `--features runtime-benchmarks`."
+									.into(),
+							)
+						}
+
+						cmd.run::<Block, subspace_node::ExecutorDispatch>(config)
+					},
+					BenchmarkCmd::Block(cmd) => cmd.run(client),
+					BenchmarkCmd::Storage(cmd) => {
+						let db = backend.expose_db();
+						let storage = backend.expose_storage();
+
+						cmd.run(config, client, db, storage)
+					},
+					BenchmarkCmd::Overhead(_cmd) => {
+						todo!("Not implemented")
+						// let ext_builder = BenchmarkExtrinsicBuilder::new(client.clone());
+						//
+						// cmd.run(config, client, inherent_benchmark_data()?, Arc::new(ext_builder))
+					},
+				}
+			})
+		},
 		None => {
 			let runner = cli.create_runner(&cli.run.normalize())?;
 

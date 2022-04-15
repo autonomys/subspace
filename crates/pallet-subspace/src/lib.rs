@@ -379,6 +379,19 @@ mod pallet {
             }
         }
 
+        fn is_inherent_required(data: &InherentData) -> Result<Option<Self::Error>, Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Subspace inherent data not correctly encoded")
+                .expect("Subspace inherent data must be provided");
+
+            Ok(if inherent_data.root_blocks.is_empty() {
+                None
+            } else {
+                Some(InherentError::MissingRootBlocksList)
+            })
+        }
+
         fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
             if let Call::store_root_blocks { root_blocks } = call {
                 let inherent_data = data
