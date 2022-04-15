@@ -161,15 +161,17 @@ pub fn retrieve_piece_from_plots(
         .transpose()
 }
 
-/// `Plot` struct is an abstraction on top of plot database. Pieces plotted for single identity,
-/// that's why it is required to supply both address of single replica farmer and maximum amount
-/// of pieces to be stored. It offloads disk writing to separate worker, which runs in the background.
+/// `Plot` is an abstraction for plotted pieces and some mappings.
 ///
-/// The worker converts requests to internal reads/writes to the plot database to bare disk writes.
-/// It prioritizes reads over writes by having separate queues for reads and writes requests, read
-/// requests are executed until exhausted after which at most 1 write request is handled and the
-/// cycle repeats. This allows finding solution with as little delay as possible while introducing
-/// changes to the plot at the same time.
+/// Pieces plotted for single identity, that's why it is required to supply both address of single
+/// replica farmer and maximum amount of pieces to be stored. It offloads disk writing to separate
+/// worker, which runs in the background.
+///
+/// The worker converts requests to internal reads/writes to the plot database to direct disk
+/// reads/writes. It prioritizes reads over writes by having separate queues for high and low
+/// priority requests, read requests are executed until exhausted after which at most 1 write
+/// request is handled and the cycle repeats. This allows finding solution with as little delay as
+/// possible while introducing changes to the plot at the same time.
 #[derive(Clone)]
 pub struct Plot {
     inner: Arc<Inner>,

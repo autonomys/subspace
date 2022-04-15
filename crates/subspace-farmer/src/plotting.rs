@@ -1,7 +1,7 @@
 //! Module with callbacks related to plotting pieces. It will:
-//! - encode pieces
-//! - write them to the plot
-//! - update commitment in regards to the plot update
+//! * encode pieces
+//! * write them to the plot
+//! * update commitments accordingly to change in piece set
 
 #[cfg(test)]
 mod tests;

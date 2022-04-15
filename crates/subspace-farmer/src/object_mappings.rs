@@ -15,7 +15,7 @@ pub enum ObjectMappingError {
     Db(rocksdb::Error),
 }
 
-/// `ObjectMappings` is a mapping from arbitrary object hash to its location in plot
+/// `ObjectMappings` is a mapping from arbitrary object hash to its location in archived history.
 #[derive(Debug, Clone)]
 pub struct ObjectMappings {
     db: Arc<DB>,

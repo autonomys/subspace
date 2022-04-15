@@ -26,14 +26,12 @@ pub enum FarmingError {
     PlotRead(std::io::Error),
 }
 
-/// `Farming` structure is the abstraction of the farming process for a single
-/// replica plot farming.
+/// `Farming` structure is an abstraction of the farming process for a single replica plot farming.
 ///
-/// Farming Instance also stores a channel to stop/pause the background farming
-/// task and a handle to make it possible to wait on it.
+/// Farming instance can be stopped by dropping or it is possible to wait for it to exit on its own.
 ///
-/// At high level it receives a new challenge from the consensus and tries to
-/// find solution for it in its `Commitments` database.
+/// At high level it receives a new challenge from the consensus and tries to find solution for it
+/// in its `Commitments` database.
 pub struct Farming {
     stop_sender: async_oneshot::Sender<()>,
     handle: Option<JoinHandle<Result<(), FarmingError>>>,
@@ -47,7 +45,7 @@ impl Farming {
         commitments: Commitments,
         client: T,
         identity: Identity,
-        reward_adress: PublicKey,
+        reward_address: PublicKey,
     ) -> Self {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = async_oneshot::oneshot();
@@ -60,7 +58,7 @@ impl Farming {
                     &plot,
                     &commitments,
                     &identity,
-                    reward_adress,
+                    reward_address,
                 )),
                 stop_receiver,
             )
