@@ -451,18 +451,23 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
-    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
-        let max_distance = {
-            let mut iter = inner.raw_iterator();
+    fn update_max_distance(&mut self) {
+        self.max_distance = {
+            let mut iter = self.inner.raw_iterator();
             iter.seek_to_last();
             iter.key().map(PieceDistance::from_big_endian)
         };
-        Ok(Self {
+    }
+
+    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
+        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
+        let mut me = Self {
             inner,
             address,
-            max_distance,
-        })
+            max_distance: None,
+        };
+        me.update_max_distance();
+        Ok(me)
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
@@ -505,9 +510,7 @@ impl IndexHashToOffsetDB {
             .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
 
-        let mut iter = self.inner.raw_iterator();
-        iter.seek_to_last();
-        self.max_distance = iter.key().map(PieceDistance::from_big_endian);
+        self.update_max_distance();
 
         Ok(result)
     }
