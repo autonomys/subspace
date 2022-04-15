@@ -31,8 +31,8 @@ use sc_service::{
 		DatabaseSource, KeepBlocks, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
 		OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 	},
-	BasePath, ChainSpec, Configuration, Error as ServiceError, PartialComponents, Role,
-	RpcHandlers, TFullBackend, TFullClient, TaskManager,
+	BasePath, ChainSpec, Configuration, Error as ServiceError, NetworkStarter, PartialComponents,
+	Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -261,6 +261,8 @@ where
 	task_manager.add_child(primary_chain_full_node.task_manager);
 
 	start_network.start_network();
+
+	primary_chain_full_node.network_starter.start_network();
 
 	Ok((task_manager, client, backend, code_executor, network, rpc_handlers, executor))
 }
@@ -612,6 +614,6 @@ pub fn run_primary_chain_validator_node(
 	key: Sr25519Keyring,
 	boot_nodes: Vec<MultiaddrWithPeerId>,
 	is_validator: bool,
-) -> subspace_test_service::SubspaceTestNode {
+) -> (subspace_test_service::SubspaceTestNode, NetworkStarter) {
 	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, is_validator)
 }

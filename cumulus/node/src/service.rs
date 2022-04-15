@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 // Local Runtime Types
-use parachain_template_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
+use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
 
 // Substrate Imports
 use cirrus_client_executor::ExecutorSlotInfo;
@@ -13,22 +13,22 @@ use futures::StreamExt;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClient, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
-use sc_tracing::tracing;
 use sp_api::ConstructRuntimeApi;
 use sp_runtime::traits::BlakeTwo256;
+use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Native executor instance.
-pub struct TemplateRuntimeExecutor;
+pub struct CirrusRuntimeExecutor;
 
-impl NativeExecutionDispatch for TemplateRuntimeExecutor {
+impl NativeExecutionDispatch for CirrusRuntimeExecutor {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-		parachain_template_runtime::api::dispatch(method, data)
+		cirrus_runtime::api::dispatch(method, data)
 	}
 
 	fn native_version() -> sc_executor::NativeVersion {
-		parachain_template_runtime::native_version()
+		cirrus_runtime::native_version()
 	}
 }
 
@@ -151,9 +151,11 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with("Secondarychain")]
-async fn start_node_impl<RuntimeApi, Executor, RB, BIQ>(
+async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, PRuntimeApi, PExecutorDispatch>(
 	mut parachain_config: Configuration,
-	polkadot_config: Configuration,
+	primary_chain_full_node: subspace_service::NewFull<
+		Arc<subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>,
+	>,
 	_rpc_ext_builder: RB,
 	build_import_queue: BIQ,
 ) -> sc_service::error::Result<(
@@ -195,6 +197,16 @@ where
 			>,
 			sc_service::Error,
 		> + 'static,
+	PRuntimeApi: sp_api::ConstructRuntimeApi<
+			PBlock,
+			subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>,
+		> + Send
+		+ Sync
+		+ 'static,
+	PRuntimeApi::RuntimeApi: subspace_service::RuntimeApiCollection<
+		StateBackend = sc_client_api::StateBackendFor<subspace_service::FullBackend, PBlock>,
+	>,
+	PExecutorDispatch: NativeExecutionDispatch + 'static,
 {
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
@@ -211,17 +223,6 @@ where
 	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
 
 	let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
-
-	let primary_chain_full_node = {
-		let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Primarychain");
-		let _enter = span.enter();
-
-		subspace_service::new_full::<subspace_runtime::RuntimeApi, subspace_node::ExecutorDispatch>(
-			polkadot_config,
-			false,
-		)
-		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
-	};
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
@@ -304,20 +305,22 @@ where
 
 	start_network.start_network();
 
+	primary_chain_full_node.network_starter.start_network();
+
 	Ok((task_manager, client))
 }
 
 /// Build the import queue for the parachain runtime.
 #[allow(clippy::type_complexity)]
 pub fn parachain_build_import_queue(
-	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
+	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
 	_config: &Configuration,
 	_telemetry: Option<TelemetryHandle>,
 	task_manager: &TaskManager,
 ) -> Result<
 	sc_consensus::DefaultImportQueue<
 		Block,
-		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>,
+		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>,
 	>,
 	sc_service::Error,
 > {
@@ -330,16 +333,30 @@ pub fn parachain_build_import_queue(
 }
 
 /// Start a parachain node.
-pub async fn start_parachain_node(
+pub async fn start_parachain_node<PRuntimeApi, PExecutorDispatch>(
 	parachain_config: Configuration,
-	polkadot_config: Configuration,
+	primary_chain_full_node: subspace_service::NewFull<
+		Arc<subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>,
+	>,
 ) -> sc_service::error::Result<(
 	TaskManager,
-	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<TemplateRuntimeExecutor>>>,
-)> {
-	start_node_impl::<RuntimeApi, TemplateRuntimeExecutor, _, _>(
+	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
+)>
+where
+	PRuntimeApi: sp_api::ConstructRuntimeApi<
+			PBlock,
+			subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>,
+		> + Send
+		+ Sync
+		+ 'static,
+	PRuntimeApi::RuntimeApi: subspace_service::RuntimeApiCollection<
+		StateBackend = sc_client_api::StateBackendFor<subspace_service::FullBackend, PBlock>,
+	>,
+	PExecutorDispatch: NativeExecutionDispatch + 'static,
+{
+	start_node_impl::<RuntimeApi, CirrusRuntimeExecutor, _, _, _, _>(
 		parachain_config,
-		polkadot_config,
+		primary_chain_full_node,
 		|_| Ok(Default::default()),
 		parachain_build_import_queue,
 	)

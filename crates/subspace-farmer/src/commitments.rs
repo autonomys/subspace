@@ -55,6 +55,13 @@ struct Inner {
     commitment_databases: Mutex<CommitmentDatabases>,
 }
 
+/// `Commitments` is a database for commitments.
+///
+/// You can think of it as 2 mappings from *piece tags* to *plot offsets*.
+///
+/// Overall it is just wrapper around 2 databases (as we know just 2 salts -
+/// current and the next one). Second one is filled in the background in the
+/// `Plotting` process.
 #[derive(Debug, Clone)]
 pub struct Commitments {
     inner: Arc<Inner>,

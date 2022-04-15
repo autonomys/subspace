@@ -10,8 +10,8 @@ members = [
     "cumulus/client/consensus/relay-chain",
     "cumulus/client/executor-gossip",
     "cumulus/pallets/executive",
-    "cumulus/parachain-template/node",
-    "cumulus/parachain-template/runtime",
+    "cumulus/node",
+    "cumulus/runtime",
     "cumulus/primitives",
     "cumulus/test/runtime",
     "cumulus/test/service",
@@ -84,3 +84,7 @@ panic = "unwind"
 inherits = "release"
 lto = "fat"
 codegen-units = 1
+
+# TODO: Unlock once chacha20poly1305 0.10 appears in libp2p's dependencies
+[patch.crates-io]
+chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }

@@ -16,11 +16,13 @@
 
 //! Subspace node implementation.
 
+use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
+use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
-use subspace_runtime::RuntimeApi;
+use subspace_runtime::{Block, RuntimeApi};
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -172,25 +174,53 @@ fn main() -> std::result::Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
-                    cmd.run(client, backend).map_err(Error::SubstrateCli),
+                    cmd.run(client, backend, None).map_err(Error::SubstrateCli),
                     task_manager,
                 ))
             })?;
         }
         Some(Subcommand::Benchmark(cmd)) => {
-            if cfg!(feature = "runtime-benchmarks") {
-                let runner = cli.create_runner(cmd)?;
-                set_default_ss58_version(&runner.config().chain_spec);
-                runner.sync_run(|config| {
-                    cmd.run::<subspace_runtime::Block, ExecutorDispatch>(config)
-                })?;
-            } else {
-                return Err(Error::Other(
-                    "Benchmarking wasn't enabled when building the node. You can enable it with \
-                    `--features runtime-benchmarks`."
-                        .into(),
-                ));
-            }
+            let runner = cli.create_runner(cmd)?;
+
+            runner.sync_run(|config| {
+                let PartialComponents {
+                    client, backend, ..
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+
+                // This switch needs to be in the client, since the client decides
+                // which sub-commands it wants to support.
+                match cmd {
+                    BenchmarkCmd::Pallet(cmd) => {
+                        if !cfg!(feature = "runtime-benchmarks") {
+                            return Err(
+                                "Runtime benchmarking wasn't enabled when building the node. \
+                                You can enable it with `--features runtime-benchmarks`."
+                                    .into(),
+                            );
+                        }
+
+                        cmd.run::<Block, ExecutorDispatch>(config)
+                    }
+                    BenchmarkCmd::Block(cmd) => cmd.run(client),
+                    BenchmarkCmd::Storage(cmd) => {
+                        let db = backend.expose_db();
+                        let storage = backend.expose_storage();
+
+                        cmd.run(config, client, db, storage)
+                    }
+                    BenchmarkCmd::Overhead(_cmd) => {
+                        todo!("Not implemented")
+                        // let ext_builder = BenchmarkExtrinsicBuilder::new(client.clone());
+                        //
+                        // cmd.run(
+                        //     config,
+                        //     client,
+                        //     command_helper::inherent_benchmark_data()?,
+                        //     Arc::new(ext_builder),
+                        // )
+                    }
+                }
+            })?;
         }
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
@@ -199,7 +229,10 @@ fn main() -> std::result::Result<(), Error> {
                 subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
                     config, true,
                 )
-                .map(|full| full.task_manager)
+                .map(|full| {
+                    full.network_starter.start_network();
+                    full.task_manager
+                })
             })?;
         }
     }

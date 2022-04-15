@@ -1,4 +1,11 @@
-# To Farm By Yourself (Offline)
+## Pre-requisites
+
+In addition to Rust toolchain, LLVM and Clang are needed for build to succeed, can be installed on Ubuntu like this:
+```bash
+sudo apt-get install llvm clang
+```
+
+## To Farm By Yourself (Offline)
 
 1. Download the executables for your operating system
 2. Open your favourite terminal, and go to the folder where you download the executables
@@ -19,11 +26,11 @@
 2. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 3. Run the farmer (do this in another terminal): `subspace-farmer-x86_64-*-snapshot farm`
 
-## to Build From The Source (primarily for developers)
+## To Run From The Source (primarily for developers)
 
 This is a monorepo with multiple binaries and the workflow is typical for Rust projects:
 
-- `cargo run --release --bin subspace-node --dev --tmp` to run [a node](/crates/subspace-node)
+- `cargo run --release --bin subspace-node -- --dev --tmp` to run [a node](/crates/subspace-node)
 - `cargo run --release --bin subspace-farmer farm` to [start farming](/crates/subspace-farmer)
 
 NOTE 1: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.

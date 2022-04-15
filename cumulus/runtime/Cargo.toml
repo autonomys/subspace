@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-test-runtime"
+name = "cirrus-runtime"
 version = "0.1.0"
 authors = ["Anonymous"]
 description = "A new Cumulus FRAME-based Substrate Runtime, ready for hacking together a parachain."
@@ -10,9 +10,6 @@ edition = "2021"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
-
-[build-dependencies]
-substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 [dependencies]
 hex-literal = { version = '0.3.1', optional = true }
@@ -48,8 +45,11 @@ pallet-balances = { default-features = false, git = "https://github.com/parityte
 pallet-transaction-payment = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
-cirrus-pallet-executive = { path = "../../pallets/executive", default-features = false }
-cirrus-primitives = { path = "../../primitives", default-features = false }
+cirrus-pallet-executive = { path = "../pallets/executive", default-features = false }
+cirrus-primitives = { path = "../primitives", default-features = false }
+
+[build-dependencies]
+substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 [features]
 default = [
@@ -82,3 +82,12 @@ std = [
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
+runtime-benchmarks = [
+	'hex-literal',
+	"sp-runtime/runtime-benchmarks",
+	"frame-benchmarking",
+	"frame-system-benchmarking",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-balances/runtime-benchmarks",
+]

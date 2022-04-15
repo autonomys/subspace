@@ -1,4 +1,6 @@
-use crate::{chain_spec, command};
+//! Secondary chain CLI.
+
+use crate::chain_spec;
 use clap::Parser;
 use sc_chain_spec::ChainSpec;
 use sc_cli::{
@@ -32,41 +34,9 @@ pub enum Subcommand {
 	/// Revert the chain to a previous state.
 	Revert(sc_cli::RevertCmd),
 
-	/// The custom benchmark subcommmand benchmarking runtime pallets.
-	#[clap(name = "benchmark", about = "Benchmark runtime pallets.")]
+	/// Sub-commands concerned with benchmarking.
+	#[clap(subcommand)]
 	Benchmark(frame_benchmarking_cli::BenchmarkCmd),
-}
-
-/// Command for exporting the genesis state of the parachain
-#[derive(Debug, Parser)]
-pub struct ExportGenesisStateCommand {
-	/// Output file name or stdout if unspecified.
-	#[clap(parse(from_os_str))]
-	pub output: Option<PathBuf>,
-
-	/// Write output in binary. Default is to write in hex.
-	#[clap(short, long)]
-	pub raw: bool,
-
-	/// The name of the chain for that the genesis state should be exported.
-	#[clap(long, conflicts_with = "parachain-id")]
-	pub chain: Option<String>,
-}
-
-/// Command for exporting the genesis wasm file.
-#[derive(Debug, Parser)]
-pub struct ExportGenesisWasmCommand {
-	/// Output file name or stdout if unspecified.
-	#[clap(parse(from_os_str))]
-	pub output: Option<PathBuf>,
-
-	/// Write output in binary. Default is to write in hex.
-	#[clap(short, long)]
-	pub raw: bool,
-
-	/// The name of the chain for that the genesis wasm file should be exported.
-	#[clap(long)]
-	pub chain: Option<String>,
 }
 
 #[derive(Debug, Parser)]
@@ -119,11 +89,17 @@ impl SubstrateCli for Cli {
 	}
 
 	fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-		command::load_spec(id)
+		Ok(match id {
+			"dev" => Box::new(chain_spec::development_config()),
+			"template-rococo" => Box::new(chain_spec::local_testnet_config()),
+			"" | "local" => Box::new(chain_spec::local_testnet_config()),
+			path =>
+				Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
+		})
 	}
 
 	fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-		&parachain_template_runtime::VERSION
+		&cirrus_runtime::VERSION
 	}
 }
 
