@@ -24,7 +24,10 @@ async fn test_executor_full_node_catching_up() {
 	let tokio_handle = tokio::runtime::Handle::current();
 
 	// start alice
-	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	alice_network_starter.start_network();
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
@@ -61,7 +64,10 @@ async fn execution_proof_creation_and_verification_should_work() {
 	let tokio_handle = tokio::runtime::Handle::current();
 
 	// start alice
-	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	alice_network_starter.start_network();
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
@@ -315,7 +321,10 @@ async fn invalid_execution_proof_should_not_work() {
 	let tokio_handle = tokio::runtime::Handle::current();
 
 	// start alice
-	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	alice_network_starter.start_network();
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
@@ -476,7 +485,10 @@ async fn set_new_code_should_work() {
 	let tokio_handle = tokio::runtime::Handle::current();
 
 	// start alice
-	let alice = run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+
+	alice_network_starter.start_network();
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)

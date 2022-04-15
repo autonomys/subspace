@@ -27,7 +27,7 @@ use sc_network::{
 };
 use sc_service::{
     config::{DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod},
-    BasePath, Configuration, KeepBlocks, Role, RpcHandlers, TaskManager,
+    BasePath, Configuration, KeepBlocks, NetworkStarter, Role, RpcHandlers, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -171,7 +171,7 @@ pub fn run_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
     is_validator: bool,
-) -> SubspaceTestNode {
+) -> (SubspaceTestNode, NetworkStarter) {
     let config = node_config(tokio_handle, key, boot_nodes, is_validator);
     let multiaddr = config.network.listen_addresses[0].clone();
     let (
@@ -181,6 +181,7 @@ pub fn run_validator_node(
             backend,
             network,
             rpc_handlers,
+            network_starter,
             ..
         },
         executor,
@@ -189,14 +190,17 @@ pub fn run_validator_node(
     let peer_id = *network.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
-    SubspaceTestNode {
-        task_manager,
-        client,
-        backend,
-        executor,
-        addr,
-        rpc_handlers,
-    }
+    (
+        SubspaceTestNode {
+            task_manager,
+            client,
+            backend,
+            executor,
+            addr,
+            rpc_handlers,
+        },
+        network_starter,
+    )
 }
 
 /// A Subspace test node instance used for testing.
@@ -314,9 +318,15 @@ mod tests {
         let tokio_handle = tokio::runtime::Handle::current();
 
         // start alice
-        let alice = run_validator_node(tokio_handle.clone(), Alice, vec![], true);
+        let (alice, alice_network_starter) =
+            run_validator_node(tokio_handle.clone(), Alice, vec![], true);
 
-        let bob = run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false);
+        alice_network_starter.start_network();
+
+        let (bob, bob_network_starter) =
+            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false);
+
+        bob_network_starter.start_network();
 
         bob.wait_for_blocks(10).await;
     }

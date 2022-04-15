@@ -199,7 +199,10 @@ fn main() -> std::result::Result<(), Error> {
                 subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
                     config, true,
                 )
-                .map(|full| full.task_manager)
+                .map(|full| {
+                    full.network_starter.start_network();
+                    full.task_manager
+                })
             })?;
         }
     }

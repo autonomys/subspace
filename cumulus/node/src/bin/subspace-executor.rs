@@ -1,20 +1,10 @@
-use crate::{
-	chain_spec,
+use cirrus_node::{
 	cli::{Cli, RelayChainCli, Subcommand},
-	service::{new_partial, TemplateRuntimeExecutor},
+	service::{self, new_partial, start_parachain_node, CirrusRuntimeExecutor},
 };
+use cirrus_runtime::{Block, RuntimeApi};
 use log::info;
-use parachain_template_runtime::{Block, RuntimeApi};
 use sc_cli::{Result, SubstrateCli};
-
-pub(crate) fn load_spec(id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-	Ok(match id {
-		"dev" => Box::new(chain_spec::development_config()),
-		"template-rococo" => Box::new(chain_spec::local_testnet_config()),
-		"" | "local" => Box::new(chain_spec::local_testnet_config()),
-		path => Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
-	})
-}
 
 macro_rules! construct_async_run {
 	(|$components:ident, $cli:ident, $cmd:ident, $config:ident| $( $code:tt )* ) => {{
@@ -22,11 +12,11 @@ macro_rules! construct_async_run {
 		runner.async_run(|$config| {
 			let $components = new_partial::<
 				RuntimeApi,
-				TemplateRuntimeExecutor,
+				CirrusRuntimeExecutor,
 				_
 			>(
 				&$config,
-				crate::service::parachain_build_import_queue,
+				service::parachain_build_import_queue,
 			)?;
 			let task_manager = $components.task_manager;
 			{ $( $code )* }.map(|v| (v, task_manager))
@@ -35,7 +25,7 @@ macro_rules! construct_async_run {
 }
 
 /// Parse command line arguments into service configuration.
-pub fn run() -> Result<()> {
+pub fn main() -> Result<()> {
 	let cli = Cli::from_args();
 
 	match &cli.subcommand {
@@ -91,7 +81,7 @@ pub fn run() -> Result<()> {
 			if cfg!(feature = "runtime-benchmarks") {
 				let runner = cli.create_runner(cmd)?;
 
-				runner.sync_run(|config| cmd.run::<Block, TemplateRuntimeExecutor>(config))
+				runner.sync_run(|config| cmd.run::<Block, CirrusRuntimeExecutor>(config))
 			} else {
 				Err("Benchmarking wasn't enabled when building the node. \
 				You can enable it with `--features runtime-benchmarks`."
@@ -113,7 +103,23 @@ pub fn run() -> Result<()> {
 
 				info!("Is collating: {}", if config.role.is_authority() { "yes" } else { "no" });
 
-				crate::service::start_parachain_node(config, polkadot_config)
+				let primary_chain_full_node = {
+					let span = sc_tracing::tracing::info_span!(
+						sc_tracing::logging::PREFIX_LOG_SPAN,
+						name = "Primarychain"
+					);
+					let _enter = span.enter();
+
+					subspace_service::new_full::<
+						subspace_runtime::RuntimeApi,
+						subspace_node::ExecutorDispatch,
+					>(polkadot_config, false)
+					.map_err(|_| {
+						sc_service::Error::Other("Failed to build a full subspace node".into())
+					})?
+				};
+
+				start_parachain_node(config, primary_chain_full_node)
 					.await
 					.map(|r| r.0)
 					.map_err(Into::into)
