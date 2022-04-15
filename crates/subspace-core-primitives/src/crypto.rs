@@ -17,12 +17,28 @@
 
 use crate::Sha256Hash;
 use hmac::{Hmac, Mac};
-pub use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.
 pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {
     let mut hasher = Sha256::new();
     hasher.update(data.as_ref());
+    hasher
+        .finalize()
+        .as_slice()
+        .try_into()
+        .expect("Sha256 output is always 32 bytes; qed")
+}
+
+/// Simple Sha2-256 hashing of a pair of values.
+pub fn sha256_hash_pair<A, B>(a: A, b: B) -> Sha256Hash
+where
+    A: AsRef<[u8]>,
+    B: AsRef<[u8]>,
+{
+    let mut hasher = Sha256::new();
+    hasher.update(a.as_ref());
+    hasher.update(b.as_ref());
     hasher
         .finalize()
         .as_slice()

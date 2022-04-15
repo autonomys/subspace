@@ -2,7 +2,6 @@ use codec::Encode;
 use frame_support::sp_io;
 use hex_literal::hex;
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
-use subspace_core_primitives::crypto::{Digest, Sha256};
 use subspace_core_primitives::{crypto, objects::BlockObjectMapping, Sha256Hash};
 use subspace_runtime::{
     Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
@@ -159,10 +158,7 @@ fn object_mapping() {
 }
 
 fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
-    let mut hasher = Sha256::new();
-    hasher.update(feed_id.encode().as_slice());
-    hasher.update(data);
-    hasher.finalize().as_slice().try_into().unwrap()
+    crypto::sha256_hash_pair(feed_id.encode(), data)
 }
 
 #[test]

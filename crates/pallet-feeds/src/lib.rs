@@ -25,7 +25,7 @@ pub use pallet::*;
 use scale::Encode;
 use scale_info::scale;
 use sp_std::{vec, vec::Vec};
-use subspace_core_primitives::crypto::{Digest, Sha256};
+use subspace_core_primitives::crypto;
 
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
@@ -358,15 +358,8 @@ impl<T: Config> Call<T> {
                 objects_mappings
                     .into_iter()
                     .map(|object_mapping| {
-                        let mut hasher = Sha256::new();
-                        // scope the key of the object to the feed_id namespace
-                        hasher.update(feed_id.encode().as_slice());
-                        hasher.update(object_mapping.key.as_slice());
-                        let key = hasher
-                            .finalize()
-                            .as_slice()
-                            .try_into()
-                            .expect("Sha256 output is always 32 bytes; qed");
+                        // Scope the key of the object to the feed_id namespace
+                        let key = crypto::sha256_hash_pair(feed_id.encode(), object_mapping.key);
                         FeedObjectMapping {
                             key,
                             // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
