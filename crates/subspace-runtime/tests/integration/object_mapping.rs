@@ -2,6 +2,7 @@ use codec::Encode;
 use frame_support::sp_io;
 use hex_literal::hex;
 use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
+use subspace_core_primitives::crypto::{Digest, Sha256};
 use subspace_core_primitives::{crypto, objects::BlockObjectMapping, Sha256Hash};
 use subspace_runtime::{
     Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
@@ -99,31 +100,31 @@ fn object_mapping() {
     // Hashes should be computed correctly.
     assert_eq!(
         objects[0].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data0).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data0).as_slice())
     );
     assert_eq!(
         objects[1].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data1).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data1).as_slice())
     );
     assert_eq!(
         objects[2].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data2).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data2).as_slice())
     );
     assert_eq!(
         objects[3].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data3).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data3).as_slice())
     );
     assert_eq!(
         objects[4].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data0).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data0).as_slice())
     );
     assert_eq!(
         objects[5].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data2).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data2).as_slice())
     );
     assert_eq!(
         objects[6].hash(),
-        crypto::sha256_hash((0u64, crypto::sha256_hash(&data3).to_vec()).encode())
+        key(0, crypto::sha256_hash(&data3).as_slice())
     );
 
     // Offsets for mapped objects should be correct
@@ -155,6 +156,13 @@ fn object_mapping() {
         &encoded_block[objects[6].offset() as usize..][..data3.encoded_size()],
         &data3.encode()
     );
+}
+
+fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
+    let mut hasher = Sha256::new();
+    hasher.update(feed_id.encode().as_slice());
+    hasher.update(data);
+    hasher.finalize().as_slice().try_into().unwrap()
 }
 
 #[test]
@@ -229,16 +237,16 @@ fn get_encoded_blocks() -> (Vec<u8>, Sha256Hash, Vec<u8>) {
 
     (
         init_data,
-        crypto::sha256_hash(
-            (
-                0u64,
+        key(
+            0,
+            crypto::sha256_hash(
                 (
                     1u32,
                     hex!("b9e292877e74b5632ff9cb7253204c8810932bec4b4713a03a41c54b0b245e04"),
                 )
                     .encode(),
             )
-                .encode(),
+            .as_slice(),
         ),
         vec![
             220, 221, 137, 146, 125, 138, 52, 142, 0, 37, 126, 30, 204, 134, 23, 244, 94, 219, 81,

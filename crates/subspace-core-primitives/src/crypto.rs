@@ -17,7 +17,7 @@
 
 use crate::Sha256Hash;
 use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
+pub use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.
 pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {

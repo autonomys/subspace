@@ -19,12 +19,13 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+use crate::feed_processor::FeedObjectMapping;
 use core::mem;
 pub use pallet::*;
 use scale::Encode;
 use scale_info::scale;
 use sp_std::{vec, vec::Vec};
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::crypto::{Digest, Sha256};
 
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
@@ -341,18 +342,9 @@ mod pallet {
     }
 }
 
-/// Object mapping that points to an object in a block
-#[derive(Debug)]
-pub struct CallObject {
-    /// Key scoped to the feed
-    pub key: Sha256Hash,
-    /// Offset of the data within object
-    pub offset: u32,
-}
-
 impl<T: Config> Call<T> {
     /// Extract the call objects if an extrinsic corresponds to `put` call
-    pub fn extract_call_objects(&self) -> Vec<CallObject> {
+    pub fn extract_call_objects(&self) -> Vec<FeedObjectMapping> {
         match self {
             Self::put { feed_id, object } => {
                 let feed_processor_id = match FeedConfigs::<T>::get(feed_id) {
@@ -366,9 +358,17 @@ impl<T: Config> Call<T> {
                 objects_mappings
                     .into_iter()
                     .map(|object_mapping| {
-                        CallObject {
-                            // scope the key of the object to the feed_id namespace
-                            key: crypto::sha256_hash((feed_id, object_mapping.key).encode()),
+                        let mut hasher = Sha256::new();
+                        // scope the key of the object to the feed_id namespace
+                        hasher.update(feed_id.encode().as_slice());
+                        hasher.update(object_mapping.key.as_slice());
+                        let key = hasher
+                            .finalize()
+                            .as_slice()
+                            .try_into()
+                            .expect("Sha256 output is always 32 bytes; qed");
+                        FeedObjectMapping {
+                            key,
                             // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
                             // enum variant encoding.
                             // update the offset to include the absolute offset in the extrinsic
