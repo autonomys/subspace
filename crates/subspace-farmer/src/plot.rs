@@ -443,20 +443,39 @@ impl WeakPlot {
     }
 }
 
+/// Mapping from piece index hash to piece offset.
+///
+/// Piece index hashes are transformed in the following manner:
+/// - Assume that farmer address is the middle (`2 ^ 255`) of the `PieceDistance` field
+/// - Move every piece according to that
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance: Option<PieceDistance>,
+    /// The first one is the lower bound of plot, the second one is the upper bound
+    key_bounds: Option<(PieceDistance, PieceDistance)>,
 }
 
 impl IndexHashToOffsetDB {
-    fn update_max_distance(&mut self) {
-        self.max_distance = {
+    fn update_key_bounds(&mut self) {
+        self.key_bounds = try {
             let mut iter = self.inner.raw_iterator();
+            iter.seek_to_first();
+            let lower_bound = iter.key().map(PieceDistance::from_big_endian)?;
             iter.seek_to_last();
-            iter.key().map(PieceDistance::from_big_endian)
+            let upper_bound = iter.key().map(PieceDistance::from_big_endian)?;
+            (lower_bound, upper_bound)
         };
+    }
+
+    fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+        let address = PieceDistance::from_big_endian(self.address.as_ref());
+        let index_hash = PieceDistance::from_big_endian(&index_hash.0);
+
+        // We do not care about overflows here
+        (PieceDistance::MAX / 2u64)
+            .overflowing_add(index_hash.overflowing_sub(address).0)
+            .0
     }
 
     fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
@@ -464,16 +483,15 @@ impl IndexHashToOffsetDB {
         let mut me = Self {
             inner,
             address,
-            max_distance: None,
+            key_bounds: None,
         };
-        me.update_max_distance();
+        me.update_key_bounds();
         Ok(me)
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
-        let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .get(&distance.to_bytes())
+            .get(&self.get_key(index_hash).to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -485,21 +503,26 @@ impl IndexHashToOffsetDB {
 
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
-    fn should_store(&self, index_hash: &PieceIndexHash) -> io::Result<bool> {
-        Ok(match self.max_distance {
-            Some(max_distance) => {
-                PieceDistance::xor_distance(index_hash, &self.address) < max_distance
-                    && self.get(index_hash)?.is_none()
-            }
-            None => false,
-        })
+    fn should_store(&self, index_hash: &PieceIndexHash) -> bool {
+        let key = self.get_key(index_hash);
+        match self.key_bounds {
+            Some((lower, upper)) => key >= lower && key <= upper,
+            None => true,
+        }
     }
 
     fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance {
-            Some(max_distance) => max_distance,
+        let (lower_bound, upper_bound) = match self.key_bounds {
+            Some(key_bounds) => key_bounds,
             None => return Ok(None),
         };
+        let max_distance =
+            if (PieceDistance::MAX / 2) - lower_bound < upper_bound - (PieceDistance::MAX / 2) {
+                upper_bound
+            } else {
+                lower_bound
+            };
+
         let result = self
             .inner
             .get(&max_distance.to_bytes())
@@ -510,26 +533,22 @@ impl IndexHashToOffsetDB {
             .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
 
-        self.update_max_distance();
+        self.update_key_bounds();
 
         Ok(result)
     }
 
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let distance = PieceDistance::xor_distance(index_hash, &self.address);
+        let key = self.get_key(index_hash);
         self.inner
-            .put(&distance.to_bytes(), offset.to_le_bytes())
+            .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        match self.max_distance {
-            Some(old_distance) => {
-                if old_distance < distance {
-                    self.max_distance.replace(distance);
-                }
-            }
-            None => {
-                self.max_distance.replace(distance);
-            }
+        self.key_bounds = match self.key_bounds {
+            Some((old_lower, upper)) if key < old_lower => Some((key, upper)),
+            Some((lower, old_upper)) if key > old_upper => Some((lower, key)),
+            key_bounds @ Some(_) => key_bounds,
+            None => Some((key, key)),
         };
 
         Ok(())
@@ -679,7 +698,7 @@ impl PlotWorker {
             // Check if piece is out of plot range or if it is in the plot
             if !self
                 .piece_index_hash_to_offset_db
-                .should_store(&piece_index.into())?
+                .should_store(&piece_index.into())
             {
                 continue;
             }

@@ -122,7 +122,7 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes.sort_by_key(|i| PieceDistance::xor_distance(&(*i).into(), &address));
+    piece_indexes.sort_by_key(|i| PieceDistance::distance(&(*i).into(), &address));
 
     // First pieces should be present and equal
     for &i in &piece_indexes[..max_plot_pieces as usize] {
