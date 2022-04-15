@@ -33,6 +33,8 @@ pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 pub enum InherentError {
     /// List of root blocks is not correct.
     IncorrectRootBlocksList,
+    /// List of root blocks is not present.
+    MissingRootBlocksList,
 }
 
 impl IsFatalError for InherentError {

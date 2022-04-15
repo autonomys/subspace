@@ -37,7 +37,7 @@ use frame_support::{
     },
     weights::{
         constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-        IdentityFee,
+        ConstantMultiplier, IdentityFee,
     },
 };
 use frame_system::{
@@ -457,9 +457,9 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
 
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeTransaction;
-    type TransactionByteFee = TransactionByteFee;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
+    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
 }
 

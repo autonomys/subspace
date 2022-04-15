@@ -26,8 +26,6 @@ tokio = { version = "1.17.0", features = ["macros", "parking_lot", "rt-multi-thr
 
 [dependencies.libp2p]
 version = "0.43.0"
-git = "https://github.com/libp2p/rust-libp2p"
-rev = "b39770b8e9bfb113235c9ab8f7f2df2392482073"
 default-features = false
 features = [
     "dns-tokio",
