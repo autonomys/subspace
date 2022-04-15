@@ -141,7 +141,7 @@ pub fn retrieve_piece_from_plots(
 ) -> io::Result<Option<Piece>> {
     let piece_index_hash = PieceIndexHash::from(piece_index);
     let mut plots = plots.iter().collect::<Vec<_>>();
-    plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
+    plots.sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key()));
 
     plots
         .iter()
