@@ -42,6 +42,7 @@ pub struct PiecesToPlot {
     pub pieces: FlatPieces,
 }
 
+/// Abstraction around archiving blocks and updating global object map
 pub struct Archiving {
     stop_sender: Option<oneshot::Sender<()>>,
     archiving_handle: Option<JoinHandle<()>>,

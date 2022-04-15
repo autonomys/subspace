@@ -9,7 +9,10 @@ use std::{path::Path, sync::Arc, time::Duration};
 use subspace_core_primitives::PublicKey;
 use subspace_solving::SubspaceCodec;
 
-/// Abstraction around having multiple plots, farmings and archiving
+/// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
+///
+/// It is needed because of the limit of a single plot size from the consensus
+/// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
     farmings: Vec<Farming>,
