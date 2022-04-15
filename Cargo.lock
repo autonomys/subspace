@@ -971,7 +971,6 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-transaction-pool",
- "subspace-node",
  "subspace-runtime",
  "subspace-runtime-primitives",
  "subspace-service",
