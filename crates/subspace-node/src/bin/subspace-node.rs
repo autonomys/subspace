@@ -73,6 +73,11 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 fn main() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
 
+    if !cli.secondarychain_args.is_empty() {
+        println!("Unimplemented: Run an executor with an embedded primary full node");
+        return Ok(());
+    }
+
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
         Some(Subcommand::BuildSpec(cmd)) => {
@@ -221,6 +226,9 @@ fn main() -> std::result::Result<(), Error> {
                     }
                 }
             })?;
+        }
+        Some(Subcommand::Executor(_cmd)) => {
+            unimplemented!("Executor subcommand");
         }
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
