@@ -42,12 +42,15 @@ mod construct_uint {
     }
 
     impl PieceDistance {
-        /// Calculates the xor distance metric between piece index hash and farmer address.
-        pub fn xor_distance(
-            PieceIndexHash(piece): &PieceIndexHash,
-            address: impl AsRef<[u8]>,
-        ) -> Self {
-            Self::from_big_endian(piece) ^ Self::from_big_endian(address.as_ref())
+        /// Calculates the distance metric between piece index hash and farmer address.
+        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: impl AsRef<[u8]>) -> Self {
+            let piece = Self::from_big_endian(piece);
+            let address = Self::from_big_endian(address.as_ref());
+            if piece < address {
+                address - piece
+            } else {
+                piece - address
+            }
         }
 
         /// Convert piece distance to big endian bytes

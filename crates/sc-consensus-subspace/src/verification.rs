@@ -184,8 +184,8 @@ fn is_within_max_plot(
     if total_pieces < max_plot_size {
         return true;
     }
-    let max_distance = PieceDistance::MAX / total_pieces * max_plot_size;
-    PieceDistance::xor_distance(&piece_index.into(), key) <= max_distance
+    let max_distance_one_direction = PieceDistance::MAX / total_pieces * max_plot_size / 2;
+    PieceDistance::distance(&piece_index.into(), key) <= max_distance_one_direction
 }
 
 pub(crate) struct PieceCheckParams {
