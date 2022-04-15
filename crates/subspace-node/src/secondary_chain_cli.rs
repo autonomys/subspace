@@ -1,37 +1,35 @@
-#[derive(Debug)]
-pub struct RelayChainCli {
-    /// The actual relay chain cli object.
-    pub base: subspace_node::RunCmd,
+use clap::Parser;
+use sc_cli::{
+    ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
+    NetworkParams, Result, RuntimeVersion, SharedParams, SubstrateCli,
+};
+use sc_service::{config::PrometheusConfig, BasePath};
+use std::{net::SocketAddr, path::PathBuf};
 
-    /// Optional chain id that should be passed to the relay chain.
-    pub chain_id: Option<String>,
+#[derive(Debug)]
+pub struct SecondaryChainCli {
+    /// The actual relay chain cli object.
+    pub base: cumulus_client_cli::RunCmd,
 
     /// The base path that should be used by the relay chain.
     pub base_path: Option<PathBuf>,
 }
 
-impl RelayChainCli {
+impl SecondaryChainCli {
     /// Parse the relay chain CLI parameters using the para chain `Configuration`.
     pub fn new<'a>(
-        para_config: &sc_service::Configuration,
+        primary_base_path: Option<BasePath>,
         relay_chain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
-        let extension = chain_spec::Extensions::try_get(&*para_config.chain_spec);
-        let chain_id = extension.map(|e| e.relay_chain.clone());
-        let base_path = para_config
-            .base_path
-            .as_ref()
-            .map(|x| x.path().join("polkadot"));
-        // TODO: we might want to forcibly inject the `--validator` flag.
+        let base_path = primary_base_path.map(|x| x.path().join("executor"));
         Self {
             base_path,
-            chain_id,
-            base: subspace_node::RunCmd::parse_from(relay_chain_args),
+            base: cumulus_client_cli::RunCmd::parse_from(relay_chain_args),
         }
     }
 }
 
-impl SubstrateCli for RelayChainCli {
+impl SubstrateCli for SecondaryChainCli {
     fn impl_name() -> String {
         "Parachain Collator Template".into()
     }
@@ -60,17 +58,19 @@ impl SubstrateCli for RelayChainCli {
         2020
     }
 
-    fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
-        <subspace_node::Cli as SubstrateCli>::from_iter([RelayChainCli::executable_name()].iter())
-            .load_spec(id)
+    fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
+        <cirrus_node::cli::Cli as SubstrateCli>::from_iter(
+            [SecondaryChainCli::executable_name()].iter(),
+        )
+        .load_spec(id)
     }
 
     fn native_runtime_version(chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        subspace_node::Cli::native_runtime_version(chain_spec)
+        cirrus_node::cli::Cli::native_runtime_version(chain_spec)
     }
 }
 
-impl DefaultConfigurationValues for RelayChainCli {
+impl DefaultConfigurationValues for SecondaryChainCli {
     fn p2p_listen_port() -> u16 {
         30334
     }
@@ -88,7 +88,7 @@ impl DefaultConfigurationValues for RelayChainCli {
     }
 }
 
-impl CliConfiguration<Self> for RelayChainCli {
+impl CliConfiguration<Self> for SecondaryChainCli {
     fn shared_params(&self) -> &SharedParams {
         self.base.base.shared_params()
     }
@@ -127,34 +127,15 @@ impl CliConfiguration<Self> for RelayChainCli {
     fn prometheus_config(
         &self,
         default_listen_port: u16,
-        chain_spec: &Box<dyn sc_cli::ChainSpec>,
+        chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<PrometheusConfig>> {
         self.base
             .base
             .prometheus_config(default_listen_port, chain_spec)
     }
 
-    fn init<F>(
-        &self,
-        _support_url: &String,
-        _impl_version: &String,
-        _logger_hook: F,
-        _config: &sc_service::Configuration,
-    ) -> Result<()>
-    where
-        F: FnOnce(&mut sc_cli::LoggerBuilder, &sc_service::Configuration),
-    {
-        unreachable!("PolkadotCli is never initialized; qed");
-    }
-
     fn chain_id(&self, is_dev: bool) -> Result<String> {
-        let chain_id = self.base.base.chain_id(is_dev)?;
-
-        Ok(if chain_id.is_empty() {
-            self.chain_id.clone().unwrap_or_default()
-        } else {
-            chain_id
-        })
+        self.base.base.chain_id(is_dev)
     }
 
     fn role(&self, is_dev: bool) -> Result<sc_service::Role> {

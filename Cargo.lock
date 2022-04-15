@@ -8583,6 +8583,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-node",
  "clap 3.1.8",
+ "cumulus-client-cli",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.21",
@@ -8594,6 +8595,7 @@ dependencies = [
  "sc-executor",
  "sc-service",
  "sc-telemetry",
+ "sc-tracing",
  "serde",
  "sp-consensus",
  "sp-core",

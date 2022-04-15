@@ -18,8 +18,10 @@
 
 mod chain_spec;
 mod import_blocks_from_dsn;
+mod secondary_chain_cli;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
+pub use crate::secondary_chain_cli::SecondaryChainCli;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};

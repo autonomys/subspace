@@ -18,10 +18,10 @@
 
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
-use sc_cli::{ChainSpec, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_node::{Cli, ExecutorDispatch, Subcommand};
+use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 
 /// Subspace node error.
@@ -74,7 +74,39 @@ fn main() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
 
     if !cli.secondarychain_args.is_empty() {
-        println!("Unimplemented: Run an executor with an embedded primary full node");
+        let secondary_chain_cli =
+            SecondaryChainCli::new(cli.run.base.base_path()?, cli.secondarychain_args.iter());
+
+        let runner = SubstrateCli::create_runner(&secondary_chain_cli, &secondary_chain_cli)?;
+        set_default_ss58_version(&runner.config().chain_spec);
+        runner.run_node_until_exit(|config| async move {
+            let primary_chain_full_node = {
+                let span = sc_tracing::tracing::info_span!(
+                    sc_tracing::logging::PREFIX_LOG_SPAN,
+                    name = "Primarychain"
+                );
+                let _enter = span.enter();
+
+                let primary_config = cli
+                    .create_configuration(&cli.run.base, config.tokio_handle.clone())
+                    .map_err(|_| {
+                        sc_service::Error::Other("Failed to create subspace configuration".into())
+                    })?;
+
+                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                    primary_config,
+                    false,
+                )
+                .map_err(|_| {
+                    sc_service::Error::Other("Failed to build a full subspace node".into())
+                })?
+            };
+
+            cirrus_node::service::start_parachain_node(config, primary_chain_full_node)
+                .await
+                .map(|r| r.0)
+        })?;
+
         return Ok(());
     }
 
