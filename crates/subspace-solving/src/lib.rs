@@ -34,6 +34,7 @@ pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
 mod construct_uint {
     //! This module is needed to scope clippy allows
 
+    use num_traits::{WrappingAdd, WrappingSub};
     use subspace_core_primitives::PieceIndexHash;
 
     uint::construct_uint! {
@@ -46,11 +47,7 @@ mod construct_uint {
         pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: impl AsRef<[u8]>) -> Self {
             let piece = Self::from_big_endian(piece);
             let address = Self::from_big_endian(address.as_ref());
-            if piece < address {
-                address - piece
-            } else {
-                piece - address
-            }
+            subspace_core_primitives::bidirectional_distance(&piece, &address)
         }
 
         /// Convert piece distance to big endian bytes
@@ -66,6 +63,18 @@ mod construct_uint {
             arr[arr.len() - 1] = 1 << 63;
             Self(arr)
         };
+    }
+
+    impl WrappingAdd for PieceDistance {
+        fn wrapping_add(&self, other: &Self) -> Self {
+            self.overflowing_add(*other).0
+        }
+    }
+
+    impl WrappingSub for PieceDistance {
+        fn wrapping_sub(&self, other: &Self) -> Self {
+            self.overflowing_sub(*other).0
+        }
     }
 }
 
