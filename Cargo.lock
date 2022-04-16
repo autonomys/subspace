@@ -8519,6 +8519,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "lru 0.7.5",
+ "num-traits",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.8.5",

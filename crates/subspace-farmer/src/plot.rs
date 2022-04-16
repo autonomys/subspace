@@ -3,6 +3,7 @@ mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
 use log::{error, info};
+use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -480,13 +481,11 @@ impl IndexHashToOffsetDB {
     }
 
     fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
-        let address = PieceDistance::from_big_endian(self.address.as_ref());
-        let index_hash = PieceDistance::from_big_endian(&index_hash.0);
-
-        // We do not care about overflows here
-        PieceDistance::MIDDLE
-            .overflowing_add(index_hash.overflowing_sub(address).0)
-            .0
+        // We permute distance such that if piece index hash is equal to the `self.address` then it
+        // lands to the `PieceDistance::MIDDLE`
+        PieceDistance::from_big_endian(&index_hash.0)
+            .wrapping_sub(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .wrapping_add(&PieceDistance::MIDDLE)
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
