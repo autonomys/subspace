@@ -57,6 +57,7 @@ do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"
 ]
 runtime-benchmarks = [
+	"cirrus-node/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 ]
 json-chain-spec = ["subspace-service/json-chain-spec"]

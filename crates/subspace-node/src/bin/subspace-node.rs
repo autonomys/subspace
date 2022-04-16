@@ -73,47 +73,6 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 fn main() -> std::result::Result<(), Error> {
     let cli = Cli::from_args();
 
-    if !cli.secondarychain_args.is_empty() {
-        let secondary_chain_cli =
-            SecondaryChainCli::new(cli.run.base.base_path()?, cli.secondarychain_args.iter());
-
-        let runner = SubstrateCli::create_runner(&secondary_chain_cli, &secondary_chain_cli)?;
-        set_default_ss58_version(&runner.config().chain_spec);
-        runner.run_node_until_exit(|config| async move {
-            let primary_chain_full_node = {
-                let span = sc_tracing::tracing::info_span!(
-                    sc_tracing::logging::PREFIX_LOG_SPAN,
-                    name = "Primarychain"
-                );
-                let _enter = span.enter();
-
-                let mut primary_config = cli
-                    .create_configuration(&cli.run.base, config.tokio_handle.clone())
-                    .map_err(|_| {
-                        sc_service::Error::Other("Failed to create subspace configuration".into())
-                    })?;
-
-                // The embedded primary full node must be an authority node for the new slots
-                // notification.
-                primary_config.role = Role::Authority;
-
-                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
-                    primary_config,
-                    false,
-                )
-                .map_err(|_| {
-                    sc_service::Error::Other("Failed to build a full subspace node".into())
-                })?
-            };
-
-            cirrus_node::service::start_parachain_node(config, primary_chain_full_node)
-                .await
-                .map(|r| r.0)
-        })?;
-
-        return Ok(());
-    }
-
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
         Some(Subcommand::BuildSpec(cmd)) => {
@@ -267,17 +226,60 @@ fn main() -> std::result::Result<(), Error> {
             unimplemented!("Executor subcommand");
         }
         None => {
-            let runner = cli.create_runner(&cli.run.base)?;
-            set_default_ss58_version(&runner.config().chain_spec);
-            runner.run_node_until_exit(|config| async move {
-                subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
-                    config, true,
-                )
-                .map(|full| {
-                    full.network_starter.start_network();
-                    full.task_manager
-                })
-            })?;
+            if !cli.secondarychain_args.is_empty() {
+                // Run an executor node, which contains an embedded subspace full node.
+                let secondary_chain_cli = SecondaryChainCli::new(
+                    cli.run.base.base_path()?,
+                    cli.secondarychain_args.iter(),
+                );
+                let runner =
+                    SubstrateCli::create_runner(&secondary_chain_cli, &secondary_chain_cli)?;
+                set_default_ss58_version(&runner.config().chain_spec);
+                runner.run_node_until_exit(|config| async move {
+                    let primary_chain_full_node = {
+                        let span = sc_tracing::tracing::info_span!(
+                            sc_tracing::logging::PREFIX_LOG_SPAN,
+                            name = "Primarychain"
+                        );
+                        let _enter = span.enter();
+
+                        let mut primary_config = cli
+                            .create_configuration(&cli.run.base, config.tokio_handle.clone())
+                            .map_err(|_| {
+                                sc_service::Error::Other("Failed to create subspace configuration".into())
+                            })?;
+
+                        // The embedded primary full node must be an authority node for the new slots
+                        // notification.
+                        primary_config.role = Role::Authority;
+
+                        subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                            primary_config,
+                            false,
+                        )
+                        .map_err(|_| {
+                            sc_service::Error::Other("Failed to build a full subspace node".into())
+                        })?
+                    };
+
+                    cirrus_node::service::start_parachain_node(config, primary_chain_full_node)
+                        .await
+                        .map(|r| r.0)
+                })?;
+            } else {
+                // Run a regular subspace node.
+                let runner = cli.create_runner(&cli.run.base)?;
+                set_default_ss58_version(&runner.config().chain_spec);
+                runner.run_node_until_exit(|config| async move {
+                    subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                        config, true,
+                    )
+                    .map(|full| {
+                        full.network_starter.start_network();
+                        full.task_manager
+                    })
+                })?;
+            }
         }
     }
 
