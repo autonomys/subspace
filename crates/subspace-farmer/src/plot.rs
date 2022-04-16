@@ -457,6 +457,17 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
+    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
+        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
+        let mut me = Self {
+            inner,
+            address,
+            key_bounds: None,
+        };
+        me.update_key_bounds();
+        Ok(me)
+    }
+
     fn update_key_bounds(&mut self) {
         self.key_bounds = try {
             let mut iter = self.inner.raw_iterator();
@@ -476,17 +487,6 @@ impl IndexHashToOffsetDB {
         (PieceDistance::MAX / 2u64)
             .overflowing_add(index_hash.overflowing_sub(address).0)
             .0
-    }
-
-    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
-        let mut me = Self {
-            inner,
-            address,
-            key_bounds: None,
-        };
-        me.update_key_bounds();
-        Ok(me)
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
