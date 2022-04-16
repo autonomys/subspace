@@ -10,36 +10,40 @@ Compile all the binaries:
 $ cargo build --release
 ```
 
-Build a chain spec which will be used for running the embedded primary node.
-
-```bash
-$ ./target/release/subspace-node build-spec --chain=dev --raw --disable-default-bootnode > dev.json
-```
-
 ### Spin up a local testnet
 
 1. Run a primary node.
 
 ```bash
 $ ./target/release/subspace-node --dev -d tmp --log=txpool=trace,gossip::executor=trace
-2022-04-01 09:45:14.383  INFO main sc_cli::runner: Subspace
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: ✌️  version 0.1.0-c3a2fe306-aarch64-macos
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: 📋 Chain specification: Development
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: 🏷  Node name: spotty-tomatoes-2275
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: 👤 Role: AUTHORITY
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: 💾 Database: RocksDb at tmp/chains/dev/db/full
-2022-04-01 09:45:14.384  INFO main sc_cli::runner: ⛓  Native runtime: subspace-100 (subspace-1.tx1.au1)
-2022-04-01 09:45:14.557  INFO main sc_service::client::client: 🔨 Initializing Genesis block/state (state: 0x5c13…52fa, header-hash: 0x64be…e482)
-2022-04-01 09:45:14.693  INFO main subspace: Starting archiving from genesis
-2022-04-01 09:45:14.718  INFO main subspace: Archiving already produced blocks 0..=0
-2022-04-01 09:45:14.782  WARN main sc_service::config: Using default protocol ID "sup" because none is configured in the chain specs
-2022-04-01 09:45:14.782  INFO main sub-libp2p: 🏷  Local node identity is: 12D3KooWRq7JqggfhBMzYY2bhAPzfR44zqgZUkphYi11UrYCVa94
-2022-04-01 09:45:14.785  INFO main subspace: 🧑‍🌾 Starting Subspace Authorship worker
-2022-04-01 09:45:14.787  INFO main sc_service::builder: 📦 Highest known block at #0
-2022-04-01 09:45:14.787  INFO tokio-runtime-worker substrate_prometheus_endpoint: 〽️ Prometheus exporter started at 127.0.0.1:9615
-2022-04-01 09:45:14.787  INFO                 main parity_ws: Listening for new connections on 127.0.0.1:9944.
-2022-04-01 09:45:19.793  INFO tokio-runtime-worker substrate: 💤 Idle (0 peers), best: #0 (0x64be…e482), finalized #0 (0x64be…e482), ⬇ 0 ⬆ 0
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: Subspace
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: ✌️  version 0.1.0-ab4a59751
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: 📋 Chain specification: Development
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: 🏷  Node name: harmonious-feast-4450
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: 👤 Role: AUTHORITY
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: 💾 Database: RocksDb at tmp/chains/dev/db/full
+2022-04-16 11:40:57.269  INFO main sc_cli::runner: ⛓  Native runtime: subspace-100 (subspace-1.tx1.au1)
+2022-04-16 11:40:57.484  INFO main sc_service::client::client: 🔨 Initializing Genesis block/state (state: 0x12cf…0724, header-hash: 0x42de…9335)
+2022-04-16 11:40:57.635  INFO main subspace: Starting archiving from genesis
+2022-04-16 11:40:57.667  INFO main subspace: Archiving already produced blocks 0..=0
+2022-04-16 11:40:57.756  WARN main sc_service::config: Using default protocol ID "sup" because none is configured in the chain specs
+2022-04-16 11:40:57.757  INFO main sub-libp2p: 🏷  Local node identity is: 12D3KooWMQYGEy2eEcci2RoLZSiBdMj34UjipYR4GryjHkNsDXYW
+2022-04-16 11:40:57.759  INFO main subspace: 🧑‍🌾 Starting Subspace Authorship worker
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Operating system: linux
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 CPU architecture: x86_64
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Target environment: gnu
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 CPU: AMD Ryzen 9 5900X 12-Core Processor
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 CPU cores: 12
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Memory: 64252MB
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Kernel: 5.13.0-35-generic
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Linux distribution: Ubuntu 20.04.4 LTS
+2022-04-16 11:40:57.768  INFO main sc_sysinfo: 💻 Virtual machine: no
+2022-04-16 11:40:57.768  INFO main sc_service::builder: 📦 Highest known block at #0
+2022-04-16 11:40:57.768  INFO main parity_ws: Listening for new connections on 127.0.0.1:9944.
+2022-04-16 11:40:57.811  INFO ThreadId(84) parity_ws::io: Accepted a new tcp connection from 127.0.0.1:58000.
+2022-04-16 11:41:02.768  INFO tokio-runtime-worker substrate: 💤 Idle (0 peers), best: #0 (0x42de…9335), finalized #0 (0x42de…9335), ⬇ 0 ⬆ 0
+
 ```
 
 Note the `Local node identity`(`12D3KooWRreNzoMVgM6HtPVP27enDaAuPuPbYgGCrSr2RWD8UBGf`) from the log output. the embedded primary node will use it to craft a bootnode for connecting to the primary node. You can also directly retrieve the primary peer id using the RPC `system_localPeerId`.
@@ -57,22 +61,20 @@ Now the primary node should be producing blocks.
 Ensure the bootnode for the primary node is correct and run this command to start an executor:
 
 ```bash
-$ ./target/release/subspace-executor \
-    --alice \
-    --collator \
-    --force-authoring \
-    --base-path first-db \
-    --port 40333 \
-    --log=cirrus=trace,txpool=trace,gossip=trace \
-    --rpc-port 8845 \
-    --ws-port 8846 \
+$ ./target/release/subspace-node \
+    --chain dev \
+    -d db1 \
+    --log=trace \
+    --bootnodes "/ip4/127.0.0.1/tcp/30333/p2p/PRIMARY_PEER_ID" \
+    --port 30343 \
+    --ws-port 9977 \
     -- \
-        --validator \
-        --log=trace \
-        --chain dev.json \
-        --bootnodes "/ip4/127.0.0.1/tcp/30333/p2p/PRIMARY_PEER_ID" \
-        --port 30343 \
-        --ws-port 9977
+        --alice \
+        --port 40333 \
+        --log=txpool=trace,gossip=trace \
+        --rpc-port 8845 \
+        --ws-port 8846 \
+
 ```
 
 The log for running the secondary node will be prefixed as `[Secondarychain]`, you should see it start to produce blocks as well.
@@ -94,18 +96,16 @@ The log for running the secondary node will be prefixed as `[Secondarychain]`, y
 3. Run another executor as a full node.
 
 ```bash
-$ ./target/release/subspace-executor \
-    --alice \
-    --base-path second-db \
-    --port 40233 \
-    --log=cirrus=trace,txpool=trace,gossip=trace \
-    --rpc-port 8745 \
-    --ws-port 8746 \
+$ ./target/release/subspace-node \
+    --chain dev \
+    -d db2 \
+    --bootnodes "/ip4/127.0.0.1/tcp/30333/p2p/PRIMARY_PEER_ID" \
+    --port 30443 \
+    --ws-port 9987
     -- \
-        --validator \
-        --log=trace \
-        --chain dev.json \
-        --bootnodes "/ip4/127.0.0.1/tcp/30333/p2p/PRIMARY_PEER_ID" \
-        --port 30443 \
-        --ws-port 9987
+        --alice \
+        --port 40233 \
+        --log=cirrus=trace,txpool=trace,gossip=trace \
+        --rpc-port 8745 \
+        --ws-port 8746 \
 ```
