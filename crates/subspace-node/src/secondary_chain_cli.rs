@@ -8,15 +8,17 @@ use std::{net::SocketAddr, path::PathBuf};
 
 #[derive(Debug)]
 pub struct SecondaryChainCli {
-    /// The actual relay chain cli object.
+    /// The actual secondary chain cli object.
     pub base: cumulus_client_cli::RunCmd,
 
-    /// The base path that should be used by the relay chain.
+    /// The base path that should be used by the secondary chain.
     pub base_path: Option<PathBuf>,
 }
 
 impl SecondaryChainCli {
-    /// Parse the relay chain CLI parameters using the para chain `Configuration`.
+    /// Constructs a new instance of [`SecondaryChainCli`].
+    ///
+    /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
         primary_base_path: Option<BasePath>,
         relay_chain_args: impl Iterator<Item = &'a String>,
@@ -31,7 +33,7 @@ impl SecondaryChainCli {
 
 impl SubstrateCli for SecondaryChainCli {
     fn impl_name() -> String {
-        "Parachain Collator Template".into()
+        "Subspace Executor".into()
     }
 
     fn impl_version() -> String {
@@ -39,11 +41,7 @@ impl SubstrateCli for SecondaryChainCli {
     }
 
     fn description() -> String {
-        "Parachain Collator Template\n\nThe command-line arguments provided first will be \
-		passed to the parachain node, while the arguments provided after -- will be passed \
-		to the relaychain node.\n\n\
-		parachain-collator [parachain-args] -- [relaychain-args]"
-            .into()
+        "Subspace Executor".into()
     }
 
     fn author() -> String {
@@ -51,11 +49,11 @@ impl SubstrateCli for SecondaryChainCli {
     }
 
     fn support_url() -> String {
-        "https://github.com/paritytech/cumulus/issues/new".into()
+        "https://github.com/subspace/subspace/issues/new".into()
     }
 
     fn copyright_start_year() -> i32 {
-        2020
+        2022
     }
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {

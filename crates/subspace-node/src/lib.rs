@@ -115,6 +115,11 @@ pub struct Cli {
     pub run: RunCmd,
 
     /// Secondarychain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded primary node,
+    /// while the arguments provided after -- will be passed to the executor node.
+    ///
+    /// subspace-node [primarychain-args] -- [secondarychain-args]
     #[clap(raw = true)]
     pub secondarychain_args: Vec<String>,
 }
