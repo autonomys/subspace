@@ -57,6 +57,15 @@ mod construct_uint {
         pub fn to_bytes(self) -> [u8; 32] {
             self.into()
         }
+
+        /// The middle of the piece distance field.
+        /// The analogue of `0b1000_0000` for `u8`.
+        pub const MIDDLE: Self = {
+            // TODO: This assumes that numbers are stored little endian
+            let Self(mut arr) = Self::zero();
+            arr[arr.len() - 1] = 1 << 63;
+            Self(arr)
+        };
     }
 }
 

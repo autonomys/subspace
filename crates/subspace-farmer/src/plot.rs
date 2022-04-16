@@ -484,7 +484,7 @@ impl IndexHashToOffsetDB {
         let index_hash = PieceDistance::from_big_endian(&index_hash.0);
 
         // We do not care about overflows here
-        (PieceDistance::MAX / 2u64)
+        PieceDistance::MIDDLE
             .overflowing_add(index_hash.overflowing_sub(address).0)
             .0
     }
@@ -517,7 +517,7 @@ impl IndexHashToOffsetDB {
             None => return Ok(None),
         };
         let max_distance =
-            if (PieceDistance::MAX / 2) - lower_bound < upper_bound - (PieceDistance::MAX / 2) {
+            if PieceDistance::MIDDLE - lower_bound < upper_bound - PieceDistance::MIDDLE {
                 upper_bound
             } else {
                 lower_bound
