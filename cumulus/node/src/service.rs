@@ -139,7 +139,6 @@ pub struct NewFull<C> {
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[sc_tracing::logging::prefix_logs_with("Secondarychain")]
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
 	mut parachain_config: Configuration,
 	primary_chain_client: Arc<PClient>,
