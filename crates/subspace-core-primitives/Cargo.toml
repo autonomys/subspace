@@ -13,7 +13,7 @@ include = [
 
 [dependencies]
 hmac = { version  = "0.12.1", default-features = false }
-num-traits = "0.2"
+num-traits = { version = "0.2", default-features = false }
 parity-scale-codec = { version = "3.1.2", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 serde = { version = "1.0.136", optional = true, features = ["derive"] }
@@ -34,6 +34,7 @@ version = "0.10.2"
 default = ["std"]
 std = [
     "hmac/std",
+    "num-traits/std",
     "parity-scale-codec/std",
     "scale-info/std",
     "serde/std",
