@@ -519,5 +519,5 @@ pub fn bidirectional_distance<T: num_traits::WrappingSub + Ord>(a: &T, b: &T) ->
     let diff = a.wrapping_sub(b);
     let diff2 = b.wrapping_sub(a);
     // Find smaller diff between 2 directions.
-    std::cmp::min(diff, diff2)
+    diff.min(diff2)
 }
