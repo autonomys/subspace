@@ -70,7 +70,6 @@ cirrus-client-service = { path = "../client/cirrus-service" }
 cirrus-primitives = { path = "../primitives" }
 
 # Subspace dependencies
-subspace-node = { path = "../../crates/subspace-node" }
 subspace-runtime = { path = "../../crates/subspace-runtime" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
@@ -81,5 +80,4 @@ substrate-build-script-utils = { git = "https://github.com/paritytech/substrate"
 [features]
 runtime-benchmarks = [
     "cirrus-runtime/runtime-benchmarks",
-    "subspace-node/runtime-benchmarks",
 ]

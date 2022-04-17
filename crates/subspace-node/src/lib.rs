@@ -18,8 +18,10 @@
 
 mod chain_spec;
 mod import_blocks_from_dsn;
+mod secondary_chain_cli;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
+pub use crate::secondary_chain_cli::SecondaryChainCli;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -79,6 +81,10 @@ pub enum Subcommand {
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
 
+    /// Run executor sub-commands.
+    #[clap(subcommand)]
+    Executor(cirrus_node::cli::Subcommand),
+
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
@@ -94,6 +100,11 @@ pub struct RunCmd {
 
 /// Subspace Cli.
 #[derive(Debug, Parser)]
+#[clap(
+    propagate_version = true,
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true
+)]
 pub struct Cli {
     /// Various utility commands.
     #[clap(subcommand)]
@@ -102,6 +113,15 @@ pub struct Cli {
     /// Run a node.
     #[clap(flatten)]
     pub run: RunCmd,
+
+    /// Secondarychain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded primary node,
+    /// while the arguments provided after -- will be passed to the executor node.
+    ///
+    /// subspace-node [primarychain-args] -- [secondarychain-args]
+    #[clap(raw = true)]
+    pub secondarychain_args: Vec<String>,
 }
 
 impl SubstrateCli for Cli {
