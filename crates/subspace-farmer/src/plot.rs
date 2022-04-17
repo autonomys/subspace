@@ -453,8 +453,7 @@ impl WeakPlot {
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    /// The first one is the lower bound of plot, the second one is the upper bound
-    key_bounds: Option<(PieceDistance, PieceDistance)>,
+    max_distance_key: Option<PieceDistance>,
 }
 
 impl IndexHashToOffsetDB {
@@ -463,20 +462,32 @@ impl IndexHashToOffsetDB {
         let mut me = Self {
             inner,
             address,
-            key_bounds: None,
+            max_distance_key: None,
         };
-        me.update_key_bounds();
+        me.update_max_distance();
         Ok(me)
     }
 
-    fn update_key_bounds(&mut self) {
-        self.key_bounds = try {
+    fn update_max_distance(&mut self) {
+        self.max_distance_key = try {
             let mut iter = self.inner.raw_iterator();
             iter.seek_to_first();
             let lower_bound = iter.key().map(PieceDistance::from_big_endian)?;
             iter.seek_to_last();
             let upper_bound = iter.key().map(PieceDistance::from_big_endian)?;
-            (lower_bound, upper_bound)
+
+            // Pick key which has maximum distance to our key
+            if subspace_core_primitives::bidirectional_distance(
+                &lower_bound,
+                &PieceDistance::MIDDLE,
+            ) < subspace_core_primitives::bidirectional_distance(
+                &upper_bound,
+                &PieceDistance::MIDDLE,
+            ) {
+                upper_bound
+            } else {
+                lower_bound
+            }
         };
     }
 
@@ -503,24 +514,21 @@ impl IndexHashToOffsetDB {
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
     fn should_store(&self, index_hash: &PieceIndexHash) -> bool {
-        let key = self.get_key(index_hash);
-        match self.key_bounds {
-            Some((lower, upper)) => key >= lower && key <= upper,
-            None => true,
-        }
+        self.max_distance_key
+            .map(|max_distance_key| {
+                subspace_core_primitives::bidirectional_distance(
+                    &max_distance_key,
+                    &PieceDistance::MIDDLE,
+                ) >= PieceDistance::distance(index_hash, self.address)
+            })
+            .unwrap_or(true)
     }
 
     fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let (lower_bound, upper_bound) = match self.key_bounds {
-            Some(key_bounds) => key_bounds,
+        let max_distance = match self.max_distance_key {
+            Some(max_distance) => max_distance,
             None => return Ok(None),
         };
-        let max_distance =
-            if PieceDistance::MIDDLE - lower_bound < upper_bound - PieceDistance::MIDDLE {
-                upper_bound
-            } else {
-                lower_bound
-            };
 
         let result = self
             .inner
@@ -532,7 +540,7 @@ impl IndexHashToOffsetDB {
             .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
 
-        self.update_key_bounds();
+        self.update_max_distance();
 
         Ok(result)
     }
@@ -543,11 +551,20 @@ impl IndexHashToOffsetDB {
             .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        self.key_bounds = match self.key_bounds {
-            Some((old_lower, upper)) if key < old_lower => Some((key, upper)),
-            Some((lower, old_upper)) if key > old_upper => Some((lower, key)),
-            key_bounds @ Some(_) => key_bounds,
-            None => Some((key, key)),
+        self.max_distance_key = match self.max_distance_key {
+            Some(max_distance_key) => {
+                if PieceDistance::distance(index_hash, self.address)
+                    > subspace_core_primitives::bidirectional_distance(
+                        &max_distance_key,
+                        &PieceDistance::MIDDLE,
+                    )
+                {
+                    Some(key)
+                } else {
+                    Some(max_distance_key)
+                }
+            }
+            None => Some(key),
         };
 
         Ok(())
