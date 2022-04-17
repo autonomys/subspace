@@ -1,6 +1,6 @@
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
+use crate::rpc_client::RpcClient;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};

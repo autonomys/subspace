@@ -1,4 +1,4 @@
-use crate::rpc::{Error as MockError, NewHead, RpcClient};
+use crate::rpc_client::{Error as MockError, NewHead, RpcClient};
 use async_trait::async_trait;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, Mutex};
 
 /// `MockRpc` wrapper.
 #[derive(Clone, Debug)]
-pub struct MockRpc {
+pub struct MockRpcClient {
     inner: Arc<Inner>,
 }
 
@@ -37,7 +37,7 @@ pub struct Inner {
     block_signature_receiver: Arc<Mutex<mpsc::Receiver<BlockSignature>>>,
 }
 
-impl MockRpc {
+impl MockRpcClient {
     /// Create a new instance of [`MockRPC`].
     pub(crate) fn new() -> Self {
         // channels for MockRPC to communicate with the environment
@@ -49,7 +49,7 @@ impl MockRpc {
         let (block_signing_info_sender, block_signing_info_receiver) = mpsc::channel(10);
         let (block_signature_sender, block_signature_receiver) = mpsc::channel(1);
 
-        MockRpc {
+        Self {
             inner: Arc::new(Inner {
                 metadata_sender,
                 metadata_receiver: Arc::new(Mutex::new(metadata_receiver)),
@@ -119,7 +119,7 @@ impl MockRpc {
 }
 
 #[async_trait]
-impl RpcClient for MockRpc {
+impl RpcClient for MockRpcClient {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, MockError> {
         Ok(self.inner.metadata_receiver.lock().await.try_recv()?)
     }

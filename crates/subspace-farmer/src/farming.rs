@@ -6,7 +6,7 @@ mod tests;
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
-use crate::rpc::RpcClient;
+use crate::rpc_client::RpcClient;
 use futures::{future, future::Either};
 use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;

@@ -1,4 +1,4 @@
-use crate::rpc::{Error as RpcError, NewHead, RpcClient};
+use crate::rpc_client::{Error as RpcError, NewHead, RpcClient};
 use async_trait::async_trait;
 use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
 use jsonrpsee::core::Error as JsonError;
@@ -14,11 +14,11 @@ use tokio::sync::mpsc;
 
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
-pub struct WsRpc {
+pub struct NodeRpcClient {
     client: Arc<WsClient>,
 }
 
-impl WsRpc {
+impl NodeRpcClient {
     /// Create a new instance of [`RpcClient`].
     pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(WsClientBuilder::default().build(url).await?);
@@ -27,7 +27,7 @@ impl WsRpc {
 }
 
 #[async_trait]
-impl RpcClient for WsRpc {
+impl RpcClient for NodeRpcClient {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
         Ok(self
             .client

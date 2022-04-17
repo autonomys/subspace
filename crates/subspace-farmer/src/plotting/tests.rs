@@ -1,9 +1,9 @@
 use crate::commitments::Commitments;
 use crate::identity::Identity;
-use crate::mock_rpc::MockRpc;
+use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
-use crate::rpc::{NewHead, RpcClient};
+use crate::rpc_client::{NewHead, RpcClient};
 use crate::{plotting, Archiving};
 use rand::prelude::*;
 use rand::Rng;
@@ -39,7 +39,7 @@ async fn plotting_happy_path() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
-    let client = MockRpc::new();
+    let client = MockRpcClient::new();
 
     let farmer_metadata = FarmerMetadata {
         confirmation_depth_k: 0,
@@ -149,7 +149,7 @@ async fn plotting_continue() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
 
-    let client = MockRpc::new();
+    let client = MockRpcClient::new();
 
     let farmer_metadata = FarmerMetadata {
         confirmation_depth_k: 0,
@@ -224,7 +224,7 @@ async fn plotting_continue() {
     }
 
     // phase 2 - continue with new blocks after dropping the old plotting
-    let client = MockRpc::new();
+    let client = MockRpcClient::new();
 
     // plotting will ask for the last encoded block to continue from where it's left off
     let prev_encoded_block = EncodedBlockWithObjectMapping {
@@ -343,7 +343,7 @@ async fn plotting_piece_eviction() {
     //  that plotter will create commitments for plotted pieces
     commitments.create(salt, plot.clone()).unwrap();
 
-    let client = MockRpc::new();
+    let client = MockRpcClient::new();
 
     let farmer_metadata = FarmerMetadata {
         confirmation_depth_k: 0,
