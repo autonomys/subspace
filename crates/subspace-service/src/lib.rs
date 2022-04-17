@@ -19,22 +19,24 @@
 pub mod rpc;
 
 use futures::channel::mpsc;
+use sc_basic_authorship::ProposerFactory;
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
     notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
-    SubspaceLink,
+    SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_service::NetworkStarter;
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
+use sc_service::{NetworkStarter, SpawnTasksParams};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
@@ -107,6 +109,37 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
+
+/// Subspace-specific service configuration.
+pub struct SubspaceConfiguration {
+    base: Configuration,
+}
+
+impl From<Configuration> for SubspaceConfiguration {
+    fn from(base: Configuration) -> Self {
+        Self { base }
+    }
+}
+
+impl From<SubspaceConfiguration> for Configuration {
+    fn from(configuration: SubspaceConfiguration) -> Self {
+        configuration.base
+    }
+}
+
+impl Deref for SubspaceConfiguration {
+    type Target = Configuration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl DerefMut for SubspaceConfiguration {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
@@ -294,7 +327,7 @@ pub struct NewFull<C> {
 
 /// Builds a new service for a full client.
 pub fn new_full<RuntimeApi, ExecutorDispatch>(
-    config: Configuration,
+    config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
 ) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
 where
@@ -346,7 +379,7 @@ where
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
 
     if config.role.is_authority() {
-        let proposer_factory = sc_basic_authorship::ProposerFactory::new(
+        let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
@@ -354,7 +387,7 @@ where
             telemetry.as_ref().map(|x| x.handle()),
         );
 
-        let subspace_config = sc_consensus_subspace::SubspaceParams {
+        let subspace_config = SubspaceParams {
             client: client.clone(),
             select_chain: select_chain.clone(),
             env: proposer_factory,
@@ -415,7 +448,7 @@ where
         );
     }
 
-    let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
+    let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network.clone(),
         client: client.clone(),
         keystore: keystore_container.sync_keystore(),
@@ -445,7 +478,7 @@ where
         },
         backend: backend.clone(),
         system_rpc_tx,
-        config,
+        config: config.into(),
         telemetry: telemetry.as_mut(),
     })?;
 

@@ -256,7 +256,7 @@ fn main() -> std::result::Result<(), Error> {
                         primary_config.role = Role::Authority;
 
                         subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                            primary_config,
+                            primary_config.into(),
                             false,
                         )
                         .map_err(|_| {
@@ -274,7 +274,8 @@ fn main() -> std::result::Result<(), Error> {
                 set_default_ss58_version(&runner.config().chain_spec);
                 runner.run_node_until_exit(|config| async move {
                     subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
-                        config, true,
+                        config.into(),
+                        true,
                     )
                     .map(|full| {
                         full.network_starter.start_network();
