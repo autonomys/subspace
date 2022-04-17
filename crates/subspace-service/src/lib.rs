@@ -18,6 +18,7 @@
 
 pub mod rpc;
 
+use derive_more::{Deref, DerefMut, Into};
 use futures::channel::mpsc;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::ExecutorProvider;
@@ -36,7 +37,6 @@ use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
@@ -111,9 +111,12 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Subspace-specific service configuration.
-#[derive(Debug)]
+#[derive(Debug, Deref, DerefMut, Into)]
 pub struct SubspaceConfiguration {
     /// Base configuration.
+    #[deref]
+    #[deref_mut]
+    #[into]
     pub base: Configuration,
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
@@ -126,26 +129,6 @@ impl From<Configuration> for SubspaceConfiguration {
             base,
             force_new_slot_notifications: false,
         }
-    }
-}
-
-impl From<SubspaceConfiguration> for Configuration {
-    fn from(configuration: SubspaceConfiguration) -> Self {
-        configuration.base
-    }
-}
-
-impl Deref for SubspaceConfiguration {
-    type Target = Configuration;
-
-    fn deref(&self) -> &Self::Target {
-        &self.base
-    }
-}
-
-impl DerefMut for SubspaceConfiguration {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
     }
 }
 
