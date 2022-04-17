@@ -83,7 +83,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     import_queue,
                     task_manager,
@@ -99,7 +99,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     task_manager,
                     ..
@@ -115,7 +115,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     task_manager,
                     ..
@@ -131,7 +131,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     import_queue,
                     task_manager,
@@ -147,7 +147,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     import_queue,
                     task_manager,
@@ -167,7 +167,7 @@ fn main() -> std::result::Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
-                let sc_service::PartialComponents {
+                let PartialComponents {
                     client,
                     backend,
                     task_manager,
@@ -246,14 +246,16 @@ fn main() -> std::result::Result<(), Error> {
                         let mut primary_config = cli
                             .create_configuration(&cli.run.base, config.tokio_handle.clone())
                             .map_err(|_| {
-                                sc_service::Error::Other("Failed to create subspace configuration".into())
+                                sc_service::Error::Other(
+                                    "Failed to create subspace configuration".into(),
+                                )
                             })?;
 
                         // The embedded primary full node must be an authority node for the new slots
                         // notification.
                         primary_config.role = Role::Authority;
 
-                        subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
+                        subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
                             primary_config,
                             false,
                         )
@@ -262,9 +264,9 @@ fn main() -> std::result::Result<(), Error> {
                         })?
                     };
 
-                    cirrus_node::service::start_parachain_node(config, primary_chain_full_node)
+                    cirrus_node::service::new_full(config, primary_chain_full_node)
                         .await
-                        .map(|r| r.0)
+                        .map(|(task_manager, _full_client)| task_manager)
                 })?;
             } else {
                 // Run a regular subspace node.

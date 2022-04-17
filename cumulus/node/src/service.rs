@@ -4,17 +4,21 @@
 use std::sync::Arc;
 
 // Local Runtime Types
-use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce, RuntimeApi};
+use cirrus_runtime::{opaque::Block, RuntimeApi};
 
 // Substrate Imports
 use cirrus_client_executor::ExecutorSlotInfo;
 use cirrus_client_service::StartExecutorParams;
 use futures::StreamExt;
+use sc_client_api::StateBackendFor;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_service::{Configuration, PartialComponents, Role, TFullBackend, TFullClient, TaskManager};
-use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
-use sp_api::ConstructRuntimeApi;
-use sp_runtime::traits::BlakeTwo256;
+use sc_service::{
+	BuildNetworkParams, Configuration, PartialComponents, Role, SpawnTasksParams, TFullBackend,
+	TFullClient, TaskManager,
+};
+use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sp_api::{ApiExt, ConstructRuntimeApi};
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Native executor instance.
@@ -37,9 +41,8 @@ impl NativeExecutionDispatch for CirrusRuntimeExecutor {
 /// Use this macro if you don't actually need the full service, but just the builder in order to
 /// be able to perform chain operations.
 #[allow(clippy::type_complexity)]
-pub fn new_partial<RuntimeApi, Executor, BIQ>(
+fn new_partial<RuntimeApi, Executor>(
 	config: &Configuration,
-	build_import_queue: BIQ,
 ) -> Result<
 	PartialComponents<
 		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
@@ -62,28 +65,9 @@ where
 		+ Send
 		+ Sync
 		+ 'static,
-	RuntimeApi::RuntimeApi: sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
-		+ sp_api::Metadata<Block>
-		+ sp_session::SessionKeys<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::StateBackendFor<TFullBackend<Block>, Block>,
-		> + sp_offchain::OffchainWorkerApi<Block>
-		+ sp_block_builder::BlockBuilder<Block>,
-	sc_client_api::StateBackendFor<TFullBackend<Block>, Block>: sp_api::StateBackend<BlakeTwo256>,
-	Executor: sc_executor::NativeExecutionDispatch + 'static,
-	BIQ: FnOnce(
-		Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
-		&Configuration,
-		Option<TelemetryHandle>,
-		&TaskManager,
-	) -> Result<
-		sc_consensus::DefaultImportQueue<
-			Block,
-			TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-		>,
-		sc_service::Error,
-	>,
+	RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
+		+ ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+	Executor: NativeExecutionDispatch + 'static,
 {
 	let telemetry = config
 		.telemetry_endpoints
@@ -96,19 +80,18 @@ where
 		})
 		.transpose()?;
 
-	let executor = NativeElseWasmExecutor::<Executor>::new(
+	let executor = NativeElseWasmExecutor::new(
 		config.wasm_method,
 		config.default_heap_pages,
 		config.max_runtime_instances,
 		config.runtime_cache_size,
 	);
 
-	let (client, backend, keystore_container, task_manager) =
-		sc_service::new_full_parts::<Block, RuntimeApi, _>(
-			config,
-			telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
-			executor.clone(),
-		)?;
+	let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
+		config,
+		telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+		executor.clone(),
+	)?;
 	let client = Arc::new(client);
 
 	let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
@@ -126,11 +109,10 @@ where
 		client.clone(),
 	);
 
-	let import_queue = build_import_queue(
+	let import_queue = cumulus_client_consensus_relay_chain::import_queue(
 		client.clone(),
-		config,
-		telemetry.as_ref().map(|telemetry| telemetry.handle()),
-		&task_manager,
+		&task_manager.spawn_essential_handle(),
+		config.prometheus_registry(),
 	)?;
 
 	let params = PartialComponents {
@@ -151,60 +133,22 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with("Secondarychain")]
-async fn start_node_impl<RuntimeApi, Executor, RB, BIQ, PRuntimeApi, PExecutorDispatch>(
+pub async fn new_full<PRuntimeApi, PExecutorDispatch>(
 	mut parachain_config: Configuration,
 	primary_chain_full_node: subspace_service::NewFull<
 		Arc<subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>,
 	>,
-	_rpc_ext_builder: RB,
-	build_import_queue: BIQ,
 ) -> sc_service::error::Result<(
 	TaskManager,
-	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
+	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
 )>
 where
-	RuntimeApi: ConstructRuntimeApi<Block, TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>
+	PRuntimeApi: ConstructRuntimeApi<PBlock, subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>
 		+ Send
-		+ Sync
-		+ 'static,
-	RuntimeApi::RuntimeApi: sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
-		+ sp_api::Metadata<Block>
-		+ sp_session::SessionKeys<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::StateBackendFor<TFullBackend<Block>, Block>,
-		> + sp_offchain::OffchainWorkerApi<Block>
-		+ sp_block_builder::BlockBuilder<Block>
-		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
-		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
-		+ cirrus_primitives::SecondaryApi<Block, AccountId>,
-	sc_client_api::StateBackendFor<TFullBackend<Block>, Block>: sp_api::StateBackend<BlakeTwo256>,
-	Executor: sc_executor::NativeExecutionDispatch + 'static,
-	RB: Fn(
-			Arc<TFullClient<Block, RuntimeApi, Executor>>,
-		) -> Result<jsonrpc_core::IoHandler<sc_rpc::Metadata>, sc_service::Error>
-		+ Send
-		+ 'static,
-	BIQ: FnOnce(
-			Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>,
-			&Configuration,
-			Option<TelemetryHandle>,
-			&TaskManager,
-		) -> Result<
-			sc_consensus::DefaultImportQueue<
-				Block,
-				TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-			>,
-			sc_service::Error,
-		> + 'static,
-	PRuntimeApi: sp_api::ConstructRuntimeApi<
-			PBlock,
-			subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>,
-		> + Send
 		+ Sync
 		+ 'static,
 	PRuntimeApi::RuntimeApi: subspace_service::RuntimeApiCollection<
-		StateBackend = sc_client_api::StateBackendFor<subspace_service::FullBackend, PBlock>,
+		StateBackend = StateBackendFor<subspace_service::FullBackend, PBlock>,
 	>,
 	PExecutorDispatch: NativeExecutionDispatch + 'static,
 {
@@ -220,7 +164,7 @@ where
 		.extra_sets
 		.push(cirrus_client_executor_gossip::executor_gossip_peers_set_config());
 
-	let params = new_partial::<RuntimeApi, Executor, BIQ>(&parachain_config, build_import_queue)?;
+	let params = new_partial(&parachain_config)?;
 
 	let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
@@ -230,17 +174,16 @@ where
 	let validator = parachain_config.role.is_authority();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
-	let (network, system_rpc_tx, start_network) =
-		sc_service::build_network(sc_service::BuildNetworkParams {
-			config: &parachain_config,
-			client: client.clone(),
-			transaction_pool: transaction_pool.clone(),
-			spawn_handle: task_manager.spawn_handle(),
-			import_queue: params.import_queue,
-			// TODO: we might want to re-enable this some day.
-			block_announce_validator_builder: None,
-			warp_sync: None,
-		})?;
+	let (network, system_rpc_tx, start_network) = sc_service::build_network(BuildNetworkParams {
+		config: &parachain_config,
+		client: client.clone(),
+		transaction_pool: transaction_pool.clone(),
+		spawn_handle: task_manager.spawn_handle(),
+		import_queue: params.import_queue,
+		// TODO: we might want to re-enable this some day.
+		block_announce_validator_builder: None,
+		warp_sync: None,
+	})?;
 
 	let rpc_extensions_builder = {
 		let client = client.clone();
@@ -257,7 +200,7 @@ where
 		})
 	};
 
-	sc_service::spawn_tasks(sc_service::SpawnTasksParams {
+	sc_service::spawn_tasks(SpawnTasksParams {
 		rpc_extensions_builder,
 		client: client.clone(),
 		transaction_pool: transaction_pool.clone(),
@@ -308,57 +251,4 @@ where
 	primary_chain_full_node.network_starter.start_network();
 
 	Ok((task_manager, client))
-}
-
-/// Build the import queue for the parachain runtime.
-#[allow(clippy::type_complexity)]
-pub fn parachain_build_import_queue(
-	client: Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
-	_config: &Configuration,
-	_telemetry: Option<TelemetryHandle>,
-	task_manager: &TaskManager,
-) -> Result<
-	sc_consensus::DefaultImportQueue<
-		Block,
-		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>,
-	>,
-	sc_service::Error,
-> {
-	cumulus_client_consensus_relay_chain::import_queue(
-		client,
-		&task_manager.spawn_essential_handle(),
-		None,
-	)
-	.map_err(Into::into)
-}
-
-/// Start a parachain node.
-pub async fn start_parachain_node<PRuntimeApi, PExecutorDispatch>(
-	parachain_config: Configuration,
-	primary_chain_full_node: subspace_service::NewFull<
-		Arc<subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>,
-	>,
-) -> sc_service::error::Result<(
-	TaskManager,
-	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
-)>
-where
-	PRuntimeApi: sp_api::ConstructRuntimeApi<
-			PBlock,
-			subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>,
-		> + Send
-		+ Sync
-		+ 'static,
-	PRuntimeApi::RuntimeApi: subspace_service::RuntimeApiCollection<
-		StateBackend = sc_client_api::StateBackendFor<subspace_service::FullBackend, PBlock>,
-	>,
-	PExecutorDispatch: NativeExecutionDispatch + 'static,
-{
-	start_node_impl::<RuntimeApi, CirrusRuntimeExecutor, _, _, _, _>(
-		parachain_config,
-		primary_chain_full_node,
-		|_| Ok(Default::default()),
-		parachain_build_import_queue,
-	)
-	.await
 }

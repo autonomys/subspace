@@ -150,10 +150,9 @@ pub fn new_partial(
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
-async fn start_node_impl<RB>(
+async fn start_node_impl(
 	mut parachain_config: Configuration,
 	relay_chain_config: Configuration,
-	rpc_ext_builder: RB,
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<Client>,
@@ -162,12 +161,7 @@ async fn start_node_impl<RB>(
 	Arc<NetworkService<Block, H256>>,
 	RpcHandlers,
 	Executor,
-)>
-where
-	RB: Fn(Arc<Client>) -> Result<jsonrpc_core::IoHandler<sc_rpc::Metadata>, sc_service::Error>
-		+ Send
-		+ 'static,
-{
+)> {
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
@@ -209,11 +203,8 @@ where
 			warp_sync: None,
 		})?;
 
-	let rpc_extensions_builder = {
-		let client = client.clone();
-
-		Box::new(move |_, _| rpc_ext_builder(client.clone()))
-	};
+	let rpc_extensions_builder =
+		Box::new(move |_, _| Ok(jsonrpc_core::IoHandler::<sc_rpc::Metadata>::default()));
 
 	let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
 		rpc_extensions_builder,
@@ -405,7 +396,7 @@ impl TestNodeBuilder {
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(parachain_config, relay_chain_config, |_| Ok(Default::default()))
+			start_node_impl(parachain_config, relay_chain_config)
 				.await
 				.expect("could not create Cumulus test service");
 
