@@ -47,6 +47,7 @@ sc-telemetry = { git = "https://github.com/paritytech/substrate", rev = "c4f3d02
 sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-transaction-pool-api = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sc-utils = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 ## Substrate Primitive Dependencies
 sp-api = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -66,7 +67,6 @@ cumulus-client-cli = { path = "../client/cli" }
 cumulus-client-consensus-relay-chain = { path = "../client/consensus/relay-chain" }
 cirrus-client-executor = { path = "../client/cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../client/executor-gossip" }
-cirrus-client-service = { path = "../client/cirrus-service" }
 cirrus-primitives = { path = "../primitives" }
 
 # Subspace dependencies

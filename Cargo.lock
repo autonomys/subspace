@@ -899,41 +899,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-client-service"
-version = "0.1.0"
-dependencies = [
- "cirrus-client-executor",
- "cirrus-client-executor-gossip",
- "cirrus-primitives",
- "futures 0.3.21",
- "parking_lot 0.12.0",
- "sc-client-api",
- "sc-consensus",
- "sc-network",
- "sc-service",
- "sc-telemetry",
- "sc-tracing",
- "sc-transaction-pool-api",
- "sc-utils",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-core",
- "sp-executor",
- "sp-runtime",
- "sp-trie",
- "subspace-service",
- "tracing",
-]
-
-[[package]]
 name = "cirrus-node"
 version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
- "cirrus-client-service",
  "cirrus-primitives",
  "cirrus-runtime",
  "clap 3.1.8",
@@ -959,6 +929,7 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "sc-utils",
  "serde",
  "sp-api",
  "sp-block-builder",
@@ -1084,7 +1055,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cirrus-client-executor",
- "cirrus-client-service",
+ "cirrus-client-executor-gossip",
  "cirrus-test-runtime",
  "cumulus-client-consensus-relay-chain",
  "frame-system",
@@ -1100,6 +1071,7 @@ dependencies = [
  "sc-service",
  "sc-tracing",
  "sc-transaction-pool",
+ "sc-utils",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
