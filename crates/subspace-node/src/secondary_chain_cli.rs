@@ -21,12 +21,12 @@ impl SecondaryChainCli {
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
         primary_base_path: Option<BasePath>,
-        relay_chain_args: impl Iterator<Item = &'a String>,
+        secondary_chain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
         let base_path = primary_base_path.map(|x| x.path().join("executor"));
         Self {
             base_path,
-            base: cumulus_client_cli::RunCmd::parse_from(relay_chain_args),
+            base: cumulus_client_cli::RunCmd::parse_from(secondary_chain_args),
         }
     }
 }

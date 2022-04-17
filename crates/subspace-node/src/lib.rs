@@ -114,14 +114,14 @@ pub struct Cli {
     #[clap(flatten)]
     pub run: RunCmd,
 
-    /// Secondarychain arguments
+    /// Secondary chain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
     /// while the arguments provided after -- will be passed to the executor node.
     ///
     /// subspace-node [primarychain-args] -- [secondarychain-args]
     #[clap(raw = true)]
-    pub secondarychain_args: Vec<String>,
+    pub secondary_chain_args: Vec<String>,
 }
 
 impl SubstrateCli for Cli {
