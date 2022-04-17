@@ -300,7 +300,7 @@ where
     })
 }
 
-/// Full client along with some other components.
+/// Full node along with some other components.
 pub struct NewFull<C> {
     /// Task manager.
     pub task_manager: TaskManager,

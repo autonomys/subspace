@@ -18,6 +18,7 @@
 
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_service::{PartialComponents, Role};
 use sp_core::crypto::Ss58AddressFormat;
@@ -264,9 +265,37 @@ fn main() -> std::result::Result<(), Error> {
                         })?
                     };
 
-                    cirrus_node::service::new_full(config, primary_chain_full_node)
+                    let secondary_chain_full_node_fut = cirrus_node::service::new_full(
+                        config,
+                        primary_chain_full_node.client.clone(),
+                        &primary_chain_full_node.select_chain,
+                        primary_chain_full_node
+                            .imported_block_notification_stream
+                            .subscribe()
+                            .then(|(block_number, _)| async move { block_number }),
+                        primary_chain_full_node
+                            .new_slot_notification_stream
+                            .subscribe()
+                            .then(|slot_notification| async move {
+                                (
+                                    slot_notification.new_slot_info.slot,
+                                    slot_notification.new_slot_info.global_challenge,
+                                )
+                            }),
+                    );
+
+                    secondary_chain_full_node_fut
                         .await
-                        .map(|full| full.task_manager)
+                        .map(|mut secondary_chain_full_node| {
+                            secondary_chain_full_node
+                                .task_manager
+                                .add_child(primary_chain_full_node.task_manager);
+
+                            secondary_chain_full_node.network_starter.start_network();
+                            primary_chain_full_node.network_starter.start_network();
+
+                            secondary_chain_full_node.task_manager
+                        })
                 })?;
             } else {
                 // Run a regular subspace node.
