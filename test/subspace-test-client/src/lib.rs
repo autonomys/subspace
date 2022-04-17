@@ -65,6 +65,24 @@ pub fn start_farmer(new_full: &NewFull<Arc<Client>>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let block_signing_notification_stream = new_full.block_signing_notification_stream.clone();
+    let mut archived_segment_notification_stream =
+        new_full.archived_segment_notification_stream.subscribe();
+
+    new_full.task_manager.spawn_essential_handle().spawn(
+        "archived_segment_notification_stream",
+        None,
+        async move {
+            while let Some(mut archived_segment_notification) =
+                archived_segment_notification_stream.next().await
+            {
+                println!("\n\n\nSending acknowledgement!\n\n\n");
+                let _ = archived_segment_notification
+                    .acknowledgement_sender
+                    .send(())
+                    .await;
+            }
+        },
+    );
 
     let keypair = schnorrkel::Keypair::generate();
     let subspace_farming = start_farming(keypair.clone(), client, new_slot_notification_stream);

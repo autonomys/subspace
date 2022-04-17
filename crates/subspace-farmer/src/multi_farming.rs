@@ -58,10 +58,6 @@ impl MultiFarming {
 
         // Start archiving task
         let archiving = Archiving::start(
-            plots
-                .first()
-                .cloned()
-                .ok_or_else(|| anyhow!("Must have at least one plot"))?,
             farmer_metadata,
             object_mappings,
             client.clone(),

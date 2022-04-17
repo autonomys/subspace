@@ -408,7 +408,7 @@ impl TestNodeBuilder {
 			self.tokio_handle,
 			self.key,
 			self.relay_chain_nodes,
-			true,
+			false,
 		);
 
 		primary_chain_config.network.node_name =
@@ -624,7 +624,6 @@ pub fn run_primary_chain_validator_node(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
 	boot_nodes: Vec<MultiaddrWithPeerId>,
-	is_validator: bool,
 ) -> (subspace_test_service::SubspaceTestNode, NetworkStarter) {
-	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, is_validator)
+	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true)
 }

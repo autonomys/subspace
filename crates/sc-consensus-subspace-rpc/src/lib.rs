@@ -47,8 +47,7 @@ use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, Solution};
 use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
-    SolutionResponse,
+    BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -68,13 +67,6 @@ pub trait SubspaceRpcApi {
     /// Get best block number
     #[rpc(name = "subspace_getBestBlockNumber")]
     fn get_best_block_number(&self) -> FutureResult<BlockNumber>;
-
-    /// Get encoded block by given block number
-    #[rpc(name = "subspace_getBlockByNumber")]
-    fn get_block_by_number(
-        &self,
-        block_number: BlockNumber,
-    ) -> FutureResult<Option<EncodedBlockWithObjectMapping>>;
 
     #[rpc(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()>;
@@ -251,12 +243,6 @@ where
 
             let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
                 FarmerMetadata {
-                    confirmation_depth_k: TryInto::<BlockNumber>::try_into(
-                        runtime_api.confirmation_depth_k(&best_block_id)?,
-                    )
-                    .unwrap_or_else(|_| {
-                        panic!("Confirmation depth K can't be converted into BlockNumber");
-                    }),
                     record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
                         .recorded_history_segment_size(&best_block_id)?,
@@ -278,44 +264,6 @@ where
             });
 
         Box::pin(async move { Ok(best_number) })
-    }
-
-    fn get_block_by_number(
-        &self,
-        block_number: BlockNumber,
-    ) -> FutureResult<Option<EncodedBlockWithObjectMapping>> {
-        let result = self
-            .client
-            .block(&BlockId::Number(block_number.into()))
-            .map_err(|error| {
-                error!("Failed to get block by number: {}", error);
-                RpcError::new(ErrorCode::InternalError)
-            })
-            .and_then(|block| {
-                Ok(if let Some(block) = block {
-                    let encoded_block = block.encode();
-                    let object_mapping = self
-                        .client
-                        .runtime_api()
-                        .extract_block_object_mapping(
-                            &BlockId::Number(block_number.saturating_sub(1).into()),
-                            block.block,
-                        )
-                        .map_err(|error| {
-                            error!("Failed to extract object mapping: {}", error);
-                            RpcError::new(ErrorCode::InternalError)
-                        })?;
-
-                    Some(EncodedBlockWithObjectMapping {
-                        block: encoded_block,
-                        object_mapping,
-                    })
-                } else {
-                    None
-                })
-            });
-
-        Box::pin(async move { result })
     }
 
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()> {

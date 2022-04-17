@@ -35,7 +35,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::IdentifyAccount, MultiSigner};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
-use subspace_service::NewFull;
+use subspace_service::{NewFull, SubspaceConfiguration};
 use subspace_test_client::{chain_spec, start_farmer, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{
     BlockHashCount, Runtime, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
@@ -54,6 +54,10 @@ pub fn new_full(
     NewFull<Arc<Client>>,
     NativeElseWasmExecutor<TestExecutorDispatch>,
 ) {
+    let config = SubspaceConfiguration {
+        base: config,
+        force_new_slot_notifications: true,
+    };
     let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
         config.wasm_method,
         config.default_heap_pages,
@@ -63,7 +67,7 @@ pub fn new_full(
     let new_full = subspace_service::new_full::<
         subspace_test_runtime::RuntimeApi,
         TestExecutorDispatch,
-    >(config.into(), enable_rpc_extensions)
+    >(config, enable_rpc_extensions)
     .expect("Failed to create Subspace full client");
     if run_farmer {
         start_farmer(&new_full);
@@ -79,11 +83,11 @@ pub fn node_config(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
-    is_validator: bool,
+    run_farmer: bool,
 ) -> Configuration {
     let base_path = BasePath::new_temp_dir().expect("Could not create temporary directory");
     let root = base_path.path();
-    let role = if is_validator {
+    let role = if run_farmer {
         Role::Authority
     } else {
         Role::Full
@@ -170,9 +174,9 @@ pub fn run_validator_node(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
-    is_validator: bool,
+    run_farmer: bool,
 ) -> (SubspaceTestNode, NetworkStarter) {
-    let config = node_config(tokio_handle, key, boot_nodes, is_validator);
+    let config = node_config(tokio_handle, key, boot_nodes, run_farmer);
     let multiaddr = config.network.listen_addresses[0].clone();
     let (
         NewFull {
@@ -185,7 +189,7 @@ pub fn run_validator_node(
             ..
         },
         executor,
-    ) = new_full(config, is_validator, true);
+    ) = new_full(config, false, run_farmer);
 
     let peer_id = *network.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
