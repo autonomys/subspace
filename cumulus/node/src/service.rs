@@ -33,6 +33,10 @@ impl NativeExecutionDispatch for CirrusRuntimeExecutor {
 	}
 }
 
+/// Cirrus-like full client.
+pub type FullClient<RuntimeApi, ExecutorDispatch> =
+	TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
+
 /// Starts a `ServiceBuilder` for a full service.
 ///
 /// Use this macro if you don't actually need the full service, but just the builder in order to
@@ -42,26 +46,18 @@ fn new_partial<RuntimeApi, Executor>(
 	config: &Configuration,
 ) -> Result<
 	PartialComponents<
-		TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
+		FullClient<RuntimeApi, Executor>,
 		TFullBackend<Block>,
 		(),
-		sc_consensus::DefaultImportQueue<
-			Block,
-			TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-		>,
-		sc_transaction_pool::FullPool<
-			Block,
-			TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>,
-		>,
+		sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+		sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
 		(Option<Telemetry>, Option<TelemetryWorkerHandle>, NativeElseWasmExecutor<Executor>),
 	>,
 	sc_service::Error,
 >
 where
-	RuntimeApi: ConstructRuntimeApi<Block, TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<Executor>>>
-		+ Send
-		+ Sync
-		+ 'static,
+	RuntimeApi:
+		ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
 	RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
 		+ ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
 	Executor: NativeExecutionDispatch + 'static,
@@ -126,6 +122,14 @@ where
 	Ok(params)
 }
 
+/// Full client along with some other components.
+pub struct NewFull<C> {
+	/// Task manager.
+	pub task_manager: TaskManager,
+	/// Full client.
+	pub client: C,
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -135,10 +139,7 @@ pub async fn new_full<PRuntimeApi, PExecutorDispatch>(
 	primary_chain_full_node: subspace_service::NewFull<
 		Arc<subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>,
 	>,
-) -> sc_service::error::Result<(
-	TaskManager,
-	Arc<TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<CirrusRuntimeExecutor>>>,
-)>
+) -> sc_service::error::Result<NewFull<Arc<FullClient<RuntimeApi, CirrusRuntimeExecutor>>>>
 where
 	PRuntimeApi: ConstructRuntimeApi<PBlock, subspace_service::FullClient<PRuntimeApi, PExecutorDispatch>>
 		+ Send
@@ -260,5 +261,5 @@ where
 
 	primary_chain_full_node.network_starter.start_network();
 
-	Ok((task_manager, client))
+	Ok(NewFull { task_manager, client })
 }

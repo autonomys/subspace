@@ -266,7 +266,7 @@ fn main() -> std::result::Result<(), Error> {
 
                     cirrus_node::service::new_full(config, primary_chain_full_node)
                         .await
-                        .map(|(task_manager, _full_client)| task_manager)
+                        .map(|full| full.task_manager)
                 })?;
             } else {
                 // Run a regular subspace node.
