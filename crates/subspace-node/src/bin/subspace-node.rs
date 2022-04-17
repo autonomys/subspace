@@ -20,10 +20,11 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
-use sc_service::{PartialComponents, Role};
+use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
+use subspace_service::SubspaceConfiguration;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -229,7 +230,7 @@ fn main() -> std::result::Result<(), Error> {
         None => {
             let runner = cli.create_runner(&cli.run.base)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.run_node_until_exit(|mut primary_chain_node_config| async move {
+            runner.run_node_until_exit(|primary_chain_node_config| async move {
                 let tokio_handle = primary_chain_node_config.tokio_handle.clone();
 
                 let mut primary_chain_full_node = {
@@ -239,16 +240,14 @@ fn main() -> std::result::Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    if !cli.secondary_chain_args.is_empty() {
-                        // TODO: Remove this hack with authority node, need to fire notifications
-                        //  independently of authority mode.
-                        // Primary full node must be an authority node for the new slots
-                        // notification.
-                        primary_chain_node_config.role = Role::Authority;
-                    }
+                    let primary_chain_node_config = SubspaceConfiguration {
+                        base: primary_chain_node_config,
+                        // Secondary node needs slots notifications for bundle production.
+                        force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
+                    };
 
                     subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                        primary_chain_node_config.into(),
+                        primary_chain_node_config,
                         true,
                     )
                     .map_err(|_| {

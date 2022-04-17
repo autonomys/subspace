@@ -111,13 +111,21 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Subspace-specific service configuration.
+#[derive(Debug)]
 pub struct SubspaceConfiguration {
-    base: Configuration,
+    /// Base configuration.
+    pub base: Configuration,
+    /// Whether slot notifications need to be present even if node is not responsible for block
+    /// authoring.
+    pub force_new_slot_notifications: bool,
 }
 
 impl From<Configuration> for SubspaceConfiguration {
     fn from(base: Configuration) -> Self {
-        Self { base }
+        Self {
+            base,
+            force_new_slot_notifications: false,
+        }
     }
 }
 
@@ -378,7 +386,9 @@ where
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
 
-    if config.role.is_authority() {
+    let is_authoring_blocks = config.role.is_authority();
+
+    if is_authoring_blocks || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
