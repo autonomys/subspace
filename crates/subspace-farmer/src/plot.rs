@@ -3,6 +3,7 @@ mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
 use log::{error, info};
+use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -141,7 +142,7 @@ pub fn retrieve_piece_from_plots(
 ) -> io::Result<Option<Piece>> {
     let piece_index_hash = PieceIndexHash::from(piece_index);
     let mut plots = plots.iter().collect::<Vec<_>>();
-    plots.sort_by_key(|plot| PieceDistance::xor_distance(&piece_index_hash, plot.public_key()));
+    plots.sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key()));
 
     plots
         .iter()
@@ -443,32 +444,64 @@ impl WeakPlot {
     }
 }
 
+/// Mapping from piece index hash to piece offset.
+///
+/// Piece index hashes are transformed in the following manner:
+/// - Assume that farmer address is the middle (`2 ^ 255`) of the `PieceDistance` field
+/// - Move every piece according to that
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance: Option<PieceDistance>,
+    max_distance_key: Option<PieceDistance>,
 }
 
 impl IndexHashToOffsetDB {
     fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
-        let max_distance = {
-            let mut iter = inner.raw_iterator();
-            iter.seek_to_last();
-            iter.key().map(PieceDistance::from_big_endian)
-        };
-        Ok(Self {
+        let mut me = Self {
             inner,
             address,
-            max_distance,
-        })
+            max_distance_key: None,
+        };
+        me.update_max_distance();
+        Ok(me)
+    }
+
+    fn update_max_distance(&mut self) {
+        self.max_distance_key = try {
+            let mut iter = self.inner.raw_iterator();
+            iter.seek_to_first();
+            let lower_bound = iter.key().map(PieceDistance::from_big_endian)?;
+            iter.seek_to_last();
+            let upper_bound = iter.key().map(PieceDistance::from_big_endian)?;
+
+            // Pick key which has maximum distance to our key
+            if subspace_core_primitives::bidirectional_distance(
+                &lower_bound,
+                &PieceDistance::MIDDLE,
+            ) < subspace_core_primitives::bidirectional_distance(
+                &upper_bound,
+                &PieceDistance::MIDDLE,
+            ) {
+                upper_bound
+            } else {
+                lower_bound
+            }
+        };
+    }
+
+    fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+        // We permute distance such that if piece index hash is equal to the `self.address` then it
+        // lands to the `PieceDistance::MIDDLE`
+        PieceDistance::from_big_endian(&index_hash.0)
+            .wrapping_sub(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .wrapping_add(&PieceDistance::MIDDLE)
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
-        let distance = PieceDistance::xor_distance(index_hash, &self.address);
         self.inner
-            .get(&distance.to_bytes())
+            .get(&self.get_key(index_hash).to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -480,21 +513,23 @@ impl IndexHashToOffsetDB {
 
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
-    fn should_store(&self, index_hash: &PieceIndexHash) -> io::Result<bool> {
-        Ok(match self.max_distance {
-            Some(max_distance) => {
-                PieceDistance::xor_distance(index_hash, &self.address) < max_distance
-                    && self.get(index_hash)?.is_none()
-            }
-            None => false,
-        })
+    fn should_store(&self, index_hash: &PieceIndexHash) -> bool {
+        self.max_distance_key
+            .map(|max_distance_key| {
+                subspace_core_primitives::bidirectional_distance(
+                    &max_distance_key,
+                    &PieceDistance::MIDDLE,
+                ) >= PieceDistance::distance(index_hash, self.address)
+            })
+            .unwrap_or(true)
     }
 
     fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance {
+        let max_distance = match self.max_distance_key {
             Some(max_distance) => max_distance,
             None => return Ok(None),
         };
+
         let result = self
             .inner
             .get(&max_distance.to_bytes())
@@ -505,28 +540,31 @@ impl IndexHashToOffsetDB {
             .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
 
-        let mut iter = self.inner.raw_iterator();
-        iter.seek_to_last();
-        self.max_distance = iter.key().map(PieceDistance::from_big_endian);
+        self.update_max_distance();
 
         Ok(result)
     }
 
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let distance = PieceDistance::xor_distance(index_hash, &self.address);
+        let key = self.get_key(index_hash);
         self.inner
-            .put(&distance.to_bytes(), offset.to_le_bytes())
+            .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        match self.max_distance {
-            Some(old_distance) => {
-                if old_distance < distance {
-                    self.max_distance.replace(distance);
+        self.max_distance_key = match self.max_distance_key {
+            Some(max_distance_key) => {
+                if PieceDistance::distance(index_hash, self.address)
+                    > subspace_core_primitives::bidirectional_distance(
+                        &max_distance_key,
+                        &PieceDistance::MIDDLE,
+                    )
+                {
+                    Some(key)
+                } else {
+                    Some(max_distance_key)
                 }
             }
-            None => {
-                self.max_distance.replace(distance);
-            }
+            None => Some(key),
         };
 
         Ok(())
@@ -676,7 +714,7 @@ impl PlotWorker {
             // Check if piece is out of plot range or if it is in the plot
             if !self
                 .piece_index_hash_to_offset_db
-                .should_store(&piece_index.into())?
+                .should_store(&piece_index.into())
             {
                 continue;
             }

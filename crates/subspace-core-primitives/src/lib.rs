@@ -513,3 +513,11 @@ impl<AccountId: Clone> Solution<AccountId> {
         }
     }
 }
+
+/// Bidirectional distance metric implemented on top of subtraction
+pub fn bidirectional_distance<T: num_traits::WrappingSub + Ord>(a: &T, b: &T) -> T {
+    let diff = a.wrapping_sub(b);
+    let diff2 = b.wrapping_sub(a);
+    // Find smaller diff between 2 directions.
+    diff.min(diff2)
+}

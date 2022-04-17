@@ -8464,6 +8464,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "hmac 0.12.1",
+ "num-traits",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -8489,6 +8490,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "lru 0.7.5",
+ "num-traits",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.8.5",
@@ -8707,6 +8709,7 @@ name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
  "log",
+ "num-traits",
  "num_cpus",
  "rand 0.8.5",
  "rayon",

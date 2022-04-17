@@ -34,6 +34,7 @@ pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
 mod construct_uint {
     //! This module is needed to scope clippy allows
 
+    use num_traits::{WrappingAdd, WrappingSub};
     use subspace_core_primitives::PieceIndexHash;
 
     uint::construct_uint! {
@@ -42,17 +43,36 @@ mod construct_uint {
     }
 
     impl PieceDistance {
-        /// Calculates the xor distance metric between piece index hash and farmer address.
-        pub fn xor_distance(
-            PieceIndexHash(piece): &PieceIndexHash,
-            address: impl AsRef<[u8]>,
-        ) -> Self {
-            Self::from_big_endian(piece) ^ Self::from_big_endian(address.as_ref())
+        /// Calculates the distance metric between piece index hash and farmer address.
+        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: impl AsRef<[u8]>) -> Self {
+            let piece = Self::from_big_endian(piece);
+            let address = Self::from_big_endian(address.as_ref());
+            subspace_core_primitives::bidirectional_distance(&piece, &address)
         }
 
         /// Convert piece distance to big endian bytes
         pub fn to_bytes(self) -> [u8; 32] {
             self.into()
+        }
+
+        /// The middle of the piece distance field.
+        /// The analogue of `0b1000_0000` for `u8`.
+        pub const MIDDLE: Self = {
+            // TODO: This assumes that numbers are stored little endian,
+            //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
+            Self([u64::MAX, u64::MAX, u64::MAX, u64::MAX / 2])
+        };
+    }
+
+    impl WrappingAdd for PieceDistance {
+        fn wrapping_add(&self, other: &Self) -> Self {
+            self.overflowing_add(*other).0
+        }
+    }
+
+    impl WrappingSub for PieceDistance {
+        fn wrapping_sub(&self, other: &Self) -> Self {
+            self.overflowing_sub(*other).0
         }
     }
 }

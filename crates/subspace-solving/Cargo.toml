@@ -14,6 +14,7 @@ include = [
 [dependencies]
 log = "0.4.16"
 num_cpus = "1.13.0"
+num-traits = "0.2"
 rayon = "1.5.2"
 schnorrkel = "0.9.1"
 sloth256-189 = "0.2.2"
