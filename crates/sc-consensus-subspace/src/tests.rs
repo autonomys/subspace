@@ -524,6 +524,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             &data.link,
             client.clone(),
             &task_manager.spawn_essential_handle(),
+            false,
         );
 
         let (archived_pieces_sender, archived_pieces_receiver) = oneshot::channel();

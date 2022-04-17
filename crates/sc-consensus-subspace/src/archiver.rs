@@ -14,19 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::SubspaceLink;
+use crate::{ArchivedSegmentNotification, SubspaceLink, SubspaceNotificationSender};
 use codec::Encode;
-use futures::{SinkExt, StreamExt};
+use futures::{future, SinkExt, StreamExt};
 use log::{debug, error, info};
 use sc_client_api::BlockBackend;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{BlockNumber, RootBlock};
+
+const ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL: Duration = Duration::from_secs(5);
 
 fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
 where
@@ -76,6 +80,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
+    is_authoring_blocks: bool,
 ) where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -143,6 +148,8 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .expect("Incorrect parameters for archiver")
     };
 
+    let mut older_archived_segments = Vec::new();
+
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     {
         let blocks_to_archive_from = archiver
@@ -196,13 +203,13 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     encoded_block.len() as f32 / 1024.0
                 );
 
-                // These archived segments were processed before, thus do not need to be sent to
-                // farmers
-                let new_root_blocks: Vec<RootBlock> = archiver
-                    .add_block(encoded_block, block_object_mapping)
-                    .into_iter()
+                let archived_segments = archiver.add_block(encoded_block, block_object_mapping);
+                let new_root_blocks: Vec<RootBlock> = archived_segments
+                    .iter()
                     .map(|archived_segment| archived_segment.root_block)
                     .collect();
+
+                older_archived_segments.extend(archived_segments);
 
                 if !new_root_blocks.is_empty() {
                     // Set list of expected root blocks for the block where we expect root block
@@ -232,6 +239,19 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                 subspace_link.archived_segment_notification_sender.clone();
 
             async move {
+                // Farmers may have not received all previous segments, send them now.
+                if is_authoring_blocks {
+                    for archived_segment in older_archived_segments {
+                        send_archived_segment_notification(
+                            &archived_segment_notification_sender,
+                            archived_segment,
+                        )
+                        .await;
+                    }
+                } else {
+                    drop(older_archived_segments);
+                }
+
                 let mut last_archived_block_number =
                     archiver.last_archived_block_number().map(Into::into);
 
@@ -281,17 +301,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     );
                     for archived_segment in archiver.add_block(encoded_block, block_object_mapping)
                     {
-                        let ArchivedSegment {
-                            root_block,
-                            pieces,
-                            object_mapping,
-                        } = archived_segment;
+                        let root_block = archived_segment.root_block;
 
-                        archived_segment_notification_sender.notify(move || ArchivedSegment {
-                            root_block,
-                            pieces,
-                            object_mapping,
-                        });
+                        if is_authoring_blocks {
+                            send_archived_segment_notification(
+                                &archived_segment_notification_sender,
+                                archived_segment,
+                            )
+                            .await;
+                        }
 
                         let _ = root_block_sender.send(root_block).await;
                     }
@@ -299,4 +317,39 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             }
         }),
     );
+}
+
+async fn send_archived_segment_notification(
+    archived_segment_notification_sender: &SubspaceNotificationSender<ArchivedSegmentNotification>,
+    archived_segment: ArchivedSegment,
+) {
+    let (acknowledgement_sender, mut acknowledgement_receiver) =
+        tracing_unbounded("subspace_acknowledgement");
+    let archived_segment_notification = ArchivedSegmentNotification {
+        archived_segment: Arc::new(archived_segment),
+        acknowledgement_sender,
+    };
+
+    // This could have been done in a nicer way (reactive), but that is a
+    // lot of code, so we have this for now with periodic attempts.
+    future::select(
+        Box::pin(async {
+            let get_value = move || archived_segment_notification;
+
+            // Try in a loop until receiver below gets notification back
+            loop {
+                archived_segment_notification_sender.notify(get_value.clone());
+
+                futures_timer::Delay::new(ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL).await;
+
+                info!(
+                    target: "subspace",
+                    "Waiting for farmer to receive and acknowledge \
+                    archived segment",
+                );
+            }
+        }),
+        Box::pin(acknowledgement_receiver.next()),
+    )
+    .await;
 }

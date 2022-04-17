@@ -29,7 +29,10 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
+use sc_consensus_subspace::{
+    ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
+};
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -41,6 +44,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, Solution};
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, EncodedBlockWithObjectMapping, FarmerMetadata, SlotInfo,
@@ -145,6 +149,9 @@ pub trait SubspaceRpcApi {
         metadata: Option<Self::Metadata>,
         id: SubscriptionId,
     ) -> RpcResult<bool>;
+
+    #[rpc(name = "subspace_acknowledgeArchivedSegment")]
+    fn acknowledge_archived_segment(&self, segment_index: u64) -> FutureResult<()>;
 }
 
 #[derive(Default)]
@@ -159,15 +166,22 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<BlockSignature>>,
 }
 
+#[derive(Default)]
+struct ArchivedSegmentAcknowledgementSenders {
+    segment_index: u64,
+    senders: Vec<TracingUnboundedSender<()>>,
+}
+
 /// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
 pub struct SubspaceRpcHandler<Block, Client> {
     client: Arc<Client>,
     subscription_manager: SubscriptionManager,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
-    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     block_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
+    archived_segment_acknowledgement_senders: Arc<Mutex<ArchivedSegmentAcknowledgementSenders>>,
     _phantom: PhantomData<Block>,
 }
 
@@ -195,7 +209,9 @@ where
         executor: E,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
         block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
-        archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
+        archived_segment_notification_stream: SubspaceNotificationStream<
+            ArchivedSegmentNotification,
+        >,
     ) -> Self
     where
         E: Spawn + Send + Sync + 'static,
@@ -208,6 +224,7 @@ where
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             block_signature_senders: Arc::default(),
+            archived_segment_acknowledgement_senders: Arc::default(),
             _phantom: PhantomData::default(),
         }
     }
@@ -525,11 +542,37 @@ where
         subscriber: Subscriber<ArchivedSegment>,
     ) {
         self.subscription_manager.add(subscriber, |sink| {
+            let archived_segment_acknowledgement_senders =
+                self.archived_segment_acknowledgement_senders.clone();
+
             self.archived_segment_notification_stream
                 .subscribe()
-                .map(|archived_segment_notification| {
+                .map(move |archived_segment_notification| {
+                    let ArchivedSegmentNotification {
+                        archived_segment,
+                        acknowledgement_sender,
+                    } = archived_segment_notification;
+
+                    let segment_index = archived_segment.root_block.segment_index();
+
+                    // Store acknowledgment sender so that we can retrieve it when acknowledgement
+                    // comes from the farmer
+                    {
+                        let mut archived_segment_acknowledgement_senders =
+                            archived_segment_acknowledgement_senders.lock();
+
+                        if archived_segment_acknowledgement_senders.segment_index != segment_index {
+                            archived_segment_acknowledgement_senders.segment_index = segment_index;
+                            archived_segment_acknowledgement_senders.senders.clear();
+                        }
+
+                        archived_segment_acknowledgement_senders
+                            .senders
+                            .push(acknowledgement_sender);
+                    }
+
                     // This will be sent to the farmer
-                    Ok(Ok(archived_segment_notification))
+                    Ok(Ok(archived_segment.as_ref().clone()))
                 })
                 .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
                 .map(|_| ())
@@ -542,5 +585,29 @@ where
         id: SubscriptionId,
     ) -> RpcResult<bool> {
         Ok(self.subscription_manager.cancel(id))
+    }
+
+    fn acknowledge_archived_segment(&self, segment_index: u64) -> FutureResult<()> {
+        let archived_segment_acknowledgement_senders =
+            self.archived_segment_acknowledgement_senders.clone();
+
+        Box::pin(async move {
+            let maybe_sender = {
+                let mut archived_segment_acknowledgement_senders_guard =
+                    archived_segment_acknowledgement_senders.lock();
+
+                (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
+                    .then(|| archived_segment_acknowledgement_senders_guard.senders.pop())
+                    .flatten()
+            };
+
+            if let Some(mut sender) = maybe_sender {
+                if let Err(error) = sender.send(()).await {
+                    warn!("Failed to acknowledge archived segment: {error}");
+                }
+            }
+
+            Ok(())
+        })
     }
 }

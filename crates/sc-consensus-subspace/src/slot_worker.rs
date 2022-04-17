@@ -44,7 +44,6 @@ use sp_runtime::traits::{AppVerify, Block as BlockT, Header, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
-pub use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{Randomness, Salt};
 
 pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {

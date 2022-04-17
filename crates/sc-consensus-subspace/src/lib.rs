@@ -76,7 +76,7 @@ use std::cmp::Ordering;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
-pub use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
@@ -111,6 +111,17 @@ pub struct BlockSigningNotification {
     pub header_hash: H256,
     /// Sender that can be used to send signature for the header.
     pub signature_sender: TracingUnboundedSender<FarmerSignature>,
+}
+
+/// Notification with block header hash that needs to be signed and sender for signature.
+#[derive(Debug, Clone)]
+pub struct ArchivedSegmentNotification {
+    /// Archived segment.
+    pub archived_segment: Arc<ArchivedSegment>,
+    /// Sender that signified the fact of receiving archived segment by farmer.
+    ///
+    /// This must be used to send a message or else block import pipeline will get stuck.
+    pub acknowledgement_sender: TracingUnboundedSender<()>,
 }
 
 /// Errors encountered by the Subspace authorship task.
@@ -503,8 +514,8 @@ pub struct SubspaceLink<Block: BlockT> {
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     block_signing_notification_sender: SubspaceNotificationSender<BlockSigningNotification>,
     block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
-    archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegment>,
-    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
+    archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
+    archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
@@ -534,7 +545,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
     /// Get stream with notifications about archived segment creation
     pub fn archived_segment_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<ArchivedSegment> {
+    ) -> SubspaceNotificationStream<ArchivedSegmentNotification> {
         self.archived_segment_notification_stream.clone()
     }
 

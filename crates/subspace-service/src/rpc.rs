@@ -23,7 +23,9 @@
 
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{ArchivedSegment, BlockSigningNotification, NewSlotNotification};
+use sc_consensus_subspace::{
+    ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
+};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -50,7 +52,8 @@ pub struct FullDeps<C, P> {
     /// signature back.
     pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     /// A stream with notifications about archived segment creation.
-    pub archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegment>,
+    pub archived_segment_notification_stream:
+        SubspaceNotificationStream<ArchivedSegmentNotification>,
 }
 
 /// Instantiate all full RPC extensions.

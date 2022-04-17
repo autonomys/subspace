@@ -25,8 +25,8 @@ use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
-    notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
-    SubspaceLink, SubspaceParams,
+    notification::SubspaceNotificationStream, ArchivedSegmentNotification,
+    BlockSigningNotification, NewSlotNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
@@ -261,6 +261,7 @@ where
         &subspace_link,
         client.clone(),
         &task_manager.spawn_essential_handle(),
+        config.role.is_authority(),
     );
 
     let slot_duration = subspace_link.config().slot_duration();
@@ -312,6 +313,9 @@ pub struct NewFull<C> {
     /// Imported block stream.
     pub imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Archived segment stream.
+    pub archived_segment_notification_stream:
+        SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Network starter.
     pub network_starter: NetworkStarter,
 }
@@ -366,12 +370,10 @@ where
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
-    let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
+    let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let is_authoring_blocks = config.role.is_authority();
-
-    if is_authoring_blocks || config.force_new_slot_notifications {
+    if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -451,6 +453,7 @@ where
             let client = client.clone();
             let new_slot_notification_stream = new_slot_notification_stream.clone();
             let block_signing_notification_stream = block_signing_notification_stream.clone();
+            let archived_segment_notification_stream = archived_segment_notification_stream.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = crate::rpc::FullDeps {
@@ -485,6 +488,7 @@ where
         new_slot_notification_stream,
         block_signing_notification_stream,
         imported_block_notification_stream,
+        archived_segment_notification_stream,
         network_starter,
     })
 }
