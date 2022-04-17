@@ -28,6 +28,7 @@ sc-network = { git = "https://github.com/paritytech/substrate", rev = "c4f3d0286
 sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-service = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sc-utils = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-arithmetic = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -43,7 +44,7 @@ substrate-test-client = { git = "https://github.com/paritytech/substrate", rev =
 jsonrpc-core = "18.0.0"
 
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
-cirrus-client-service = { path = "../../client/cirrus-service" }
+cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
 cirrus-test-runtime = { path = "../runtime" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 

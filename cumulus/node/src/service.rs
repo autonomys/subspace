@@ -1,14 +1,8 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-// std
-use std::sync::Arc;
-
-// Local Runtime Types
+use cirrus_client_executor::{Executor, ExecutorSlotInfo};
+use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_runtime::{opaque::Block, RuntimeApi};
-
-// Substrate Imports
-use cirrus_client_executor::ExecutorSlotInfo;
-use cirrus_client_service::StartExecutorParams;
 use futures::StreamExt;
 use sc_client_api::StateBackendFor;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -17,8 +11,11 @@ use sc_service::{
 	TFullClient, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, ConstructRuntimeApi};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 
 /// Native executor instance.
@@ -213,36 +210,49 @@ where
 		telemetry: telemetry.as_mut(),
 	})?;
 
-	let spawner = task_manager.spawn_handle();
+	{
+		let spawn_essential = task_manager.spawn_essential_handle();
+		let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
+		let (execution_receipt_sender, execution_receipt_receiver) =
+			tracing_unbounded("execution_receipt_stream");
 
-	let params = StartExecutorParams {
-		primary_chain_client: primary_chain_full_node.client.clone(),
-		spawn_essential: &task_manager.spawn_essential_handle(),
-		select_chain: &primary_chain_full_node.select_chain,
-		imported_block_notification_stream: primary_chain_full_node
-			.imported_block_notification_stream
-			.subscribe()
-			.then(|(block_number, _)| async move { block_number }),
-		new_slot_notification_stream: primary_chain_full_node
-			.new_slot_notification_stream
-			.subscribe()
-			.then(|slot_notification| async move {
-				let slot_info = slot_notification.new_slot_info;
-				ExecutorSlotInfo {
-					slot: slot_info.slot,
-					global_challenge: slot_info.global_challenge,
-				}
-			}),
-		client: client.clone(),
-		spawner: Box::new(spawner),
-		transaction_pool,
-		network,
-		backend,
-		code_executor: Arc::new(code_executor),
-		is_authority: validator,
-	};
+		let executor = Executor::new(
+			primary_chain_full_node.client.clone(),
+			&spawn_essential,
+			&primary_chain_full_node.select_chain,
+			primary_chain_full_node
+				.imported_block_notification_stream
+				.subscribe()
+				.then(|(block_number, _)| async move { block_number }),
+			primary_chain_full_node.new_slot_notification_stream.subscribe().then(
+				|slot_notification| async move {
+					let slot_info = slot_notification.new_slot_info;
+					ExecutorSlotInfo {
+						slot: slot_info.slot,
+						global_challenge: slot_info.global_challenge,
+					}
+				},
+			),
+			client.clone(),
+			Box::new(task_manager.spawn_handle()),
+			transaction_pool,
+			Arc::new(bundle_sender),
+			Arc::new(execution_receipt_sender),
+			backend,
+			Arc::new(code_executor),
+			validator,
+		)
+		.await?;
 
-	cirrus_client_service::start_executor(params).await?;
+		let executor_gossip =
+			cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
+				network,
+				executor,
+				bundle_receiver,
+				execution_receipt_receiver,
+			});
+		spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
+	}
 
 	task_manager.add_child(primary_chain_full_node.task_manager);
 
