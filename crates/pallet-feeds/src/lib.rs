@@ -22,7 +22,11 @@
 use crate::feed_processor::FeedObjectMapping;
 use core::mem;
 pub use pallet::*;
+use scale::Encode;
+use scale_info::scale;
 use sp_std::{vec, vec::Vec};
+use subspace_core_primitives::crypto;
+
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
 mod mock;
@@ -349,14 +353,22 @@ impl<T: Config> Call<T> {
                     None => return vec![],
                 };
                 let feed_processor = T::feed_processor(feed_processor_id);
-                let mut objects_mappings = feed_processor.object_mappings(*feed_id, object);
-                // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
-                // enum variant encoding.
-                objects_mappings.iter_mut().for_each(|object_mapping| {
-                    // update the offset to include the absolute offset in the extrinsic
-                    object_mapping.offset += 1 + mem::size_of::<T::FeedId>() as u32
-                });
+                let objects_mappings = feed_processor.object_mappings(*feed_id, object);
+
                 objects_mappings
+                    .into_iter()
+                    .map(|object_mapping| {
+                        // Scope the key of the object to the feed_id namespace
+                        let key = crypto::sha256_hash_pair(feed_id.encode(), object_mapping.key);
+                        FeedObjectMapping {
+                            key,
+                            // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
+                            // enum variant encoding.
+                            // update the offset to include the absolute offset in the extrinsic
+                            offset: 1 + mem::size_of::<T::FeedId>() as u32 + object_mapping.offset,
+                        }
+                    })
+                    .collect()
             }
             _ => Default::default(),
         }
