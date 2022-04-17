@@ -58,10 +58,9 @@ mod construct_uint {
         /// The middle of the piece distance field.
         /// The analogue of `0b1000_0000` for `u8`.
         pub const MIDDLE: Self = {
-            // TODO: This assumes that numbers are stored little endian
-            let Self(mut arr) = Self::zero();
-            arr[arr.len() - 1] = 1 << 63;
-            Self(arr)
+            // TODO: This assumes that numbers are stored little endian,
+            //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
+            Self([u64::MAX, u64::MAX, u64::MAX, u64::MAX / 2])
         };
     }
 
