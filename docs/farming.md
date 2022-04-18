@@ -188,7 +188,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
-## Docker Instructions
+## 🐋 Docker Instructions
 
 Create `subspace` directory and `docker-compose.yml` in it with following contents:
 ```yml
