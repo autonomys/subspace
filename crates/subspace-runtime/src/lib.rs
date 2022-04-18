@@ -255,6 +255,9 @@ impl frame_system::Config for Runtime {
 parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
+    // Disable solution range adjustment at the start of chain.
+    // Root origin must enable later
+    pub const ShouldAdjustSolutionRange: bool = false;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -270,6 +273,7 @@ impl pallet_subspace::Config for Runtime {
     type RecordSize = ConstU32<RECORD_SIZE>;
     type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
     type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
+    type ShouldAdjustSolutionRange = ();
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;

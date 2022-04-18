@@ -651,6 +651,7 @@ impl pallet_babe::Config for Runtime {
 parameter_types! {
     pub const SlotProbability: (u64, u64) = (3, 10);
     pub const ExpectedBlockTime: u64 = 10_000;
+    pub const ShouldAdjustSolutionRange: bool = false;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -666,6 +667,7 @@ impl pallet_subspace::Config for Runtime {
     type RecordSize = ConstU32<3840>;
     type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 / PIECE_SIZE as u64 }>;
     type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
+    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type EonChangeTrigger = pallet_subspace::NormalEonChange;

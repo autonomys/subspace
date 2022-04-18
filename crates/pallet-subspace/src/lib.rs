@@ -98,7 +98,7 @@ pub struct NormalEraChange;
 impl EraChangeTrigger for NormalEraChange {
     fn trigger<T: Config>(block_number: T::BlockNumber) {
         if <Pallet<T>>::should_era_change(block_number) {
-            <Pallet<T>>::enact_era_change(block_number);
+            <Pallet<T>>::enact_era_change();
         }
     }
 }
@@ -218,6 +218,9 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
+        #[pallet::constant]
+        type ShouldAdjustSolutionRange: Get<bool>;
+
         /// Subspace requires periodic global randomness update.
         type GlobalRandomnessIntervalTrigger: GlobalRandomnessIntervalTrigger;
 
@@ -292,6 +295,11 @@ mod pallet {
         InitialSolutionRanges<T>,
     >;
 
+    /// Storage to check if the solution range is adjusted for next era
+    #[pallet::storage]
+    pub type ShouldAdjustSolutionRange<T: Config> =
+        StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
+
     /// Salts used for challenges.
     #[pallet::storage]
     #[pallet::getter(fn salts)]
@@ -356,6 +364,15 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::do_store_root_blocks(root_blocks)
+        }
+
+        /// Enables solution range adjustment after every era.
+        /// Note: No effect on the solution range adjustment for this era and and next era.
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn enable_solution_range_adjustment(origin: OriginFor<T>) -> DispatchResult {
+            ensure_root(origin)?;
+            ShouldAdjustSolutionRange::<T>::put(true);
+            Ok(())
         }
     }
 
@@ -484,40 +501,37 @@ impl<T: Config> Pallet<T> {
     /// returned `true`, and the caller is the only caller of this function.
     ///
     /// This will update solution range used in consensus.
-    pub fn enact_era_change(block_number: T::BlockNumber) {
+    pub fn enact_era_change() {
         let slot_probability = T::SlotProbability::get();
 
         let current_slot = Self::current_slot();
 
         SolutionRanges::<T>::mutate(|solution_ranges| {
-            // If Era start slot is not found it means we have just finished the first era
-            let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-            let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
-
-            // Now we need to re-calculate solution range. The idea here is to keep block production at
-            // the same pace while space pledged on the network changes. For this we adjust previous
-            // solution range according to actual and expected number of blocks per era.
-            let era_duration: u64 = T::EraDuration::get()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-            let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-            let expected_slots_per_block = slot_probability.1 as f64 / slot_probability.0 as f64;
-            let adjustment_factor =
-                (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
-
             solution_ranges.next.replace(
-                // TODO: Temporary testnet hack, we don't update solution range for the first 15_000 blocks
-                //  in order to seed the blockchain with data quickly
-                if cfg!(all(feature = "no-early-solution-range-updates", not(test))) {
-                    if block_number < 15_000_u32.into() {
-                        solution_ranges.current
-                    } else {
-                        (solution_ranges.current as f64 * adjustment_factor).round() as u64
-                    }
-                } else {
+                // Check if the solution range should be adjusted.
+                if ShouldAdjustSolutionRange::<T>::get() {
+                    // If Era start slot is not found it means we have just finished the first era
+                    let era_start_slot =
+                        EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
+                    let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
+
+                    // Now we need to re-calculate solution range. The idea here is to keep block production at
+                    // the same pace while space pledged on the network changes. For this we adjust previous
+                    // solution range according to actual and expected number of blocks per era.
+                    let era_duration: u64 = T::EraDuration::get()
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
+                    let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+                    let expected_slots_per_block =
+                        slot_probability.1 as f64 / slot_probability.0 as f64;
+                    let adjustment_factor =
+                        (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+
                     (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                } else {
+                    solution_ranges.current
                 },
-            );
+            )
         });
 
         EraStartSlot::<T>::put(current_slot);
