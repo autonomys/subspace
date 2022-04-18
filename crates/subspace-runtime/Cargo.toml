@@ -30,7 +30,7 @@ pallet-grandpa-finality-verifier = { version = "1.0.0", default-features = false
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
-pallet-subspace = { version = "0.1.0", default-features = false, features = ["no-early-solution-range-updates"], path = "../pallet-subspace" }
+pallet-subspace = { version = "0.1.0", default-features = false, path = "../pallet-subspace" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-transaction-fees = { version = "0.1.0", default-features = false, path = "../pallet-transaction-fees" }

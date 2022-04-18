@@ -99,6 +99,8 @@ fn can_update_solution_range_on_era_change() {
             next: None,
         };
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+        // enable solution range adjustment
+        assert_ok!(Subspace::enable_solution_range_adjustment(Origin::root()));
 
         // Progress to almost era edge
         progress_to_block(&keypair, 3);
@@ -139,6 +141,67 @@ fn can_update_solution_range_on_era_change() {
         );
         // This should cause solution range to increase as apparent pledged space decreased
         assert!(Subspace::solution_ranges().next.unwrap() > last_solution_range);
+    })
+}
+
+#[test]
+fn solution_range_should_not_update_when_disabled() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        assert_eq!(<Test as Config>::EraDuration::get(), 4);
+        assert_eq!(
+            <Test as Config>::InitialSolutionRange::get(),
+            INITIAL_SOLUTION_RANGE
+        );
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+
+        // Progress to almost era edge
+        progress_to_block(&keypair, 3);
+        // No solution range update
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+
+        // Era edge
+        progress_to_block(&keypair, 4);
+        // Next solution range should be updated, but current is still unchanged
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(
+            updated_solution_ranges.current,
+            initial_solution_ranges.current
+        );
+        assert!(updated_solution_ranges.next.is_some());
+
+        progress_to_block(&keypair, 5);
+        // Next solution range should become current
+        assert_eq!(
+            Subspace::solution_ranges(),
+            SolutionRanges {
+                current: updated_solution_ranges.next.unwrap(),
+                next: None
+            }
+        );
+
+        // since solution range adjustment was disabled, solution range will remain the same
+        let last_solution_range = Subspace::solution_ranges().current;
+        assert_eq!(last_solution_range, INITIAL_SOLUTION_RANGE);
+
+        // Progress to era edge such that it takes more slots than expected
+        go_to_block(
+            &keypair,
+            8,
+            u64::from(Subspace::current_slot())
+                + (4 * SLOT_PROBABILITY.1 / SLOT_PROBABILITY.0 + 10),
+        );
+        // Solution rage will still be the same even after the apparent pledged space has decreased
+        // since adjustment is disabled
+        assert_eq!(
+            Subspace::solution_ranges().next.unwrap(),
+            INITIAL_SOLUTION_RANGE
+        );
     })
 }
 
