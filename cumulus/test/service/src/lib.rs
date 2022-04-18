@@ -153,7 +153,7 @@ pub fn new_partial(
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
 async fn start_node_impl(
 	mut parachain_config: Configuration,
-	relay_chain_config: Configuration,
+	primary_chain_config: Configuration,
 ) -> sc_service::error::Result<(
 	TaskManager,
 	Arc<Client>,
@@ -180,14 +180,14 @@ async fn start_node_impl(
 	let primary_chain_full_node = {
 		let span = tracing::info_span!(
 			sc_tracing::logging::PREFIX_LOG_SPAN,
-			name = relay_chain_config.network.node_name.as_str()
+			name = primary_chain_config.network.node_name.as_str()
 		);
 		let _enter = span.enter();
 
 		subspace_service::new_full::<
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
-		>(relay_chain_config, false)
+		>(primary_chain_config.into(), false)
 		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
 	};
 
@@ -404,19 +404,19 @@ impl TestNodeBuilder {
 		)
 		.expect("could not generate Configuration");
 
-		let mut relay_chain_config = subspace_test_service::node_config(
+		let mut primary_chain_config = subspace_test_service::node_config(
 			self.tokio_handle,
 			self.key,
 			self.relay_chain_nodes,
 			true,
 		);
 
-		relay_chain_config.network.node_name =
-			format!("{} (primary chain)", relay_chain_config.network.node_name);
+		primary_chain_config.network.node_name =
+			format!("{} (primary chain)", primary_chain_config.network.node_name);
 
 		let multiaddr = parachain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(parachain_config, relay_chain_config)
+			start_node_impl(parachain_config, primary_chain_config)
 				.await
 				.expect("could not create Cumulus test service");
 

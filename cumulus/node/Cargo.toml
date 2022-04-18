@@ -46,7 +46,6 @@ sc-service = { git = "https://github.com/paritytech/substrate", rev = "c4f3d0286
 sc-telemetry = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-transaction-pool-api = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
-sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-utils = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 ## Substrate Primitive Dependencies
@@ -54,6 +53,7 @@ sp-api = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621ed
 sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sp-consensus-slots = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-keystore = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -70,9 +70,8 @@ cirrus-client-executor-gossip = { path = "../client/executor-gossip" }
 cirrus-primitives = { path = "../primitives" }
 
 # Subspace dependencies
-subspace-runtime = { path = "../../crates/subspace-runtime" }
-subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
-subspace-service = { path = "../../crates/subspace-service" }
+sp-executor = { path = "../../crates/sp-executor" }
+subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 
 [build-dependencies]
 substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }

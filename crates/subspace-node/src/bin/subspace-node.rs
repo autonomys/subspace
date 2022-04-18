@@ -18,11 +18,13 @@
 
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
-use sc_service::{PartialComponents, Role};
+use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
+use subspace_service::SubspaceConfiguration;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -226,62 +228,87 @@ fn main() -> std::result::Result<(), Error> {
             unimplemented!("Executor subcommand");
         }
         None => {
-            if !cli.secondarychain_args.is_empty() {
-                // Run an executor node, which contains an embedded subspace full node.
-                let secondary_chain_cli = SecondaryChainCli::new(
-                    cli.run.base.base_path()?,
-                    cli.secondarychain_args.iter(),
-                );
-                let runner =
-                    SubstrateCli::create_runner(&secondary_chain_cli, &secondary_chain_cli)?;
-                set_default_ss58_version(&runner.config().chain_spec);
-                runner.run_node_until_exit(|config| async move {
-                    let primary_chain_full_node = {
-                        let span = sc_tracing::tracing::info_span!(
-                            sc_tracing::logging::PREFIX_LOG_SPAN,
-                            name = "Primarychain"
-                        );
-                        let _enter = span.enter();
+            let runner = cli.create_runner(&cli.run.base)?;
+            set_default_ss58_version(&runner.config().chain_spec);
+            runner.run_node_until_exit(|primary_chain_node_config| async move {
+                let tokio_handle = primary_chain_node_config.tokio_handle.clone();
 
-                        let mut primary_config = cli
-                            .create_configuration(&cli.run.base, config.tokio_handle.clone())
-                            .map_err(|_| {
-                                sc_service::Error::Other(
-                                    "Failed to create subspace configuration".into(),
-                                )
-                            })?;
+                let mut primary_chain_full_node = {
+                    let span = sc_tracing::tracing::info_span!(
+                        sc_tracing::logging::PREFIX_LOG_SPAN,
+                        name = "PrimaryChain"
+                    );
+                    let _enter = span.enter();
 
-                        // The embedded primary full node must be an authority node for the new slots
-                        // notification.
-                        primary_config.role = Role::Authority;
-
-                        subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                            primary_config,
-                            false,
-                        )
-                        .map_err(|_| {
-                            sc_service::Error::Other("Failed to build a full subspace node".into())
-                        })?
+                    let primary_chain_node_config = SubspaceConfiguration {
+                        base: primary_chain_node_config,
+                        // Secondary node needs slots notifications for bundle production.
+                        force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                     };
 
-                    cirrus_node::service::new_full(config, primary_chain_full_node)
-                        .await
-                        .map(|(task_manager, _full_client)| task_manager)
-                })?;
-            } else {
-                // Run a regular subspace node.
-                let runner = cli.create_runner(&cli.run.base)?;
-                set_default_ss58_version(&runner.config().chain_spec);
-                runner.run_node_until_exit(|config| async move {
-                    subspace_service::new_full::<subspace_runtime::RuntimeApi, ExecutorDispatch>(
-                        config, true,
+                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                        primary_chain_node_config,
+                        true,
                     )
-                    .map(|full| {
-                        full.network_starter.start_network();
-                        full.task_manager
-                    })
-                })?;
-            }
+                    .map_err(|_| {
+                        sc_service::Error::Other("Failed to build a full subspace node".into())
+                    })?
+                };
+
+                // Run an executor node, an optional component of Subspace full node.
+                if !cli.secondary_chain_args.is_empty() {
+                    let span = sc_tracing::tracing::info_span!(
+                        sc_tracing::logging::PREFIX_LOG_SPAN,
+                        name = "SecondaryChain"
+                    );
+                    let _enter = span.enter();
+
+                    let secondary_chain_cli = SecondaryChainCli::new(
+                        cli.run.base.base_path()?,
+                        cli.secondary_chain_args.iter(),
+                    );
+                    let secondary_chain_config = SubstrateCli::create_configuration(
+                        &secondary_chain_cli,
+                        &secondary_chain_cli,
+                        tokio_handle,
+                    )
+                    .map_err(|_| {
+                        sc_service::Error::Other(
+                            "Failed to create secondary chain configuration".into(),
+                        )
+                    })?;
+
+                    let secondary_chain_full_node_fut = cirrus_node::service::new_full(
+                        secondary_chain_config,
+                        primary_chain_full_node.client.clone(),
+                        &primary_chain_full_node.select_chain,
+                        primary_chain_full_node
+                            .imported_block_notification_stream
+                            .subscribe()
+                            .then(|(block_number, _)| async move { block_number }),
+                        primary_chain_full_node
+                            .new_slot_notification_stream
+                            .subscribe()
+                            .then(|slot_notification| async move {
+                                (
+                                    slot_notification.new_slot_info.slot,
+                                    slot_notification.new_slot_info.global_challenge,
+                                )
+                            }),
+                    );
+
+                    let secondary_chain_full_node = secondary_chain_full_node_fut.await?;
+
+                    primary_chain_full_node
+                        .task_manager
+                        .add_child(secondary_chain_full_node.task_manager);
+
+                    secondary_chain_full_node.network_starter.start_network();
+                }
+
+                primary_chain_full_node.network_starter.start_network();
+                Ok::<_, Error>(primary_chain_full_node.task_manager)
+            })?;
         }
     }
 

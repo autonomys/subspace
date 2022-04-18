@@ -63,7 +63,7 @@ pub fn new_full(
     let new_full = subspace_service::new_full::<
         subspace_test_runtime::RuntimeApi,
         TestExecutorDispatch,
-    >(config, enable_rpc_extensions)
+    >(config.into(), enable_rpc_extensions)
     .expect("Failed to create Subspace full client");
     if run_farmer {
         start_farmer(&new_full);
