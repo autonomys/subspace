@@ -195,7 +195,7 @@ Create `subspace` directory and `docker-compose.yml` in it with following conten
 version: "3.7"
 services:
   node:
-    # Replace `snapshot-DATE` with latest release
+    # Replace `snapshot-DATE` with latest release (like `snapshot-2022-mar-09`)
     image: ghcr.io/subspace/node:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
@@ -223,12 +223,12 @@ services:
       "--rpc-methods", "unsafe",
       "--ws-external",
       "--validator",
-# Replace `INSERT_YOUR_ID` with your node ID (shown in telemetry)
+# Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
     ]
 
   farmer:
-# Replace `snapshot-DATE` with latest release
+# Replace `snapshot-DATE` with latest release (like `snapshot-2022-mar-09`)
     image: ghcr.io/subspace/farmer:snapshot-DATE
 # Un-comment following 2 lines to unlock farmer's RPC
 #    ports:
@@ -252,13 +252,14 @@ volumes:
   farmer-data:
 ```
 
-Now edit created file:
-1. Replace `snapshot-DATE` with the latest release (not pre-release!) snapshot
-2. Replace `INSERT_YOUR_ID` with desired name that will be shown in telemetry (doesn't impact anything else)
-3. Replace `WALLET_ADDRESS` with your wallet address
-4. If you want to store files on a separate disk or customize port, read comments in the file
-
-Now do you directory and type `docker-compose up -d` to start everything.
+After which follow these steps:
+* Now edit created file:
+  1. Replace `snapshot-DATE` with the latest release (not pre-release!) snapshot (like `snapshot-2022-mar-09`)
+  2. Replace `INSERT_YOUR_ID` with desired name that will be shown in telemetry (doesn't impact anything else)
+  3. Replace `WALLET_ADDRESS` with your wallet address
+  4. If you want to store files on a separate disk or customize port, read comments in the file
+* Ensure [Docker](https://www.docker.com/) is installed and running
+* Now go to directory with `docker-compose.yml` and type `docker-compose up -d` to start everything
 
 You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [Docker Compose CLI reference](https://docs.docker.com/compose/reference/).
 
