@@ -139,7 +139,8 @@ where
     Header::Number: finality_grandpa::BlockNumberOps,
 {
     // always ensure the justification belongs to either current target or its descendent
-    if justification.commit.target_number < finalized_target.1 {
+    let (_finalized_hash, finalized_number) = finalized_target;
+    if justification.commit.target_number < finalized_number {
         return Err(Error::InvalidJustificationTarget);
     }
 
