@@ -68,8 +68,8 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,

@@ -97,29 +97,14 @@ use tracing::Instrument;
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
 
-/// Type alias for APIs required from primary chain client
-trait PrimaryChainClient<Block>:
-	HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
-where
-	Block: BlockT,
-{
-}
-
-impl<Block, T> PrimaryChainClient<Block> for T
-where
-	Block: BlockT,
-	T: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
-{
-}
-
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
 {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<dyn PrimaryChainClient<PBlock>>,
+	primary_chain_client: Arc<PClient>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock>,
@@ -131,8 +116,8 @@ where
 	is_authority: bool,
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E> Clone
-	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
+	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -158,8 +143,8 @@ type TransactionFor<Backend, Block> =
 		HashFor<Block>,
 	>>::Transaction;
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -176,6 +161,13 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ Sync
+		+ 'static,
+	PClient::Api: ExecutorApi<PBlock>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -183,7 +175,7 @@ where
 {
 	/// Create a new instance.
 	#[allow(clippy::too_many_arguments)]
-	pub async fn new<PClient, SE, SC, IBNS, NSNS>(
+	pub async fn new<SE, SC, IBNS, NSNS>(
 		primary_chain_client: Arc<PClient>,
 		spawn_essential: &SE,
 		select_chain: &SC,
@@ -199,13 +191,6 @@ where
 		is_authority: bool,
 	) -> Result<Self, sp_consensus::Error>
 	where
-		PClient: HeaderBackend<PBlock>
-			+ BlockBackend<PBlock>
-			+ ProvideRuntimeApi<PBlock>
-			+ Send
-			+ 'static
-			+ Sync,
-		PClient::Api: ExecutorApi<PBlock>,
 		SE: SpawnEssentialNamed,
 		SC: SelectChain<PBlock>,
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
@@ -585,8 +570,8 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E> GossipMessageHandler<Block>
-	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> GossipMessageHandler<Block>
+	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -608,6 +593,13 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ Sync
+		+ 'static,
+	PClient::Api: ExecutorApi<PBlock>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

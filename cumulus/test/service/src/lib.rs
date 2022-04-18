@@ -64,6 +64,7 @@ pub type Executor = cirrus_client_executor::Executor<
 	Block,
 	PBlock,
 	Client,
+	subspace_test_client::Client,
 	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
 	Backend,
 	CodeExecutor,
