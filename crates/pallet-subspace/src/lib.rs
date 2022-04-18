@@ -218,7 +218,6 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
-        #[pallet::constant]
         type ShouldAdjustSolutionRange: Get<bool>;
 
         /// Subspace requires periodic global randomness update.
