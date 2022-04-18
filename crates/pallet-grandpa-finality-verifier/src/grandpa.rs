@@ -138,12 +138,8 @@ pub(crate) fn verify_justification<Header: HeaderT>(
 where
     Header::Number: finality_grandpa::BlockNumberOps,
 {
-    // ensure that it is justification for the expected header
-    if (
-        justification.commit.target_hash,
-        justification.commit.target_number,
-    ) != finalized_target
-    {
+    // always ensure the justification belongs to either current target or its descendent
+    if justification.commit.target_number < finalized_target.1 {
         return Err(Error::InvalidJustificationTarget);
     }
 
