@@ -188,6 +188,80 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
+## Docker Instructions
+
+Create `subspace` directory and `docker-compose.yml` in it with following contents:
+```yml
+version: "3.7"
+services:
+  node:
+    # Replace `snapshot-DATE` with latest release
+    image: ghcr.io/subspace/node:snapshot-DATE
+    volumes:
+# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
+# alternatively specify path to the directory where files will be stored, just make
+# sure everyone is allowed to write there
+      - node-data:/var/subspace:rw
+#      - /path/to/subspace-node:/var/subspace:rw
+    ports:
+# If port 30333 is already occupied by another Substrate-based node, replace all
+# occurrences of `30333` in this file with another value
+      - "0.0.0.0:30333:30333"
+# Un-comment following line to unlock node's WebSocket RPC
+#      - "127.0.0.1:9944:9944"
+    restart: unless-stopped
+    command: [
+      "--chain", "testnet",
+      "--base-path", "/var/subspace",
+      "--wasm-execution", "compiled",
+      "--execution", "wasm",
+      "--bootnodes", "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr",
+      "--port", "30333",
+      "--telemetry-url", "wss://telemetry.polkadot.io/submit/ 1",
+      "--telemetry-url", "wss://telemetry.subspace.network/submit/ 1",
+      "--rpc-cors", "all",
+      "--rpc-methods", "unsafe",
+      "--ws-external",
+      "--validator",
+# Replace `INSERT_YOUR_ID` with your node ID (shown in telemetry)
+      "--name", "INSERT_YOUR_ID"
+    ]
+
+  farmer:
+# Replace `snapshot-DATE` with latest release
+    image: ghcr.io/subspace/farmer:snapshot-DATE
+# Un-comment following 2 lines to unlock farmer's RPC
+#    ports:
+#      - "127.0.0.1:9955:9955"
+# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
+# alternatively specify path to the directory where files will be stored, just make
+# sure everyone is allowed to write there
+    volumes:
+      - farmer-data:/var/subspace:rw
+#      - /path/to/subspace-farmer:/var/subspace:rw
+    restart: unless-stopped
+    command: [
+      "farm",
+      "--node-rpc-url", "ws://node:9944",
+      "--ws-server-listen-addr", "0.0.0.0:9955",
+# Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
+      "--reward-address", "WALLET_ADDRESS"
+    ]
+volumes:
+  node-data:
+  farmer-data:
+```
+
+Now edit created file:
+1. Replace `snapshot-DATE` with the latest release (not pre-release!) snapshot
+2. Replace `INSERT_YOUR_ID` with desired name that will be shown in telemetry (doesn't impact anything else)
+3. Replace `WALLET_ADDRESS` with your wallet address
+4. If you want to store files on a separate disk or customize port, read comments in the file
+
+Now do you directory and type `docker-compose up -d` to start everything.
+
+You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [Docker Compose CLI reference](https://docs.docker.com/compose/reference/).
+
 # 🤔Notes
 
 ## Checking results and interacting with farmnet
@@ -199,6 +273,9 @@ If you are getting `invalid solution` errors (visible on the terminal that Node 
 
 ---
 ## Switching to a new snapshot
+
+### CLI
+
 If you were running a node previously, and want to switch to a new snapshot, please perform these steps and then follow the guideline again:
 ```
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
@@ -209,6 +286,14 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
 In plain English, these commands are like a `reset` button for snapshot changes.
+
+Now follow installation guide.
+
+### Docker
+
+In case of Docker setup run `docker-compose down` (and manually delete custom directories if you have specified them).
+
+Now follow installation guide.
 
 ## Help
 
