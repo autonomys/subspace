@@ -295,7 +295,7 @@ mod pallet {
         InitialSolutionRanges<T>,
     >;
 
-    /// Storage to check if the solution range is adjusted for next era
+    /// Storage to check if the solution range is to be adjusted for next era
     #[pallet::storage]
     pub type ShouldAdjustSolutionRange<T: Config> =
         StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
@@ -367,7 +367,7 @@ mod pallet {
         }
 
         /// Enables solution range adjustment after every era.
-        /// Note: No effect on the solution range adjustment for this era and and next era.
+        /// Note: No effect on the solution range for the current era
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_solution_range_adjustment(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
@@ -508,7 +508,7 @@ impl<T: Config> Pallet<T> {
 
         SolutionRanges::<T>::mutate(|solution_ranges| {
             solution_ranges.next.replace(
-                // Check if the solution range should be adjusted.
+                // Check if the solution range should be adjusted for next era.
                 if ShouldAdjustSolutionRange::<T>::get() {
                     // If Era start slot is not found it means we have just finished the first era
                     let era_start_slot =
