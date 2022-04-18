@@ -1,9 +1,5 @@
-use crate::{
-    grandpa::{verify_justification, AuthoritySet, GrandpaJustification},
-    Config, Error,
-};
+use crate::{grandpa::GrandpaJustification, Config, Error};
 use codec::Decode;
-use finality_grandpa::voter_set::VoterSet;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
 use sp_runtime::{
@@ -70,33 +66,6 @@ pub trait Chain {
     type Header: Parameter
         + HeaderT<Number = Self::BlockNumber, Hash = Self::Hash>
         + MaybeSerializeDeserialize;
-
-    /// Verify a GRANDPA justification (finality proof) for a given header.
-    ///
-    /// Will use the GRANDPA current authorities known to the pallet.
-    ///
-    /// If successful it returns the decoded GRANDPA justification so we can refund any weight which
-    /// was overcharged in the initial call.
-    fn verify_justification<T: Config>(
-        justification: &GrandpaJustification<Self::Header>,
-        hash: Self::Hash,
-        number: Self::BlockNumber,
-        authority_set: AuthoritySet,
-    ) -> Result<(), Error<T>> {
-        let voter_set =
-            VoterSet::new(authority_set.authorities).ok_or(Error::<T>::InvalidAuthoritySet)?;
-        let set_id = authority_set.set_id;
-        verify_justification::<Self::Header>((hash, number), set_id, &voter_set, justification)
-            .map_err(|e| {
-                log::error!(
-                    target: "runtime::grandpa-finality-verifier",
-                    "Received invalid justification for {:?}: {:?}",
-                    hash,
-                    e,
-                );
-                Error::<T>::InvalidJustification
-            })
-    }
 
     fn decode_block<T: Config>(block: &[u8]) -> Result<SignedBlock<Self::Header>, Error<T>> {
         SignedBlock::<Self::Header>::decode(&mut &*block).map_err(|error| {
