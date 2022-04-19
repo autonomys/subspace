@@ -19,13 +19,12 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
-use crate::feed_processor::FeedObjectMapping;
 use core::mem;
 pub use pallet::*;
 use scale::Encode;
 use scale_info::scale;
 use sp_std::{vec, vec::Vec};
-use subspace_core_primitives::crypto;
+use subspace_core_primitives::{crypto, Sha256Hash};
 
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
@@ -342,9 +341,19 @@ mod pallet {
     }
 }
 
+/// Mapping to the object offset within an extrinsic associated with given key
+#[derive(Debug)]
+pub struct CallObject {
+    /// key to the object located at the offset
+    pub key: Sha256Hash,
+    /// Offset of object in the encoded call.
+    /// The offset must point to a scale encoded `Vec<u8>` with in the call
+    pub offset: u32,
+}
+
 impl<T: Config> Call<T> {
     /// Extract the call objects if an extrinsic corresponds to `put` call
-    pub fn extract_call_objects(&self) -> Vec<FeedObjectMapping> {
+    pub fn extract_call_objects(&self) -> Vec<CallObject> {
         match self {
             Self::put { feed_id, object } => {
                 let feed_processor_id = match FeedConfigs::<T>::get(feed_id) {
@@ -354,19 +363,40 @@ impl<T: Config> Call<T> {
                 };
                 let feed_processor = T::feed_processor(feed_processor_id);
                 let objects_mappings = feed_processor.object_mappings(*feed_id, object);
+                // hack to know how many bytes length would take as scale encoded Compact<u32>
+                // https://docs.substrate.io/v3/advanced/scale-codec/#compactgeneral-integers
+                let byte_length = {
+                    let len = object.len() as u32;
+                    if len <= 63 {
+                        1
+                    } else if len < u32::pow(2, 14) {
+                        2
+                    } else if len < u32::pow(2, 30) {
+                        4
+                    } else {
+                        return vec![];
+                    }
+                };
 
                 objects_mappings
                     .into_iter()
-                    .map(|object_mapping| {
-                        // Scope the key of the object to the feed_id namespace
-                        let key = crypto::sha256_hash_pair(feed_id.encode(), object_mapping.key);
-                        FeedObjectMapping {
-                            key,
-                            // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
-                            // enum variant encoding.
-                            // update the offset to include the absolute offset in the extrinsic
-                            offset: 1 + mem::size_of::<T::FeedId>() as u32 + object_mapping.offset,
-                        }
+                    .filter_map(|object_mapping| {
+                        object_mapping.try_into_call_object(
+                            object.as_slice(),
+                            |key| crypto::sha256_hash_pair(feed_id.encode(), key),
+                            |offset, add_object_encode_length| {
+                                // `FeedId` is the first field in the extrinsic. `1+` corresponds to `Call::put {}`
+                                // enum variant encoding.
+                                // update the offset to include the absolute offset in the extrinsic
+                                if add_object_encode_length {
+                                    // we need to add the length if bytes the length of the object takes for the offset to be correct
+                                    1 + mem::size_of::<T::FeedId>() as u32 + offset + byte_length
+                                } else {
+                                    1 + mem::size_of::<T::FeedId>() as u32 + offset
+                                }
+                            },
+                            |data| crypto::sha256_hash(data),
+                        )
                     })
                     .collect()
             }
