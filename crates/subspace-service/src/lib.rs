@@ -18,14 +18,15 @@
 
 pub mod rpc;
 
+use derive_more::{Deref, DerefMut, Into};
 use futures::channel::mpsc;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::ExecutorProvider;
 use sc_consensus::BlockImport;
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
-    notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
-    SubspaceLink, SubspaceParams,
+    notification::SubspaceNotificationStream, ArchivedSegmentNotification,
+    BlockSigningNotification, NewSlotNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
@@ -36,7 +37,6 @@ use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
@@ -111,9 +111,12 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Subspace-specific service configuration.
-#[derive(Debug)]
+#[derive(Debug, Deref, DerefMut, Into)]
 pub struct SubspaceConfiguration {
     /// Base configuration.
+    #[deref]
+    #[deref_mut]
+    #[into]
     pub base: Configuration,
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
@@ -126,26 +129,6 @@ impl From<Configuration> for SubspaceConfiguration {
             base,
             force_new_slot_notifications: false,
         }
-    }
-}
-
-impl From<SubspaceConfiguration> for Configuration {
-    fn from(configuration: SubspaceConfiguration) -> Self {
-        configuration.base
-    }
-}
-
-impl Deref for SubspaceConfiguration {
-    type Target = Configuration;
-
-    fn deref(&self) -> &Self::Target {
-        &self.base
-    }
-}
-
-impl DerefMut for SubspaceConfiguration {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
     }
 }
 
@@ -278,6 +261,7 @@ where
         &subspace_link,
         client.clone(),
         &task_manager.spawn_essential_handle(),
+        config.role.is_authority(),
     );
 
     let slot_duration = subspace_link.config().slot_duration();
@@ -329,6 +313,9 @@ pub struct NewFull<C> {
     /// Imported block stream.
     pub imported_block_notification_stream:
         SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+    /// Archived segment stream.
+    pub archived_segment_notification_stream:
+        SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Network starter.
     pub network_starter: NetworkStarter,
 }
@@ -383,12 +370,10 @@ where
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let block_signing_notification_stream = subspace_link.block_signing_notification_stream();
-    let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
+    let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let is_authoring_blocks = config.role.is_authority();
-
-    if is_authoring_blocks || config.force_new_slot_notifications {
+    if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -468,6 +453,7 @@ where
             let client = client.clone();
             let new_slot_notification_stream = new_slot_notification_stream.clone();
             let block_signing_notification_stream = block_signing_notification_stream.clone();
+            let archived_segment_notification_stream = archived_segment_notification_stream.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = crate::rpc::FullDeps {
@@ -502,6 +488,7 @@ where
         new_slot_notification_stream,
         block_signing_notification_stream,
         imported_block_notification_stream,
+        archived_segment_notification_stream,
         network_starter,
     })
 }

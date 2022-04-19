@@ -110,6 +110,7 @@ pub enum SegmentItem {
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+#[serde(rename_all = "camelCase")]
 pub struct ArchivedSegment {
     /// Root block of the segment
     pub root_block: RootBlock,

@@ -17,29 +17,12 @@
 
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
-use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, Salt, Signature, SlotNumber, Solution, Tag,
-};
-
-/// Encoded block with mapping of objects that it contains
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncodedBlockWithObjectMapping {
-    /// Encoded block
-    #[serde(with = "HexForm")]
-    pub block: Vec<u8>,
-    /// Mapping of objects inside of the block
-    pub object_mapping: BlockObjectMapping,
-}
+use subspace_core_primitives::{PublicKey, Salt, Signature, SlotNumber, Solution, Tag};
 
 /// Metadata necessary for farmer operation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerMetadata {
-    /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
-    /// to the client-dependent transaction confirmation depth `k`).
-    pub confirmation_depth_k: BlockNumber,
     /// The size of data in one piece (in bytes).
     pub record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).

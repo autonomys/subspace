@@ -18,6 +18,7 @@ async-trait = "0.1.53"
 codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 futures = "0.3.21"
+futures-timer = "3.0.2"
 log = "0.4.16"
 lru = "0.7.5"
 parking_lot = "0.12.0"

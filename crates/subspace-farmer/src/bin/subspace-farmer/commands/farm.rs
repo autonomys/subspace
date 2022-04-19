@@ -8,7 +8,7 @@ use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::multi_farming::MultiFarming;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
-    retrieve_piece_from_plots, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
+    retrieve_piece_from_plots, Identity, NodeRpcClient, ObjectMappings, Plot, RpcClient,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
@@ -42,7 +42,7 @@ pub(crate) async fn farm(
     };
 
     info!("Connecting to node at {}", node_rpc_url);
-    let client = WsRpc::new(&node_rpc_url).await?;
+    let client = NodeRpcClient::new(&node_rpc_url).await?;
 
     let FarmerMetadata {
         record_size,

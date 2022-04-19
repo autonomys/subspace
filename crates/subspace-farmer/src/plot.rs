@@ -14,12 +14,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RootBlock, PIECE_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
 };
 use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
-
-const LAST_ROOT_BLOCK_KEY: &[u8] = b"last_root_block";
 
 /// Index of piece on disk
 pub(crate) type PieceOffset = u64;
@@ -112,7 +110,6 @@ struct RequestWithPriority {
 struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
-    plot_metadata_db: Arc<DB>,
     piece_count: Arc<AtomicU64>,
     address: PublicKey,
 }
@@ -188,11 +185,6 @@ impl Plot {
         let plot_worker =
             PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
 
-        let plot_metadata_db = Arc::new(
-            DB::open_default(base_directory.as_ref().join("plot-metadata"))
-                .map_err(PlotError::MetadataDbOpen)?,
-        );
-
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
         let piece_count = Arc::clone(&plot_worker.piece_count);
@@ -201,7 +193,6 @@ impl Plot {
         let inner = Inner {
             handlers: Handlers::default(),
             requests_sender,
-            plot_metadata_db,
             piece_count,
             address,
         };
@@ -212,7 +203,7 @@ impl Plot {
     }
 
     /// How many pieces are there in the plot
-    pub(crate) fn piece_count(&self) -> PieceOffset {
+    pub fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
     }
 
@@ -222,7 +213,7 @@ impl Plot {
     }
 
     /// Whether plot doesn't have anything in it
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.piece_count() == 0
     }
 
@@ -293,30 +284,6 @@ impl Plot {
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!("Write many result sender was dropped: {error}"))
         })?
-    }
-
-    /// Get last root block
-    pub(crate) fn get_last_root_block(&self) -> Result<Option<RootBlock>, rocksdb::Error> {
-        self.inner
-            .plot_metadata_db
-            .get(LAST_ROOT_BLOCK_KEY)
-            .map(|maybe_last_root_block| {
-                maybe_last_root_block.as_ref().map(|last_root_block| {
-                    serde_json::from_slice(last_root_block)
-                        .expect("Database contains incorrect last root block")
-                })
-            })
-    }
-
-    /// Store last root block
-    pub(crate) fn set_last_root_block(
-        &self,
-        last_root_block: &RootBlock,
-    ) -> Result<(), rocksdb::Error> {
-        let last_root_block = serde_json::to_vec(&last_root_block).unwrap();
-        self.inner
-            .plot_metadata_db
-            .put(LAST_ROOT_BLOCK_KEY, last_root_block)
     }
 
     pub(crate) fn downgrade(&self) -> WeakPlot {

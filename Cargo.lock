@@ -6578,6 +6578,7 @@ dependencies = [
  "async-trait",
  "fork-tree",
  "futures 0.3.21",
+ "futures-timer",
  "log",
  "lru 0.7.5",
  "parity-scale-codec",
@@ -6634,12 +6635,14 @@ dependencies = [
  "sc-client-api",
  "sc-consensus-subspace",
  "sc-rpc-api",
+ "sc-utils",
  "sp-api",
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-runtime",
+ "subspace-archiving",
  "subspace-core-primitives",
  "subspace-rpc-primitives",
 ]
@@ -8659,6 +8662,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",

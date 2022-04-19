@@ -1,5 +1,6 @@
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, RpcClient, WsRpc,
+    plotting, Archiving, Commitments, Farming, Identity, NodeRpcClient, ObjectMappings, Plot,
+    RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -23,7 +24,7 @@ impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new(
         base_directory: impl AsRef<Path>,
-        client: WsRpc,
+        client: NodeRpcClient,
         object_mappings: ObjectMappings,
         plot_sizes: Vec<u64>,
         reward_address: PublicKey,
@@ -57,10 +58,6 @@ impl MultiFarming {
 
         // Start archiving task
         let archiving = Archiving::start(
-            plots
-                .first()
-                .cloned()
-                .ok_or_else(|| anyhow!("Must have at least one plot"))?,
             farmer_metadata,
             object_mappings,
             client.clone(),
@@ -122,7 +119,7 @@ impl MultiFarming {
 pub(crate) async fn farm_single_plot(
     base_directory: impl AsRef<Path>,
     reward_address: PublicKey,
-    client: WsRpc,
+    client: NodeRpcClient,
     max_plot_pieces: u64,
 ) -> anyhow::Result<(Plot, SubspaceCodec, Commitments, Farming)> {
     let identity = Identity::open_or_create(&base_directory)?;

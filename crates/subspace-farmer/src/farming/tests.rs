@@ -1,7 +1,7 @@
 use crate::commitments::{CommitmentStatusChange, Commitments};
 use crate::farming::Farming;
 use crate::identity::Identity;
-use crate::mock_rpc::MockRpc;
+use crate::mock_rpc_client::MockRpcClient;
 use crate::plot::Plot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
@@ -35,7 +35,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
     commitments.create(salt, plot.clone()).unwrap();
 
-    let client = MockRpc::new();
+    let client = MockRpcClient::new();
 
     // start the farming task
     let farming_instance = Farming::start(

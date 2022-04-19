@@ -25,7 +25,7 @@ async fn test_executor_full_node_catching_up() {
 
 	// start alice
 	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
 
 	alice_network_starter.start_network();
 
@@ -65,7 +65,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// start alice
 	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
 
 	alice_network_starter.start_network();
 
@@ -322,7 +322,7 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// start alice
 	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
 
 	alice_network_starter.start_network();
 
@@ -486,7 +486,7 @@ async fn set_new_code_should_work() {
 
 	// start alice
 	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![], true);
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
 
 	alice_network_starter.start_network();
 
