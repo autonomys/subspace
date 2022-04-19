@@ -47,29 +47,29 @@ jobs:
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
 
-      - name: Generate testnet chain specifications
-        run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec-${{ github.ref_name }}.json
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw-${{ github.ref_name }}.json
-        if: matrix.image == 'node'
-
-      - name: Upload testnet chain specifications to artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: chain-specifications
-          path: |
-            chain-spec-${{ github.ref_name }}.json
-            chain-spec-raw-${{ github.ref_name }}.json
-          if-no-files-found: error
-        if: matrix.image == 'node'
-
-      - name: Upload testnet chain specifications to assets
-        uses: alexellis/upload-assets@0.3.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          asset_paths: '["chain-spec-${{ github.ref_name }}.json", "chain-spec-raw-${{ github.ref_name }}.json"]'
-        if: matrix.image == 'node'
+#      - name: Generate testnet chain specifications
+#        run: |
+#          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec-${{ github.ref_name }}.json
+#          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw-${{ github.ref_name }}.json
+#        if: matrix.image == 'node'
+#
+#      - name: Upload testnet chain specifications to artifacts
+#        uses: actions/upload-artifact@v2
+#        with:
+#          name: chain-specifications
+#          path: |
+#            chain-spec-${{ github.ref_name }}.json
+#            chain-spec-raw-${{ github.ref_name }}.json
+#          if-no-files-found: error
+#        if: matrix.image == 'node'
+#
+#      - name: Upload testnet chain specifications to assets
+#        uses: alexellis/upload-assets@0.3.0
+#        env:
+#          GITHUB_TOKEN: ${{ github.token }}
+#        with:
+#          asset_paths: '["chain-spec-${{ github.ref_name }}.json", "chain-spec-raw-${{ github.ref_name }}.json"]'
+#        if: matrix.image == 'node'
 
   executables:
     # Wait for chain spec files to be uploaded to artifacts
@@ -98,22 +98,6 @@ jobs:
           toolset: 14.29
         if: matrix.build.os == 'windows-2022'
 
-      - name: Download testnet chain specifications from artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: chain-specifications
-          path: .
-
-      - name: Rename chain spec file (Linux or macOS)
-        run: |
-          mv chain-spec-${{ github.ref_name }}.json chain-spec.json
-        if: runner.os == 'Linux' || runner.os == 'macOS'
-
-      - name: Rename chain spec file (Windows)
-        run: |
-          move chain-spec-${{ github.ref_name }}.json chain-spec.json
-        if: runner.os == 'Windows'
-
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -135,14 +119,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-node/json-chain-spec,subspace-farmer/cuda
+          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/cuda
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: Build (macOS without CUDA)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-node/json-chain-spec
+          args: --profile production --bin subspace-node --bin subspace-farmer
         if: runner.os == 'macOS'
 
       - name: Sign Application (macOS)

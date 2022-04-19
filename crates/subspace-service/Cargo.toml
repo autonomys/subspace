@@ -63,6 +63,3 @@ pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", git = "htt
 
 [features]
 default = []
-# This feature makes `testnet` chain spec to use `chain-spec.json` file in the root of the repo instead of compiled
-# version
-json-chain-spec = []

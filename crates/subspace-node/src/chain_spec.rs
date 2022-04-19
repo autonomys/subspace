@@ -30,6 +30,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
+const TESTNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-snapshot-2022-mar-09.json");
 const TESTNET_BOOTSTRAP_NODE: &str = "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr";
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
@@ -76,12 +77,10 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
     AccountPublic::from(get_from_seed::<sr25519::Public>(seed)).into_account()
 }
 
-#[cfg(feature = "json-chain-spec")]
-pub fn testnet_config() -> Result<SubspaceChainSpec, String> {
-    SubspaceChainSpec::from_json_bytes(&include_bytes!("../../../chain-spec.json")[..])
+pub fn testnet_config_json() -> Result<SubspaceChainSpec, String> {
+    SubspaceChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
 }
-#[cfg(not(feature = "json-chain-spec"))]
-pub fn testnet_config() -> Result<SubspaceChainSpec, String> {
+pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());

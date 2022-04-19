@@ -9,6 +9,7 @@ build = "build.rs"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 include = [
+	"/res",
 	"/src",
 	"/build.rs",
 	"/Cargo.toml",
@@ -60,4 +61,3 @@ runtime-benchmarks = [
 	"cirrus-node/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 ]
-json-chain-spec = ["subspace-service/json-chain-spec"]
