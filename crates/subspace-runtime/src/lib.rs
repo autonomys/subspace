@@ -579,17 +579,17 @@ fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMa
 /// FeedProcessorId represents the available FeedProcessor impls
 #[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum FeedProcessorKind {
-    // No validation
-    NoValidation,
-    // Validation and returns metadata
+    /// Content addressable Feed processor,
+    ContentAddressable,
+    /// Polkadot like relay chain Feed processor that validates grandpa justifications and indexes the entire block
     PolkadotLike,
-    // No Validation but returns metadata
+    /// Parachain Feed processor that just indexes the entire block
     ParachainLike,
 }
 
 impl Default for FeedProcessorKind {
     fn default() -> Self {
-        FeedProcessorKind::NoValidation
+        FeedProcessorKind::ContentAddressable
     }
 }
 
@@ -609,7 +609,7 @@ impl pallet_feeds::Config for Runtime {
     ) -> Box<dyn FeedProcessor<Self::FeedId>> {
         match feed_processor_kind {
             FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
-            FeedProcessorKind::NoValidation => Box::new(()),
+            FeedProcessorKind::ContentAddressable => Box::new(()),
             FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
         }
     }
