@@ -142,7 +142,7 @@ fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
 
 #[test]
 fn grandpa_object_mapping() {
-    let (init_data, key, object) = get_encoded_blocks();
+    let (init_data, keys, object) = get_encoded_blocks();
     let block = Block {
         header: Header {
             parent_hash: Default::default(),
@@ -172,13 +172,20 @@ fn grandpa_object_mapping() {
         Runtime::extract_block_object_mapping(block)
     });
 
-    assert_eq!(objects.len(), 1);
+    assert_eq!(objects.len(), 2);
     // Hashes should be computed correctly.
-    assert_eq!(objects[0].hash(), key);
+    assert_eq!(objects[0].hash(), keys[0]);
+    assert_eq!(objects[1].hash(), keys[1]);
 
     // Offsets for mapped objects should be correct
     assert_eq!(
         &encoded_block[objects[0].offset() as usize..][..object.encoded_size()],
+        object.encode()
+    );
+
+    // Offsets for mapped objects should be correct
+    assert_eq!(
+        &encoded_block[objects[1].offset() as usize..][..object.encoded_size()],
         object.encode()
     );
 }
@@ -196,7 +203,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 // returns init data, encoded signed block with finality verification, and the block hash
-fn get_encoded_blocks() -> (Vec<u8>, Sha256Hash, Vec<u8>) {
+fn get_encoded_blocks() -> (Vec<u8>, Vec<Sha256Hash>, Vec<u8>) {
     let init_data = vec![
         157, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -212,15 +219,13 @@ fn get_encoded_blocks() -> (Vec<u8>, Sha256Hash, Vec<u8>) {
 
     (
         init_data,
-        key(
-            0,
-            (
-                1u32,
-                hex!("b9e292877e74b5632ff9cb7253204c8810932bec4b4713a03a41c54b0b245e04"),
-            )
-                .encode()
-                .as_slice(),
-        ),
+        vec![
+            key(0, 1u32.encode().as_slice()),
+            key(
+                0,
+                hex!("b9e292877e74b5632ff9cb7253204c8810932bec4b4713a03a41c54b0b245e04").as_slice(),
+            ),
+        ],
         vec![
             220, 221, 137, 146, 125, 138, 52, 142, 0, 37, 126, 30, 204, 134, 23, 244, 94, 219, 81,
             24, 239, 255, 62, 162, 249, 150, 27, 42, 217, 183, 105, 10, 4, 0, 0, 0, 0, 0, 0, 0, 0,

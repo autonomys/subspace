@@ -365,7 +365,7 @@ impl<T: Config> Call<T> {
                 let objects_mappings = feed_processor.object_mappings(*feed_id, object);
                 // hack to know how many bytes length would take as scale encoded Compact<u32>
                 // https://docs.substrate.io/v3/advanced/scale-codec/#compactgeneral-integers
-                let byte_length = {
+                let object_length_encoded_bytes = {
                     let len = object.len() as u32;
                     if len <= 63 {
                         1
@@ -389,8 +389,10 @@ impl<T: Config> Call<T> {
                                 // enum variant encoding.
                                 // update the offset to include the absolute offset in the extrinsic
                                 if add_object_encode_length {
-                                    // we need to add the length if bytes the length of the object takes for the offset to be correct
-                                    1 + mem::size_of::<T::FeedId>() as u32 + offset + byte_length
+                                    // we need to add the length of bytes the length of the object takes for the offset to be correct
+                                    1 + mem::size_of::<T::FeedId>() as u32
+                                        + offset
+                                        + object_length_encoded_bytes
                                 } else {
                                     1 + mem::size_of::<T::FeedId>() as u32 + offset
                                 }

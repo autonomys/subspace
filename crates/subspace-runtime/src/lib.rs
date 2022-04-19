@@ -533,15 +533,7 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     }
 
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        let block = match C::decode_block::<Runtime>(object) {
-            Ok(block) => block,
-            // we just return empty if we failed to decode as this is not called in runtime
-            Err(_) => return vec![],
-        };
-
-        // for substrate, we store the height and block hash at that height
-        let key = (*block.block.header.number(), block.block.header.hash()).encode();
-        vec![FeedObjectMapping::Object { key: Some(key) }]
+        extract_substrate_object_mapping::<C>(object)
     }
 
     fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
@@ -551,34 +543,37 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
 
 pub struct ParachainImporter<C>(C);
 
-impl<C: Chain> ParachainImporter<C> {
-    fn decode_block(
-        &self,
-        object: &[u8],
-    ) -> Result<pallet_grandpa_finality_verifier::chain::SignedBlock<C::Header>, DispatchError>
-    {
-        let block = C::decode_block::<Runtime>(object)?;
-        Ok(block)
-    }
-}
-
 impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
     fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        let block = self.decode_block(object)?;
+        let block = C::decode_block::<Runtime>(object)?;
         Ok(Some(
             (block.block.header.hash(), *block.block.header.number()).encode(),
         ))
     }
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        self.decode_block(object)
-            .ok()
-            .map(|block| {
-                // for substrate, we store the height and block hash at that height
-                let key = (*block.block.header.number(), block.block.header.hash()).encode();
-                vec![FeedObjectMapping::Object { key: Some(key) }]
-            })
-            .unwrap_or_default()
+        extract_substrate_object_mapping::<C>(object)
     }
+}
+
+fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMapping> {
+    let block = match C::decode_block::<Runtime>(object) {
+        Ok(block) => block,
+        // we just return empty if we failed to decode as this is not called in runtime
+        Err(_) => return vec![],
+    };
+
+    // we send two mappings pointed to the same object
+    // block height and block hash
+    // this would be easier for sync client to crawl through the descendents by block height
+    // if you already have a block hash, you can fetch the same block with it as well
+    vec![
+        FeedObjectMapping::Object {
+            key: Some(block.block.header.number().encode()),
+        },
+        FeedObjectMapping::Object {
+            key: Some(block.block.header.hash().as_ref().to_vec()),
+        },
+    ]
 }
 
 /// FeedProcessorId represents the available FeedProcessor impls
