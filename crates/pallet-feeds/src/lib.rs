@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+use codec::{Compact, CompactLen};
 use core::mem;
 pub use pallet::*;
 use scale::Encode;
@@ -365,19 +366,7 @@ impl<T: Config> Call<T> {
                 let objects_mappings = feed_processor.object_mappings(*feed_id, object);
                 // hack to know how many bytes length would take as scale encoded Compact<u32>
                 // https://docs.substrate.io/v3/advanced/scale-codec/#compactgeneral-integers
-                let object_length_encoded_bytes = {
-                    let len = object.len() as u32;
-                    if len <= 63 {
-                        1
-                    } else if len < u32::pow(2, 14) {
-                        2
-                    } else if len < u32::pow(2, 30) {
-                        4
-                    } else {
-                        return vec![];
-                    }
-                };
-
+                let object_length_encoded_bytes = Compact::compact_len(&(object.len() as u32));
                 objects_mappings
                     .into_iter()
                     .filter_map(|object_mapping| {
@@ -392,7 +381,7 @@ impl<T: Config> Call<T> {
                                     // we need to add the length of bytes the length of the object takes for the offset to be correct
                                     1 + mem::size_of::<T::FeedId>() as u32
                                         + offset
-                                        + object_length_encoded_bytes
+                                        + object_length_encoded_bytes as u32
                                 } else {
                                     1 + mem::size_of::<T::FeedId>() as u32 + offset
                                 }
