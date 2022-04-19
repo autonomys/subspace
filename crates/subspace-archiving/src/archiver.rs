@@ -179,6 +179,10 @@ pub enum ArchiverInstantiationError {
 /// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
 /// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
 /// block header.
+///
+/// ## Panics
+/// Panics when operating on blocks, whose length doesn't fit into u32 (should never be the case in
+/// blockchain context anyway).
 #[derive(Debug)]
 pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
@@ -603,12 +607,14 @@ impl Archiver {
                                 "Offset within piece should always fit in 16-bit integer; qed",
                             );
 
-                            corrected_object_mapping[offset_in_segment / self.record_size]
-                                .objects
-                                .push(PieceObject::V0 {
+                            if let Some(piece_object_mapping) = corrected_object_mapping
+                                .get_mut(offset_in_segment / self.record_size)
+                            {
+                                piece_object_mapping.objects.push(PieceObject::V0 {
                                     hash: block_object.hash(),
                                     offset,
-                                })
+                                });
+                            }
                         }
                     }
                     SegmentItem::RootBlock(_) => {
@@ -696,13 +702,18 @@ impl Archiver {
 
 /// Validate witness embedded within a piece produced by archiver
 pub fn is_piece_valid(piece: &[u8], root: Sha256Hash, position: usize, record_size: usize) -> bool {
-    let witness = match Witness::new(Cow::Borrowed(&piece[record_size..])) {
+    if piece.len() != PIECE_SIZE {
+        return false;
+    }
+
+    let (record, witness) = piece.split_at(record_size);
+    let witness = match Witness::new(Cow::Borrowed(witness)) {
         Ok(witness) => witness,
         Err(_) => {
             return false;
         }
     };
-    let leaf_hash = crypto::sha256_hash(&piece[..record_size]);
+    let leaf_hash = crypto::sha256_hash(&record);
 
     witness.is_valid(root, position, leaf_hash)
 }
