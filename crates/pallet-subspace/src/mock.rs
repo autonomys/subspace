@@ -142,6 +142,7 @@ parameter_types! {
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
     pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);
+    pub const ShouldAdjustSolutionRange: bool = false;
 }
 
 impl Config for Test {
@@ -164,6 +165,7 @@ impl Config for Test {
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
+    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
 }
 
 pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
