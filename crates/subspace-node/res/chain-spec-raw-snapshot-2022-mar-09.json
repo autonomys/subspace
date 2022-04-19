@@ -5,12 +5,16 @@
     "Custom": "Subspace testnet"
   },
   "bootNodes": [
-    "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWNPXq3AdSXkh2ytCfvwHGm4VsyrTgsoxwrjjugDYZpuCT"
+    "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr"
   ],
   "telemetryEndpoints": [
     [
       "/dns/telemetry.polkadot.io/tcp/443/x-parity-wss/%2Fsubmit%2F",
-      0
+      1
+    ],
+    [
+      "/dns/telemetry.subspace.network/tcp/443/x-parity-wss/%2Fsubmit%2F",
+      1
     ]
   ],
   "protocolId": "subspace-substrate",
