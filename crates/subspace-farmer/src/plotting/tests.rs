@@ -7,13 +7,13 @@ use crate::rpc_client::RpcClient;
 use crate::{plotting, Archiving};
 use rand::prelude::*;
 use rand::Rng;
+use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::SubspaceCodec;
 use tempfile::TempDir;
-use tokio::time::{sleep, Duration};
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
@@ -79,18 +79,15 @@ async fn plotting_happy_path() {
     .await
     .unwrap();
 
-    // putting 250 milliseconds here to give plotter some time
-    sleep(Duration::from_millis(250)).await;
-
     // let the farmer know we are done by closing the channel(s)
     client.drop_archived_segment_sender().await;
-
-    assert!(!plot.is_empty());
 
     // wait for farmer to finish
     if let Err(e) = archiving_instance.wait().await {
         panic!("Panicked with error...{:?}", e);
     }
+
+    assert!(!plot.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -168,9 +165,6 @@ async fn plotting_piece_eviction() {
     )
     .await
     .unwrap();
-
-    // putting 250 milliseconds here to give plotter some time
-    sleep(Duration::from_millis(250)).await;
 
     // let the farmer know we are done by closing the channel(s)
     client.drop_archived_segment_sender().await;

@@ -34,8 +34,6 @@ pub struct Inner {
     archived_segments_sender: Mutex<Option<mpsc::Sender<ArchivedSegment>>>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
-    // TODO: Use this
-    #[allow(dead_code)]
     acknowledge_archived_segment_receiver: Arc<Mutex<mpsc::Receiver<u64>>>,
 }
 
@@ -108,6 +106,17 @@ impl MockRpcClient {
             .send(archived_segment)
             .await
             .unwrap();
+
+        // Receive one acknowledgement in the background
+        let acknowledge_archived_segment_receiver =
+            self.inner.acknowledge_archived_segment_receiver.clone();
+        tokio::spawn(async move {
+            acknowledge_archived_segment_receiver
+                .lock()
+                .await
+                .recv()
+                .await;
+        });
     }
 
     pub(crate) async fn drop_archived_segment_sender(&self) {
