@@ -151,9 +151,10 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         Ok(match id {
-            "testnet" => Box::new(chain_spec::subspace_testnet_config()?),
-            "dev" => Box::new(chain_spec::subspace_development_config()?),
-            "" | "local" => Box::new(chain_spec::subspace_local_testnet_config()?),
+            "testnet" => Box::new(chain_spec::testnet_config_json()?),
+            "testnet-compiled" => Box::new(chain_spec::testnet_config_compiled()?),
+            "dev" => Box::new(chain_spec::dev_config()?),
+            "" | "local" => Box::new(chain_spec::local_config()?),
             path => Box::new(chain_spec::SubspaceChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
             )?),
