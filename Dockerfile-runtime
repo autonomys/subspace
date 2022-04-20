@@ -1,6 +1,8 @@
 FROM ubuntu:22.04
 
 ARG RUSTC_VERSION=nightly-2022-05-16
+# Workaround for https://github.com/rust-lang/cargo/issues/10583
+ARG CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 WORKDIR /code
 
