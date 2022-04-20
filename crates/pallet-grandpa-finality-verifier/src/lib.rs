@@ -55,12 +55,15 @@ pub struct InitializationData {
     pub set_id: SetId,
 }
 
+// Block height of the chain
+type BlockHeight = u64;
+
 #[frame_support::pallet]
 pub mod pallet {
     use crate::{
         chain::Chain,
         grandpa::{find_forced_change, find_scheduled_change, verify_justification, AuthoritySet},
-        InitializationData,
+        BlockHeight, InitializationData,
     };
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
@@ -82,12 +85,17 @@ pub mod pallet {
     /// Best finalized header of a Chain
     #[pallet::storage]
     pub(super) type BestFinalized<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::ChainId, Vec<u8>, OptionQuery>;
+        StorageMap<_, Identity, T::ChainId, Vec<u8>, OptionQuery>;
+
+    /// Validation checkpoint
+    #[pallet::storage]
+    pub(super) type ValidationCheckpoint<T: Config> =
+        StorageMap<_, Identity, T::ChainId, BlockHeight, ValueQuery>;
 
     /// The current GRANDPA Authority set for a given Chain
     #[pallet::storage]
     pub(super) type CurrentAuthoritySet<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::ChainId, AuthoritySet, ValueQuery>;
+        StorageMap<_, Identity, T::ChainId, AuthoritySet, ValueQuery>;
 
     #[pallet::error]
     pub enum Error<T> {
@@ -105,8 +113,6 @@ pub mod pallet {
         FailedDecodingBlock,
         /// Failed to decode justifications
         FailedDecodingJustifications,
-        /// Best finalized header not found for chain
-        FinalizedHeaderNotFound,
         /// The header is already finalized
         InvalidHeader,
         /// The scheduled authority set change found in the header is unsupported by the pallet.
@@ -123,7 +129,8 @@ pub mod pallet {
         let header_decoded = C::decode_header::<T>(header.as_slice())?;
         let change =
             find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
-        BestFinalized::<T>::insert(chain_id, header);
+        // set the checkpoint so that validation starts after this block height
+        ValidationCheckpoint::<T>::insert(chain_id, (*header_decoded.number()).into());
         let authority_set = AuthoritySet {
             authorities: change.next_authorities,
             set_id,
@@ -137,35 +144,50 @@ pub mod pallet {
         object: &[u8],
     ) -> Result<(C::Hash, C::BlockNumber), DispatchError> {
         let block = C::decode_block::<T>(object)?;
-        let justification = block
-            .justifications
-            .ok_or(Error::<T>::MissingJustification)?
-            .into_justification(GRANDPA_ENGINE_ID)
-            .ok_or(Error::<T>::MissingJustification)?;
-        let justification = C::decode_grandpa_justifications::<T>(justification.as_slice())?;
-        let best_finalized = {
-            let data =
-                BestFinalized::<T>::get(chain_id).ok_or(Error::<T>::FinalizedHeaderNotFound)?;
-            C::decode_header::<T>(data.as_slice())
-        }?;
+        let number = *block.block.header.number();
+        let hash = block.block.header.hash();
 
-        // ensure block is always increasing
-        let (number, hash) = (block.block.header.number(), block.block.header.hash());
-        let next_block_number = best_finalized
-            .number()
-            .checked_add(&One::one())
-            .ok_or(sp_runtime::ArithmeticError::Overflow)?;
-        ensure!(next_block_number == *number, Error::<T>::InvalidHeader);
+        match BestFinalized::<T>::get(chain_id) {
+            None => {
+                // this is a first block we are importing
+                // ensure it is before the checkpoint
+                ensure!(
+                    (*block.block.header.number()).into()
+                        <= ValidationCheckpoint::<T>::get(chain_id),
+                    Error::<T>::InvalidHeader
+                );
+                BestFinalized::<T>::insert(chain_id, block.block.header.encode());
+                return Ok((hash, number));
+            }
+            Some(data) => {
+                let best_finalized = C::decode_header::<T>(data.as_slice())?;
+                // ensure block is always increasing
+                let next_block_number = best_finalized
+                    .number()
+                    .checked_add(&One::one())
+                    .ok_or(sp_runtime::ArithmeticError::Overflow)?;
+                ensure!(next_block_number == number, Error::<T>::InvalidHeader);
+            }
+        };
 
-        // fetch current authority set
-        let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);
-        let voter_set =
-            VoterSet::new(authority_set.authorities).ok_or(Error::<T>::InvalidAuthoritySet)?;
-        let set_id = authority_set.set_id;
+        // check if we should validate or just import
+        if (*block.block.header.number()).into() > ValidationCheckpoint::<T>::get(chain_id) {
+            let justification = block
+                .justifications
+                .ok_or(Error::<T>::MissingJustification)?
+                .into_justification(GRANDPA_ENGINE_ID)
+                .ok_or(Error::<T>::MissingJustification)?;
+            let justification = C::decode_grandpa_justifications::<T>(justification.as_slice())?;
 
-        // verify justification
-        verify_justification::<C::Header>((hash, *number), set_id, &voter_set, &justification)
-            .map_err(|e| {
+            // fetch current authority set
+            let authority_set = <CurrentAuthoritySet<T>>::get(chain_id);
+            let voter_set =
+                VoterSet::new(authority_set.authorities).ok_or(Error::<T>::InvalidAuthoritySet)?;
+            let set_id = authority_set.set_id;
+
+            // verify justification
+            verify_justification::<C::Header>((hash, number), set_id, &voter_set, &justification)
+                .map_err(|e| {
                 log::error!(
                     target: "runtime::grandpa-finality-verifier",
                     "Received invalid justification for {:?}: {:?}",
@@ -175,13 +197,13 @@ pub mod pallet {
                 Error::<T>::InvalidJustification
             })?;
 
-        // Update any next authority set if any
-        let next_header = &block.block.header;
-        try_enact_authority_change::<T, C>(chain_id, next_header, set_id)?;
+            // Update any next authority set if any
+            try_enact_authority_change::<T, C>(chain_id, &block.block.header, set_id)?;
+        }
 
         // Update best finalized header
-        BestFinalized::<T>::insert(chain_id, next_header.encode());
-        Ok((hash, *number))
+        BestFinalized::<T>::insert(chain_id, block.block.header.encode());
+        Ok((hash, number))
     }
 
     /// Check the given header for a GRANDPA scheduled authority set change. If a change
@@ -254,6 +276,7 @@ pub mod pallet {
     pub fn purge<T: Config>(chain_id: T::ChainId) -> DispatchResult {
         BestFinalized::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
+        ValidationCheckpoint::<T>::remove(chain_id);
         Ok(())
     }
 }

@@ -6,10 +6,10 @@ use crate::{
     chain::Chain,
     grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification},
     initialize, validate_finalized_block, BestFinalized, CurrentAuthoritySet, Error as ErrorP,
-    InitializationData,
+    InitializationData, ValidationCheckpoint,
 };
 use codec::Encode;
-use frame_support::{assert_err, assert_noop, assert_ok, dispatch::DispatchResult};
+use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
 use justification::*;
 use keyring::*;
 use mock::{run_test, ChainId, TestRuntime};
@@ -219,6 +219,12 @@ fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchErr
     };
 
     initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice())?;
+    // submit the first block. this should skip the validation.
+    // dont send any justifications
+    let mut justification = make_default_justification(&genesis);
+    // push some random pre-commit
+    justification.votes_ancestries.push(test_header(100));
+    submit_finality_proof(chain_id, genesis, justification)?;
     Ok(init_data)
 }
 
@@ -249,27 +255,13 @@ fn submit_finality_proof(
 fn init_storage_entries_are_correctly_initialized() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let init_data = init_with_origin(chain_id).unwrap();
-        assert_eq!(
-            BestFinalized::<TestRuntime>::get(chain_id).expect("should hold the encoded header"),
-            init_data.header
-        );
+        init_with_origin(chain_id).unwrap();
+        assert_eq!(ValidationCheckpoint::<TestRuntime>::get(chain_id), 0u64);
         assert_eq!(
             CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
             authority_list()
         );
     })
-}
-
-#[test]
-fn pallet_rejects_header_if_not_initialized_yet() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        assert_noop!(
-            submit_valid_finality_proof(chain_id, 1),
-            ErrorP::<TestRuntime>::FinalizedHeaderNotFound
-        );
-    });
 }
 
 #[test]
@@ -347,6 +339,7 @@ fn disallows_invalid_authority_set() {
             chain_id,
             init_data.encode().as_slice()
         ));
+        assert_ok!(submit_valid_finality_proof(chain_id, 0));
 
         let header = test_header::<TestHeader>(1);
         let justification = make_default_justification(&header);
