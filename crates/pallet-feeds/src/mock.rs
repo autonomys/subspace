@@ -59,11 +59,11 @@ parameter_types! {
     pub const MaxFeeds: u32 = 1;
 }
 
-#[derive(Debug, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum MockFeedProcessorKind {
     Content,
     ContentWithin,
-    Custom(Vec<u8>),
+    Custom([u8; 32]),
 }
 
 impl Default for MockFeedProcessorKind {
@@ -84,7 +84,9 @@ impl pallet_feeds::Config for Test {
         match feed_processor_kind {
             MockFeedProcessorKind::Content => Box::new(()),
             MockFeedProcessorKind::ContentWithin => Box::new(ContentEnumFeedProcessor),
-            MockFeedProcessorKind::Custom(key) => Box::new(CustomContentFeedProcessor(key)),
+            MockFeedProcessorKind::Custom(key) => {
+                Box::new(CustomContentFeedProcessor(key.to_vec()))
+            }
         }
     }
 }

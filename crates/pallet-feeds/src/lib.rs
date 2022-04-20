@@ -48,7 +48,7 @@ mod pallet {
         type FeedId: Parameter + Member + Default + Copy + PartialOrd + CheckedAdd + One;
 
         // Type that references to a particular impl of feed processor
-        type FeedProcessorKind: Parameter + Member + Default + Clone;
+        type FeedProcessorKind: Parameter + Member + Default + Copy;
 
         #[pallet::constant]
         type MaxFeeds: Get<u32>;
@@ -196,7 +196,7 @@ mod pallet {
             let next_feed_id = feed_id
                 .checked_add(&One::one())
                 .ok_or(ArithmeticError::Overflow)?;
-            let feed_processor = T::feed_processor(feed_processor_id.clone());
+            let feed_processor = T::feed_processor(feed_processor_id);
             if let Some(init_data) = init_data {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }
@@ -233,7 +233,7 @@ mod pallet {
             init_data: Option<InitData>,
         ) -> DispatchResult {
             let (owner, feed_config) = ensure_owner!(origin, feed_id);
-            let feed_processor = T::feed_processor(feed_processor_id.clone());
+            let feed_processor = T::feed_processor(feed_processor_id);
             if let Some(init_data) = init_data {
                 feed_processor.init(feed_id, init_data.as_slice())?;
             }

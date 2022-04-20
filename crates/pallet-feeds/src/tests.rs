@@ -276,11 +276,14 @@ fn create_full_object_feed() {
 #[test]
 fn create_full_object_feed_with_key_override() {
     let object: Object = (1..255).collect();
-    let key = vec![5, 4, 3, 2, 1];
+    let key = (0..32)
+        .collect::<Vec<u8>>()
+        .try_into()
+        .expect("must be 32 bytes");
     create_custom_content_feed(
         object.clone(),
-        MockFeedProcessorKind::Custom(key.clone()),
-        vec![key],
+        MockFeedProcessorKind::Custom(key),
+        vec![key.to_vec()],
         vec![object],
     );
 }
