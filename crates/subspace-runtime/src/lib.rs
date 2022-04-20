@@ -567,11 +567,13 @@ fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMa
     // this would be easier for sync client to crawl through the descendents by block height
     // if you already have a block hash, you can fetch the same block with it as well
     vec![
-        FeedObjectMapping::Object {
-            key: Some(block.block.header.number().encode()),
+        FeedObjectMapping::Custom {
+            key: block.block.header.number().encode(),
+            offset: 0,
         },
-        FeedObjectMapping::Object {
-            key: Some(block.block.header.hash().as_ref().to_vec()),
+        FeedObjectMapping::Custom {
+            key: block.block.header.hash().as_ref().to_vec(),
+            offset: 0,
         },
     ]
 }

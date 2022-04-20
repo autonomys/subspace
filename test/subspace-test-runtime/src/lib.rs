@@ -513,7 +513,7 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
         };
         // for substrate, we store the height and block hash at that height
         let key = (*block.block.header.number(), block.block.header.hash()).encode();
-        vec![FeedObjectMapping::Object { key: Some(key) }]
+        vec![FeedObjectMapping::Custom { key, offset: 0 }]
     }
 
     fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {

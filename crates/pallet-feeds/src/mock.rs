@@ -1,6 +1,6 @@
 use crate::feed_processor::{FeedObjectMapping, FeedProcessor};
 use crate::{self as pallet_feeds, feed_processor::FeedProcessor as FeedProcessorT};
-use codec::{Decode, Encode};
+use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::{
     parameter_types,
     traits::{ConstU16, ConstU32, ConstU64},
@@ -61,14 +61,14 @@ parameter_types! {
 
 #[derive(Debug, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum FeedProcessorKind {
-    FullObject(Option<Vec<u8>>),
-    Content(Option<Vec<u8>>),
-    ContentEnum(Option<Vec<u8>>),
+    Content,
+    ContentWithin,
+    Custom(Vec<u8>),
 }
 
 impl Default for FeedProcessorKind {
     fn default() -> Self {
-        FeedProcessorKind::FullObject(None)
+        FeedProcessorKind::Content
     }
 }
 
@@ -82,11 +82,9 @@ impl pallet_feeds::Config for Test {
         feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
         match feed_processor_kind {
-            FeedProcessorKind::FullObject(maybe_key) => Box::new(FullObject(maybe_key)),
-            FeedProcessorKind::Content(maybe_key) => Box::new(ContentFeedProcessor(maybe_key)),
-            FeedProcessorKind::ContentEnum(maybe_key) => {
-                Box::new(ContentEnumFeedProcessor(maybe_key))
-            }
+            FeedProcessorKind::Content => Box::new(()),
+            FeedProcessorKind::ContentWithin => Box::new(ContentEnumFeedProcessor),
+            FeedProcessorKind::Custom(key) => Box::new(CustomContentFeedProcessor(key)),
         }
     }
 }
@@ -103,43 +101,15 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     t
 }
 
-// Same as Default with flexible key override
-struct FullObject(Option<Vec<u8>>);
+/// Same as default except key is not derived from object
+struct CustomContentFeedProcessor(Vec<u8>);
 
-impl FeedProcessor<FeedId> for FullObject {
+impl FeedProcessor<FeedId> for CustomContentFeedProcessor {
     fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
-        vec![FeedObjectMapping::Object {
+        vec![FeedObjectMapping::Custom {
             key: self.0.clone(),
+            offset: 0,
         }]
-    }
-}
-
-// this is the content encoded as object for the put call
-// we want to index content_a and content_b by an index either content addressable or name spaced key
-#[derive(Debug, Clone, Encode, Decode)]
-pub(crate) struct Content {
-    pub(crate) content_a: Vec<u8>,
-    pub(crate) content_b: Vec<u8>,
-}
-
-struct ContentFeedProcessor(Option<Vec<u8>>);
-
-impl FeedProcessor<FeedId> for ContentFeedProcessor {
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        let content =
-            Content::decode(&mut object.to_vec().as_slice()).expect("must decode to content");
-
-        let content_b_offset = content.content_a.encoded_size();
-        vec![
-            FeedObjectMapping::Content {
-                key: self.0.clone(),
-                offset: 0, // encoded content_a starts at offset 0
-            },
-            FeedObjectMapping::Content {
-                key: self.0.clone(),
-                offset: content_b_offset as u32, // encoded content_b starts at 0 + encoded(content_a)
-            },
-        ]
     }
 }
 
@@ -151,7 +121,7 @@ pub(crate) enum ContentEnum {
     ContentB(Vec<u8>),
 }
 
-struct ContentEnumFeedProcessor(Option<Vec<u8>>);
+struct ContentEnumFeedProcessor;
 
 impl FeedProcessor<FeedId> for ContentEnumFeedProcessor {
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
@@ -161,8 +131,9 @@ impl FeedProcessor<FeedId> for ContentEnumFeedProcessor {
         match content {
             ContentEnum::ContentA(_) | ContentEnum::ContentB(_) => {
                 vec![FeedObjectMapping::Content {
-                    key: self.0.clone(),
-                    offset: 1, // encoded content_a starts at offset 1 due to enum variant
+                    // also need to consider the encoded length of the object
+                    // encoded content_a or content_b starts at offset 1 due to enum variant
+                    offset: 1 + Compact::<u32>::compact_len(&(object.len() as u32)) as u32,
                 }]
             }
         }
