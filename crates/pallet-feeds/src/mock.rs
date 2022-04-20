@@ -1,8 +1,11 @@
+use crate::feed_processor::{FeedObjectMapping, FeedProcessor};
 use crate::{self as pallet_feeds, feed_processor::FeedProcessor as FeedProcessorT};
+use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::{
     parameter_types,
     traits::{ConstU16, ConstU32, ConstU64},
 };
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::{
     testing::Header,
@@ -56,16 +59,35 @@ parameter_types! {
     pub const MaxFeeds: u32 = 1;
 }
 
+#[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
+pub enum MockFeedProcessorKind {
+    Content,
+    ContentWithin,
+    Custom([u8; 32]),
+}
+
+impl Default for MockFeedProcessorKind {
+    fn default() -> Self {
+        MockFeedProcessorKind::Content
+    }
+}
+
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
-    type FeedProcessorKind = ();
+    type FeedProcessorKind = MockFeedProcessorKind;
     type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
-        _feed_processor_kind: Self::FeedProcessorKind,
+        feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
-        Box::new(())
+        match feed_processor_kind {
+            MockFeedProcessorKind::Content => Box::new(()),
+            MockFeedProcessorKind::ContentWithin => Box::new(ContentEnumFeedProcessor),
+            MockFeedProcessorKind::Custom(key) => {
+                Box::new(CustomContentFeedProcessor(key.to_vec()))
+            }
+        }
     }
 }
 
@@ -79,4 +101,43 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     t.execute_with(|| System::set_block_number(1));
 
     t
+}
+
+/// Same as default except key is not derived from object
+struct CustomContentFeedProcessor(Vec<u8>);
+
+impl FeedProcessor<FeedId> for CustomContentFeedProcessor {
+    fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
+        vec![FeedObjectMapping::Custom {
+            key: self.0.clone(),
+            offset: 0,
+        }]
+    }
+}
+
+// this is the content enum encoded as object for the put call
+// we want to index content_a or content_b by an index either content addressable or name spaced key
+#[derive(Debug, Clone, Encode, Decode)]
+pub(crate) enum ContentEnum {
+    ContentA(Vec<u8>),
+    ContentB(Vec<u8>),
+}
+
+struct ContentEnumFeedProcessor;
+
+impl FeedProcessor<FeedId> for ContentEnumFeedProcessor {
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
+        let content =
+            ContentEnum::decode(&mut object.to_vec().as_slice()).expect("must decode to content");
+
+        match content {
+            ContentEnum::ContentA(_) | ContentEnum::ContentB(_) => {
+                vec![FeedObjectMapping::Content {
+                    // also need to consider the encoded length of the object
+                    // encoded content_a or content_b starts at offset 1 due to enum variant
+                    offset: 1 + Compact::<u32>::compact_len(&(object.len() as u32)) as u32,
+                }]
+            }
+        }
+    }
 }

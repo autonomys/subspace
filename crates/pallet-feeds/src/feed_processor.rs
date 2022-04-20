@@ -15,17 +15,59 @@
 
 //! Defines FeedProcessor and its types
 
+use crate::CallObject;
+use codec::{Compact, CompactLen, Decode, Encode};
 use sp_runtime::{DispatchError, DispatchResult};
 use sp_std::{vec, vec::Vec};
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::Sha256Hash;
 
-/// Object mapping that points to an object in a block
+/// Holds the offset to some portion of data within/or the object
 #[derive(Debug)]
-pub struct FeedObjectMapping {
-    /// Key scoped to the feed
-    pub key: Sha256Hash,
-    /// Offset of the data within object
-    pub offset: u32,
+pub enum FeedObjectMapping {
+    /// Maps the object or some data within the object at the specific offset.
+    /// The key is derived from the content.
+    Content { offset: u32 },
+
+    /// Maps the object or some data within the object at the specific offset.
+    /// The key provided is namespaced to feed to avoid collisions
+    Custom { key: Vec<u8>, offset: u32 },
+}
+
+impl FeedObjectMapping {
+    pub(crate) fn try_into_call_object<FeedID: Encode, Hasher: Fn(&[u8]) -> Sha256Hash>(
+        self,
+        feed_id: FeedID,
+        object: &[u8],
+        hasher: Hasher,
+    ) -> Option<CallObject> {
+        match self {
+            // If this is a custom key, then name space the key.
+            FeedObjectMapping::Custom { key, offset } => {
+                let mut data = feed_id.encode();
+                data.extend_from_slice(&key);
+                Some(CallObject {
+                    key: hasher(&data),
+                    offset,
+                })
+            }
+            // For content, we try to extract the content to derive the key
+            FeedObjectMapping::Content { offset } => {
+                // If offset is 0, then then we want to map the entire object.
+                // Since the object is already decoded, no need to decode it further
+                let key = if offset == 0 {
+                    hasher(object)
+                } else {
+                    // This is referring to some content within the object that is encoded.
+                    // Move the offset back by the encoded bytes of object to get the right offset since the object is already decoded.
+                    let offset = offset
+                        .saturating_sub(Compact::<u32>::compact_len(&(object.len() as u32)) as u32);
+                    hasher(&Vec::decode(&mut &object[offset as usize..]).ok()?)
+                };
+
+                Some(CallObject { key, offset })
+            }
+        }
+    }
 }
 
 /// Metadata of a feed object as raw bytes.
@@ -33,30 +75,33 @@ pub type FeedMetadata = Vec<u8>;
 
 /// FeedProcessor dictates a flow import and constituents of a Feed
 pub trait FeedProcessor<FeedId> {
-    /// initiates a specific Feed with data transparent to FeedProcessor
-    /// can be called when re-initializing the feed.
+    /// Initiates a specific Feed with data transparent to FeedProcessor
+    /// Can be called when re-initializing the feed.
     fn init(&self, _feed_id: FeedId, _data: &[u8]) -> DispatchResult {
         Ok(())
     }
 
-    /// puts a feed and returns the Metadata if any
-    /// this is called once per extrinsic that puts a feed into a give feed.
+    /// Puts a feed and returns the Metadata if any.
+    /// This is called once per extrinsic that puts a feed into a given feed stream.
     fn put(&self, _feed_id: FeedId, _object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
         Ok(None)
     }
 
-    /// returns any object mappings inside the given object
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        vec![FeedObjectMapping {
-            key: crypto::sha256_hash(object),
-            offset: 0,
-        }]
-    }
+    /// Returns any object mappings inside the given object
+    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping>;
 
-    /// signals a delete to any underlying feed data.
+    /// Signals a delete to any underlying feed data.
     fn delete(&self, _feed_id: FeedId) -> DispatchResult {
         Ok(())
     }
 }
 
-impl<FeedId> FeedProcessor<FeedId> for () {}
+/// Content addressable feed processor impl
+/// Offsets the whole object as content thereby signalling to derive `key = hash(object)`
+/// Put do not provide any metadata.
+impl<FeedId> FeedProcessor<FeedId> for () {
+    /// Maps the entire object as content.
+    fn object_mappings(&self, _feed_id: FeedId, _object: &[u8]) -> Vec<FeedObjectMapping> {
+        vec![FeedObjectMapping::Content { offset: 0 }]
+    }
+}

@@ -68,7 +68,7 @@ use sp_std::{borrow::Cow, prelude::*};
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{crypto, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -533,18 +533,7 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
     }
 
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        let block = match C::decode_block::<Runtime>(object) {
-            Ok(block) => block,
-            // we just return empty if we failed to decode as this is not called in runtime
-            Err(_) => return vec![],
-        };
-
-        // for substrate, we store the height and block hash at that height
-        let key = (*block.block.header.number(), block.block.header.hash()).encode();
-        vec![FeedObjectMapping {
-            key: crypto::sha256_hash(key.as_slice()),
-            offset: 0,
-        }]
+        extract_substrate_object_mapping::<C>(object)
     }
 
     fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
@@ -554,53 +543,55 @@ impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
 
 pub struct ParachainImporter<C>(C);
 
-impl<C: Chain> ParachainImporter<C> {
-    fn decode_block(
-        &self,
-        object: &[u8],
-    ) -> Result<pallet_grandpa_finality_verifier::chain::SignedBlock<C::Header>, DispatchError>
-    {
-        let block = C::decode_block::<Runtime>(object)?;
-        Ok(block)
-    }
-}
-
 impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
     fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        let block = self.decode_block(object)?;
+        let block = C::decode_block::<Runtime>(object)?;
         Ok(Some(
             (block.block.header.hash(), *block.block.header.number()).encode(),
         ))
     }
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        self.decode_block(object)
-            .ok()
-            .map(|block| {
-                // for substrate, we store the height and block hash at that height
-                let key = (*block.block.header.number(), block.block.header.hash()).encode();
-                vec![FeedObjectMapping {
-                    key: crypto::sha256_hash(key.as_slice()),
-                    offset: 0,
-                }]
-            })
-            .unwrap_or_default()
+        extract_substrate_object_mapping::<C>(object)
     }
+}
+
+fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMapping> {
+    let block = match C::decode_block::<Runtime>(object) {
+        Ok(block) => block,
+        // we just return empty if we failed to decode as this is not called in runtime
+        Err(_) => return vec![],
+    };
+
+    // we send two mappings pointed to the same object
+    // block height and block hash
+    // this would be easier for sync client to crawl through the descendents by block height
+    // if you already have a block hash, you can fetch the same block with it as well
+    vec![
+        FeedObjectMapping::Custom {
+            key: block.block.header.number().encode(),
+            offset: 0,
+        },
+        FeedObjectMapping::Custom {
+            key: block.block.header.hash().as_ref().to_vec(),
+            offset: 0,
+        },
+    ]
 }
 
 /// FeedProcessorId represents the available FeedProcessor impls
 #[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum FeedProcessorKind {
-    // No validation
-    NoValidation,
-    // Validation and returns metadata
+    /// Content addressable Feed processor,
+    ContentAddressable,
+    /// Polkadot like relay chain Feed processor that validates grandpa justifications and indexes the entire block
     PolkadotLike,
-    // No Validation but returns metadata
+    /// Parachain Feed processor that just indexes the entire block
     ParachainLike,
 }
 
 impl Default for FeedProcessorKind {
     fn default() -> Self {
-        FeedProcessorKind::NoValidation
+        FeedProcessorKind::ContentAddressable
     }
 }
 
@@ -620,7 +611,7 @@ impl pallet_feeds::Config for Runtime {
     ) -> Box<dyn FeedProcessor<Self::FeedId>> {
         match feed_processor_kind {
             FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
-            FeedProcessorKind::NoValidation => Box::new(()),
+            FeedProcessorKind::ContentAddressable => Box::new(()),
             FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
         }
     }
