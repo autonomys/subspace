@@ -45,12 +45,16 @@ tiny-bip39 = "0.8.2"
 tokio = { version = "1.17.0", features = ["macros", "parking_lot", "rt-multi-thread"] }
 zeroize = "1.5.4"
 
-[dependencies.rocksdb]
-# This disables compression algorithms that cause issues during linking due to
-# https://github.com/rust-rocksdb/rust-rocksdb/issues/514
+# OpenBSD and MSVC are unteested and shouldn't enable jemalloc:
+# https://github.com/tikv/jemallocator/blob/52de4257fab3e770f73d5174c12a095b49572fba/jemalloc-sys/build.rs#L26-L27
+[target.'cfg(any(target_os = "openbsd", target_env = "msvc"))'.dependencies.rocksdb]
 default-features = false
-# `zstd` causes compilation errors, others are unnecessary for now
 features = ["snappy"]
+version = "0.18.0"
+
+[target.'cfg(not(any(target_os = "openbsd", target_env = "msvc")))'.dependencies.rocksdb]
+default-features = false
+features = ["snappy", "jemalloc"]
 version = "0.18.0"
 
 [dev-dependencies]
