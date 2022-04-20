@@ -60,31 +60,31 @@ parameter_types! {
 }
 
 #[derive(Debug, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
-pub enum FeedProcessorKind {
+pub enum MockFeedProcessorKind {
     Content,
     ContentWithin,
     Custom(Vec<u8>),
 }
 
-impl Default for FeedProcessorKind {
+impl Default for MockFeedProcessorKind {
     fn default() -> Self {
-        FeedProcessorKind::Content
+        MockFeedProcessorKind::Content
     }
 }
 
 impl pallet_feeds::Config for Test {
     type Event = Event;
     type FeedId = FeedId;
-    type FeedProcessorKind = FeedProcessorKind;
+    type FeedProcessorKind = MockFeedProcessorKind;
     type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
         feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessorT<Self::FeedId>> {
         match feed_processor_kind {
-            FeedProcessorKind::Content => Box::new(()),
-            FeedProcessorKind::ContentWithin => Box::new(ContentEnumFeedProcessor),
-            FeedProcessorKind::Custom(key) => Box::new(CustomContentFeedProcessor(key)),
+            MockFeedProcessorKind::Content => Box::new(()),
+            MockFeedProcessorKind::ContentWithin => Box::new(ContentEnumFeedProcessor),
+            MockFeedProcessorKind::Custom(key) => Box::new(CustomContentFeedProcessor(key)),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    mock::{new_test_ext, ContentEnum, Event, FeedProcessorKind, Feeds, Origin, System, Test},
+    mock::{new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test},
     Call as FeedsCall, Error, Object, TotalObjectsAndSize,
 };
 use codec::{Decode, Encode};
@@ -205,7 +205,7 @@ fn cannot_create_after_max_feeds() {
     });
 }
 
-fn create_content_feed(object: Object, kind: FeedProcessorKind, contents: Vec<Vec<u8>>) {
+fn create_content_feed(object: Object, kind: MockFeedProcessorKind, contents: Vec<Vec<u8>>) {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(Origin::signed(OWNER), kind, None));
 
@@ -218,12 +218,7 @@ fn create_content_feed(object: Object, kind: FeedProcessorKind, contents: Vec<Ve
         let encoded_call = call.encode();
         contents.into_iter().enumerate().for_each(|(i, content)| {
             assert_eq!(
-                Vec::<u8>::decode(
-                    &mut encoded_call[mappings[i].offset as usize..]
-                        .to_vec()
-                        .as_slice()
-                )
-                .unwrap(),
+                Vec::<u8>::decode(&mut &encoded_call[mappings[i].offset as usize..]).unwrap(),
                 content
             );
 
@@ -234,7 +229,7 @@ fn create_content_feed(object: Object, kind: FeedProcessorKind, contents: Vec<Ve
 
 fn create_custom_content_feed(
     object: Object,
-    feed_processor_kind: FeedProcessorKind,
+    feed_processor_kind: MockFeedProcessorKind,
     keys: Vec<Vec<u8>>,
     contents: Vec<Vec<u8>>,
 ) {
@@ -265,12 +260,7 @@ fn create_custom_content_feed(
         let encoded_call = call.encode();
         contents.into_iter().enumerate().for_each(|(i, content)| {
             assert_eq!(
-                Vec::<u8>::decode(
-                    &mut encoded_call[mappings[i].offset as usize..]
-                        .to_vec()
-                        .as_slice()
-                )
-                .unwrap(),
+                Vec::<u8>::decode(&mut &encoded_call[mappings[i].offset as usize..]).unwrap(),
                 content
             );
         })
@@ -280,7 +270,7 @@ fn create_custom_content_feed(
 #[test]
 fn create_full_object_feed() {
     let object: Object = (1..255).collect();
-    create_content_feed(object.clone(), FeedProcessorKind::Content, vec![object])
+    create_content_feed(object.clone(), MockFeedProcessorKind::Content, vec![object])
 }
 
 #[test]
@@ -289,7 +279,7 @@ fn create_full_object_feed_with_key_override() {
     let key = vec![5, 4, 3, 2, 1];
     create_custom_content_feed(
         object.clone(),
-        FeedProcessorKind::Custom(key.clone()),
+        MockFeedProcessorKind::Custom(key.clone()),
         vec![key],
         vec![object],
     );
@@ -299,9 +289,17 @@ fn create_full_object_feed_with_key_override() {
 fn create_content_within_object_feed() {
     let content_a = (1..128).collect::<Vec<u8>>();
     let object = ContentEnum::ContentA(content_a.clone()).encode();
-    create_content_feed(object, FeedProcessorKind::ContentWithin, vec![content_a]);
+    create_content_feed(
+        object,
+        MockFeedProcessorKind::ContentWithin,
+        vec![content_a],
+    );
 
     let content_b = (129..255).collect::<Vec<u8>>();
     let object = ContentEnum::ContentB(content_b.clone()).encode();
-    create_content_feed(object, FeedProcessorKind::ContentWithin, vec![content_b])
+    create_content_feed(
+        object,
+        MockFeedProcessorKind::ContentWithin,
+        vec![content_b],
+    )
 }

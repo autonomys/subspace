@@ -360,6 +360,9 @@ impl<T: Config> Call<T> {
                 };
                 let feed_processor = T::feed_processor(feed_processor_id);
                 let objects_mappings = feed_processor.object_mappings(*feed_id, object);
+                // +1 for the Call::put enum variant
+                // Since first arg is feed_id, we bump the offset by its encoded size
+                let base_offset = 1 + mem::size_of::<T::FeedId>() as u32;
                 objects_mappings
                     .into_iter()
                     .filter_map(|object_mapping| {
@@ -368,7 +371,7 @@ impl<T: Config> Call<T> {
                             object.as_slice(),
                             |data| crypto::sha256_hash(data),
                         )?;
-                        co.offset += 1 + mem::size_of::<T::FeedId>() as u32;
+                        co.offset += base_offset;
                         Some(co)
                     })
                     .collect()
