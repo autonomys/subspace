@@ -47,34 +47,7 @@ jobs:
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
 
-#      - name: Generate testnet chain specifications
-#        run: |
-#          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet > chain-spec-${{ github.ref_name }}.json
-#          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain testnet --raw > chain-spec-raw-${{ github.ref_name }}.json
-#        if: matrix.image == 'node'
-#
-#      - name: Upload testnet chain specifications to artifacts
-#        uses: actions/upload-artifact@v2
-#        with:
-#          name: chain-specifications
-#          path: |
-#            chain-spec-${{ github.ref_name }}.json
-#            chain-spec-raw-${{ github.ref_name }}.json
-#          if-no-files-found: error
-#        if: matrix.image == 'node'
-#
-#      - name: Upload testnet chain specifications to assets
-#        uses: alexellis/upload-assets@0.3.0
-#        env:
-#          GITHUB_TOKEN: ${{ github.token }}
-#        with:
-#          asset_paths: '["chain-spec-${{ github.ref_name }}.json", "chain-spec-raw-${{ github.ref_name }}.json"]'
-#        if: matrix.image == 'node'
-
   executables:
-    # Wait for chain spec files to be uploaded to artifacts
-    needs: container-images
-
     strategy:
       matrix:
         build:

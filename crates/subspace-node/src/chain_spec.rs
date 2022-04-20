@@ -170,7 +170,7 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
         // Name
         "Subspace development",
         // ID
-        "subspace-dev",
+        "subspace_dev",
         ChainType::Development,
         || {
             subspace_genesis_config(
