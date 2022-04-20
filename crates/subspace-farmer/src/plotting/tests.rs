@@ -101,10 +101,8 @@ async fn plotting_piece_eviction() {
     // as well as such that will not be skipped (will override existing) if their piece index
     // started with 0. This tests edge case where indexes of pieces in this case are handled
     // properly during piece replacement.
-    let mnemonic_phrase = "\
-        large accident thrive business sheriff system catch survey smile current feel gossip \
-        panther kick estate three noodle monkey vintage silk harsh spider cross license";
-    let identity = Identity::import_from_mnemonic(&base_directory, mnemonic_phrase)
+    let entropy = "7d202f848f8c59b98906d5cca6c1533279fcf4535f089611e7d0e44695a34d04";
+    let identity = Identity::from_entropy(&base_directory, hex::decode(entropy).unwrap())
         .expect("Could not open/create identity!");
     let mut rng = StdRng::seed_from_u64(0);
 

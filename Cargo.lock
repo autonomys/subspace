@@ -8509,7 +8509,6 @@ dependencies = [
  "subspace-solving",
  "tempfile",
  "thiserror",
- "tiny-bip39",
  "tokio",
  "zeroize",
 ]

@@ -1,16 +1,11 @@
 mod farm;
-mod identity;
 
 pub(crate) use farm::farm;
-pub(crate) use identity::identity;
 use log::info;
 use std::path::Path;
 use std::{fs, io};
 
-pub(crate) fn erase(path: impl AsRef<Path>) -> io::Result<()> {
-    // TODO: Remove this line in one of future releases
-    subspace_farmer::Plot::erase(path.as_ref())?;
-
+pub(crate) fn wipe<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let _ = std::fs::remove_dir_all(path.as_ref().join("object-mappings"));
     (0..)
         .map(|i| path.as_ref().join(format!("plot{i}")))
@@ -18,12 +13,12 @@ pub(crate) fn erase(path: impl AsRef<Path>) -> io::Result<()> {
         .try_for_each(|replica_path| {
             info!("Erasing plot replica at path `{replica_path:?}'");
             std::fs::remove_dir_all(replica_path)
-        })
-}
+        })?;
 
-pub(crate) fn wipe<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    erase(path.as_ref())?;
+    // TODO: Remove this line in one of future releases
+    subspace_farmer::Plot::erase(path.as_ref())?;
 
+    // TODO: Remove these lines line in one of future releases
     info!("Erasing identity");
     let identity = path.as_ref().join("identity.bin");
     if identity.exists() {

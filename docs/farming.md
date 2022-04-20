@@ -303,11 +303,7 @@ There are extra commands and parameters you can use on farmer or node, use the `
 Below are some helpful farmer commands:
 
 - `farm --reward-address WALLET_ADDRESS` : starts background plotting and farming together, farmed testnet coins will be sent to `WALLET_ADDRESS`
-- `farm` : starts background plotting and farming together, rewards are sent to auto-generated wallet (see `identity` commands below)
 - `wipe` : erases the plot and identity (including plot, commitment, object mappings and identity files)
-- `identity import-from-mnemonic "spell out your seed phrase here"` : imports your existing identity from your seed phrase (not recommended! use `--reward-address` instead)
-- `identity view` : displays SS58 address (this is the same as `identity view --address`) where farmed testnet coins will be sent
-- `identity view --mnemonic` : displays mnemonic phrase of auto-generated wallet (sensitive information, keep this private, not very useful if `--reward-address` was used)
 
 Examples:
 ```bash

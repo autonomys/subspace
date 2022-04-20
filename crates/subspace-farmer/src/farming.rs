@@ -184,7 +184,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     if let Some(BlockSigningInfo { header_hash }) =
                         block_signing_info_notifications.recv().await
                     {
-                        let signature = identity.block_signing(&header_hash);
+                        let signature = identity.sign_block_header_hash(&header_hash);
 
                         match client
                             .submit_block_signature(BlockSignature {
