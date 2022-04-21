@@ -67,9 +67,8 @@ pub mod pallet {
     };
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
-    use num_traits::CheckedAdd;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;
-    use sp_runtime::traits::{Header, One, Zero};
+    use sp_runtime::traits::{Header, Zero};
     use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]
@@ -82,14 +81,14 @@ pub mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(PhantomData<T>);
 
-    /// Best finalized header of a Chain
+    /// Best known finalized header of a Chain.
     #[pallet::storage]
-    pub(super) type BestFinalized<T: Config> =
-        StorageMap<_, Identity, T::ChainId, Vec<u8>, OptionQuery>;
+    pub(super) type BestKnownFinalized<T: Config> =
+        StorageMap<_, Identity, T::ChainId, Vec<u8>, ValueQuery>;
 
-    /// Validation checkpoint
+    /// Latest known height of the chain.
     #[pallet::storage]
-    pub(super) type ValidationCheckpoint<T: Config> =
+    pub(super) type CurrentBlockHeight<T: Config> =
         StorageMap<_, Identity, T::ChainId, BlockHeight, ValueQuery>;
 
     /// The current GRANDPA Authority set for a given Chain
@@ -129,8 +128,8 @@ pub mod pallet {
         let header_decoded = C::decode_header::<T>(header.as_slice())?;
         let change =
             find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
-        // set the checkpoint so that validation starts after this block height
-        ValidationCheckpoint::<T>::insert(chain_id, (*header_decoded.number()).into());
+        // Set the best known finalized header
+        BestKnownFinalized::<T>::insert(chain_id, header);
         let authority_set = AuthoritySet {
             authorities: change.next_authorities,
             set_id,
@@ -146,32 +145,18 @@ pub mod pallet {
         let block = C::decode_block::<T>(object)?;
         let number = *block.block.header.number();
         let hash = block.block.header.hash();
+        let current_height = CurrentBlockHeight::<T>::get(chain_id);
 
-        match BestFinalized::<T>::get(chain_id) {
-            None => {
-                // this is a first block we are importing
-                // ensure it is before the checkpoint
-                ensure!(
-                    (*block.block.header.number()).into()
-                        <= ValidationCheckpoint::<T>::get(chain_id),
-                    Error::<T>::InvalidHeader
-                );
-                BestFinalized::<T>::insert(chain_id, block.block.header.encode());
-                return Ok((hash, number));
-            }
-            Some(data) => {
-                let best_finalized = C::decode_header::<T>(data.as_slice())?;
-                // ensure block is always increasing
-                let next_block_number = best_finalized
-                    .number()
-                    .checked_add(&One::one())
-                    .ok_or(sp_runtime::ArithmeticError::Overflow)?;
-                ensure!(next_block_number == number, Error::<T>::InvalidHeader);
-            }
-        };
+        // ensure block is always incrementing by 1
+        ensure!(
+            number.into() == current_height + 1,
+            Error::<T>::InvalidHeader
+        );
 
-        // check if we should validate or just import
-        if (*block.block.header.number()).into() > ValidationCheckpoint::<T>::get(chain_id) {
+        // if the target header is a descendent of our best known finalized header, validate the justification and import
+        let best_finalized =
+            C::decode_header::<T>(BestKnownFinalized::<T>::get(chain_id).as_slice())?;
+        if number > *best_finalized.number() {
             let justification = block
                 .justifications
                 .ok_or(Error::<T>::MissingJustification)?
@@ -199,10 +184,12 @@ pub mod pallet {
 
             // Update any next authority set if any
             try_enact_authority_change::<T, C>(chain_id, &block.block.header, set_id)?;
+
+            // Update best finalized header
+            BestKnownFinalized::<T>::insert(chain_id, block.block.header.encode());
         }
 
-        // Update best finalized header
-        BestFinalized::<T>::insert(chain_id, block.block.header.encode());
+        CurrentBlockHeight::<T>::insert(chain_id, current_height + 1);
         Ok((hash, number))
     }
 
@@ -274,9 +261,9 @@ pub mod pallet {
 
     /// purges the on chain state of a given chain
     pub fn purge<T: Config>(chain_id: T::ChainId) -> DispatchResult {
-        BestFinalized::<T>::remove(chain_id);
+        BestKnownFinalized::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
-        ValidationCheckpoint::<T>::remove(chain_id);
+        CurrentBlockHeight::<T>::remove(chain_id);
         Ok(())
     }
 }

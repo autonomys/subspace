@@ -5,8 +5,8 @@ mod mock;
 use crate::{
     chain::Chain,
     grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification},
-    initialize, validate_finalized_block, BestFinalized, CurrentAuthoritySet, Error as ErrorP,
-    InitializationData, ValidationCheckpoint,
+    initialize, validate_finalized_block, BestKnownFinalized, CurrentAuthoritySet,
+    CurrentBlockHeight, Error as ErrorP, InitializationData,
 };
 use codec::Encode;
 use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
@@ -203,9 +203,9 @@ fn justification_is_invalid_if_we_dont_meet_threshold() {
     );
 }
 
-fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchError> {
-    let mut genesis = test_header::<TestHeader>(0);
-    genesis.digest.push(DigestItem::Consensus(
+fn init_with_origin(chain_id: ChainId, number: u32) -> Result<InitializationData, DispatchError> {
+    let mut best_finalized = test_header::<TestHeader>(number);
+    best_finalized.digest.push(DigestItem::Consensus(
         GRANDPA_ENGINE_ID,
         ConsensusLog::ScheduledChange::<u32>(ScheduledChange {
             next_authorities: authority_list(),
@@ -214,17 +214,11 @@ fn init_with_origin(chain_id: ChainId) -> Result<InitializationData, DispatchErr
         .encode(),
     ));
     let init_data = crate::InitializationData {
-        header: genesis.encode(),
+        header: best_finalized.encode(),
         set_id: 1,
     };
 
     initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice())?;
-    // submit the first block. this should skip the validation.
-    // dont send any justifications
-    let mut justification = make_default_justification(&genesis);
-    // push some random pre-commit
-    justification.votes_ancestries.push(test_header(100));
-    submit_finality_proof(chain_id, genesis, justification)?;
     Ok(init_data)
 }
 
@@ -255,12 +249,13 @@ fn submit_finality_proof(
 fn init_storage_entries_are_correctly_initialized() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        init_with_origin(chain_id).unwrap();
-        assert_eq!(ValidationCheckpoint::<TestRuntime>::get(chain_id), 0u64);
+        let InitializationData { header, .. } = init_with_origin(chain_id, 0).unwrap();
+        assert_eq!(CurrentBlockHeight::<TestRuntime>::get(chain_id), 0u64);
         assert_eq!(
             CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
             authority_list()
         );
+        assert_eq!(<BestKnownFinalized<TestRuntime>>::get(chain_id), header);
     })
 }
 
@@ -268,13 +263,46 @@ fn init_storage_entries_are_correctly_initialized() {
 fn successfully_imports_header_with_valid_finality() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
-        assert_ok!(submit_valid_finality_proof(chain_id, 1));
+        assert_ok!(init_with_origin(chain_id, 0));
 
+        assert_ok!(submit_valid_finality_proof(chain_id, 1));
         let header = test_header::<TestHeader>(1);
         assert_eq!(
-            <BestFinalized<TestRuntime>>::get(chain_id).unwrap(),
+            <BestKnownFinalized<TestRuntime>>::get(chain_id),
             header.encode()
+        );
+
+        assert_ok!(submit_valid_finality_proof(chain_id, 2));
+        let header = test_header::<TestHeader>(2);
+        assert_eq!(
+            <BestKnownFinalized<TestRuntime>>::get(chain_id),
+            header.encode()
+        );
+    })
+}
+
+#[test]
+fn successfully_imports_parent_headers_to_best_known_finalized_header() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let InitializationData { header, .. } = init_with_origin(chain_id, 2).unwrap();
+
+        // import block 1
+        assert_ok!(submit_valid_finality_proof(chain_id, 1));
+        // best is still 2
+        assert_eq!(<BestKnownFinalized<TestRuntime>>::get(chain_id), header);
+
+        // import block 2
+        assert_ok!(submit_valid_finality_proof(chain_id, 2));
+        // best is still 2
+        assert_eq!(<BestKnownFinalized<TestRuntime>>::get(chain_id), header);
+
+        // import block 3
+        assert_ok!(submit_valid_finality_proof(chain_id, 3));
+        // best is 3
+        assert_eq!(
+            <BestKnownFinalized<TestRuntime>>::get(chain_id),
+            test_header::<TestHeader>(3).encode()
         );
     })
 }
@@ -283,7 +311,7 @@ fn successfully_imports_header_with_valid_finality() {
 fn rejects_justification_that_skips_authority_set_transition() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
         let header = test_header::<TestHeader>(1);
 
         let params = JustificationGeneratorParams::<TestHeader> {
@@ -303,7 +331,7 @@ fn rejects_justification_that_skips_authority_set_transition() {
 fn does_not_import_header_with_invalid_finality_proof() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
 
         let header = test_header(1);
         let mut justification = make_default_justification(&header);
@@ -339,7 +367,6 @@ fn disallows_invalid_authority_set() {
             chain_id,
             init_data.encode().as_slice()
         ));
-        assert_ok!(submit_valid_finality_proof(chain_id, 0));
 
         let header = test_header::<TestHeader>(1);
         let justification = make_default_justification(&header);
@@ -355,7 +382,7 @@ fn disallows_invalid_authority_set() {
 fn importing_header_ensures_that_chain_is_extended() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
         assert_ok!(submit_valid_finality_proof(chain_id, 2));
         assert_err!(
@@ -385,7 +412,7 @@ fn change_log(delay: u32) -> Digest {
 fn importing_header_enacts_new_authority_set() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
 
         let next_set_id = 2;
         let next_authorities = vec![(ALICE.into(), 1), (BOB.into(), 1)];
@@ -407,7 +434,7 @@ fn importing_header_enacts_new_authority_set() {
 
         // Make sure that our header is the best finalized
         assert_eq!(
-            <BestFinalized<TestRuntime>>::get(chain_id).unwrap(),
+            <BestKnownFinalized<TestRuntime>>::get(chain_id),
             header.encode()
         );
 
@@ -426,7 +453,7 @@ fn importing_header_enacts_new_authority_set() {
 fn importing_header_rejects_header_with_scheduled_change_delay() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
 
         // Need to update the header digest to indicate that our header signals an authority set
         // change. However, the change doesn't happen until the next block.
@@ -465,7 +492,7 @@ fn forced_change_log(delay: u32) -> Digest {
 fn importing_header_rejects_header_with_forced_changes() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id));
+        assert_ok!(init_with_origin(chain_id, 0));
 
         // Need to update the header digest to indicate that it signals a forced authority set
         // change.
