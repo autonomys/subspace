@@ -82,7 +82,7 @@ use sp_core::{
 };
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, FraudProof,
-	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
+	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -111,7 +111,7 @@ where
 	overseer_handle: OverseerHandle<PBlock>,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
-	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
 	is_authority: bool,
@@ -188,7 +188,7 @@ where
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
-		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
 		is_authority: bool,
@@ -660,9 +660,11 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		execution_receipt: &ExecutionReceipt<Block::Hash>,
+		signed_execution_receipt: &SignedExecutionReceipt<Block::Hash>,
 	) -> Result<Action, Self::Error> {
 		// TODO: validate the Proof-of-Election
+		let SignedExecutionReceipt { execution_receipt, signature, signer } =
+			signed_execution_receipt;
 
 		let block_hash = execution_receipt.secondary_hash;
 		let primary_hash =

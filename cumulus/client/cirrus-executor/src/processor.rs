@@ -232,8 +232,8 @@ where
 						"Generating the signed execution receipt for #{}",
 						header_hash
 					);
-					// TODO: gossip the signed execution receipt over the network.
-					let _signed_execution_receipt = SignedExecutionReceipt {
+
+					let signed_execution_receipt = SignedExecutionReceipt {
 						execution_receipt: execution_receipt.clone(),
 						signature: AuthoritySignature::decode(&mut signature.as_slice()).map_err(
 							|err| {
@@ -246,9 +246,9 @@ where
 					};
 
 					if let Err(e) =
-						self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
+						self.execution_receipt_sender.unbounded_send(signed_execution_receipt)
 					{
-						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send execution receipt");
+						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
 					}
 
 					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.

@@ -10,7 +10,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{Bundle, SignedExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::{
 	collections::HashSet,
@@ -49,7 +49,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<Block: BlockT> {
 	Bundle(Bundle<Block::Extrinsic>),
-	ExecutionReceipt(ExecutionReceipt<Block::Hash>),
+	ExecutionReceipt(SignedExecutionReceipt<Block::Hash>),
 }
 
 impl<Block: BlockT> From<Bundle<Block::Extrinsic>> for GossipMessage<Block> {
@@ -58,8 +58,8 @@ impl<Block: BlockT> From<Bundle<Block::Extrinsic>> for GossipMessage<Block> {
 	}
 }
 
-impl<Block: BlockT> From<ExecutionReceipt<Block::Hash>> for GossipMessage<Block> {
-	fn from(execution_receipt: ExecutionReceipt<Block::Hash>) -> Self {
+impl<Block: BlockT> From<SignedExecutionReceipt<Block::Hash>> for GossipMessage<Block> {
+	fn from(execution_receipt: SignedExecutionReceipt<Block::Hash>) -> Self {
 		Self::ExecutionReceipt(execution_receipt)
 	}
 }
@@ -99,7 +99,7 @@ where
 	/// Validates and applies when an execution receipt was received.
 	fn on_execution_receipt(
 		&self,
-		execution_receipt: &ExecutionReceipt<Block::Hash>,
+		execution_receipt: &SignedExecutionReceipt<Block::Hash>,
 	) -> Result<Action, Self::Error>;
 }
 
@@ -270,7 +270,7 @@ pub struct ExecutorGossipParams<Block: BlockT, Network, Executor> {
 	/// Stream of transaction bundle produced locally.
 	pub bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
 	/// Stream of execution receipt produced locally.
-	pub execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
+	pub execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 }
 
 /// Starts the executor gossip worker.
