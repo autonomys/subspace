@@ -20,6 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
+use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
@@ -29,6 +30,22 @@ use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
+
+/// Key type for Executor.
+pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+
+mod app {
+    use super::KEY_TYPE;
+    use sp_application_crypto::{app_crypto, sr25519};
+
+    app_crypto!(sr25519, KEY_TYPE);
+}
+
+/// An executor authority signature.
+pub type AuthoritySignature = app::Signature;
+
+/// An executor authority identifier.
+pub type AuthorityId = app::Public;
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]

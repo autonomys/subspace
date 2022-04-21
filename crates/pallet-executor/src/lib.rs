@@ -32,6 +32,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_executor::AuthorityId;
     use sp_executor::{
         BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof,
         OpaqueBundle,
@@ -166,6 +167,35 @@ mod pallet {
             Self::deposit_event(Event::InvalidTransactionProofProcessed);
 
             Ok(())
+        }
+    }
+
+    /// A tuple of (stable_executor_id, executor_signing_key).
+    #[pallet::storage]
+    #[pallet::getter(fn authority)]
+    pub(super) type Authority<T: Config> =
+        StorageValue<_, (T::AccountId, AuthorityId), OptionQuery>;
+
+    #[pallet::genesis_config]
+    pub struct GenesisConfig<T: Config> {
+        pub authority: Option<(T::AccountId, AuthorityId)>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self { authority: None }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            <Authority<T>>::put(
+                self.authority
+                    .clone()
+                    .expect("Executor authority must be provided at genesis; qed"),
+            );
         }
     }
 

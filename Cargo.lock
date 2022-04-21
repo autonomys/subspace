@@ -7969,6 +7969,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-api",
+ "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
  "sp-externalities",
