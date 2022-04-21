@@ -1048,6 +1048,12 @@ impl_runtime_apis! {
         fn execution_wasm_bundle() -> Cow<'static, [u8]> {
             EXECUTION_WASM_BUNDLE.into()
         }
+
+        fn authority_id() -> sp_executor::AuthorityId {
+            Executor::authority()
+                .map(|(_account_id, authority_id)| authority_id)
+                .expect("Executor authority must be provided; qed")
+        }
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
