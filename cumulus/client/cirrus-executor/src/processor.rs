@@ -20,7 +20,10 @@ use std::{
 
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{ExecutionReceipt, ExecutorApi, OpaqueBundle, OpaqueExecutionReceipt, KEY_TYPE};
+use sp_executor::{
+	AuthoritySignature, ExecutionReceipt, ExecutorApi, OpaqueBundle, OpaqueExecutionReceipt,
+	SignedExecutionReceipt, KEY_TYPE,
+};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -220,16 +223,27 @@ where
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
 				KEY_TYPE,
-				&authority_id.into(),
+				&authority_id.clone().into(),
 				&to_sign,
 			) {
-				Ok(Some(_signature)) => {
+				Ok(Some(signature)) => {
 					tracing::debug!(
 						target: LOG_TARGET,
 						"Generating the signed execution receipt for #{}",
 						header_hash
 					);
-					// TODO: Wrap an execution receipt with signature and gossip the signed execution receipt over the network.
+					// TODO: gossip the signed execution receipt over the network.
+					let _signed_execution_receipt = SignedExecutionReceipt {
+						execution_receipt: execution_receipt.clone(),
+						signature: AuthoritySignature::decode(&mut signature.as_slice()).map_err(
+							|err| {
+								sp_blockchain::Error::Application(Box::from(format!(
+									"Failed to decode the signature of execution receipt: {err}"
+								)))
+							},
+						)?,
+						signer: authority_id,
+					};
 
 					if let Err(e) =
 						self.execution_receipt_sender.unbounded_send(execution_receipt.clone())

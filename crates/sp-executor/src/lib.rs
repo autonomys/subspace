@@ -132,6 +132,17 @@ impl<Hash: Encode> ExecutionReceipt<Hash> {
     }
 }
 
+/// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct SignedExecutionReceipt<Hash> {
+    /// Execution receipt
+    pub execution_receipt: ExecutionReceipt<Hash>,
+    /// Signature of the execution receipt.
+    pub signature: AuthoritySignature,
+    /// Signer of the signature.
+    pub signer: AuthorityId,
+}
+
 // TODO: this might be unneccessary, ideally we could interact with the runtime using `ExecutionReceipt` directly.
 // Refer to the comment https://github.com/subspace/subspace/pull/219#discussion_r776749767
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
