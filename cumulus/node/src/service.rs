@@ -243,6 +243,7 @@ where
 			backend,
 			Arc::new(code_executor),
 			validator,
+			params.keystore_container.sync_keystore(),
 		)
 		.await?;
 

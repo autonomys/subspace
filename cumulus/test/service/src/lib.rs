@@ -255,6 +255,7 @@ async fn start_node_impl(
 			backend.clone(),
 			Arc::clone(&code_executor),
 			validator,
+			params.keystore_container.sync_keystore(),
 		)
 		.await?;
 

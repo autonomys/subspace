@@ -84,6 +84,7 @@ use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, FraudProof,
 	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
 };
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
@@ -114,6 +115,7 @@ where
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
 	is_authority: bool,
+	keystore: SyncCryptoStorePtr,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -134,6 +136,7 @@ where
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
+			keystore: self.keystore.clone(),
 		}
 	}
 }
@@ -189,6 +192,7 @@ where
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
 		is_authority: bool,
+		keystore: SyncCryptoStorePtr,
 	) -> Result<Self, sp_consensus::Error>
 	where
 		SE: SpawnEssentialNamed,
@@ -251,6 +255,7 @@ where
 			backend,
 			code_executor,
 			is_authority,
+			keystore,
 		};
 
 		let span = tracing::Span::current();

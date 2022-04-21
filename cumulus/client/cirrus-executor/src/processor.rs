@@ -6,6 +6,8 @@ use sc_consensus::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
+use sp_core::ByteArray;
+use sp_keystore::SyncCryptoStore;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
@@ -18,7 +20,7 @@ use std::{
 
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{ExecutionReceipt, OpaqueBundle, OpaqueExecutionReceipt};
+use sp_executor::{ExecutionReceipt, ExecutorApi, OpaqueBundle, OpaqueExecutionReceipt, KEY_TYPE};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -88,6 +90,8 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -206,17 +210,43 @@ where
 
 		// The applied txs can be fully removed from the transaction pool
 
-		// TODO: win the executor election to broadcast ER, authority node only.
-		let is_elected = self.is_authority;
+		let authority_id = self.primary_chain_client.runtime_api().authority_id(&BlockId::Hash(
+			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
+				.expect("Primary block hash must be the correct type; qed"),
+		))?;
 
-		if is_elected {
-			if let Err(e) = self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
-			{
-				tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send execution receipt");
+		if SyncCryptoStore::has_keys(&*self.keystore, &[(authority_id.to_raw_vec(), KEY_TYPE)]) {
+			let to_sign = execution_receipt.hash().encode();
+			match SyncCryptoStore::sign_with(
+				&*self.keystore,
+				KEY_TYPE,
+				&authority_id.into(),
+				&to_sign,
+			) {
+				Ok(Some(_signature)) => {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Generating the signed execution receipt for #{}",
+						header_hash
+					);
+					// TODO: Wrap an execution receipt with signature and gossip the signed execution receipt over the network.
+
+					if let Err(e) =
+						self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
+					{
+						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send execution receipt");
+					}
+
+					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
+					Ok(Some(execution_receipt.into()))
+				},
+				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
+					"This should not happen as the existence of key was just checked",
+				))),
+				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
+					"Error occurred when signing the execution receipt, error: {error}"
+				)))),
 			}
-
-			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Ok(Some(execution_receipt.into()))
 		} else {
 			Ok(None)
 		}
