@@ -2,6 +2,7 @@
 
 use crate::grandpa::GrandpaJustification;
 use crate::tests::keyring::{test_keyring, Account};
+use crate::tests::{valid_digests, valid_extrinsics_root};
 use codec::Encode;
 use sp_finality_grandpa::{AuthorityId, AuthoritySignature, AuthorityWeight, SetId};
 use sp_runtime::traits::{Header as HeaderT, One, Zero};
@@ -197,7 +198,7 @@ pub(crate) fn test_header<H: HeaderT>(number: H::Number) -> H {
     let default = |num| {
         H::new(
             num,
-            Default::default(),
+            valid_extrinsics_root::<H>(),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -206,10 +207,13 @@ pub(crate) fn test_header<H: HeaderT>(number: H::Number) -> H {
 
     let mut header = default(number);
     if number != Zero::zero() {
-        let parent_hash = default(number - One::one()).hash();
+        let parent_hash = test_header::<H>(number - One::one()).hash();
         header.set_parent_hash(parent_hash);
+    } else {
+        valid_digests()
+            .into_iter()
+            .for_each(|digest| header.digest_mut().push(digest));
     }
-
     header
 }
 
