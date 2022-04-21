@@ -81,13 +81,15 @@ use sp_core::{
 	H256,
 };
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, FraudProof,
-	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt, SignedExecutionReceipt,
+	AuthorityId, Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi,
+	FraudProof, InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
+	SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
+	RuntimeAppPublic,
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
@@ -564,9 +566,15 @@ pub enum GossipMessageError {
 	#[error(transparent)]
 	Client(Box<sp_blockchain::Error>),
 	#[error(transparent)]
+	RuntimeApi(#[from] sp_api::ApiError),
+	#[error(transparent)]
 	RecvError(#[from] crossbeam::channel::RecvError),
 	#[error("Failed to send local receipt result because the channel is disconnected")]
 	SendError,
+	#[error("The signature of execution receipt is invalid")]
+	BadExecutionReceiptSignature,
+	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
+	InvalidExecutionReceiptAuthor { got: AuthorityId, expected: AuthorityId },
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
@@ -662,7 +670,6 @@ where
 		&self,
 		signed_execution_receipt: &SignedExecutionReceipt<Block::Hash>,
 	) -> Result<Action, Self::Error> {
-		// TODO: validate the Proof-of-Election
 		let SignedExecutionReceipt { execution_receipt, signature, signer } =
 			signed_execution_receipt;
 
@@ -670,6 +677,24 @@ where
 		let primary_hash =
 			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
 				.expect("Hash type must be correct");
+
+		let msg = execution_receipt.hash().encode();
+		if !signer.verify(&msg, signature) {
+			return Err(Self::Error::BadExecutionReceiptSignature)
+		}
+
+		let expected_authority_id = self
+			.primary_chain_client
+			.runtime_api()
+			.authority_id(&BlockId::Hash(primary_hash))?;
+		if *signer != expected_authority_id {
+			// TODO: handle the misbehavior.
+
+			return Err(Self::Error::InvalidExecutionReceiptAuthor {
+				got: signer.clone(),
+				expected: expected_authority_id,
+			})
+		}
 
 		let block_number = TryInto::<BlockNumber>::try_into(
 			self.primary_chain_client
