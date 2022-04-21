@@ -180,6 +180,10 @@ impl CliConfiguration<Self> for SecondaryChainCli {
         self.base.base.announce_block()
     }
 
+    fn dev_key_seed(&self, is_dev: bool) -> Result<Option<String>> {
+        self.base.base.dev_key_seed(is_dev)
+    }
+
     fn telemetry_endpoints(
         &self,
         chain_spec: &Box<dyn ChainSpec>,

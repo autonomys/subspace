@@ -47,6 +47,13 @@ pub type AuthoritySignature = app::Signature;
 /// An executor authority identifier.
 pub type AuthorityId = app::Public;
 
+/// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
+pub struct ExecutorKey;
+
+impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
+    type Public = AuthorityId;
+}
+
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct BundleHeader {
