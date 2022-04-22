@@ -1,7 +1,6 @@
-<div align="center">
-  <h1><code>subspace-farmer</code></h1>
-  <strong>Farmer for the <a href="https://subspace.network/">Subspace Network Blockchain</a></strong>
-</div>
+# Subspace Node
+
+Reference implementation of Subspace Farmer for Subspace Network Blockchain.
 
 ## Overview
 **Notes:** The code is un-audited and not production ready, use it at your own risk.
@@ -18,28 +17,30 @@ Plotting time is roughly linear with respect to number of cores and clock speed 
 
 ### Storage Overhead
 
-In addition, the plot, a small Binary Search Tree (BST) is also stored on disk using RocksDB. This adds roughly 1% storage overhead. So creating a 1GB plot will actually consume about 1.01 GB of storage. 
+In addition to the plot a small Binary Search Tree (BST) is also stored on disk using RocksDB, which has roughly 1% of the storage size.
+Due to current implementation two of such databases might be stored at once, though this will improve in the future.
+There are also some supplementary database mappings.
 
-## Run with Docker
-The simplest way to use subspace-farmer is to use container image:
-```bash
-docker volume create subspace-farmer
-docker run --rm -it --mount source=subspace-farmer,target=/var/subspace subspacelabs/subspace-farmer --help
-```
+So creating a 1GB plot should actually consume about 1.03 GB of storage.
+Plot size parameter specified in farming command accounts for this overhead, so you don't need to worry about implementation details.
 
-`subspace-farmer` is the volume where plot and identity will be stored, it only needs to be created once.
+## Running
 
-## Install and Run Manually
-Instead of Docker you can also install subspace-farmer natively by compiling it using cargo.
+It is recommended to follow general farming instructions that explain how to run both farmer and node together.
+
+## Build from source
+
+Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
 
 RocksDB on Linux needs LLVM/Clang:
 ```bash
 sudo apt-get install llvm clang
 ```
 
-Then install the framer using Cargo:
+Then build the farmer using Cargo:
 ```
-cargo install subspace-farmer
+cargo build --profile production subspace-farmer
+target/production/subspace-farmer --version
 ```
 
 ## Usage
@@ -47,17 +48,19 @@ Commands here assume you installed native binary, but you can also easily adapt 
 
 Use `--help` to find out all available commands and their options:
 ```
-subspace-farmer --help
+target/production/subspace-farmer --help
 ```
 
 ### Start the farmer
 ```
-subspace-farmer farm
+target/production/subspace-farmer farm --reward-address st... --plot-size 100G
 ```
+
+`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar) and `100G` replaced with desired plot size.
 
 This will connect to local node and will try to solve on every slot notification, while also plotting all existing and new history of the blockchain in parallel.
 
-*NOTE: You need to have a subspace-client node running before starting farmer, otherwise it will not be able to start*
+*NOTE: You need to have a `subspace-node` running before starting farmer, otherwise it will not be able to start*
 
 By default, plots are written to the OS-specific users local data directory.
 
