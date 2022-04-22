@@ -2,13 +2,14 @@
 # below ones takes precedence over the upper ones
 
 # Global owners
-*                       @nazar-pc @rg3l3dr
+*                           @nazar-pc @rg3l3dr
 
-# Scripts
-/scripts/               @ImmaZoni @nazar-pc @rg3l3dr
-
-# Protocol
-/crates/                @liuchengxu @nazar-pc @rg3l3dr
-
-# Farmer
-/crates/subspace-farmer/ @ozgunozerk @liuchengxu @nazar-pc @rg3l3dr
+/crates                     @liuchengxu @nazar-pc @rg3l3dr
+/crates/pallet-*            @liuchengxu @nazar-pc @rg3l3dr @vedhavyas
+/crates/sp-*                @liuchengxu @nazar-pc @rg3l3dr @vedhavyas
+/crates/subspace-archiving  @liuchengxu @i1i1 @nazar-pc @rg3l3dr
+/crates/subspace-farmer     @i1i1 @nazar-pc @rg3l3dr
+/crates/subspace-networking @nazar-pc @rg3l3dr @shamil-gadelshin
+/crates/subspace-runtime*   @liuchengxu @nazar-pc @rg3l3dr @vedhavyas
+/crates/subspace-solving    @i1i1 @liuchengxu @nazar-pc @rg3l3dr
+/crates/substrate           @nazar-pc @rg3l3dr
