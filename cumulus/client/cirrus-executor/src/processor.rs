@@ -22,7 +22,7 @@ use std::{
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
-	AuthorityId, AuthoritySignature, ExecutionReceipt, ExecutorApi, OpaqueBundle,
+	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
 	OpaqueExecutionReceipt, SignedExecutionReceipt,
 };
 use subspace_core_primitives::Randomness;
@@ -214,7 +214,7 @@ where
 
 		// TODO: The applied txs can be fully removed from the transaction pool
 
-		let authority_id = self.primary_chain_client.runtime_api().authority_id(&BlockId::Hash(
+		let executor_id = self.primary_chain_client.runtime_api().executor_id(&BlockId::Hash(
 			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
 				.expect("Primary block hash must be the correct type; qed"),
 		))?;
@@ -222,13 +222,13 @@ where
 		if self.is_authority &&
 			SyncCryptoStore::has_keys(
 				&*self.keystore,
-				&[(ByteArray::to_raw_vec(&authority_id), AuthorityId::ID)],
+				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
 			) {
 			let to_sign = execution_receipt.hash().encode();
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
-				AuthorityId::ID,
-				&authority_id.clone().into(),
+				ExecutorId::ID,
+				&executor_id.clone().into(),
 				&to_sign,
 			) {
 				Ok(Some(signature)) => {
@@ -240,14 +240,14 @@ where
 
 					let signed_execution_receipt = SignedExecutionReceipt {
 						execution_receipt: execution_receipt.clone(),
-						signature: AuthoritySignature::decode(&mut signature.as_slice()).map_err(
+						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
 							|err| {
 								sp_blockchain::Error::Application(Box::from(format!(
 									"Failed to decode the signature of execution receipt: {err}"
 								)))
 							},
 						)?,
-						signer: authority_id,
+						signer: executor_id,
 					};
 
 					if let Err(e) =

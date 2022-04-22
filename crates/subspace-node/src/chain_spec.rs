@@ -21,7 +21,7 @@ use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::AuthorityId as ExecutorId;
+use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
     BalancesConfig, ExecutorConfig, GenesisConfig, SS58Prefix, SudoConfig, SystemConfig,
@@ -282,7 +282,7 @@ fn subspace_genesis_config(
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
-            authority: Some(executor_authority),
+            executor: Some(executor_authority),
         },
     }
 }

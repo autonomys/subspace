@@ -81,7 +81,7 @@ use sp_core::{
 	H256,
 };
 use sp_executor::{
-	AuthorityId, Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi,
+	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
 	FraudProof, InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
 	SignedExecutionReceipt,
 };
@@ -574,7 +574,7 @@ pub enum GossipMessageError {
 	#[error("The signature of execution receipt is invalid")]
 	BadExecutionReceiptSignature,
 	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
-	InvalidExecutionReceiptAuthor { got: AuthorityId, expected: AuthorityId },
+	InvalidExecutionReceiptAuthor { got: ExecutorId, expected: ExecutorId },
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
@@ -683,16 +683,16 @@ where
 			return Err(Self::Error::BadExecutionReceiptSignature)
 		}
 
-		let expected_authority_id = self
+		let expected_executor_id = self
 			.primary_chain_client
 			.runtime_api()
-			.authority_id(&BlockId::Hash(primary_hash))?;
-		if *signer != expected_authority_id {
+			.executor_id(&BlockId::Hash(primary_hash))?;
+		if *signer != expected_executor_id {
 			// TODO: handle the misbehavior.
 
 			return Err(Self::Error::InvalidExecutionReceiptAuthor {
 				got: signer.clone(),
-				expected: expected_authority_id,
+				expected: expected_executor_id,
 			})
 		}
 

@@ -42,16 +42,16 @@ mod app {
 }
 
 /// An executor authority signature.
-pub type AuthoritySignature = app::Signature;
+pub type ExecutorSignature = app::Signature;
 
 /// An executor authority identifier.
-pub type AuthorityId = app::Public;
+pub type ExecutorId = app::Public;
 
 /// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
 pub struct ExecutorKey;
 
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
-    type Public = AuthorityId;
+    type Public = ExecutorId;
 }
 
 /// Header of transaction bundle.
@@ -145,9 +145,9 @@ pub struct SignedExecutionReceipt<Hash> {
     /// Execution receipt
     pub execution_receipt: ExecutionReceipt<Hash>,
     /// Signature of the execution receipt.
-    pub signature: AuthoritySignature,
+    pub signature: ExecutorSignature,
     /// Signer of the signature.
-    pub signer: AuthorityId,
+    pub signer: ExecutorId,
 }
 
 // TODO: this might be unneccessary, ideally we could interact with the runtime using `ExecutionReceipt` directly.
@@ -342,7 +342,7 @@ sp_api::decl_runtime_apis! {
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the authority id of current executor.
-        fn authority_id() -> AuthorityId;
+        fn executor_id() -> ExecutorId;
     }
 }
 

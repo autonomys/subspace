@@ -1049,10 +1049,10 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn authority_id() -> sp_executor::AuthorityId {
-            Executor::authority()
-                .map(|(_account_id, authority_id)| authority_id)
-                .expect("Executor authority must be provided; qed")
+        fn executor_id() -> sp_executor::ExecutorId {
+            Executor::executor()
+                .map(|(_account_id, executor_id)| executor_id)
+                .expect("Executor must be provided; qed")
         }
     }
 

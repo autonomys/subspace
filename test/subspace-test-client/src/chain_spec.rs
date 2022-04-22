@@ -2,7 +2,7 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::AuthorityId as ExecutorId;
+use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
@@ -92,7 +92,7 @@ fn create_genesis_config(
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
-            authority: Some(executor_authority),
+            executor: Some(executor_authority),
         },
     }
 }
