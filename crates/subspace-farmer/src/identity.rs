@@ -1,5 +1,4 @@
 use anyhow::Error;
-use bip39::{Language, Mnemonic, MnemonicType};
 use log::debug;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{context::SigningContext, Keypair, PublicKey, SecretKey, Signature};
@@ -9,8 +8,10 @@ use std::path::Path;
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 use zeroize::{Zeroize, Zeroizing};
 
-// Signing context hardcoded in Substrate implementation and used for signing blocks.
+/// Signing context hardcoded in Substrate implementation and used for signing blocks.
 const SUBSTRATE_SIGNING_CONTEXT: &[u8] = b"substrate";
+/// Entropy used for identity generation.
+const ENTROPY_LENGTH: usize = 32;
 
 #[derive(Debug, Encode, Decode)]
 struct IdentityFileContents {
@@ -67,9 +68,7 @@ impl Identity {
     pub fn create<B: AsRef<Path>>(base_directory: B) -> Result<Self, Error> {
         let identity_file = base_directory.as_ref().join("identity.bin");
         debug!("Generating new keypair");
-        let entropy = Mnemonic::new(MnemonicType::Words24, Language::English)
-            .entropy()
-            .to_vec();
+        let entropy = rand::random::<[u8; ENTROPY_LENGTH]>().to_vec();
 
         let identity_file_contents = IdentityFileContents { entropy };
         fs::write(identity_file, identity_file_contents.encode())?;
@@ -86,16 +85,16 @@ impl Identity {
         })
     }
 
-    /// Imports identity from given mnemonic, overrides identity that might already exist.
-    pub fn import_from_mnemonic<B: AsRef<Path>>(
+    /// Create identity from given entropy, overrides identity that might already exist.
+    ///
+    /// Primarily used for testing.
+    #[doc(hidden)]
+    pub fn from_entropy<B: AsRef<Path>>(
         base_directory: B,
-        phrase: &str,
+        entropy: Vec<u8>,
     ) -> Result<Self, Error> {
         let identity_file = base_directory.as_ref().join("identity.bin");
-        debug!("Importing keypair from mnemonic");
-        let entropy = Mnemonic::from_phrase(phrase, Language::English)?
-            .entropy()
-            .to_vec();
+        debug!("Creating identity from provided entropy");
 
         let identity_file_contents = IdentityFileContents { entropy };
         fs::write(identity_file, identity_file_contents.encode())?;
@@ -133,7 +132,7 @@ impl Identity {
     }
 
     /// Sign substrate block.
-    pub fn block_signing(&self, header_hash: &[u8]) -> Signature {
+    pub fn sign_block_header_hash(&self, header_hash: &[u8]) -> Signature {
         self.keypair.sign(self.substrate_ctx.bytes(header_hash))
     }
 }
