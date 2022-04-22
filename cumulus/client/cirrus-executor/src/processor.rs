@@ -11,6 +11,7 @@ use sp_keystore::SyncCryptoStore;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
+	RuntimeAppPublic,
 };
 use std::{
 	borrow::Cow,
@@ -21,8 +22,8 @@ use std::{
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
-	AuthoritySignature, ExecutionReceipt, ExecutorApi, OpaqueBundle, OpaqueExecutionReceipt,
-	SignedExecutionReceipt, KEY_TYPE,
+	AuthorityId, AuthoritySignature, ExecutionReceipt, ExecutorApi, OpaqueBundle,
+	OpaqueExecutionReceipt, SignedExecutionReceipt,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
@@ -211,18 +212,21 @@ where
 			&execution_receipt,
 		)?;
 
-		// The applied txs can be fully removed from the transaction pool
+		// TODO: The applied txs can be fully removed from the transaction pool
 
 		let authority_id = self.primary_chain_client.runtime_api().authority_id(&BlockId::Hash(
 			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
 				.expect("Primary block hash must be the correct type; qed"),
 		))?;
 
-		if SyncCryptoStore::has_keys(&*self.keystore, &[(authority_id.to_raw_vec(), KEY_TYPE)]) {
+		if SyncCryptoStore::has_keys(
+			&*self.keystore,
+			&[(ByteArray::to_raw_vec(&authority_id), AuthorityId::ID)],
+		) {
 			let to_sign = execution_receipt.hash().encode();
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
-				KEY_TYPE,
+				AuthorityId::ID,
 				&authority_id.clone().into(),
 				&to_sign,
 			) {

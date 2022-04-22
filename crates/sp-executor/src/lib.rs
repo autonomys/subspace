@@ -32,7 +32,7 @@ use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
-pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
 
 mod app {
     use super::KEY_TYPE;
