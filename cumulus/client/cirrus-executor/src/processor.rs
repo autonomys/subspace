@@ -219,10 +219,11 @@ where
 				.expect("Primary block hash must be the correct type; qed"),
 		))?;
 
-		if SyncCryptoStore::has_keys(
-			&*self.keystore,
-			&[(ByteArray::to_raw_vec(&authority_id), AuthorityId::ID)],
-		) {
+		if self.is_authority &&
+			SyncCryptoStore::has_keys(
+				&*self.keystore,
+				&[(ByteArray::to_raw_vec(&authority_id), AuthorityId::ID)],
+			) {
 			let to_sign = execution_receipt.hash().encode();
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
