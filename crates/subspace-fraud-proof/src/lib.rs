@@ -157,7 +157,7 @@ where
     let delta_backend = DeltaBackend {
         backend: essence.backend_storage(),
         delta,
-        _phantom: std::marker::PhantomData::<H>,
+        _phantom: PhantomData::<H>,
     };
     TrieBackend::new(delta_backend, post_delta_root)
 }
@@ -165,7 +165,7 @@ where
 struct DeltaBackend<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>> {
     backend: &'a S,
     delta: DB,
-    _phantom: std::marker::PhantomData<H>,
+    _phantom: PhantomData<H>,
 }
 
 impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
@@ -181,16 +181,18 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
     }
 }
 
-struct RuntimCodeFetcher<Block: BlockT, C> {
+struct RuntimCodeFetcher<PBlock: BlockT, C, Hash: Encode + Decode> {
     client: Arc<C>,
-    at: Block::Hash,
+    at: PBlock::Hash,
+    _phantom: PhantomData<Hash>,
 }
 
-impl<Block, C> FetchRuntimeCode for RuntimCodeFetcher<Block, C>
+impl<PBlock, C, Hash> FetchRuntimeCode for RuntimCodeFetcher<PBlock, C, Hash>
 where
-    Block: BlockT,
-    C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    Hash: Encode + Decode,
 {
     fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
         self.client
@@ -201,15 +203,17 @@ where
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<Block, C, B, Exec, Spawn> {
+pub struct ProofVerifier<PBlock, C, B, Exec, Spawn, Hash> {
     client: Arc<C>,
     backend: Arc<B>,
     executor: Exec,
     spawn_handle: Spawn,
-    _phantom: PhantomData<Block>,
+    _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<Block, C, B, Exec: Clone, Spawn: Clone> Clone for ProofVerifier<Block, C, B, Exec, Spawn> {
+impl<PBlock, C, B, Exec: Clone, Spawn: Clone, Hash> Clone
+    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+{
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -221,14 +225,15 @@ impl<Block, C, B, Exec: Clone, Spawn: Clone> Clone for ProofVerifier<Block, C, B
     }
 }
 
-impl<Block, C, B, Exec, Spawn> ProofVerifier<Block, C, B, Exec, Spawn>
+impl<PBlock, C, B, Exec, Spawn, Hash> ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
-    Block: BlockT,
-    C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
-    B: backend::Backend<Block>,
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    B: backend::Backend<PBlock>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
+    Hash: Encode + Decode,
 {
     /// Constructs a new instance of [`ProofVerifier`].
     pub fn new(client: Arc<C>, backend: Arc<B>, executor: Exec, spawn_handle: Spawn) -> Self {
@@ -237,7 +242,7 @@ where
             backend,
             executor,
             spawn_handle,
-            _phantom: PhantomData::<Block>,
+            _phantom: PhantomData::<(PBlock, Hash)>,
         }
     }
 
@@ -253,8 +258,9 @@ where
 
         let code_fetcher = RuntimCodeFetcher {
             client: self.client.clone(),
-            at: Block::Hash::decode(&mut parent_hash.encode().as_slice())
+            at: PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
                 .expect("Block Hash must be H256; qed"),
+            _phantom: PhantomData::<Hash>,
         };
 
         let runtime_code = RuntimeCode {
@@ -277,7 +283,7 @@ where
         .map_err(VerificationError::BadProof)?;
 
         let new_post_state_root =
-            execution_phase.decode_execution_result::<Block::Header>(execution_result)?;
+            execution_phase.decode_execution_result::<PBlock::Header>(execution_result)?;
         let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())
             .expect("Block Hash must be H256; qed");
 
@@ -292,15 +298,16 @@ where
     }
 }
 
-impl<Block, C, B, Exec, Spawn> sp_executor::fraud_proof_ext::Externalities
-    for ProofVerifier<Block, C, B, Exec, Spawn>
+impl<PBlock, C, B, Exec, Spawn, Hash> sp_executor::fraud_proof_ext::Externalities
+    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
-    Block: BlockT,
-    C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
-    B: backend::Backend<Block>,
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    B: backend::Backend<PBlock>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
+    Hash: Encode + Decode + Send + Sync,
 {
     fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> bool {
         match self.verify(proof) {
@@ -313,14 +320,16 @@ where
     }
 }
 
-impl<Block, C, B, Exec, Spawn> ExtensionsFactory for ProofVerifier<Block, C, B, Exec, Spawn>
+impl<PBlock, C, B, Exec, Spawn, Hash> ExtensionsFactory
+    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
-    Block: BlockT,
-    C: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    C::Api: ExecutorApi<Block>,
-    B: backend::Backend<Block> + 'static,
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    B: backend::Backend<PBlock> + 'static,
     Exec: CodeExecutor + Clone + Send + Sync,
     Spawn: SpawnNamed + Clone + Send + Sync + 'static,
+    Hash: Encode + Decode + Send + Sync + 'static,
 {
     fn extensions_for(&self, _: sp_core::offchain::Capabilities) -> Extensions {
         let mut exts = Extensions::new();

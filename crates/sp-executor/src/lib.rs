@@ -150,17 +150,6 @@ pub struct SignedExecutionReceipt<Hash> {
     pub signer: ExecutorId,
 }
 
-// TODO: this might be unneccessary, ideally we could interact with the runtime using `ExecutionReceipt` directly.
-// Refer to the comment https://github.com/subspace/subspace/pull/219#discussion_r776749767
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct OpaqueExecutionReceipt(Vec<u8>);
-
-impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
-    fn from(inner: ExecutionReceipt<Hash>) -> Self {
-        Self(inner.encode())
-    }
-}
-
 /// Execution phase along with an optional encoded call data.
 ///
 /// Each execution phase has a different method for the runtime call.
@@ -310,10 +299,10 @@ pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
-    pub trait ExecutorApi {
+    pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
-            opaque_execution_receipt: OpaqueExecutionReceipt,
+            execution_receipt: ExecutionReceipt<SecondaryHash>,
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.

@@ -23,7 +23,7 @@ use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
 	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
-	OpaqueExecutionReceipt, SignedExecutionReceipt,
+	SignedExecutionReceipt,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
@@ -95,7 +95,7 @@ where
 		Error = sp_consensus::Error,
 	>,
 	PClient: ProvideRuntimeApi<PBlock>,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -106,7 +106,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<OpaqueExecutionReceipt>, sp_blockchain::Error> {
+	) -> Result<Option<ExecutionReceipt<Block::Hash>>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -257,7 +257,7 @@ where
 					}
 
 					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-					Ok(Some(execution_receipt.into()))
+					Ok(Some(execution_receipt))
 				},
 				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
 					"This should not happen as the existence of key was just checked",
