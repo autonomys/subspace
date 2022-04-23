@@ -64,6 +64,7 @@ pub type Executor = cirrus_client_executor::Executor<
 	Block,
 	PBlock,
 	Client,
+	subspace_test_client::Client,
 	sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
 	Backend,
 	CodeExecutor,
@@ -254,6 +255,7 @@ async fn start_node_impl(
 			backend.clone(),
 			Arc::clone(&code_executor),
 			validator,
+			params.keystore_container.sync_keystore(),
 		)
 		.await?;
 

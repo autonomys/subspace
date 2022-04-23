@@ -21,10 +21,11 @@ use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_core::{sr25519, Pair, Public};
+use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{
-    BalancesConfig, GenesisConfig, SS58Prefix, SudoConfig, SystemConfig, VestingConfig,
-    DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, SS58Prefix, SudoConfig, SystemConfig,
+    VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 
@@ -139,6 +140,10 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
                 sudo_account,
                 balances,
                 vesting_schedules,
+                (
+                    get_account_id_from_seed("Alice"),
+                    get_from_seed::<ExecutorId>("Alice"),
+                ),
             )
         },
         // Bootnodes
@@ -185,6 +190,10 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
                 ],
                 vec![],
+                (
+                    get_account_id_from_seed("Alice"),
+                    get_from_seed::<ExecutorId>("Alice"),
+                ),
             )
         },
         // Bootnodes
@@ -231,6 +240,10 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
                     (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
                 ],
                 vec![],
+                (
+                    get_account_id_from_seed("Alice"),
+                    get_from_seed::<ExecutorId>("Alice"),
+                ),
             )
         },
         // Bootnodes
@@ -254,6 +267,7 @@ fn subspace_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
+    executor_authority: (AccountId, ExecutorId),
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -267,5 +281,8 @@ fn subspace_genesis_config(
             key: Some(sudo_account),
         },
         vesting: VestingConfig { vesting },
+        executor: ExecutorConfig {
+            executor: Some(executor_authority),
+        },
     }
 }

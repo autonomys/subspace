@@ -17,8 +17,8 @@ use subspace_runtime_primitives::Hash as PHash;
 
 use super::{Executor, LOG_TARGET};
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
