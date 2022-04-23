@@ -1,0 +1,36 @@
+FROM ubuntu:22.04
+
+ARG RUSTC_VERSION=nightly-2022-02-15
+
+WORKDIR /code
+
+RUN \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        llvm \
+        clang \
+        make && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
+
+RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
+
+COPY Cargo.lock /code/Cargo.lock
+COPY Cargo.toml /code/Cargo.toml
+COPY rust-toolchain.toml /code/rust-toolchain.toml
+
+COPY crates /code/crates
+COPY cumulus /code/cumulus
+COPY substrate /code/substrate
+COPY test /code/test
+
+# Up until this line all Rust images in this repo should be the same to share the same layers
+
+RUN \
+    /root/.cargo/bin/cargo build --profile production --package subspace-runtime && \
+    mv target/production/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm subspace_runtime.compact.compressed.wasm && \
+    rm -rf target
+
+ENTRYPOINT ["/usr/bin/cat", "subspace_runtime.compact.compressed.wasm"]
