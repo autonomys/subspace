@@ -1006,17 +1006,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_executor::ExecutorApi<Block> for Runtime {
+    impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
-            opaque_execution_receipt: sp_executor::OpaqueExecutionReceipt,
+            execution_receipt: sp_executor::ExecutionReceipt<cirrus_primitives::Hash>,
         ) -> Option<()> {
-            <sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>>::decode(
-                &mut opaque_execution_receipt.encode().as_slice(),
-            )
-            .ok()
-            .and_then(|execution_receipt| {
-                Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
-            })
+            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
         }
 
         fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()> {

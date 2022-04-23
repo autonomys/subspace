@@ -82,8 +82,7 @@ use sp_core::{
 };
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
-	FraudProof, InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
-	SignedExecutionReceipt,
+	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -110,7 +109,7 @@ where
 	primary_chain_client: Arc<PClient>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle<PBlock>,
+	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
@@ -172,7 +171,7 @@ where
 		+ Send
 		+ Sync
 		+ 'static,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -535,7 +534,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<OpaqueExecutionReceipt> {
+	) -> Option<ExecutionReceipt<Block::Hash>> {
 		match self
 			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
 			.await
@@ -612,7 +611,7 @@ where
 		+ Send
 		+ Sync
 		+ 'static,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

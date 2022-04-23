@@ -18,6 +18,7 @@
 
 pub mod rpc;
 
+use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use futures::channel::mpsc;
 use sc_basic_authorship::ProposerFactory;
@@ -47,7 +48,7 @@ pub trait RuntimeApiCollection:
     sp_api::ApiExt<Block>
     + sp_api::Metadata<Block>
     + sp_block_builder::BlockBuilder<Block>
-    + sp_executor::ExecutorApi<Block>
+    + sp_executor::ExecutorApi<Block, SecondaryHash>
     + sp_offchain::OffchainWorkerApi<Block>
     + sp_session::SessionKeys<Block>
     + sp_consensus_subspace::SubspaceApi<Block>
@@ -64,7 +65,7 @@ where
     Api: sp_api::ApiExt<Block>
         + sp_api::Metadata<Block>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_executor::ExecutorApi<Block>
+        + sp_executor::ExecutorApi<Block, SecondaryHash>
         + sp_offchain::OffchainWorkerApi<Block>
         + sp_session::SessionKeys<Block>
         + sp_consensus_subspace::SubspaceApi<Block>

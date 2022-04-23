@@ -7,6 +7,7 @@
 
 #![warn(missing_docs)]
 
+use cirrus_primitives::Hash as SecondaryHash;
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
@@ -190,7 +191,7 @@ impl<Block, C> FetchRuntimeCode for RuntimCodeFetcher<Block, C>
 where
     Block: BlockT,
     C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
+    C::Api: ExecutorApi<Block, SecondaryHash>,
 {
     fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
         self.client
@@ -225,7 +226,7 @@ impl<Block, C, B, Exec, Spawn> ProofVerifier<Block, C, B, Exec, Spawn>
 where
     Block: BlockT,
     C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
+    C::Api: ExecutorApi<Block, SecondaryHash>,
     B: backend::Backend<Block>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
@@ -297,7 +298,7 @@ impl<Block, C, B, Exec, Spawn> sp_executor::fraud_proof_ext::Externalities
 where
     Block: BlockT,
     C: ProvideRuntimeApi<Block> + Send + Sync,
-    C::Api: ExecutorApi<Block>,
+    C::Api: ExecutorApi<Block, SecondaryHash>,
     B: backend::Backend<Block>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
@@ -317,7 +318,7 @@ impl<Block, C, B, Exec, Spawn> ExtensionsFactory for ProofVerifier<Block, C, B, 
 where
     Block: BlockT,
     C: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    C::Api: ExecutorApi<Block>,
+    C::Api: ExecutorApi<Block, SecondaryHash>,
     B: backend::Backend<Block> + 'static,
     Exec: CodeExecutor + Clone + Send + Sync,
     Spawn: SpawnNamed + Clone + Send + Sync + 'static,
