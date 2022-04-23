@@ -512,6 +512,7 @@ impl Chain for PolkadotLike {
     type BlockNumber = u32;
     type Hash = <BlakeTwo256 as Hasher>::Out;
     type Header = generic::Header<u32, BlakeTwo256>;
+    type Hasher = BlakeTwo256;
 }
 
 /// Type used to represent a FeedId or ChainId
