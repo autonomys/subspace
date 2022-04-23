@@ -36,10 +36,29 @@ mod pallet {
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
         OpaqueBundle,
     };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
+    use sp_std::fmt::Debug;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+        /// Secondary chain block hash type.
+        type SecondaryHash: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaybeDisplay
+            + SimpleBitOps
+            + Ord
+            + Default
+            + Copy
+            + CheckEqual
+            + sp_std::hash::Hash
+            + AsRef<[u8]>
+            + AsMut<[u8]>
+            + MaybeMallocSizeOf
+            + MaxEncodedLen;
     }
 
     #[pallet::pallet]
@@ -72,7 +91,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            execution_receipt: ExecutionReceipt<T::Hash>,
+            execution_receipt: ExecutionReceipt<T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -310,7 +329,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        execution_receipt: ExecutionReceipt<T::Hash>,
+        execution_receipt: ExecutionReceipt<T::SecondaryHash>,
     ) -> frame_support::pallet_prelude::DispatchResult {
         let call = Call::submit_execution_receipt { execution_receipt };
 

@@ -492,6 +492,7 @@ impl pallet_offences_subspace::Config for Runtime {
 
 impl pallet_executor::Config for Runtime {
     type Event = Event;
+    type SecondaryHash = cirrus_primitives::Hash;
 }
 
 parameter_types! {
