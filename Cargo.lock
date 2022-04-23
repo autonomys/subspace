@@ -8523,7 +8523,6 @@ dependencies = [
 name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "hash-db",
  "parity-scale-codec",
  "sc-client-api",
