@@ -39,9 +39,6 @@ The address of your account will be necessary at the last step.
 --wasm-execution compiled `
 --execution wasm `
 --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" `
---rpc-cors all `
---rpc-methods unsafe `
---ws-external `
 --validator `
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" `
 --telemetry-url "wss://telemetry.subspace.network/submit 1" `
@@ -93,9 +90,6 @@ The address of your account will be necessary at the last step.
   --wasm-execution compiled \
   --execution wasm \
   --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
-  --rpc-cors all \
-  --rpc-methods unsafe \
-  --ws-external \
   --validator \
   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
   --telemetry-url "wss://telemetry.subspace.network/submit 1" \
@@ -150,9 +144,6 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
   --wasm-execution compiled \
   --execution wasm \
   --bootnodes "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr" \
-  --rpc-cors all \
-  --rpc-methods unsafe \
-  --ws-external \
   --validator \
   --telemetry-url "wss://telemetry.polkadot.io/submit/ 1" \
   --telemetry-url "wss://telemetry.subspace.network/submit 1" \
@@ -207,8 +198,6 @@ services:
 # If port 30333 is already occupied by another Substrate-based node, replace all
 # occurrences of `30333` in this file with another value
       - "0.0.0.0:30333:30333"
-# Un-comment following line to unlock node's WebSocket RPC
-#      - "127.0.0.1:9944:9944"
     restart: unless-stopped
     command: [
       "--chain", "testnet",
@@ -220,14 +209,16 @@ services:
       "--telemetry-url", "wss://telemetry.polkadot.io/submit/ 1",
       "--telemetry-url", "wss://telemetry.subspace.network/submit/ 1",
       "--rpc-cors", "all",
-      "--rpc-methods", "unsafe",
-      "--ws-external",
+      "--rpc-methods", "safe",
+      "--unsafe-ws-external",
       "--validator",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
     ]
 
   farmer:
+    depends_on:
+      - node
 # Replace `snapshot-DATE` with latest release (like `snapshot-2022-mar-09`)
     image: ghcr.io/subspace/farmer:snapshot-DATE
 # Un-comment following 2 lines to unlock farmer's RPC
