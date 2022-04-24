@@ -47,7 +47,7 @@ impl MultiFarming {
                     let identity = Identity::open_or_create(&base_directory)?;
                     let public_key = identity.public_key().to_bytes().into();
 
-                    let plot = tokio::task::spawn_blocking({
+                    let plot_future = tokio::task::spawn_blocking({
                         let base_directory = base_directory.clone();
 
                         move || {
@@ -56,20 +56,21 @@ impl MultiFarming {
                             info!("Opening plot");
                             Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
                         }
-                    })
-                    .await
-                    .unwrap()?;
+                    });
 
-                    let plot_commitments = tokio::task::spawn_blocking({
+                    let plot_commitments_future = tokio::task::spawn_blocking({
                         let path = base_directory.join("commitments");
 
                         move || {
                             info!("Opening commitments");
                             Commitments::new(path)
                         }
-                    })
-                    .await
-                    .unwrap()?;
+                    });
+
+                    let (plot_result, plot_commitments_result) =
+                        tokio::join!(plot_future, plot_commitments_future);
+                    let (plot, plot_commitments) =
+                        (plot_result.unwrap()?, plot_commitments_result.unwrap()?);
 
                     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
