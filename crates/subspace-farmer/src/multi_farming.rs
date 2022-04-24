@@ -38,13 +38,41 @@ impl MultiFarming {
         for (plot_index, max_plot_pieces) in plot_sizes.into_iter().enumerate() {
             let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
             std::fs::create_dir_all(&base_directory)?;
-            let (plot, subspace_codec, plot_commitments, farming) = farm_single_plot(
-                base_directory,
-                reward_address,
+
+            let identity = Identity::open_or_create(&base_directory)?;
+            let public_key = identity.public_key().to_bytes().into();
+
+            // TODO: This doesn't account for the fact that node can
+            // have a completely different history to what farmer expects
+            info!("Opening plot");
+            let plot = tokio::task::spawn_blocking({
+                let base_directory = base_directory.clone();
+
+                move || Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
+            })
+            .await
+            .unwrap()?;
+
+            info!("Opening commitments");
+            let plot_commitments = tokio::task::spawn_blocking({
+                let path = base_directory.join("commitments");
+
+                move || Commitments::new(path)
+            })
+            .await
+            .unwrap()?;
+
+            let subspace_codec = SubspaceCodec::new(identity.public_key());
+
+            // Start the farming task
+            let farming = Farming::start(
+                plot.clone(),
+                plot_commitments.clone(),
                 client.clone(),
-                max_plot_pieces,
-            )
-            .await?;
+                identity,
+                reward_address,
+            );
+
             plots.push(plot);
             subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
@@ -113,47 +141,4 @@ impl MultiFarming {
 
         Ok(())
     }
-}
-
-/// Starts farming for a single plot in specified base directory.
-pub(crate) async fn farm_single_plot(
-    base_directory: impl AsRef<Path>,
-    reward_address: PublicKey,
-    client: NodeRpcClient,
-    max_plot_pieces: u64,
-) -> anyhow::Result<(Plot, SubspaceCodec, Commitments, Farming)> {
-    let identity = Identity::open_or_create(&base_directory)?;
-    let public_key = identity.public_key().to_bytes().into();
-
-    // TODO: This doesn't account for the fact that node can
-    // have a completely different history to what farmer expects
-    info!("Opening plot");
-    let plot = tokio::task::spawn_blocking({
-        let base_directory = base_directory.as_ref().to_owned();
-
-        move || Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
-    })
-    .await
-    .unwrap()?;
-
-    info!("Opening commitments");
-    let commitments_fut = tokio::task::spawn_blocking({
-        let path = base_directory.as_ref().join("commitments");
-
-        move || Commitments::new(path)
-    });
-    let commitments = commitments_fut.await.unwrap()?;
-
-    let subspace_codec = SubspaceCodec::new(identity.public_key());
-
-    // Start the farming task
-    let farming_instance = Farming::start(
-        plot.clone(),
-        commitments.clone(),
-        client.clone(),
-        identity,
-        reward_address,
-    );
-
-    Ok((plot, subspace_codec, commitments, farming_instance))
 }
