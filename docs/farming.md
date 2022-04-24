@@ -215,10 +215,16 @@ services:
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
     ]
+    healthcheck:
+      timeout: 5s
+# If node setup takes longer then expected, you want to increase `interval` and `retries` number.
+      interval: 30s
+      retries: 5
 
   farmer:
     depends_on:
-      - node
+      node:
+        condition: service_healthy
 # Replace `snapshot-DATE` with latest release (like `snapshot-2022-mar-09`)
     image: ghcr.io/subspace/farmer:snapshot-DATE
 # Un-comment following 2 lines to unlock farmer's RPC
