@@ -868,6 +868,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-keyring",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
@@ -1003,6 +1004,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-io",
  "sp-offchain",
@@ -1037,6 +1039,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-io",
  "sp-offchain",
@@ -5018,6 +5021,8 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-executor",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7969,6 +7974,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-api",
+ "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
  "sp-externalities",
@@ -8599,6 +8605,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-primitives",
  "cirrus-runtime",
  "frame-benchmarking",
  "frame-executive",
@@ -8660,6 +8667,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "cirrus-primitives",
  "derive_more",
  "frame-support",
  "frame-system-rpc-runtime-api",
@@ -8752,6 +8760,7 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "cirrus-primitives",
  "cirrus-test-runtime",
  "frame-executive",
  "frame-support",

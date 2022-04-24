@@ -24,8 +24,8 @@ use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_executor::{
-	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	OpaqueExecutionReceipt,
+	BundleEquivocationProof, ExecutionReceipt, ExecutorApi, FraudProof, InvalidTransactionProof,
+	OpaqueBundle,
 };
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
@@ -68,26 +68,26 @@ pub type BundlerFn = Box<
 /// Will be called with the hash of the primary chain block.
 ///
 /// Returns an optional [`OpaqueExecutionReceipt`].
-pub type ProcessorFn = Box<
+pub type ProcessorFn<Hash> = Box<
 	dyn Fn(
 			PHash,
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<OpaqueExecutionReceipt>> + Send>>
+		) -> Pin<Box<dyn Future<Output = Option<ExecutionReceipt<Hash>>> + Send>>
 		+ Send
 		+ Sync,
 >;
 
 /// Configuration for the collation generator
-pub struct CollationGenerationConfig {
+pub struct CollationGenerationConfig<Hash> {
 	/// Transaction bundle function. See [`BundlerFn`] for more details.
 	pub bundler: BundlerFn,
 	/// State processor function. See [`ProcessorFn`] for more details.
-	pub processor: ProcessorFn,
+	pub processor: ProcessorFn<Hash>,
 }
 
-impl std::fmt::Debug for CollationGenerationConfig {
+impl<Hash> std::fmt::Debug for CollationGenerationConfig<Hash> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "CollationGenerationConfig {{ ... }}")
 	}
@@ -95,9 +95,9 @@ impl std::fmt::Debug for CollationGenerationConfig {
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
-enum CollationGenerationMessage {
+enum CollationGenerationMessage<Hash> {
 	/// Initialize the collation generation subsystem
-	Initialize(CollationGenerationConfig),
+	Initialize(CollationGenerationConfig<Hash>),
 	/// Fraud proof needs to be submitted to primary chain.
 	FraudProof(FraudProof),
 	/// Bundle equivocation proof needs to be submitted to primary chain.
@@ -112,9 +112,9 @@ const LOG_TARGET: &str = "overseer";
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient>(
+async fn process_primary_block<PBlock, PClient, Hash>(
 	client: Arc<PClient>,
-	config: &CollationGenerationConfig,
+	config: &CollationGenerationConfig<Hash>,
 	block_hash: PBlock::Hash,
 ) -> Result<(), ApiError>
 where
@@ -125,7 +125,8 @@ where
 		+ Send
 		+ 'static
 		+ Sync,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Hash>,
+	Hash: Encode + Decode,
 {
 	let block_id = BlockId::Hash(block_hash);
 	let extrinsics = match client.block_body(&block_id) {
@@ -182,7 +183,7 @@ where
 	let non_generic_block_hash =
 		PHash::decode(&mut block_hash.encode().as_slice()).expect("Hash type must be correct");
 
-	let opaque_execution_receipt = match (config.processor)(
+	let execution_receipt = match (config.processor)(
 		non_generic_block_hash,
 		bundles,
 		shuffling_seed,
@@ -190,7 +191,7 @@ where
 	)
 	.await
 	{
-		Some(opaque_execution_receipt) => opaque_execution_receipt,
+		Some(execution_receipt) => execution_receipt,
 		None => {
 			tracing::debug!(
 				target: LOG_TARGET,
@@ -205,7 +206,7 @@ where
 	// TODO: Handle returned result?
 	client
 		.runtime_api()
-		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), opaque_execution_receipt)?;
+		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
 	Ok(())
 }
@@ -226,24 +227,24 @@ where
 ///
 /// [`Overseer`]: struct.Overseer.html
 #[derive(Clone)]
-pub struct OverseerHandle<PBlock: BlockT>(mpsc::Sender<Event<PBlock>>);
+pub struct OverseerHandle<PBlock: BlockT, Hash>(mpsc::Sender<Event<PBlock, Hash>>);
 
-impl<Block> OverseerHandle<Block>
+impl<PBlock, Hash> OverseerHandle<PBlock, Hash>
 where
-	Block: BlockT,
+	PBlock: BlockT,
 {
 	/// Create a new [`Handle`].
-	fn new(raw: mpsc::Sender<Event<Block>>) -> Self {
+	fn new(raw: mpsc::Sender<Event<PBlock, Hash>>) -> Self {
 		Self(raw)
 	}
 
 	/// Inform the `Overseer` that that some block was imported.
-	async fn block_imported(&mut self, block: BlockInfo<Block>) {
+	async fn block_imported(&mut self, block: BlockInfo<PBlock>) {
 		self.send_and_log_error(Event::BlockImported(block)).await
 	}
 
 	/// Send some message to one of the `Subsystem`s.
-	async fn send_msg(&mut self, msg: CollationGenerationMessage) {
+	async fn send_msg(&mut self, msg: CollationGenerationMessage<Hash>) {
 		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
 	}
 
@@ -253,14 +254,14 @@ where
 	}
 
 	/// Most basic operation, to stop a server.
-	async fn send_and_log_error(&mut self, event: Event<Block>) {
+	async fn send_and_log_error(&mut self, event: Event<PBlock, Hash>) {
 		if self.0.send(event).await.is_err() {
 			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
 		}
 	}
 
 	/// TODO
-	pub async fn initialize(&mut self, config: CollationGenerationConfig) {
+	pub async fn initialize(&mut self, config: CollationGenerationConfig<Hash>) {
 		self.send_msg(CollationGenerationMessage::Initialize(config)).await;
 	}
 
@@ -322,7 +323,7 @@ where
 
 /// An event from outside the overseer scope, such
 /// as the substrate framework or user interaction.
-enum Event<PBlock>
+enum Event<PBlock, Hash>
 where
 	PBlock: BlockT,
 {
@@ -331,16 +332,16 @@ where
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
-	MsgToSubsystem(CollationGenerationMessage),
+	MsgToSubsystem(CollationGenerationMessage<Hash>),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<PBlock, Client>(
+pub async fn forward_events<PBlock, Client, Hash>(
 	client: Arc<Client>,
 	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
-	mut handle: OverseerHandle<PBlock>,
+	mut handle: OverseerHandle<PBlock, Hash>,
 ) where
 	PBlock: BlockT,
 	Client: HeaderBackend<PBlock>,
@@ -380,21 +381,21 @@ pub async fn forward_events<PBlock, Client>(
 /// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
 /// The overseer.
-pub struct Overseer<PBlock, PClient>
+pub struct Overseer<PBlock, PClient, Hash>
 where
 	PBlock: BlockT,
 {
 	primary_chain_client: Arc<PClient>,
-	config: Option<Arc<CollationGenerationConfig>>,
+	config: Option<Arc<CollationGenerationConfig<Hash>>>,
 	/// A user specified addendum field.
 	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	/// A user specified addendum field.
 	active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
 	/// Events that are sent to the overseer from the outside world.
-	events_rx: mpsc::Receiver<Event<PBlock>>,
+	events_rx: mpsc::Receiver<Event<PBlock, Hash>>,
 }
 
-impl<PBlock, PClient> Overseer<PBlock, PClient>
+impl<PBlock, PClient, Hash> Overseer<PBlock, PClient, Hash>
 where
 	PBlock: BlockT,
 	PClient: HeaderBackend<PBlock>
@@ -403,14 +404,15 @@ where
 		+ Send
 		+ 'static
 		+ Sync,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Hash>,
+	Hash: Encode + Decode,
 {
 	/// Create a new overseer.
 	pub fn new(
 		primary_chain_client: Arc<PClient>,
 		leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-	) -> (Self, OverseerHandle<PBlock>) {
+	) -> (Self, OverseerHandle<PBlock, Hash>) {
 		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
 		let overseer =
 			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
@@ -524,7 +526,7 @@ where
 
 	async fn handle_message(
 		&mut self,
-		message: CollationGenerationMessage,
+		message: CollationGenerationMessage<Hash>,
 	) -> Result<(), ApiError> {
 		let client = &self.primary_chain_client;
 

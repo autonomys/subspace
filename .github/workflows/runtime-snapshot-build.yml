@@ -1,0 +1,38 @@
+name: Runtime snapshot build
+
+on:
+  push:
+    tags:
+      - 'runtime-snapshot-*'
+
+jobs:
+  runtime:
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build runtime
+        id: build
+        uses: docker/build-push-action@v2
+        with:
+          file: Dockerfile-runtime
+          push: false
+
+      - name: Extract runtime
+        run: |
+          SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' crates/subspace-runtime/src/lib.rs)
+          docker run --rm -u root ${{ steps.build.outputs.digest }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
+          echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
+
+      - name: Upload runtime to assets
+        uses: alexellis/upload-assets@0.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["subspace_runtime-${{ env.SPEC_VERSION }}.compact.compressed.wasm"]'
+

@@ -81,12 +81,14 @@ use sp_core::{
 	H256,
 };
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, FraudProof,
-	InvalidTransactionProof, OpaqueBundle, OpaqueExecutionReceipt,
+	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
+	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedExecutionReceipt,
 };
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
+	RuntimeAppPublic,
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
@@ -97,42 +99,28 @@ use tracing::Instrument;
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
 
-/// Type alias for APIs required from primary chain client
-trait PrimaryChainClient<Block>:
-	HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static
-where
-	Block: BlockT,
-{
-}
-
-impl<Block, T> PrimaryChainClient<Block> for T
-where
-	Block: BlockT,
-	T: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
-{
-}
-
 /// The implementation of the Cirrus `Executor`.
-pub struct Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
 {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<dyn PrimaryChainClient<PBlock>>,
+	primary_chain_client: Arc<PClient>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle<PBlock>,
+	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
 	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
-	execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
 	is_authority: bool,
+	keystore: SyncCryptoStorePtr,
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E> Clone
-	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
+	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -149,6 +137,7 @@ where
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
+			keystore: self.keystore.clone(),
 		}
 	}
 }
@@ -158,8 +147,8 @@ type TransactionFor<Backend, Block> =
 		HashFor<Block>,
 	>>::Transaction;
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -176,6 +165,13 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ Sync
+		+ 'static,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -183,7 +179,7 @@ where
 {
 	/// Create a new instance.
 	#[allow(clippy::too_many_arguments)]
-	pub async fn new<PClient, SE, SC, IBNS, NSNS>(
+	pub async fn new<SE, SC, IBNS, NSNS>(
 		primary_chain_client: Arc<PClient>,
 		spawn_essential: &SE,
 		select_chain: &SC,
@@ -193,19 +189,13 @@ where
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
-		execution_receipt_sender: Arc<TracingUnboundedSender<ExecutionReceipt<Block::Hash>>>,
+		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
 		is_authority: bool,
+		keystore: SyncCryptoStorePtr,
 	) -> Result<Self, sp_consensus::Error>
 	where
-		PClient: HeaderBackend<PBlock>
-			+ BlockBackend<PBlock>
-			+ ProvideRuntimeApi<PBlock>
-			+ Send
-			+ 'static
-			+ Sync,
-		PClient::Api: ExecutorApi<PBlock>,
 		SE: SpawnEssentialNamed,
 		SC: SelectChain<PBlock>,
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
@@ -266,6 +256,7 @@ where
 			backend,
 			code_executor,
 			is_authority,
+			keystore,
 		};
 
 		let span = tracing::Span::current();
@@ -543,7 +534,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<OpaqueExecutionReceipt> {
+	) -> Option<ExecutionReceipt<Block::Hash>> {
 		match self
 			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
 			.await
@@ -574,9 +565,15 @@ pub enum GossipMessageError {
 	#[error(transparent)]
 	Client(Box<sp_blockchain::Error>),
 	#[error(transparent)]
+	RuntimeApi(#[from] sp_api::ApiError),
+	#[error(transparent)]
 	RecvError(#[from] crossbeam::channel::RecvError),
 	#[error("Failed to send local receipt result because the channel is disconnected")]
 	SendError,
+	#[error("The signature of execution receipt is invalid")]
+	BadExecutionReceiptSignature,
+	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
+	InvalidExecutionReceiptAuthor { got: ExecutorId, expected: ExecutorId },
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
@@ -585,8 +582,8 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E> GossipMessageHandler<Block>
-	for Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> GossipMessageHandler<Block>
+	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -608,6 +605,13 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ Sync
+		+ 'static,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -663,14 +667,33 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		execution_receipt: &ExecutionReceipt<Block::Hash>,
+		signed_execution_receipt: &SignedExecutionReceipt<Block::Hash>,
 	) -> Result<Action, Self::Error> {
-		// TODO: validate the Proof-of-Election
+		let SignedExecutionReceipt { execution_receipt, signature, signer } =
+			signed_execution_receipt;
 
 		let block_hash = execution_receipt.secondary_hash;
 		let primary_hash =
 			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
 				.expect("Hash type must be correct");
+
+		let msg = execution_receipt.hash().encode();
+		if !signer.verify(&msg, signature) {
+			return Err(Self::Error::BadExecutionReceiptSignature)
+		}
+
+		let expected_executor_id = self
+			.primary_chain_client
+			.runtime_api()
+			.executor_id(&BlockId::Hash(primary_hash))?;
+		if *signer != expected_executor_id {
+			// TODO: handle the misbehavior.
+
+			return Err(Self::Error::InvalidExecutionReceiptAuthor {
+				got: signer.clone(),
+				expected: expected_executor_id,
+			})
+		}
 
 		let block_number = TryInto::<BlockNumber>::try_into(
 			self.primary_chain_client

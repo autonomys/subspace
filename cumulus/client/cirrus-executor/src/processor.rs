@@ -6,9 +6,12 @@ use sc_consensus::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
+use sp_core::ByteArray;
+use sp_keystore::SyncCryptoStore;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
+	RuntimeAppPublic,
 };
 use std::{
 	borrow::Cow,
@@ -18,7 +21,10 @@ use std::{
 
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{ExecutionReceipt, OpaqueBundle, OpaqueExecutionReceipt};
+use sp_executor::{
+	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
+	SignedExecutionReceipt,
+};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -68,8 +74,8 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -88,6 +94,8 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
+	PClient: ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -98,7 +106,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<OpaqueExecutionReceipt>, sp_blockchain::Error> {
+	) -> Result<Option<ExecutionReceipt<Block::Hash>>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -204,19 +212,60 @@ where
 			&execution_receipt,
 		)?;
 
-		// The applied txs can be fully removed from the transaction pool
+		// TODO: The applied txs can be fully removed from the transaction pool
 
-		// TODO: win the executor election to broadcast ER, authority node only.
-		let is_elected = self.is_authority;
+		let executor_id = self.primary_chain_client.runtime_api().executor_id(&BlockId::Hash(
+			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
+				.expect("Primary block hash must be the correct type; qed"),
+		))?;
 
-		if is_elected {
-			if let Err(e) = self.execution_receipt_sender.unbounded_send(execution_receipt.clone())
-			{
-				tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send execution receipt");
+		if self.is_authority &&
+			SyncCryptoStore::has_keys(
+				&*self.keystore,
+				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
+			) {
+			let to_sign = execution_receipt.hash().encode();
+			match SyncCryptoStore::sign_with(
+				&*self.keystore,
+				ExecutorId::ID,
+				&executor_id.clone().into(),
+				&to_sign,
+			) {
+				Ok(Some(signature)) => {
+					tracing::debug!(
+						target: LOG_TARGET,
+						"Generating the signed execution receipt for #{}",
+						header_hash
+					);
+
+					let signed_execution_receipt = SignedExecutionReceipt {
+						execution_receipt: execution_receipt.clone(),
+						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
+							|err| {
+								sp_blockchain::Error::Application(Box::from(format!(
+									"Failed to decode the signature of execution receipt: {err}"
+								)))
+							},
+						)?,
+						signer: executor_id,
+					};
+
+					if let Err(e) =
+						self.execution_receipt_sender.unbounded_send(signed_execution_receipt)
+					{
+						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
+					}
+
+					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
+					Ok(Some(execution_receipt))
+				},
+				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
+					"This should not happen as the existence of key was just checked",
+				))),
+				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
+					"Error occurred when signing the execution receipt, error: {error}"
+				)))),
 			}
-
-			// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-			Ok(Some(execution_receipt.into()))
 		} else {
 			Ok(None)
 		}

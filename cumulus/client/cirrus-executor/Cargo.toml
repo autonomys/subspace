@@ -16,6 +16,7 @@ sp-block-builder = { git = "https://github.com/paritytech/substrate", rev = "c4f
 sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-consensus-slots = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-core = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sp-keystore = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-trie = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 

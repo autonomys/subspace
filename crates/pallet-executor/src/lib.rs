@@ -33,13 +33,32 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof,
+        BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
         OpaqueBundle,
     };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
+    use sp_std::fmt::Debug;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+        /// Secondary chain block hash type.
+        type SecondaryHash: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaybeDisplay
+            + SimpleBitOps
+            + Ord
+            + Default
+            + Copy
+            + CheckEqual
+            + sp_std::hash::Hash
+            + AsRef<[u8]>
+            + AsMut<[u8]>
+            + MaybeMallocSizeOf
+            + MaxEncodedLen;
     }
 
     #[pallet::pallet]
@@ -72,7 +91,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            execution_receipt: ExecutionReceipt<T::Hash>,
+            execution_receipt: ExecutionReceipt<T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -166,6 +185,34 @@ mod pallet {
             Self::deposit_event(Event::InvalidTransactionProofProcessed);
 
             Ok(())
+        }
+    }
+
+    /// A tuple of (stable_executor_id, executor_signing_key).
+    #[pallet::storage]
+    #[pallet::getter(fn executor)]
+    pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
+
+    #[pallet::genesis_config]
+    pub struct GenesisConfig<T: Config> {
+        pub executor: Option<(T::AccountId, ExecutorId)>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self { executor: None }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            <Executor<T>>::put(
+                self.executor
+                    .clone()
+                    .expect("Executor authority must be provided at genesis; qed"),
+            );
         }
     }
 
@@ -282,7 +329,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        execution_receipt: ExecutionReceipt<T::Hash>,
+        execution_receipt: ExecutionReceipt<T::SecondaryHash>,
     ) -> frame_support::pallet_prelude::DispatchResult {
         let call = Call::submit_execution_receipt { execution_receipt };
 

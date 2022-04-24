@@ -4,7 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sc_utils::mpsc::TracingUnboundedReceiver;
-use sp_executor::{Bundle, ExecutionReceipt};
+use sp_executor::{Bundle, SignedExecutionReceipt};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
@@ -17,7 +17,7 @@ where
 	gossip_validator: Arc<GossipValidator<Block, Executor>>,
 	gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 	bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
-	execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
+	execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 }
 
 impl<Block, Executor> GossipWorker<Block, Executor>
@@ -29,7 +29,7 @@ where
 		gossip_validator: Arc<GossipValidator<Block, Executor>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 		bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
-		execution_receipt_receiver: TracingUnboundedReceiver<ExecutionReceipt<Block::Hash>>,
+		execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 	) -> Self {
 		Self { gossip_validator, gossip_engine, bundle_receiver, execution_receipt_receiver }
 	}
@@ -43,7 +43,7 @@ where
 			.gossip_message(topic::<Block>(), encoded_message, false);
 	}
 
-	fn gossip_execution_receipt(&self, execution_receipt: ExecutionReceipt<Block::Hash>) {
+	fn gossip_execution_receipt(&self, execution_receipt: SignedExecutionReceipt<Block::Hash>) {
 		let outgoing_message: GossipMessage<Block> = execution_receipt.into();
 		let encoded_message = outgoing_message.encode();
 		self.gossip_validator.note_rebroadcasted(&encoded_message);

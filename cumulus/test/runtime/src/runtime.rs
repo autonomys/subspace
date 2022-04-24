@@ -127,7 +127,10 @@ pub mod opaque {
 }
 
 impl_opaque_keys! {
-	pub struct SessionKeys { }
+	pub struct SessionKeys {
+		/// Primarily used for adding the executor authority key into the keystore in the dev mode.
+		pub executor: sp_executor::ExecutorKey,
+	}
 }
 
 #[sp_version::runtime_version]

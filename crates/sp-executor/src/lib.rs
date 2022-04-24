@@ -20,6 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
+use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
@@ -29,6 +30,29 @@ use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
+
+/// Key type for Executor.
+const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+
+mod app {
+    use super::KEY_TYPE;
+    use sp_application_crypto::{app_crypto, sr25519};
+
+    app_crypto!(sr25519, KEY_TYPE);
+}
+
+/// An executor authority signature.
+pub type ExecutorSignature = app::Signature;
+
+/// An executor authority identifier.
+pub type ExecutorId = app::Public;
+
+/// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
+pub struct ExecutorKey;
+
+impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
+    type Public = ExecutorId;
+}
 
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
@@ -115,15 +139,15 @@ impl<Hash: Encode> ExecutionReceipt<Hash> {
     }
 }
 
-// TODO: this might be unneccessary, ideally we could interact with the runtime using `ExecutionReceipt` directly.
-// Refer to the comment https://github.com/subspace/subspace/pull/219#discussion_r776749767
+/// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct OpaqueExecutionReceipt(Vec<u8>);
-
-impl<Hash: Encode> From<ExecutionReceipt<Hash>> for OpaqueExecutionReceipt {
-    fn from(inner: ExecutionReceipt<Hash>) -> Self {
-        Self(inner.encode())
-    }
+pub struct SignedExecutionReceipt<Hash> {
+    /// Execution receipt
+    pub execution_receipt: ExecutionReceipt<Hash>,
+    /// Signature of the execution receipt.
+    pub signature: ExecutorSignature,
+    /// Signer of the signature.
+    pub signer: ExecutorId,
 }
 
 /// Execution phase along with an optional encoded call data.
@@ -275,10 +299,10 @@ pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
-    pub trait ExecutorApi {
+    pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
-            opaque_execution_receipt: OpaqueExecutionReceipt,
+            execution_receipt: ExecutionReceipt<SecondaryHash>,
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.
@@ -305,6 +329,9 @@ sp_api::decl_runtime_apis! {
 
         /// WASM bundle for execution runtime.
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
+
+        /// Returns the authority id of current executor.
+        fn executor_id() -> ExecutorId;
     }
 }
 

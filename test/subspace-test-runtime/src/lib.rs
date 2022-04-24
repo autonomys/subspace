@@ -465,6 +465,7 @@ impl pallet_offences_subspace::Config for Runtime {
 
 impl pallet_executor::Config for Runtime {
     type Event = Event;
+    type SecondaryHash = cirrus_primitives::Hash;
 }
 
 parameter_types! {
@@ -928,17 +929,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_executor::ExecutorApi<Block> for Runtime {
+    impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
-            opaque_execution_receipt: sp_executor::OpaqueExecutionReceipt,
+            execution_receipt: sp_executor::ExecutionReceipt<cirrus_primitives::Hash>,
         ) -> Option<()> {
-            <sp_executor::ExecutionReceipt<<Block as BlockT>::Hash>>::decode(
-                &mut opaque_execution_receipt.encode().as_slice(),
-            )
-            .ok()
-            .and_then(|execution_receipt| {
-                Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
-            })
+            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
         }
 
         fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()> {
@@ -971,6 +966,12 @@ impl_runtime_apis! {
 
         fn execution_wasm_bundle() -> Cow<'static, [u8]> {
             EXECUTION_WASM_BUNDLE.into()
+        }
+
+        fn executor_id() -> sp_executor::ExecutorId {
+            Executor::executor()
+                .map(|(_account_id, executor_id)| executor_id)
+                .expect("Executor must be provided; qed")
         }
     }
 

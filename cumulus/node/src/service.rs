@@ -2,7 +2,7 @@
 
 use cirrus_client_executor::{Executor, ExecutorSlotInfo};
 use cirrus_client_executor_gossip::ExecutorGossipParams;
-use cirrus_runtime::{opaque::Block, RuntimeApi};
+use cirrus_runtime::{opaque::Block, Hash, RuntimeApi};
 use futures::{Stream, StreamExt};
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -154,7 +154,7 @@ where
 		+ Send
 		+ 'static
 		+ Sync,
-	PClient::Api: ExecutorApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Hash>,
 	SC: SelectChain<PBlock>,
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
 	NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
@@ -243,6 +243,7 @@ where
 			backend,
 			Arc::new(code_executor),
 			validator,
+			params.keystore_container.sync_keystore(),
 		)
 		.await?;
 
