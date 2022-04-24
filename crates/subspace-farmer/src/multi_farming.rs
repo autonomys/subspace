@@ -47,22 +47,26 @@ impl MultiFarming {
                     let identity = Identity::open_or_create(&base_directory)?;
                     let public_key = identity.public_key().to_bytes().into();
 
-                    // TODO: This doesn't account for the fact that node can
-                    // have a completely different history to what farmer expects
-                    info!("Opening plot");
                     let plot = tokio::task::spawn_blocking({
                         let base_directory = base_directory.clone();
 
-                        move || Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
+                        move || {
+                            // TODO: This doesn't account for the fact that node can
+                            // have a completely different history to what farmer expects
+                            info!("Opening plot");
+                            Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
+                        }
                     })
                     .await
                     .unwrap()?;
 
-                    info!("Opening commitments");
                     let plot_commitments = tokio::task::spawn_blocking({
                         let path = base_directory.join("commitments");
 
-                        move || Commitments::new(path)
+                        move || {
+                            info!("Opening commitments");
+                            Commitments::new(path)
+                        }
                     })
                     .await
                     .unwrap()?;
