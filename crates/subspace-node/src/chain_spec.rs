@@ -98,7 +98,7 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
                     .expect("Wrong root account address");
 
-            let mut balances = vec![];
+            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
             let vesting_schedules = TOKEN_GRANTS
                 .iter()
                 .flat_map(|&(account_address, amount)| {
