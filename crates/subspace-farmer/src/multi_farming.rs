@@ -35,63 +35,65 @@ impl MultiFarming {
         let mut commitments = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
 
-        let mut results = plot_sizes
-            .into_iter()
-            .enumerate()
-            .map(|(plot_index, max_plot_pieces)| {
-                let base_directory = base_directory.as_ref().join(format!("plot{plot_index}"));
-                let client = client.clone();
-                async move {
-                    std::fs::create_dir_all(&base_directory)?;
+        let results = tokio::task::spawn_blocking({
+            let base_directory = base_directory.as_ref().to_owned();
+            let client = client.clone();
+            move || {
+                plot_sizes
+                    .into_par_iter()
+                    .enumerate()
+                    .map(|(plot_index, max_plot_pieces)| {
+                        let base_directory = base_directory.join(format!("plot{plot_index}"));
 
-                    let identity = Identity::open_or_create(&base_directory)?;
-                    let public_key = identity.public_key().to_bytes().into();
+                        std::fs::create_dir_all(&base_directory)?;
 
-                    let plot_future = tokio::task::spawn_blocking({
-                        let base_directory = base_directory.clone();
+                        let identity = Identity::open_or_create(&base_directory)?;
+                        let public_key = identity.public_key().to_bytes().into();
 
-                        move || {
-                            // TODO: This doesn't account for the fact that node can
-                            // have a completely different history to what farmer expects
-                            info!("Opening plot");
-                            Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
-                        }
-                    });
+                        let plot_closure = {
+                            let base_directory = base_directory.clone();
 
-                    let plot_commitments_future = tokio::task::spawn_blocking({
-                        let path = base_directory.join("commitments");
+                            move || {
+                                // TODO: This doesn't account for the fact that node can
+                                // have a completely different history to what farmer expects
+                                info!("Opening plot");
+                                Plot::open_or_create(&base_directory, public_key, max_plot_pieces)
+                            }
+                        };
 
-                        move || {
-                            info!("Opening commitments");
-                            Commitments::new(path)
-                        }
-                    });
+                        let plot_commitments_closure = {
+                            let path = base_directory.join("commitments");
 
-                    let (plot_result, plot_commitments_result) =
-                        tokio::join!(plot_future, plot_commitments_future);
-                    let (plot, plot_commitments) =
-                        (plot_result.unwrap()?, plot_commitments_result.unwrap()?);
+                            move || {
+                                info!("Opening commitments");
+                                Commitments::new(path)
+                            }
+                        };
 
-                    let subspace_codec = SubspaceCodec::new(identity.public_key());
+                        let (plot_result, plot_commitments_result) =
+                            rayon::join(plot_closure, plot_commitments_closure);
+                        let (plot, plot_commitments) = (plot_result?, plot_commitments_result?);
 
-                    // Start the farming task
-                    let farming = Farming::start(
-                        plot.clone(),
-                        plot_commitments.clone(),
-                        client.clone(),
-                        identity,
-                        reward_address,
-                    );
+                        let subspace_codec = SubspaceCodec::new(identity.public_key());
 
-                    Ok::<_, anyhow::Error>((plot, subspace_codec, plot_commitments, farming))
-                }
-            })
-            .map(tokio::spawn)
-            .collect::<FuturesUnordered<_>>();
+                        // Start the farming task
+                        let farming = Farming::start(
+                            plot.clone(),
+                            plot_commitments.clone(),
+                            client.clone(),
+                            identity,
+                            reward_address,
+                        );
 
-        while let Some(result) = results.next().await {
-            let (plot, subspace_codec, plot_commitments, farming) = result??;
+                        Ok::<_, anyhow::Error>((plot, subspace_codec, plot_commitments, farming))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            }
+        })
+        .await
+        .unwrap()?;
 
+        for (plot, subspace_codec, plot_commitments, farming) in results {
             plots.push(plot);
             subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
