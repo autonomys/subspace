@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
-use log::info;
+use log::{info, warn};
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +24,7 @@ pub(crate) async fn farm(
         custom_path,
         listen_on,
         node_rpc_url,
-        ws_server_listen_addr,
+        mut ws_server_listen_addr,
         reward_address,
         plot_size,
     }: FarmingArgs,
@@ -79,9 +79,25 @@ pub(crate) async fn farm(
     .await?;
 
     // Start RPC server
-    let ws_server = WsServerBuilder::default()
+    let ws_server = match WsServerBuilder::default()
         .build(ws_server_listen_addr)
-        .await?;
+        .await
+    {
+        Ok(ws_server) => ws_server,
+        Err(jsonrpsee::core::Error::Transport(error)) => {
+            warn!(
+                "Failed to start WebSocket RPC server on {ws_server_listen_addr} ({error}),\
+                trying random port"
+            );
+            ws_server_listen_addr.set_port(0);
+            WsServerBuilder::default()
+                .build(ws_server_listen_addr)
+                .await?
+        }
+        Err(error) => {
+            return Err(error.into());
+        }
+    };
     let ws_server_addr = ws_server.local_addr()?;
     let rpc_server = RpcServerImpl::new(
         record_size,
