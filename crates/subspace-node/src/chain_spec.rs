@@ -98,7 +98,7 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
                     .expect("Wrong root account address");
 
-            let mut balances = vec![];
+            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
             let vesting_schedules = TOKEN_GRANTS
                 .iter()
                 .flat_map(|&(account_address, amount)| {
@@ -169,6 +169,11 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
 }
 
 pub fn dev_config() -> Result<SubspaceChainSpec, String> {
+    let mut properties = Properties::new();
+    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
+    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
+    properties.insert("tokenSymbol".into(), "tSSC".into());
+
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(SubspaceChainSpec::from_genesis(
@@ -204,13 +209,18 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
         None,
         None,
         // Properties
-        None,
+        Some(properties),
         // Extensions
         None,
     ))
 }
 
 pub fn local_config() -> Result<SubspaceChainSpec, String> {
+    let mut properties = Properties::new();
+    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
+    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
+    properties.insert("tokenSymbol".into(), "tSSC".into());
+
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(SubspaceChainSpec::from_genesis(
@@ -254,7 +264,7 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
         None,
         None,
         // Properties
-        None,
+        Some(properties),
         // Extensions
         None,
     ))
