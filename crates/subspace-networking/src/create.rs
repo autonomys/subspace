@@ -17,6 +17,7 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use log::info;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -36,6 +37,8 @@ pub struct Config {
     pub bootstrap_nodes: Vec<Multiaddr>,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
     pub listen_on: Vec<Multiaddr>,
+    /// Fallback to random port if specified (or default) port is already occupied.
+    pub listen_on_fallback_to_random_port: bool,
     /// Adds a timeout to the setup and protocol upgrade process for all inbound and outbound
     /// connections established through the transport.
     pub timeout: Duration,
@@ -98,6 +101,7 @@ impl Config {
             keypair,
             bootstrap_nodes: vec![],
             listen_on: vec![],
+            listen_on_fallback_to_random_port: true,
             timeout: Duration::from_secs(10),
             identify,
             kademlia,
@@ -129,6 +133,7 @@ pub async fn create(
     Config {
         keypair,
         listen_on,
+        listen_on_fallback_to_random_port,
         timeout,
         identify,
         kademlia,
@@ -198,8 +203,22 @@ pub async fn create(
             }))
             .build();
 
-        for addr in listen_on {
-            swarm.listen_on(addr)?;
+        for mut addr in listen_on {
+            if let Err(error) = swarm.listen_on(addr.clone()) {
+                if !listen_on_fallback_to_random_port {
+                    return Err(error.into());
+                }
+
+                let addr_string = addr.to_string();
+                // Listen on random port if specified is already occupied
+                if let Some(Protocol::Tcp(_port)) = addr.pop() {
+                    info!(
+                        "Failed to listen on {addr_string} ({error}), falling back to random port"
+                    );
+                    addr.push(Protocol::Tcp(0));
+                    swarm.listen_on(addr)?;
+                }
+            }
         }
 
         Ok::<_, CreationError>(swarm)
