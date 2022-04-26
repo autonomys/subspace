@@ -165,8 +165,10 @@ pub mod pallet {
             (*block.block.header.parent_hash()).into() == parent_hash,
             Error::<T>::InvalidBlock
         );
-        let extrinsics_root =
-            C::Hasher::ordered_trie_root(block.block.extrinsics, sp_runtime::StateVersion::V0);
+        let extrinsics_root = C::Hasher::ordered_trie_root(
+            block.block.extrinsics.iter().map(Encode::encode).collect(),
+            sp_runtime::StateVersion::V0,
+        );
         ensure!(
             extrinsics_root == *block.block.header.extrinsics_root(),
             Error::<T>::InvalidBlock
