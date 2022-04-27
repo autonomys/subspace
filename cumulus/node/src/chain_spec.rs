@@ -46,7 +46,7 @@ pub fn development_config() -> ChainSpec {
 		// Name
 		"Development",
 		// ID
-		"dev",
+		"execution_dev",
 		ChainType::Development,
 		move || {
 			testnet_genesis(vec![
@@ -86,7 +86,7 @@ pub fn local_testnet_config() -> ChainSpec {
 		// Name
 		"Local Testnet",
 		// ID
-		"local_testnet",
+		"execution_local_testnet",
 		ChainType::Local,
 		move || {
 			testnet_genesis(vec![
