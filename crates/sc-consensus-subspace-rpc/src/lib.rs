@@ -246,7 +246,13 @@ where
                     record_size: runtime_api.record_size(&best_block_id)?,
                     recorded_history_segment_size: runtime_api
                         .recorded_history_segment_size(&best_block_id)?,
-                    max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
+                    max_plot_size: runtime_api
+                        .max_plot_size(&best_block_id)
+                        // TODO: Remove once we switch genesis runtime from `snapshot-2022-mar-09`
+                        //  to newer
+                        .unwrap_or(
+                            100 * 1024 * 1024 * 1024 / subspace_core_primitives::PIECE_SIZE as u64,
+                        ),
                 }
             };
 
