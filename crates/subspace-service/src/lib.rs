@@ -20,61 +20,36 @@ pub mod rpc;
 
 use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
+use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::mpsc;
+use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::ExecutorProvider;
-use sc_consensus::BlockImport;
+use sc_client_api::{ExecutorProvider, StateBackendFor};
+use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
     notification::SubspaceNotificationStream, ArchivedSegmentNotification,
     BlockSigningNotification, NewSlotNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
+use sc_service::{error::Error as ServiceError, Configuration, PartialComponents, TaskManager};
 use sc_service::{NetworkStarter, SpawnTasksParams};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ConstructRuntimeApi, NumberFor, TransactionFor};
+use sc_transaction_pool::FullPool;
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, TransactionFor};
+use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::SubspaceApi;
+use sp_executor::ExecutorApi;
+use sp_offchain::OffchainWorkerApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
+use sp_runtime::traits::Block as BlockT;
+use sp_session::SessionKeys;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
-
-// TODO: Check if this is still necessary and remove if not
-/// A set of APIs that subspace-like runtimes must implement.
-pub trait RuntimeApiCollection:
-    sp_api::ApiExt<Block>
-    + sp_api::Metadata<Block>
-    + sp_block_builder::BlockBuilder<Block>
-    + sp_executor::ExecutorApi<Block, SecondaryHash>
-    + sp_offchain::OffchainWorkerApi<Block>
-    + sp_session::SessionKeys<Block>
-    + sp_consensus_subspace::SubspaceApi<Block>
-    + sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
-    + frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce>
-    + pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance>
-where
-    <Self as sp_api::ApiExt<Block>>::StateBackend: sp_api::StateBackend<BlakeTwo256>,
-{
-}
-
-impl<Api> RuntimeApiCollection for Api
-where
-    Api: sp_api::ApiExt<Block>
-        + sp_api::Metadata<Block>
-        + sp_block_builder::BlockBuilder<Block>
-        + sp_executor::ExecutorApi<Block, SecondaryHash>
-        + sp_offchain::OffchainWorkerApi<Block>
-        + sp_session::SessionKeys<Block>
-        + sp_consensus_subspace::SubspaceApi<Block>
-        + sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block>
-        + frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce>
-        + pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance>,
-    <Self as sp_api::ApiExt<Block>>::StateBackend: sp_api::StateBackend<BlakeTwo256>,
-{
-}
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -138,12 +113,12 @@ impl From<Configuration> for SubspaceConfiguration {
 pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
 ) -> Result<
-    sc_service::PartialComponents<
+    PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
         FullBackend,
         FullSelectChain,
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         (
             impl BlockImport<
                 Block,
@@ -161,8 +136,14 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+        + Metadata<Block>
+        + BlockBuilder<Block>
+        + ExecutorApi<Block, SecondaryHash>
+        + OffchainWorkerApi<Block>
+        + SessionKeys<Block>
+        + SubspaceApi<Block>
+        + TaggedTransactionQueue<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -281,7 +262,7 @@ where
         telemetry.as_ref().map(|x| x.handle()),
     )?;
 
-    Ok(sc_service::PartialComponents {
+    Ok(PartialComponents {
         client,
         backend,
         task_manager,
@@ -331,11 +312,19 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi:
-        RuntimeApiCollection<StateBackend = sc_client_api::StateBackendFor<FullBackend, Block>>,
+    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+        + Metadata<Block>
+        + BlockBuilder<Block>
+        + ExecutorApi<Block, SecondaryHash>
+        + OffchainWorkerApi<Block>
+        + SessionKeys<Block>
+        + SubspaceApi<Block>
+        + TaggedTransactionQueue<Block>
+        + AccountNonceApi<Block, AccountId, Nonce>
+        + TransactionPaymentApi<Block, Balance>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
-    let sc_service::PartialComponents {
+    let PartialComponents {
         client,
         backend,
         mut task_manager,
@@ -457,7 +446,7 @@ where
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
-                let deps = crate::rpc::FullDeps {
+                let deps = rpc::FullDeps {
                     client: client.clone(),
                     pool: transaction_pool.clone(),
                     deny_unsafe,
@@ -468,7 +457,7 @@ where
                         .clone(),
                 };
 
-                Ok(crate::rpc::create_full(deps))
+                Ok(rpc::create_full(deps))
             })
         } else {
             Box::new(|_, _| Ok(Default::default()))
