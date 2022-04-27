@@ -72,6 +72,7 @@ use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{pin_mut, select, FutureExt, Stream, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend};
+use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -107,6 +108,7 @@ where
 {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	primary_chain_client: Arc<PClient>,
+	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
@@ -128,6 +130,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			primary_chain_client: self.primary_chain_client.clone(),
+			primary_network: self.primary_network.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
@@ -181,6 +184,7 @@ where
 	#[allow(clippy::too_many_arguments)]
 	pub async fn new<SE, SC, IBNS, NSNS>(
 		primary_chain_client: Arc<PClient>,
+		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 		spawn_essential: &SE,
 		select_chain: &SC,
 		imported_block_notification_stream: IBNS,
@@ -247,6 +251,7 @@ where
 
 		let mut executor = Self {
 			primary_chain_client,
+			primary_network,
 			client,
 			spawner,
 			overseer_handle,

@@ -214,6 +214,14 @@ where
 
 		// TODO: The applied txs can be fully removed from the transaction pool
 
+		if self.primary_network.is_major_syncing() {
+			tracing::debug!(
+				target: LOG_TARGET,
+				"Skip generating signed execution receipt as the primary node is still major syncing..."
+			);
+			return Ok(None)
+		}
+
 		let executor_id = self.primary_chain_client.runtime_api().executor_id(&BlockId::Hash(
 			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
 				.expect("Primary block hash must be the correct type; qed"),

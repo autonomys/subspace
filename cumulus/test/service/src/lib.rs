@@ -232,6 +232,7 @@ async fn start_node_impl(
 
 		let executor = Executor::new(
 			primary_chain_full_node.client.clone(),
+			primary_chain_full_node.network.clone(),
 			&spawn_essential,
 			&primary_chain_full_node.select_chain,
 			primary_chain_full_node
