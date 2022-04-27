@@ -15,10 +15,18 @@ pub(crate) fn wipe<P: AsRef<Path>>(path: P) -> io::Result<()> {
             std::fs::remove_dir_all(replica_path)
         })?;
 
-    // TODO: Remove this line in one of future releases
+    // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
+    //  wipe old data from disks of our users
+    if let Some(base_dir) = dirs::data_local_dir() {
+        let _ = std::fs::remove_dir_all(base_dir.join("subspace"));
+    }
+
+    // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
+    //  wipe old data from disks of our users
     subspace_farmer::Plot::erase(path.as_ref())?;
 
-    // TODO: Remove these lines line in one of future releases
+    // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
+    //  wipe old data from disks of our users
     info!("Erasing identity");
     let identity = path.as_ref().join("identity.bin");
     if identity.exists() {

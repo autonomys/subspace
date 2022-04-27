@@ -62,7 +62,7 @@ This will connect to local node and will try to solve on every slot notification
 
 *NOTE: You need to have a `subspace-node` running before starting farmer, otherwise it will not be able to start*
 
-By default, plots are written to the OS-specific users local data directory.
+By default, farmer data are written to `subspace-farmer` subdirectory of the OS-specific users local data directory.
 
 ```
 Linux
