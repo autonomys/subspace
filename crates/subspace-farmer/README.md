@@ -76,6 +76,13 @@ Windows
 {FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
 ```
 
+### Wipe the plot
+```
+target/production/subspace-farmer wipe
+```
+
+This would wipe plots in the OS-specific users local data directory.
+
 ## Architecture
 
 The farmer typically runs two processes in parallel: plotting and farming.
