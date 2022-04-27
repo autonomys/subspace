@@ -17,19 +17,24 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::Encode;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
     BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
     SignedExecutionReceipt,
 };
+use sp_runtime::RuntimeAppPublic;
 
 const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
 const INVALID_TRANSACTION_PROOF: u8 = 102;
+const INVALID_EXECUTION_RECEIPT: u8 = 103;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_TRANSACTION_PROOF};
+    use crate::{
+        INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_EXECUTION_RECEIPT, INVALID_TRANSACTION_PROOF,
+    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
@@ -70,6 +75,10 @@ mod pallet {
     pub enum Error<T> {
         /// The head number was wrong against the latest head.
         UnexpectedHeadNumber,
+        /// Invalid execution receipt signature.
+        BadExecutionReceiptSignature,
+        /// The signer of execution receipt is unexpected.
+        UnexpectedExecutionReceiptSigner,
     }
 
     #[pallet::event]
@@ -245,8 +254,14 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_execution_receipt { execution_receipt } => {
-                    // TODO: validate the Proof-of-Election
-
+                    if let Err(e) = Self::check_execution_receipt(execution_receipt) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid execution receipt: {:?}",
+                            e
+                        );
+                        return InvalidTransaction::Custom(INVALID_EXECUTION_RECEIPT).into();
+                    }
                     unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
                 }
                 Call::submit_transaction_bundle { opaque_bundle } => {
@@ -309,6 +324,29 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    fn check_execution_receipt(
+        SignedExecutionReceipt {
+            execution_receipt,
+            signature,
+            signer,
+        }: &SignedExecutionReceipt<T::SecondaryHash>,
+    ) -> Result<(), Error<T>> {
+        let msg = execution_receipt.hash().encode();
+        if !signer.verify(&msg, signature) {
+            return Err(Error::<T>::BadExecutionReceiptSignature);
+        }
+
+        // TODO: upgrade once the trusted executor system is upgraded.
+        let expected_executor = Self::executor()
+            .map(|(_, authority_id)| authority_id)
+            .expect("Executor must be initialized before launching the executor chain; qed");
+        if *signer != expected_executor {
+            return Err(Error::<T>::UnexpectedExecutionReceiptSigner);
+        }
+
+        Ok(())
+    }
+
     // TODO: Checks if the bundle equivocation proof is valid.
     fn check_bundle_equivocation_proof(
         _bundle_equivocation_proof: &BundleEquivocationProof,
