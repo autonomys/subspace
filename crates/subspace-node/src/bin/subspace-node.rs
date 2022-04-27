@@ -281,6 +281,7 @@ fn main() -> std::result::Result<(), Error> {
                     let secondary_chain_full_node_fut = cirrus_node::service::new_full(
                         secondary_chain_config,
                         primary_chain_full_node.client.clone(),
+                        primary_chain_full_node.network.clone(),
                         &primary_chain_full_node.select_chain,
                         primary_chain_full_node
                             .imported_block_notification_stream

@@ -857,6 +857,7 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
+ "sc-network",
  "sc-transaction-pool-api",
  "sc-utils",
  "sha2 0.10.2",

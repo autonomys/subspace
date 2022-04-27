@@ -6,6 +6,7 @@ use cirrus_runtime::{opaque::Block, Hash, RuntimeApi};
 use futures::{Stream, StreamExt};
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_network::NetworkService;
 use sc_service::{
 	BuildNetworkParams, Configuration, NetworkStarter, PartialComponents, Role, SpawnTasksParams,
 	TFullBackend, TFullClient, TaskManager,
@@ -142,6 +143,7 @@ pub struct NewFull<C> {
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
 	mut parachain_config: Configuration,
 	primary_chain_client: Arc<PClient>,
+	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	select_chain: &SC,
 	imported_block_notification_stream: IBNS,
 	new_slot_notification_stream: NSNS,
@@ -229,6 +231,7 @@ where
 
 		let executor = Executor::new(
 			primary_chain_client,
+			primary_network,
 			&spawn_essential,
 			select_chain,
 			imported_block_notification_stream,
