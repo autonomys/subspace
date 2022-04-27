@@ -928,10 +928,6 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
     }
 }
 
-impl<T: Config> sp_runtime::BoundToRuntimeAppPublic for Pallet<T> {
-    type Public = FarmerPublicKey;
-}
-
 impl<T: Config> OnOffenceHandler<FarmerPublicKey> for Pallet<T> {
     fn on_offence(offenders: &[OffenceDetails<FarmerPublicKey>]) {
         for offender in offenders {

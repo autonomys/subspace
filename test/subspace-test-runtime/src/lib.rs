@@ -71,7 +71,6 @@ use subspace_runtime_primitives::{
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
-        pub subspace: Subspace,
     }
 }
 
