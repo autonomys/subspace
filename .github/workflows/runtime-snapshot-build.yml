@@ -1,6 +1,11 @@
+# This action enabling building WASM runtime used for forkless runtime upgrades, can be triggered manually or by
+# release creation.
+#
+# WASM bundles are built both for releases and for manually triggered runs, uploaded to artifacts and assets.
 name: Runtime snapshot build
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'runtime-snapshot-*'
@@ -29,10 +34,19 @@ jobs:
           docker run --rm -u root ${{ steps.build.outputs.digest }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
           echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
 
+      - name: Upload runtime to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: subspace_runtime
+          path: |
+            subspace_runtime-${{ env.SPEC_VERSION }}.compact.compressed.wasm
+          if-no-files-found: error
+
       - name: Upload runtime to assets
         uses: alexellis/upload-assets@0.3.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["subspace_runtime-${{ env.SPEC_VERSION }}.compact.compressed.wasm"]'
-
+        # Only run for releases
+        if: github.event_name == 'push' && github.ref_type == 'tag'

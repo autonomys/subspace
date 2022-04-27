@@ -1,12 +1,20 @@
+# This action enables building container images and executables for farmer and node, can be triggered manually or by
+# release creation.
+#
+# Container images are only built for releases, pushed to GitHub Container Registry.
+# Executables are built both for releases and for manually triggered runs, uploaded to artifacts and assets.
 name: Snapshot build
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'snapshot-*'
 
 jobs:
   container-images:
+    # Only run for releases
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -164,9 +172,18 @@ jobs:
           move target/production/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 
+      - name: Upload node and farmer executables to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: executables-{{ matrix.build.suffix }}
+          path: |
+            executables/*
+          if-no-files-found: error
+
       - name: Upload node and farmer executables to assets
         uses: alexellis/upload-assets@0.3.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["executables/*"]'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
