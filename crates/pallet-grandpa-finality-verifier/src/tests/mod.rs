@@ -243,7 +243,10 @@ fn invalid_extrinsics() -> Vec<OpaqueExtrinsic> {
 }
 
 fn valid_extrinsics_root<H: Header>() -> H::Hash {
-    H::Hashing::ordered_trie_root(valid_extrinsics(), sp_runtime::StateVersion::V0)
+    H::Hashing::ordered_trie_root(
+        valid_extrinsics().iter().map(Encode::encode).collect(),
+        sp_runtime::StateVersion::V0,
+    )
 }
 
 fn submit_valid_finality_proof(chain_id: ChainId, header: u8) -> Result<TestHeader, DispatchError> {
