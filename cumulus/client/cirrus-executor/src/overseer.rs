@@ -24,8 +24,8 @@ use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_executor::{
-	BundleEquivocationProof, ExecutionReceipt, ExecutorApi, FraudProof, InvalidTransactionProof,
-	OpaqueBundle,
+	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
+	SignedExecutionReceipt,
 };
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
@@ -74,7 +74,7 @@ pub type ProcessorFn<Hash> = Box<
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<ExecutionReceipt<Hash>>> + Send>>
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<Hash>>> + Send>>
 		+ Send
 		+ Sync,
 >;

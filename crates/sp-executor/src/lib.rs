@@ -150,6 +150,13 @@ pub struct SignedExecutionReceipt<Hash> {
     pub signer: ExecutorId,
 }
 
+impl<Hash: Encode> SignedExecutionReceipt<Hash> {
+    /// Returns the hash of inner execution receipt.
+    pub fn hash(&self) -> H256 {
+        self.execution_receipt.hash()
+    }
+}
+
 /// Execution phase along with an optional encoded call data.
 ///
 /// Each execution phase has a different method for the runtime call.
@@ -302,7 +309,7 @@ sp_api::decl_runtime_apis! {
     pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
-            execution_receipt: ExecutionReceipt<SecondaryHash>,
+            execution_receipt: SignedExecutionReceipt<SecondaryHash>,
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.

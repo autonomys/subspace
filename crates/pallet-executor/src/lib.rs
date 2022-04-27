@@ -20,7 +20,8 @@
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    SignedExecutionReceipt,
 };
 
 const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
@@ -33,8 +34,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
-        OpaqueBundle,
+        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof, OpaqueBundle,
+        SignedExecutionReceipt,
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
     use sp_std::fmt::Debug;
@@ -91,7 +92,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            execution_receipt: ExecutionReceipt<T::SecondaryHash>,
+            execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -329,7 +330,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        execution_receipt: ExecutionReceipt<T::SecondaryHash>,
+        execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
     ) -> frame_support::pallet_prelude::DispatchResult {
         let call = Call::submit_execution_receipt { execution_receipt };
 

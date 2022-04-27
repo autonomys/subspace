@@ -1007,7 +1007,7 @@ impl_runtime_apis! {
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
-            execution_receipt: sp_executor::ExecutionReceipt<cirrus_primitives::Hash>,
+            execution_receipt: sp_executor::SignedExecutionReceipt<cirrus_primitives::Hash>,
         ) -> Option<()> {
             Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
         }
