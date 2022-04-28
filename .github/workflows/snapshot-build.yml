@@ -175,7 +175,7 @@ jobs:
       - name: Upload node and farmer executables to artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: executables-{{ matrix.build.suffix }}
+          name: executables-${{ matrix.build.suffix }}
           path: |
             executables/*
           if-no-files-found: error
