@@ -272,7 +272,7 @@ where
 					"This should not happen as the existence of key was just checked",
 				))),
 				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
-					"Error occurred when signing the execution receipt, error: {error}"
+					"Error occurred when signing the execution receipt: {error}"
 				)))),
 			}
 		} else {
