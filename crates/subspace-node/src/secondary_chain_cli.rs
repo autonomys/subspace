@@ -40,6 +40,12 @@ impl SubstrateCli for SecondaryChainCli {
         env!("SUBSTRATE_CLI_IMPL_VERSION").into()
     }
 
+    fn executable_name() -> String {
+        // Customize to make sure directory used for data by default is the same regardless of the
+        // name of the executable file.
+        "subspace-node".to_string()
+    }
+
     fn description() -> String {
         "Subspace Executor".into()
     }

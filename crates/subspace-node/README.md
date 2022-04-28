@@ -35,6 +35,20 @@ target/production/subspace-node \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001
 ```
 
+By default, node data are written to `subspace-node` subdirectory of the OS-specific users local data directory.
+
+```
+Linux
+$XDG_DATA_HOME or                   /home/alice/.local/share
+$HOME/.local/share 
+
+macOS
+$HOME/Library/Application Support   /Users/Alice/Library/Application Support
+
+Windows
+{FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
+```
+
 #### Start full node
 
 You can now run another full node and sync the chain from the node started earlier:

@@ -233,6 +233,7 @@ services:
     restart: unless-stopped
     command: [
       "farm",
+      "--custom-path", "/var/subspace",
       "--node-rpc-url", "ws://node:9944",
       "--ws-server-listen-addr", "0.0.0.0:9955",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address

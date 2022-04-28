@@ -162,6 +162,24 @@ fn main() -> std::result::Result<(), Error> {
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
+            // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
+            //  wipe old data from disks of our users
+            if cmd.shared_params.base_path().is_none() {
+                let old_dirs = &[
+                    "subspace-node-x86_64-macos-11-snapshot-2022-jan-05",
+                    "subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05",
+                    "subspace-node-x86_64-windows-2019-snapshot-2022-jan-05.exe",
+                    "subspace-node-x86_64-windows-2022-snapshot-2022-jan-05.exe",
+                    "subspace-node-macos-x86_64-snapshot-2022-mar-09",
+                    "subspace-node-ubuntu-x86_64-snapshot-2022-mar-09",
+                    "subspace-node-windows-x86_64-snapshot-2022-mar-09.exe",
+                ];
+                if let Some(base_dir) = dirs::data_local_dir() {
+                    for old_dir in old_dirs {
+                        let _ = std::fs::remove_dir_all(base_dir.join(old_dir));
+                    }
+                }
+            }
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run(config.database))?
         }
