@@ -328,7 +328,7 @@ above instructions before starting your node:
 Archival node is useful if you run an RPC node and want to support querying older blockchain history.
 
 NOTE: You can't switch between full and archival node without wiping it, so if you need that, follow steps in
-"Switching to a new snapshot" section above.
+[Switching to a new snapshot](#switching-to-a-new-snapshot) section above.
 
 ## [Advanced] Build from source (Linux)
 
