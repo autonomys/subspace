@@ -36,7 +36,7 @@ where
 		self,
 		_primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<OpaqueBundle> {
+	) -> Result<Option<OpaqueBundle>, sp_blockchain::Error> {
 		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
 
 		let parent_number = self.client.info().best_number;
@@ -82,8 +82,7 @@ where
 			sp_core::storage::StateVersion::V1,
 		);
 
-		let _state_root =
-			self.client.expect_header(BlockId::Number(parent_number)).ok()?.state_root();
+		let _state_root = self.client.expect_header(BlockId::Number(parent_number))?.state_root();
 
 		let bundle = Bundle {
 			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
@@ -94,6 +93,6 @@ where
 			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
 		}
 
-		Some(bundle.into())
+		Ok(Some(bundle.into()))
 	}
 }

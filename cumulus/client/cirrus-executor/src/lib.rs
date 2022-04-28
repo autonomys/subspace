@@ -529,7 +529,18 @@ where
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
 	) -> Option<OpaqueBundle> {
-		self.produce_bundle_impl(primary_hash, slot_info).await
+		match self.produce_bundle_impl(primary_hash, slot_info).await {
+			Ok(res) => res,
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					relay_parent = ?primary_hash,
+					error = ?err,
+					"Error at producing bundle.",
+				);
+				None
+			},
+		}
 	}
 
 	/// Processes the bundles extracted from the primary block.
