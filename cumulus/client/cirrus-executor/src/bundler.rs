@@ -90,7 +90,11 @@ where
 		let _state_root = self.client.expect_header(BlockId::Number(parent_number))?.state_root();
 
 		let bundle = Bundle {
-			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
+			header: BundleHeader {
+				primary_hash,
+				slot_number: slot_info.slot.into(),
+				extrinsics_root,
+			},
 			extrinsics,
 		};
 

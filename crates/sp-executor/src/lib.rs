@@ -57,6 +57,8 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct BundleHeader {
+    /// The hash of primary block at which the bundle was created.
+    pub primary_hash: PHash,
     /// The slot number.
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
@@ -298,6 +300,7 @@ impl BundleEquivocationProof {
     /// Constructs a dummy bundle equivocation proof.
     pub fn dummy_at(slot_number: u64) -> Self {
         let dummy_header = BundleHeader {
+            primary_hash: PHash::default(),
             slot_number,
             extrinsics_root: H256::default(),
         };

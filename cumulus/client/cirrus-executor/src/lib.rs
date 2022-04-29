@@ -586,6 +586,10 @@ pub enum GossipMessageError {
 	RecvError(#[from] crossbeam::channel::RecvError),
 	#[error("Failed to send local receipt result because the channel is disconnected")]
 	SendError,
+	#[error("The signature of bundle is invalid")]
+	BadBundleSignature,
+	#[error("Invalid bundle author, got: {got}, expected: {expected}")]
+	InvalidBundleAuthor { got: ExecutorId, expected: ExecutorId },
 	#[error("The signature of execution receipt is invalid")]
 	BadExecutionReceiptSignature,
 	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
@@ -660,7 +664,27 @@ where
 		if bundle_exists {
 			Ok(Action::Empty)
 		} else {
-			// TODO: validate the PoE
+			let primary_hash =
+				PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
+					.expect("Hash type must be correct");
+
+			let msg = bundle.hash();
+			if !signer.verify(&msg, signature) {
+				return Err(Self::Error::BadBundleSignature)
+			}
+
+			let expected_executor_id = self
+				.primary_chain_client
+				.runtime_api()
+				.executor_id(&BlockId::Hash(primary_hash))?;
+			if *signer != expected_executor_id {
+				// TODO: handle the misbehavior.
+
+				return Err(Self::Error::InvalidBundleAuthor {
+					got: signer.clone(),
+					expected: expected_executor_id,
+				})
+			}
 
 			for extrinsic in bundle.extrinsics.iter() {
 				let tx_hash = self.transaction_pool.hash_of(extrinsic);
