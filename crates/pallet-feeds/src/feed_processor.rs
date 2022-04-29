@@ -73,7 +73,7 @@ impl FeedObjectMapping {
 /// Metadata of a feed object as raw bytes.
 pub type FeedMetadata = Vec<u8>;
 
-/// FeedProcessor dictates a flow import and constituents of a Feed
+#[doc = include_str!("../FeedProcessor.md")]
 pub trait FeedProcessor<FeedId> {
     /// Initiates a specific Feed with data transparent to FeedProcessor
     /// Can be called when re-initializing the feed.
