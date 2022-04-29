@@ -232,12 +232,12 @@ where
 				&*self.keystore,
 				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
 			) {
-			let to_sign = execution_receipt.hash().encode();
+			let to_sign = execution_receipt.hash();
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
 				ExecutorId::ID,
 				&executor_id.clone().into(),
-				&to_sign,
+				to_sign.as_ref(),
 			) {
 				Ok(Some(signature)) => {
 					tracing::debug!(

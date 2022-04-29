@@ -17,7 +17,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::Encode;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
@@ -331,7 +330,7 @@ impl<T: Config> Pallet<T> {
             signer,
         }: &SignedExecutionReceipt<T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
-        let msg = execution_receipt.hash().encode();
+        let msg = execution_receipt.hash();
         if !signer.verify(&msg, signature) {
             return Err(Error::<T>::BadExecutionReceiptSignature);
         }
