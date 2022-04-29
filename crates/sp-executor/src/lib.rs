@@ -86,6 +86,17 @@ impl<Extrinsic> Bundle<Extrinsic> {
     }
 }
 
+/// Signed version of [`Bundle`].
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct SignedBundle<Extrinsic> {
+    /// The bundle header.
+    pub bundle: Bundle<Extrinsic>,
+    /// Signature of the bundle.
+    pub signature: ExecutorSignature,
+    /// Signer of the signature.
+    pub signer: ExecutorId,
+}
+
 /// Bundle with opaque extrinsics.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct OpaqueBundle {

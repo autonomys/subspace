@@ -14,7 +14,9 @@ use std::time;
 
 use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader, ExecutorApi, ExecutorId, OpaqueBundle};
+use sp_executor::{
+	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle, SignedBundle,
+};
 
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -106,15 +108,27 @@ where
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
 				ExecutorId::ID,
-				&executor_id.into(),
+				&executor_id.clone().into(),
 				to_sign.as_ref(),
 			) {
-				Ok(Some(_signature)) => {
-					// TODO: SignedBundle
-					if let Err(e) = self.bundle_sender.unbounded_send(bundle.clone()) {
+				Ok(Some(signature)) => {
+					let signed_bundle = SignedBundle {
+						bundle: bundle.clone(),
+						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
+							|err| {
+								sp_blockchain::Error::Application(Box::from(format!(
+									"Failed to decode the signature of bundle: {err}"
+								)))
+							},
+						)?,
+						signer: executor_id,
+					};
+
+					if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle) {
 						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
 					}
 
+					// TODO: SignedOpaqueBundle for farmers.
 					Ok(Some(bundle.into()))
 				},
 				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(

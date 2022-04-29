@@ -83,7 +83,7 @@ use sp_core::{
 };
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
-	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedExecutionReceipt,
+	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -113,7 +113,7 @@ where
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
-	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+	bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
@@ -192,7 +192,7 @@ where
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		transaction_pool: Arc<TransactionPool>,
-		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+		bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
@@ -635,7 +635,10 @@ where
 {
 	type Error = GossipMessageError;
 
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
+	fn on_bundle(
+		&self,
+		SignedBundle { bundle, signature, signer }: &SignedBundle<Block::Extrinsic>,
+	) -> Result<Action, Self::Error> {
 		let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
 			// TODO: check bundle equivocation
 			let bundle_is_an_equivocation = false;
