@@ -57,7 +57,12 @@ enum Command {
 }
 
 fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
-    const SUFFIXES: &[(&str, u64)] = &[("G", 10u64.pow(9)), ("T", 10u64.pow(12))];
+    const SUFFIXES: &[(&str, u64)] = &[
+        ("G", 10u64.pow(9)),
+        ("GB", 10u64.pow(9)),
+        ("T", 10u64.pow(12)),
+        ("TB", 10u64.pow(12)),
+    ];
 
     SUFFIXES
         .iter()

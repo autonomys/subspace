@@ -294,7 +294,7 @@ Now follow installation guide.
 
 ### Docker
 
-In case of Docker setup run `docker-compose down` (and manually delete custom directories if you have specified them).
+In case of Docker setup run `docker-compose down -v` (and manually delete custom directories if you have specified them).
 
 Now follow installation guide.
 
