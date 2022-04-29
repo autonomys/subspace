@@ -106,7 +106,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<ExecutionReceipt<Block::Hash>>, sp_blockchain::Error> {
+	) -> Result<Option<SignedExecutionReceipt<Block::Hash>>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -232,12 +232,12 @@ where
 				&*self.keystore,
 				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
 			) {
-			let to_sign = execution_receipt.hash().encode();
+			let to_sign = execution_receipt.hash();
 			match SyncCryptoStore::sign_with(
 				&*self.keystore,
 				ExecutorId::ID,
 				&executor_id.clone().into(),
-				&to_sign,
+				to_sign.as_ref(),
 			) {
 				Ok(Some(signature)) => {
 					tracing::debug!(
@@ -247,7 +247,7 @@ where
 					);
 
 					let signed_execution_receipt = SignedExecutionReceipt {
-						execution_receipt: execution_receipt.clone(),
+						execution_receipt,
 						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
 							|err| {
 								sp_blockchain::Error::Application(Box::from(format!(
@@ -258,14 +258,15 @@ where
 						signer: executor_id,
 					};
 
-					if let Err(e) =
-						self.execution_receipt_sender.unbounded_send(signed_execution_receipt)
+					if let Err(e) = self
+						.execution_receipt_sender
+						.unbounded_send(signed_execution_receipt.clone())
 					{
 						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
 					}
 
 					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-					Ok(Some(execution_receipt))
+					Ok(Some(signed_execution_receipt))
 				},
 				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
 					"This should not happen as the existence of key was just checked",

@@ -539,7 +539,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<ExecutionReceipt<Block::Hash>> {
+	) -> Option<SignedExecutionReceipt<Block::Hash>> {
 		match self
 			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
 			.await
