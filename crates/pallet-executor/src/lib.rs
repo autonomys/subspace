@@ -28,11 +28,13 @@ use sp_runtime::RuntimeAppPublic;
 const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
 const INVALID_TRANSACTION_PROOF: u8 = 102;
 const INVALID_EXECUTION_RECEIPT: u8 = 103;
+const INVALID_BUNDLE: u8 = 104;
 
 #[frame_support::pallet]
 mod pallet {
     use crate::{
-        INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_EXECUTION_RECEIPT, INVALID_TRANSACTION_PROOF,
+        INVALID_BUNDLE, INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_EXECUTION_RECEIPT,
+        INVALID_TRANSACTION_PROOF,
     };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -74,6 +76,10 @@ mod pallet {
     pub enum Error<T> {
         /// The head number was wrong against the latest head.
         UnexpectedHeadNumber,
+        /// Invalid bundle signature.
+        BadBundleSignature,
+        /// The signer of bundle is unexpected.
+        UnexpectedBundleSigner,
         /// Invalid execution receipt signature.
         BadExecutionReceiptSignature,
         /// The signer of execution receipt is unexpected.
@@ -266,8 +272,14 @@ mod pallet {
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
                 } => {
-                    // TODO: validate the Proof-of-Election
-
+                    if let Err(e) = Self::check_bundle(signed_opaque_bundle) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid signed opaque bundle: {:?}",
+                            e
+                        );
+                        return InvalidTransaction::Custom(INVALID_BUNDLE).into();
+                    }
                     unsigned_validity(
                         "SubspaceSubmitTransactionBundle",
                         signed_opaque_bundle.hash(),
@@ -346,6 +358,29 @@ impl<T: Config> Pallet<T> {
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
             return Err(Error::<T>::UnexpectedExecutionReceiptSigner);
+        }
+
+        Ok(())
+    }
+
+    fn check_bundle(
+        SignedOpaqueBundle {
+            opaque_bundle,
+            signature,
+            signer,
+        }: &SignedOpaqueBundle,
+    ) -> Result<(), Error<T>> {
+        let msg = opaque_bundle.hash();
+        if !signer.verify(&msg, signature) {
+            return Err(Error::<T>::BadBundleSignature);
+        }
+
+        // TODO: upgrade once the trusted executor system is upgraded.
+        let expected_executor = Self::executor()
+            .map(|(_, authority_id)| authority_id)
+            .expect("Executor must be initialized before launching the executor chain; qed");
+        if *signer != expected_executor {
+            return Err(Error::<T>::UnexpectedBundleSigner);
         }
 
         Ok(())
