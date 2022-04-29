@@ -20,8 +20,8 @@
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
-    SignedExecutionReceipt,
+    BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
+    SignedOpaqueBundle,
 };
 use sp_runtime::RuntimeAppPublic;
 
@@ -38,8 +38,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof, OpaqueBundle,
-        SignedExecutionReceipt,
+        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof,
+        SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
     use sp_std::fmt::Debug;
@@ -122,18 +122,18 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle,
+            signed_opaque_bundle: SignedOpaqueBundle,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::debug!(
                 target: "runtime::subspace::executor",
                 "Submitting transaction bundle: {:?}",
-                opaque_bundle
+                signed_opaque_bundle
             );
 
             Self::deposit_event(Event::TransactionBundleStored {
-                bundle_hash: opaque_bundle.hash(),
+                bundle_hash: signed_opaque_bundle.hash(),
             });
 
             Ok(())
@@ -263,10 +263,15 @@ mod pallet {
                     }
                     unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
                 }
-                Call::submit_transaction_bundle { opaque_bundle } => {
+                Call::submit_transaction_bundle {
+                    signed_opaque_bundle,
+                } => {
                     // TODO: validate the Proof-of-Election
 
-                    unsigned_validity("SubspaceSubmitTransactionBundle", opaque_bundle.hash())
+                    unsigned_validity(
+                        "SubspaceSubmitTransactionBundle",
+                        signed_opaque_bundle.hash(),
+                    )
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     // TODO: prevent the spamming of fraud proof transaction.
@@ -387,9 +392,11 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
     pub fn submit_transaction_bundle_unsigned(
-        opaque_bundle: OpaqueBundle,
+        signed_opaque_bundle: SignedOpaqueBundle,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_transaction_bundle { opaque_bundle };
+        let call = Call::submit_transaction_bundle {
+            signed_opaque_bundle,
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

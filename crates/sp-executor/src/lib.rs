@@ -132,6 +132,42 @@ impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> 
     }
 }
 
+/// Signed version of [`OpaqueBundle`].
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct SignedOpaqueBundle {
+    /// The bundle header.
+    pub opaque_bundle: OpaqueBundle,
+    /// Signature of the opaque bundle.
+    pub signature: ExecutorSignature,
+    /// Signer of the signature.
+    pub signer: ExecutorId,
+}
+
+impl SignedOpaqueBundle {
+    /// Returns the hash of inner opaque bundle.
+    pub fn hash(&self) -> H256 {
+        self.opaque_bundle.hash()
+    }
+}
+
+impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<SignedBundle<Extrinsic>>
+    for SignedOpaqueBundle
+{
+    fn from(
+        SignedBundle {
+            bundle,
+            signature,
+            signer,
+        }: SignedBundle<Extrinsic>,
+    ) -> Self {
+        Self {
+            opaque_bundle: bundle.into(),
+            signature,
+            signer,
+        }
+    }
+}
+
 /// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
@@ -327,7 +363,7 @@ sp_api::decl_runtime_apis! {
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()>;
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) -> Option<()>;
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;

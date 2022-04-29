@@ -84,6 +84,7 @@ use sp_core::{
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
 	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
+	SignedOpaqueBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -528,7 +529,7 @@ where
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<OpaqueBundle> {
+	) -> Option<SignedOpaqueBundle> {
 		match self.produce_bundle_impl(primary_hash, slot_info).await {
 			Ok(res) => res,
 			Err(err) => {

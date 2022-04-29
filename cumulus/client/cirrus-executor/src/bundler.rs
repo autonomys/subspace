@@ -15,7 +15,8 @@ use std::time;
 use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use sp_executor::{
-	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle, SignedBundle,
+	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
+	SignedOpaqueBundle,
 };
 
 use subspace_runtime_primitives::Hash as PHash;
@@ -43,7 +44,7 @@ where
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Result<Option<OpaqueBundle>, sp_blockchain::Error> {
+	) -> Result<Option<SignedOpaqueBundle>, sp_blockchain::Error> {
 		let parent_number = self.client.info().best_number;
 
 		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -117,7 +118,7 @@ where
 			) {
 				Ok(Some(signature)) => {
 					let signed_bundle = SignedBundle {
-						bundle: bundle.clone(),
+						bundle,
 						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
 							|err| {
 								sp_blockchain::Error::Application(Box::from(format!(
@@ -128,12 +129,11 @@ where
 						signer: executor_id,
 					};
 
-					if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle) {
+					if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
 						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
 					}
 
-					// TODO: SignedOpaqueBundle for farmers.
-					Ok(Some(bundle.into()))
+					Ok(Some(signed_bundle.into()))
 				},
 				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
 					"This should not happen as the existence of key was just checked",
