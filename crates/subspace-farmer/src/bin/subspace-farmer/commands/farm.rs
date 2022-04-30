@@ -40,9 +40,15 @@ pub(crate) async fn farm(
         .farmer_metadata()
         .await
         .map_err(|error| anyhow!(error))?;
-    let max_plot_size = max_plot_size
-        .map(|max_plot_size| max_plot_size / PIECE_SIZE as u64)
-        .unwrap_or(metadata.max_plot_size);
+
+    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
+        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+            log::warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+            metadata.max_plot_size
+        }
+        Some(max_plot_size) => max_plot_size,
+        None => metadata.max_plot_size,
+    };
 
     let FarmerMetadata {
         record_size,
