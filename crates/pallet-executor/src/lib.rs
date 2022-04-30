@@ -347,8 +347,7 @@ impl<T: Config> Pallet<T> {
             signer,
         }: &SignedExecutionReceipt<T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
-        let msg = execution_receipt.hash();
-        if !signer.verify(&msg, signature) {
+        if !signer.verify(&execution_receipt.hash(), signature) {
             return Err(Error::<T>::BadExecutionReceiptSignature);
         }
 
@@ -370,8 +369,7 @@ impl<T: Config> Pallet<T> {
             signer,
         }: &SignedOpaqueBundle,
     ) -> Result<(), Error<T>> {
-        let msg = opaque_bundle.hash();
-        if !signer.verify(&msg, signature) {
+        if !signer.verify(&opaque_bundle.hash(), signature) {
             return Err(Error::<T>::BadBundleSignature);
         }
 

@@ -669,8 +669,7 @@ where
 				PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
 					.expect("Hash type must be correct");
 
-			let msg = bundle.hash();
-			if !signer.verify(&msg, signature) {
+			if !signer.verify(&bundle.hash(), signature) {
 				return Err(Self::Error::BadBundleSignature)
 			}
 
@@ -721,8 +720,7 @@ where
 			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
 				.expect("Hash type must be correct");
 
-		let msg = execution_receipt.hash().encode();
-		if !signer.verify(&msg, signature) {
+		if !signer.verify(&execution_receipt.hash(), signature) {
 			return Err(Self::Error::BadExecutionReceiptSignature)
 		}
 

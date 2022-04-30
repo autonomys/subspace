@@ -115,7 +115,7 @@ impl OpaqueBundle {
     }
 }
 
-impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
+impl<Extrinsic: Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
     fn from(bundle: Bundle<Extrinsic>) -> Self {
         let Bundle { header, extrinsics } = bundle;
         let opaque_extrinsics = extrinsics
@@ -150,9 +150,7 @@ impl SignedOpaqueBundle {
     }
 }
 
-impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<SignedBundle<Extrinsic>>
-    for SignedOpaqueBundle
-{
+impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
     fn from(
         SignedBundle {
             bundle,
