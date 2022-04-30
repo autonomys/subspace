@@ -264,10 +264,18 @@ impl Commitments {
         let db = db_guard.clone()?;
         let iter = db.raw_iterator();
 
-        // Needs to be done in the following manner because of the drop check.
-        // For more information try `rustc --explain E0597`.
-        let solution = SolutionIterator::new(iter, target, range).next();
-        solution
+        // Take the best out of 10 solutions
+        let mut solutions = SolutionIterator::new(iter, target, range)
+            .take(10)
+            .collect::<Vec<_>>();
+        let target = u64::from_be_bytes(target);
+        solutions.sort_by_key(|(tag, _)| {
+            let tag = u64::from_be_bytes(*tag);
+            let diff = target.wrapping_sub(tag);
+            let diff2 = tag.wrapping_sub(target);
+            diff.min(diff2)
+        });
+        solutions.into_iter().next()
     }
 
     pub fn on_status_change(
