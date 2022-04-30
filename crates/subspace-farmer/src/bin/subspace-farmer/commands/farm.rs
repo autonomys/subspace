@@ -27,6 +27,7 @@ pub(crate) async fn farm(
         mut ws_server_listen_addr,
         reward_address,
         plot_size,
+        max_plot_size,
     }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
@@ -35,15 +36,25 @@ pub(crate) async fn farm(
     info!("Connecting to node at {}", node_rpc_url);
     let client = NodeRpcClient::new(&node_rpc_url).await?;
 
-    let FarmerMetadata {
-        record_size,
-        recorded_history_segment_size,
-        max_plot_size,
-        ..
-    } = client
+    let metadata = client
         .farmer_metadata()
         .await
         .map_err(|error| anyhow!(error))?;
+
+    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
+        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+            log::warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+            metadata.max_plot_size
+        }
+        Some(max_plot_size) => max_plot_size,
+        None => metadata.max_plot_size,
+    };
+
+    let FarmerMetadata {
+        record_size,
+        recorded_history_segment_size,
+        ..
+    } = metadata;
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
