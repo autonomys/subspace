@@ -25,17 +25,8 @@ use sp_executor::{
 };
 use sp_runtime::RuntimeAppPublic;
 
-const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
-const INVALID_TRANSACTION_PROOF: u8 = 102;
-const INVALID_EXECUTION_RECEIPT: u8 = 103;
-const INVALID_BUNDLE: u8 = 104;
-
 #[frame_support::pallet]
 mod pallet {
-    use crate::{
-        INVALID_BUNDLE, INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_EXECUTION_RECEIPT,
-        INVALID_TRANSACTION_PROOF,
-    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
@@ -242,6 +233,20 @@ mod pallet {
             .build()
     }
 
+    #[repr(u8)]
+    enum InvalidTransactionCode {
+        BundleEquivicationProof = 101,
+        TrasactionProof = 102,
+        ExecutionReceipt = 103,
+        Bundle = 104,
+    }
+
+    impl From<InvalidTransactionCode> for TransactionValidity {
+        fn from(invalid_code: InvalidTransactionCode) -> Self {
+            InvalidTransaction::Custom(invalid_code as u8).into()
+        }
+    }
+
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -265,7 +270,7 @@ mod pallet {
                             "Invalid execution receipt: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_EXECUTION_RECEIPT).into();
+                        return InvalidTransactionCode::ExecutionReceipt.into();
                     }
                     unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
                 }
@@ -278,7 +283,7 @@ mod pallet {
                             "Invalid signed opaque bundle: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_BUNDLE).into();
+                        return InvalidTransactionCode::Bundle.into();
                     }
                     unsigned_validity(
                         "SubspaceSubmitTransactionBundle",
@@ -305,8 +310,7 @@ mod pallet {
                             "Invalid bundle equivocation proof: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_BUNDLE_EQUIVOCATION_PROOF)
-                            .into();
+                        return InvalidTransactionCode::BundleEquivicationProof.into();
                     }
 
                     unsigned_validity(
@@ -324,7 +328,7 @@ mod pallet {
                             "Wrong InvalidTransactionProof : {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_TRANSACTION_PROOF).into();
+                        return InvalidTransactionCode::TrasactionProof.into();
                     }
 
                     unsigned_validity(
