@@ -41,6 +41,13 @@ struct FarmingArgs {
     /// Only `G` and `T` endings are supported.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     plot_size: u64,
+    /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    ///
+    /// Only `G` and `T` endings are supported.
+    ///
+    /// Only a developer testing flag, as it might be needed for testing.
+    #[clap(long, parse(try_from_str = parse_human_readable_size))]
+    max_plot_size: Option<u64>,
 }
 
 #[derive(Debug, Parser)]
