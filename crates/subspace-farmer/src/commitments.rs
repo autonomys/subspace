@@ -271,9 +271,7 @@ impl Commitments {
         let target = u64::from_be_bytes(target);
         solutions.sort_by_key(|(tag, _)| {
             let tag = u64::from_be_bytes(*tag);
-            let diff = target.wrapping_sub(tag);
-            let diff2 = tag.wrapping_sub(target);
-            diff.min(diff2)
+            subspace_core_primitives::bidirectional_distance(&target, &tag)
         });
         solutions.into_iter().next()
     }
