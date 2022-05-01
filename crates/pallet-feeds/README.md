@@ -6,7 +6,7 @@ Pallet feeds provides the interactions with Subspace storage. The main design go
 to the Storage but also to provide a way for the for feed owners to inject some verification logic through `FeedProcessor`
 impls.
 
-# Calls
+## Calls
 
 The pallet provides following calls.
 1. Create(permissionless): Creates a new Feed for the caller
