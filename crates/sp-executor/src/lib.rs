@@ -57,6 +57,8 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
 /// Header of transaction bundle.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct BundleHeader {
+    /// The hash of primary block at which the bundle was created.
+    pub primary_hash: PHash,
     /// The slot number.
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
@@ -86,6 +88,17 @@ impl<Extrinsic> Bundle<Extrinsic> {
     }
 }
 
+/// Signed version of [`Bundle`].
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct SignedBundle<Extrinsic> {
+    /// The bundle header.
+    pub bundle: Bundle<Extrinsic>,
+    /// Signature of the bundle.
+    pub signature: ExecutorSignature,
+    /// Signer of the signature.
+    pub signer: ExecutorId,
+}
+
 /// Bundle with opaque extrinsics.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct OpaqueBundle {
@@ -102,7 +115,7 @@ impl OpaqueBundle {
     }
 }
 
-impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
+impl<Extrinsic: Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
     fn from(bundle: Bundle<Extrinsic>) -> Self {
         let Bundle { header, extrinsics } = bundle;
         let opaque_extrinsics = extrinsics
@@ -115,6 +128,40 @@ impl<Extrinsic: sp_runtime::traits::Extrinsic + Encode> From<Bundle<Extrinsic>> 
         Self {
             header,
             opaque_extrinsics,
+        }
+    }
+}
+
+/// Signed version of [`OpaqueBundle`].
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+pub struct SignedOpaqueBundle {
+    /// The bundle header.
+    pub opaque_bundle: OpaqueBundle,
+    /// Signature of the opaque bundle.
+    pub signature: ExecutorSignature,
+    /// Signer of the signature.
+    pub signer: ExecutorId,
+}
+
+impl SignedOpaqueBundle {
+    /// Returns the hash of inner opaque bundle.
+    pub fn hash(&self) -> H256 {
+        self.opaque_bundle.hash()
+    }
+}
+
+impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
+    fn from(
+        SignedBundle {
+            bundle,
+            signature,
+            signer,
+        }: SignedBundle<Extrinsic>,
+    ) -> Self {
+        Self {
+            opaque_bundle: bundle.into(),
+            signature,
+            signer,
         }
     }
 }
@@ -287,6 +334,7 @@ impl BundleEquivocationProof {
     /// Constructs a dummy bundle equivocation proof.
     pub fn dummy_at(slot_number: u64) -> Self {
         let dummy_header = BundleHeader {
+            primary_hash: PHash::default(),
             slot_number,
             extrinsics_root: H256::default(),
         };
@@ -313,7 +361,7 @@ sp_api::decl_runtime_apis! {
         ) -> Option<()>;
 
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()>;
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) -> Option<()>;
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;

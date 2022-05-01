@@ -10,7 +10,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_executor::{Bundle, SignedExecutionReceipt};
+use sp_executor::{SignedBundle, SignedExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::{
 	collections::HashSet,
@@ -48,12 +48,12 @@ fn topic<Block: BlockT>() -> Block::Hash {
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<Block: BlockT> {
-	Bundle(Bundle<Block::Extrinsic>),
+	Bundle(SignedBundle<Block::Extrinsic>),
 	ExecutionReceipt(SignedExecutionReceipt<Block::Hash>),
 }
 
-impl<Block: BlockT> From<Bundle<Block::Extrinsic>> for GossipMessage<Block> {
-	fn from(bundle: Bundle<Block::Extrinsic>) -> Self {
+impl<Block: BlockT> From<SignedBundle<Block::Extrinsic>> for GossipMessage<Block> {
+	fn from(bundle: SignedBundle<Block::Extrinsic>) -> Self {
 		Self::Bundle(bundle)
 	}
 }
@@ -94,7 +94,7 @@ where
 	type Error: Debug;
 
 	/// Validates and applies when a transaction bundle was received.
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error>;
+	fn on_bundle(&self, bundle: &SignedBundle<Block::Extrinsic>) -> Result<Action, Self::Error>;
 
 	/// Validates and applies when an execution receipt was received.
 	fn on_execution_receipt(
@@ -268,7 +268,7 @@ pub struct ExecutorGossipParams<Block: BlockT, Network, Executor> {
 	/// Executor instance.
 	pub executor: Executor,
 	/// Stream of transaction bundle produced locally.
-	pub bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
+	pub bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
 	/// Stream of execution receipt produced locally.
 	pub execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 }

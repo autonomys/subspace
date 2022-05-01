@@ -849,10 +849,10 @@ fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
             match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
                 Ok(uxt) => {
                     if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
-                        opaque_bundle,
+                        signed_opaque_bundle,
                     }) = uxt.function
                     {
-                        Some(opaque_bundle)
+                        Some(signed_opaque_bundle.opaque_bundle)
                     } else {
                         None
                     }
@@ -1012,7 +1012,7 @@ impl_runtime_apis! {
             Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
         }
 
-        fn submit_transaction_bundle_unsigned(opaque_bundle: OpaqueBundle) -> Option<()> {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) -> Option<()> {
             Executor::submit_transaction_bundle_unsigned(opaque_bundle).ok()
         }
 

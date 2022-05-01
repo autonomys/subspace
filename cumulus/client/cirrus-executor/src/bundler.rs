@@ -1,17 +1,23 @@
-use codec::Encode;
+use codec::{Decode, Encode};
 use futures::{select, FutureExt};
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::ProvideRuntimeApi;
+use sp_core::ByteArray;
+use sp_keystore::SyncCryptoStore;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
+	RuntimeAppPublic,
 };
 use std::time;
 
 use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{Bundle, BundleHeader, OpaqueBundle};
+use sp_executor::{
+	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
+	SignedOpaqueBundle,
+};
 
 use subspace_runtime_primitives::Hash as PHash;
 
@@ -29,16 +35,16 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
+	PClient: ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
 	pub(super) async fn produce_bundle_impl(
 		self,
-		_primary_hash: PHash,
+		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<OpaqueBundle> {
-		println!("TODO: solve some puzzle based on `slot_info` to be allowed to produce a bundle");
-
+	) -> Result<Option<SignedOpaqueBundle>, sp_blockchain::Error> {
 		let parent_number = self.client.info().best_number;
 
 		let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -82,18 +88,62 @@ where
 			sp_core::storage::StateVersion::V1,
 		);
 
-		let _state_root =
-			self.client.expect_header(BlockId::Number(parent_number)).ok()?.state_root();
+		let _state_root = self.client.expect_header(BlockId::Number(parent_number))?.state_root();
 
 		let bundle = Bundle {
-			header: BundleHeader { slot_number: slot_info.slot.into(), extrinsics_root },
+			header: BundleHeader {
+				primary_hash,
+				slot_number: slot_info.slot.into(),
+				extrinsics_root,
+			},
 			extrinsics,
 		};
 
-		if let Err(e) = self.bundle_sender.unbounded_send(bundle.clone()) {
-			tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-		}
+		let executor_id = self.primary_chain_client.runtime_api().executor_id(&BlockId::Hash(
+			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
+				.expect("Primary block hash must be the correct type; qed"),
+		))?;
 
-		Some(bundle.into())
+		if self.is_authority &&
+			SyncCryptoStore::has_keys(
+				&*self.keystore,
+				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
+			) {
+			let to_sign = bundle.hash();
+			match SyncCryptoStore::sign_with(
+				&*self.keystore,
+				ExecutorId::ID,
+				&executor_id.clone().into(),
+				to_sign.as_ref(),
+			) {
+				Ok(Some(signature)) => {
+					let signed_bundle = SignedBundle {
+						bundle,
+						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
+							|err| {
+								sp_blockchain::Error::Application(Box::from(format!(
+									"Failed to decode the signature of bundle: {err}"
+								)))
+							},
+						)?,
+						signer: executor_id,
+					};
+
+					if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
+						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+					}
+
+					Ok(Some(signed_bundle.into()))
+				},
+				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
+					"This should not happen as the existence of key was just checked",
+				))),
+				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
+					"Error occurred when signing the bundle: {error}"
+				)))),
+			}
+		} else {
+			Ok(None)
+		}
 	}
 }

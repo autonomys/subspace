@@ -4,7 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sc_utils::mpsc::TracingUnboundedReceiver;
-use sp_executor::{Bundle, SignedExecutionReceipt};
+use sp_executor::{SignedBundle, SignedExecutionReceipt};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ where
 {
 	gossip_validator: Arc<GossipValidator<Block, Executor>>,
 	gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-	bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
+	bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
 	execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 }
 
@@ -28,13 +28,13 @@ where
 	pub(super) fn new(
 		gossip_validator: Arc<GossipValidator<Block, Executor>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-		bundle_receiver: TracingUnboundedReceiver<Bundle<Block::Extrinsic>>,
+		bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
 		execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
 	) -> Self {
 		Self { gossip_validator, gossip_engine, bundle_receiver, execution_receipt_receiver }
 	}
 
-	fn gossip_bundle(&self, bundle: Bundle<Block::Extrinsic>) {
+	fn gossip_bundle(&self, bundle: SignedBundle<Block::Extrinsic>) {
 		let outgoing_message: GossipMessage<Block> = bundle.into();
 		let encoded_message = outgoing_message.encode();
 		self.gossip_validator.note_rebroadcasted(&encoded_message);

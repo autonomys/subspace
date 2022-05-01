@@ -83,7 +83,8 @@ use sp_core::{
 };
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
-	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedExecutionReceipt,
+	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
+	SignedOpaqueBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -113,7 +114,7 @@ where
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
-	bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+	bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
@@ -192,7 +193,7 @@ where
 		client: Arc<Client>,
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		transaction_pool: Arc<TransactionPool>,
-		bundle_sender: Arc<TracingUnboundedSender<Bundle<Block::Extrinsic>>>,
+		bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
 		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
@@ -528,8 +529,19 @@ where
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
-	) -> Option<OpaqueBundle> {
-		self.produce_bundle_impl(primary_hash, slot_info).await
+	) -> Option<SignedOpaqueBundle> {
+		match self.produce_bundle_impl(primary_hash, slot_info).await {
+			Ok(res) => res,
+			Err(err) => {
+				tracing::error!(
+					target: LOG_TARGET,
+					relay_parent = ?primary_hash,
+					error = ?err,
+					"Error at producing bundle.",
+				);
+				None
+			},
+		}
 	}
 
 	/// Processes the bundles extracted from the primary block.
@@ -575,6 +587,10 @@ pub enum GossipMessageError {
 	RecvError(#[from] crossbeam::channel::RecvError),
 	#[error("Failed to send local receipt result because the channel is disconnected")]
 	SendError,
+	#[error("The signature of bundle is invalid")]
+	BadBundleSignature,
+	#[error("Invalid bundle author, got: {got}, expected: {expected}")]
+	InvalidBundleAuthor { got: ExecutorId, expected: ExecutorId },
 	#[error("The signature of execution receipt is invalid")]
 	BadExecutionReceiptSignature,
 	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
@@ -624,7 +640,10 @@ where
 {
 	type Error = GossipMessageError;
 
-	fn on_bundle(&self, bundle: &Bundle<Block::Extrinsic>) -> Result<Action, Self::Error> {
+	fn on_bundle(
+		&self,
+		SignedBundle { bundle, signature, signer }: &SignedBundle<Block::Extrinsic>,
+	) -> Result<Action, Self::Error> {
 		let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
 			// TODO: check bundle equivocation
 			let bundle_is_an_equivocation = false;
@@ -646,7 +665,26 @@ where
 		if bundle_exists {
 			Ok(Action::Empty)
 		} else {
-			// TODO: validate the PoE
+			let primary_hash =
+				PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
+					.expect("Hash type must be correct");
+
+			if !signer.verify(&bundle.hash(), signature) {
+				return Err(Self::Error::BadBundleSignature)
+			}
+
+			let expected_executor_id = self
+				.primary_chain_client
+				.runtime_api()
+				.executor_id(&BlockId::Hash(primary_hash))?;
+			if *signer != expected_executor_id {
+				// TODO: handle the misbehavior.
+
+				return Err(Self::Error::InvalidBundleAuthor {
+					got: signer.clone(),
+					expected: expected_executor_id,
+				})
+			}
 
 			for extrinsic in bundle.extrinsics.iter() {
 				let tx_hash = self.transaction_pool.hash_of(extrinsic);
@@ -682,8 +720,7 @@ where
 			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
 				.expect("Hash type must be correct");
 
-		let msg = execution_receipt.hash().encode();
-		if !signer.verify(&msg, signature) {
+		if !signer.verify(&execution_receipt.hash(), signature) {
 			return Err(Self::Error::BadExecutionReceiptSignature)
 		}
 
