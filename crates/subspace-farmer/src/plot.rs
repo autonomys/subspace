@@ -479,6 +479,9 @@ impl IndexHashToOffsetDB {
             .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
             .map(BidirectionalDistanceSorted::new),
         );
+        while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+            self.max_distance_cache.pop_first();
+        }
     }
 
     fn max_distance_key(&mut self) -> Option<PieceDistance> {
