@@ -20,26 +20,19 @@
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
-    SignedExecutionReceipt,
+    BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
+    SignedOpaqueBundle,
 };
 use sp_runtime::RuntimeAppPublic;
 
-const INVALID_BUNDLE_EQUIVOCATION_PROOF: u8 = 101;
-const INVALID_TRANSACTION_PROOF: u8 = 102;
-const INVALID_EXECUTION_RECEIPT: u8 = 103;
-
 #[frame_support::pallet]
 mod pallet {
-    use crate::{
-        INVALID_BUNDLE_EQUIVOCATION_PROOF, INVALID_EXECUTION_RECEIPT, INVALID_TRANSACTION_PROOF,
-    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof, OpaqueBundle,
-        SignedExecutionReceipt,
+        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof,
+        SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
     use sp_std::fmt::Debug;
@@ -74,6 +67,10 @@ mod pallet {
     pub enum Error<T> {
         /// The head number was wrong against the latest head.
         UnexpectedHeadNumber,
+        /// Invalid bundle signature.
+        BadBundleSignature,
+        /// The signer of bundle is unexpected.
+        UnexpectedBundleSigner,
         /// Invalid execution receipt signature.
         BadExecutionReceiptSignature,
         /// The signer of execution receipt is unexpected.
@@ -122,18 +119,18 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle,
+            signed_opaque_bundle: SignedOpaqueBundle,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::debug!(
                 target: "runtime::subspace::executor",
                 "Submitting transaction bundle: {:?}",
-                opaque_bundle
+                signed_opaque_bundle
             );
 
             Self::deposit_event(Event::TransactionBundleStored {
-                bundle_hash: opaque_bundle.hash(),
+                bundle_hash: signed_opaque_bundle.hash(),
             });
 
             Ok(())
@@ -236,6 +233,20 @@ mod pallet {
             .build()
     }
 
+    #[repr(u8)]
+    enum InvalidTransactionCode {
+        BundleEquivicationProof = 101,
+        TrasactionProof = 102,
+        ExecutionReceipt = 103,
+        Bundle = 104,
+    }
+
+    impl From<InvalidTransactionCode> for TransactionValidity {
+        fn from(invalid_code: InvalidTransactionCode) -> Self {
+            InvalidTransaction::Custom(invalid_code as u8).into()
+        }
+    }
+
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -259,14 +270,25 @@ mod pallet {
                             "Invalid execution receipt: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_EXECUTION_RECEIPT).into();
+                        return InvalidTransactionCode::ExecutionReceipt.into();
                     }
                     unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
                 }
-                Call::submit_transaction_bundle { opaque_bundle } => {
-                    // TODO: validate the Proof-of-Election
-
-                    unsigned_validity("SubspaceSubmitTransactionBundle", opaque_bundle.hash())
+                Call::submit_transaction_bundle {
+                    signed_opaque_bundle,
+                } => {
+                    if let Err(e) = Self::check_bundle(signed_opaque_bundle) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid signed opaque bundle: {:?}",
+                            e
+                        );
+                        return InvalidTransactionCode::Bundle.into();
+                    }
+                    unsigned_validity(
+                        "SubspaceSubmitTransactionBundle",
+                        signed_opaque_bundle.hash(),
+                    )
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     // TODO: prevent the spamming of fraud proof transaction.
@@ -288,8 +310,7 @@ mod pallet {
                             "Invalid bundle equivocation proof: {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_BUNDLE_EQUIVOCATION_PROOF)
-                            .into();
+                        return InvalidTransactionCode::BundleEquivicationProof.into();
                     }
 
                     unsigned_validity(
@@ -307,7 +328,7 @@ mod pallet {
                             "Wrong InvalidTransactionProof : {:?}",
                             e
                         );
-                        return InvalidTransaction::Custom(INVALID_TRANSACTION_PROOF).into();
+                        return InvalidTransactionCode::TrasactionProof.into();
                     }
 
                     unsigned_validity(
@@ -330,8 +351,7 @@ impl<T: Config> Pallet<T> {
             signer,
         }: &SignedExecutionReceipt<T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
-        let msg = execution_receipt.hash();
-        if !signer.verify(&msg, signature) {
+        if !signer.verify(&execution_receipt.hash(), signature) {
             return Err(Error::<T>::BadExecutionReceiptSignature);
         }
 
@@ -341,6 +361,28 @@ impl<T: Config> Pallet<T> {
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
             return Err(Error::<T>::UnexpectedExecutionReceiptSigner);
+        }
+
+        Ok(())
+    }
+
+    fn check_bundle(
+        SignedOpaqueBundle {
+            opaque_bundle,
+            signature,
+            signer,
+        }: &SignedOpaqueBundle,
+    ) -> Result<(), Error<T>> {
+        if !signer.verify(&opaque_bundle.hash(), signature) {
+            return Err(Error::<T>::BadBundleSignature);
+        }
+
+        // TODO: upgrade once the trusted executor system is upgraded.
+        let expected_executor = Self::executor()
+            .map(|(_, authority_id)| authority_id)
+            .expect("Executor must be initialized before launching the executor chain; qed");
+        if *signer != expected_executor {
+            return Err(Error::<T>::UnexpectedBundleSigner);
         }
 
         Ok(())
@@ -387,9 +429,11 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
     pub fn submit_transaction_bundle_unsigned(
-        opaque_bundle: OpaqueBundle,
+        signed_opaque_bundle: SignedOpaqueBundle,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_transaction_bundle { opaque_bundle };
+        let call = Call::submit_transaction_bundle {
+            signed_opaque_bundle,
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

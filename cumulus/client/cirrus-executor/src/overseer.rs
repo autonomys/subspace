@@ -25,7 +25,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_executor::{
 	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	SignedExecutionReceipt,
+	SignedExecutionReceipt, SignedOpaqueBundle,
 };
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
@@ -56,9 +56,12 @@ pub struct ExecutorSlotInfo {
 ///
 /// Will be called with each slot of the primary chain.
 ///
-/// Returns an optional [`OpaqueBundle`].
+/// Returns an optional [`SignedOpaqueBundle`].
 pub type BundlerFn = Box<
-	dyn Fn(PHash, ExecutorSlotInfo) -> Pin<Box<dyn Future<Output = Option<OpaqueBundle>> + Send>>
+	dyn Fn(
+			PHash,
+			ExecutorSlotInfo,
+		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
 		+ Send
 		+ Sync,
 >;

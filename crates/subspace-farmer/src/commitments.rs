@@ -262,56 +262,17 @@ impl Commitments {
 
         let db_guard = db_entry.try_lock()?;
         let db = db_guard.clone()?;
+        let iter = db.raw_iterator();
 
-        let mut iter = db.raw_iterator();
-
-        let mut solutions = Vec::new();
-
-        let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
-        let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
-
-        trace!(
-            "{} Lower overflow: {} -- Upper overflow: {}",
-            u64::from_be_bytes(target),
-            is_lower_overflowed,
-            is_upper_overflowed
-        );
-
-        if is_lower_overflowed || is_upper_overflowed {
-            iter.seek_to_first();
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let offset = iter.value().unwrap();
-                if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
-                    iter.next();
-                } else {
-                    break;
-                }
-            }
-
-            iter.seek(lower.to_be_bytes());
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let offset = iter.value().unwrap();
-
-                solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
-                iter.next();
-            }
-        } else {
-            iter.seek(lower.to_be_bytes());
-            while let Some(tag) = iter.key() {
-                let tag = tag.try_into().unwrap();
-                let offset = iter.value().unwrap();
-                if u64::from_be_bytes(tag) <= upper {
-                    solutions.push((tag, u64::from_le_bytes(offset.try_into().unwrap())));
-                    iter.next();
-                } else {
-                    break;
-                }
-            }
-        }
-
+        // Take the best out of 10 solutions
+        let mut solutions = SolutionIterator::new(iter, target, range)
+            .take(10)
+            .collect::<Vec<_>>();
+        let target = u64::from_be_bytes(target);
+        solutions.sort_by_key(|(tag, _)| {
+            let tag = u64::from_be_bytes(*tag);
+            subspace_core_primitives::bidirectional_distance(&target, &tag)
+        });
         solutions.into_iter().next()
     }
 
@@ -336,5 +297,83 @@ impl Commitments {
         }
 
         None
+    }
+}
+
+enum SolutionIteratorState {
+    /// We don't have overflow of solution range.
+    /// Scanning solutions from `lower..=upper`
+    NoOverflow,
+    /// We have overflow of solution range and we are trying to scan all solutions within
+    /// `0..=upper` and switch to `Self::OverflowEnd` state.
+    OverflowStart,
+    /// We have overflow of solution range and we scanned all solutions from `0..=upper`. Scanning
+    /// solutions in `lower..` range
+    OverflowEnd,
+}
+
+pub(crate) struct SolutionIterator<'a> {
+    iter: rocksdb::DBRawIterator<'a>,
+    state: SolutionIteratorState,
+    /// Lower bound of solution range
+    lower: u64,
+    /// Upper bound of solution range
+    upper: u64,
+}
+
+impl<'a> SolutionIterator<'a> {
+    pub fn new(mut iter: rocksdb::DBRawIterator<'a>, target: Tag, range: u64) -> Self {
+        let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
+        let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
+
+        trace!(
+            "{} Lower overflow: {is_lower_overflowed} -- Upper overflow: {is_upper_overflowed}",
+            u64::from_be_bytes(target),
+        );
+        let state = if is_lower_overflowed || is_upper_overflowed {
+            iter.seek_to_first();
+            SolutionIteratorState::OverflowStart
+        } else {
+            iter.seek(lower.to_be_bytes());
+            SolutionIteratorState::NoOverflow
+        };
+        Self {
+            iter,
+            state,
+            lower,
+            upper,
+        }
+    }
+
+    fn next_entry(&mut self) -> Option<(Tag, PieceOffset)> {
+        self.iter
+            .key()
+            .map(|tag| tag.try_into().unwrap())
+            .map(|tag| {
+                let offset = u64::from_le_bytes(self.iter.value().unwrap().try_into().unwrap());
+                self.iter.next();
+                (tag, offset)
+            })
+    }
+}
+
+impl<'a> Iterator for SolutionIterator<'a> {
+    type Item = (Tag, PieceOffset);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.state {
+            SolutionIteratorState::NoOverflow => self
+                .next_entry()
+                .filter(|(tag, _)| u64::from_be_bytes(*tag) <= self.upper),
+            SolutionIteratorState::OverflowStart => self
+                .next_entry()
+                .filter(|(tag, _)| u64::from_be_bytes(*tag) <= self.upper)
+                .or_else(|| {
+                    self.state = SolutionIteratorState::OverflowEnd;
+                    self.iter.seek(self.lower.to_be_bytes());
+                    self.next()
+                }),
+            SolutionIteratorState::OverflowEnd => self.next_entry(),
+        }
     }
 }
