@@ -6653,17 +6653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-uncles"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?rev=c4f3d028621edb293d2c423516221aa396f76a2d#c4f3d028621edb293d2c423516221aa396f76a2d"
-dependencies = [
- "sc-client-api",
- "sp-authorship",
- "sp-runtime",
- "thiserror",
-]
-
-[[package]]
 name = "sc-executor"
 version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=c4f3d028621edb293d2c423516221aa396f76a2d#c4f3d028621edb293d2c423516221aa396f76a2d"
@@ -8683,7 +8672,6 @@ dependencies = [
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
- "sc-consensus-uncles",
  "sc-executor",
  "sc-network",
  "sc-rpc",
