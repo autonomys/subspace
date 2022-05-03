@@ -5,7 +5,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use log::{error, info};
 use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -411,6 +411,32 @@ impl WeakPlot {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BidirectionalDistanceSorted<T> {
+    distance: T,
+    value: T,
+}
+
+impl<T: PartialOrd> PartialOrd for BidirectionalDistanceSorted<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.distance.partial_cmp(&other.distance)
+    }
+}
+
+impl<T: Ord> Ord for BidirectionalDistanceSorted<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.distance.cmp(&other.distance)
+    }
+}
+
+impl BidirectionalDistanceSorted<PieceDistance> {
+    pub fn new(value: PieceDistance) -> Self {
+        let distance =
+            subspace_core_primitives::bidirectional_distance(&value, &PieceDistance::MIDDLE);
+        Self { value, distance }
+    }
+}
+
 /// Mapping from piece index hash to piece offset.
 ///
 /// Piece index hashes are transformed in the following manner:
@@ -420,42 +446,63 @@ impl WeakPlot {
 struct IndexHashToOffsetDB {
     inner: DB,
     address: PublicKey,
-    max_distance_key: Option<PieceDistance>,
+    max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
 }
 
 impl IndexHashToOffsetDB {
+    const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 100;
+
     fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
             address,
-            max_distance_key: None,
+            max_distance_cache: BTreeSet::new(),
         };
-        me.update_max_distance();
+        me.update_max_distance_cache();
         Ok(me)
     }
 
-    fn update_max_distance(&mut self) {
-        self.max_distance_key = try {
-            let mut iter = self.inner.raw_iterator();
-            iter.seek_to_first();
-            let lower_bound = iter.key().map(PieceDistance::from_big_endian)?;
-            iter.seek_to_last();
-            let upper_bound = iter.key().map(PieceDistance::from_big_endian)?;
+    fn update_max_distance_cache(&mut self) {
+        let mut iter = self.inner.raw_iterator();
 
-            // Pick key which has maximum distance to our key
-            if subspace_core_primitives::bidirectional_distance(
-                &lower_bound,
-                &PieceDistance::MIDDLE,
-            ) < subspace_core_primitives::bidirectional_distance(
-                &upper_bound,
-                &PieceDistance::MIDDLE,
-            ) {
-                upper_bound
-            } else {
-                lower_bound
-            }
-        };
+        iter.seek_to_first();
+        self.max_distance_cache.extend(
+            std::iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+                if piece_index_hash.is_some() {
+                    iter.next();
+                }
+                piece_index_hash
+            })
+            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
+            .map(BidirectionalDistanceSorted::new),
+        );
+
+        iter.seek_to_last();
+        self.max_distance_cache.extend(
+            std::iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+                if piece_index_hash.is_some() {
+                    iter.prev();
+                }
+                piece_index_hash
+            })
+            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
+            .map(BidirectionalDistanceSorted::new),
+        );
+        while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+            self.max_distance_cache.pop_first();
+        }
+    }
+
+    fn max_distance_key(&mut self) -> Option<PieceDistance> {
+        if self.max_distance_cache.is_empty() {
+            self.update_max_distance_cache()
+        }
+        self.max_distance_cache
+            .last()
+            .map(|distance| distance.value)
     }
 
     fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
@@ -480,8 +527,8 @@ impl IndexHashToOffsetDB {
 
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
-    fn should_store(&self, index_hash: &PieceIndexHash) -> bool {
-        self.max_distance_key
+    fn should_store(&mut self, index_hash: &PieceIndexHash) -> bool {
+        self.max_distance_key()
             .map(|max_distance_key| {
                 subspace_core_primitives::bidirectional_distance(
                     &max_distance_key,
@@ -492,7 +539,7 @@ impl IndexHashToOffsetDB {
     }
 
     fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance_key {
+        let max_distance = match self.max_distance_key() {
             Some(max_distance) => max_distance,
             None => return Ok(None),
         };
@@ -506,8 +553,8 @@ impl IndexHashToOffsetDB {
         self.inner
             .delete(&max_distance.to_bytes())
             .map_err(io::Error::other)?;
-
-        self.update_max_distance();
+        self.max_distance_cache
+            .remove(&BidirectionalDistanceSorted::new(max_distance));
 
         Ok(result)
     }
@@ -518,21 +565,15 @@ impl IndexHashToOffsetDB {
             .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
 
-        self.max_distance_key = match self.max_distance_key {
-            Some(max_distance_key) => {
-                if PieceDistance::distance(index_hash, self.address)
-                    > subspace_core_primitives::bidirectional_distance(
-                        &max_distance_key,
-                        &PieceDistance::MIDDLE,
-                    )
-                {
-                    Some(key)
-                } else {
-                    Some(max_distance_key)
+        if let Some(first) = self.max_distance_cache.first() {
+            let key = BidirectionalDistanceSorted::new(key);
+            if key > *first {
+                self.max_distance_cache.insert(key);
+                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+                    self.max_distance_cache.pop_first();
                 }
             }
-            None => Some(key),
-        };
+        }
 
         Ok(())
     }
