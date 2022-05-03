@@ -228,12 +228,7 @@ where
                             subspace_link.root_blocks_for_block(parent_block_number + 1),
                         );
 
-                    let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
-                        &*client,
-                        parent_hash,
-                    )?;
-
-                    Ok((timestamp, subspace_inherents, uncles))
+                    Ok((timestamp, subspace_inherents))
                 }
             }
         },
@@ -404,12 +399,7 @@ where
                                 subspace_link.root_blocks_for_block(parent_block_number + 1),
                             );
 
-                        let uncles = sc_consensus_uncles::create_uncles_inherent_data_provider(
-                            &*client,
-                            parent_hash,
-                        )?;
-
-                        Ok((timestamp, subspace_inherents, uncles))
+                        Ok((timestamp, subspace_inherents))
                     }
                 }
             },

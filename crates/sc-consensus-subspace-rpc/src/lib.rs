@@ -557,7 +557,9 @@ where
 
             if let Some(mut sender) = maybe_sender {
                 if let Err(error) = sender.send(()).await {
-                    warn!("Failed to acknowledge archived segment: {error}");
+                    if !error.is_disconnected() {
+                        warn!("Failed to acknowledge archived segment: {error}");
+                    }
                 }
             }
 
