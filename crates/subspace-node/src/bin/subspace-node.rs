@@ -268,8 +268,11 @@ fn main() -> std::result::Result<(), Error> {
                         primary_chain_node_config,
                         true,
                     )
-                    .map_err(|_| {
-                        sc_service::Error::Other("Failed to build a full subspace node".into())
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {}",
+                            error
+                        ))
                     })?
                 };
 
@@ -290,10 +293,11 @@ fn main() -> std::result::Result<(), Error> {
                         &secondary_chain_cli,
                         tokio_handle,
                     )
-                    .map_err(|_| {
-                        sc_service::Error::Other(
-                            "Failed to create secondary chain configuration".into(),
-                        )
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to create secondary chain configuration: {}",
+                            error
+                        ))
                     })?;
 
                     let secondary_chain_full_node_fut = cirrus_node::service::new_full(

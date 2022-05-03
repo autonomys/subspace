@@ -171,13 +171,17 @@ impl Archiving {
                             Some(archived_segment) => {
                                 let segment_index = archived_segment.root_block.segment_index();
                                 let (acknowledge_sender, acknowledge_receiver) = oneshot::channel();
+                                // Acknowledge immediately to allow node to continue sync quickly,
+                                // but this will miss some segments in case farmer crashed in the
+                                // meantime. Ideally we'd acknowledge after, but it makes node wait
+                                // for it and the whole process very sequential.
+                                if let Err(error) = client.acknowledge_archived_segment(segment_index).await {
+                                    error!("Failed to send archived segment acknowledgement: {error}");
+                                }
                                 if let Err(error) = archived_segments_sync_sender.send((archived_segment, acknowledge_sender)) {
                                     error!("Failed to send archived segment for plotting: {error}");
                                 }
                                 let _ = acknowledge_receiver.await;
-                                if let Err(error) = client.acknowledge_archived_segment(segment_index).await {
-                                    error!("Failed to send archived segment acknowledgement: {error}");
-                                }
                             },
                             None => {
                                 debug!("Subscription has forcefully closed from node side!");
