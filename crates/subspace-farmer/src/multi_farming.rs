@@ -7,7 +7,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
 use rayon::prelude::*;
 use std::{path::Path, sync::Arc, time::Duration};
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
@@ -20,16 +20,36 @@ pub struct MultiFarming {
     archiving: Archiving,
 }
 
+fn get_plot_sizes(plot_size: u64, max_plot_size: u64) -> Vec<u64> {
+    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
+    // less than it was specified before.
+    // TODO: Piece count should account for database overhead of various additional databases
+    // For now assume 80% will go for plot itself
+    let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
+
+    let plot_sizes = std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
+    if plot_size % max_plot_size > 0 {
+        plot_sizes
+            .chain(std::iter::once(plot_size % max_plot_size))
+            .collect::<Vec<_>>()
+    } else {
+        plot_sizes.collect()
+    }
+}
+
 impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new(
         base_directory: impl AsRef<Path>,
         client: NodeRpcClient,
         object_mappings: ObjectMappings,
-        plot_sizes: Vec<u64>,
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
+        plot_size: u64,
+        max_plot_size: u64,
     ) -> anyhow::Result<Self> {
+        let plot_sizes = get_plot_sizes(plot_size, max_plot_size);
+
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
         let mut commitments = Vec::with_capacity(plot_sizes.len());
