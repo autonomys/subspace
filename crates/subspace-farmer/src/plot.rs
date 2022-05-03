@@ -628,13 +628,23 @@ impl PlotWorker<File> {
         address: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
-        let mut plot = OpenOptions::new()
+        let plot = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(base_directory.as_ref().join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
+        Self::with_plot_file(plot, base_directory, address, max_piece_count)
+    }
+}
 
+impl<T: PlotFile> PlotWorker<T> {
+    fn with_plot_file(
+        mut plot: T,
+        base_directory: impl AsRef<Path>,
+        address: PublicKey,
+        max_piece_count: u64,
+    ) -> Result<Self, PlotError> {
         let piece_count = plot
             .piece_count()
             .map_err(PlotError::PlotOpen)
@@ -664,9 +674,7 @@ impl PlotWorker<File> {
             max_piece_count,
         })
     }
-}
 
-impl<T: PlotFile> PlotWorker<T> {
     fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
         let mut buffer = Piece::default();
         let offset = self
