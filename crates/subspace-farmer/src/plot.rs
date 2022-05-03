@@ -411,10 +411,16 @@ impl WeakPlot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord)]
 struct BidirectionalDistanceSorted<T> {
     distance: T,
     value: T,
+}
+
+impl<T: PartialOrd> PartialOrd for BidirectionalDistanceSorted<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.distance.partial_cmp(&other.distance)
+    }
 }
 
 impl BidirectionalDistanceSorted<PieceDistance> {
@@ -445,7 +451,7 @@ impl IndexHashToOffsetDB {
         let mut me = Self {
             inner,
             address,
-            max_distance_cache: Default::default(),
+            max_distance_cache: BTreeSet::new(),
         };
         me.update_max_distance_cache();
         Ok(me)
@@ -557,8 +563,7 @@ impl IndexHashToOffsetDB {
             let key = BidirectionalDistanceSorted::new(key);
             if key > *first {
                 self.max_distance_cache.insert(key);
-                if self.max_distance_cache.len() == 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP + 1
-                {
+                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
                     self.max_distance_cache.pop_first();
                 }
             }
