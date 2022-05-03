@@ -411,7 +411,7 @@ impl WeakPlot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BidirectionalDistanceSorted<T> {
     distance: T,
     value: T,
@@ -420,6 +420,12 @@ struct BidirectionalDistanceSorted<T> {
 impl<T: PartialOrd> PartialOrd for BidirectionalDistanceSorted<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.distance.partial_cmp(&other.distance)
+    }
+}
+
+impl<T: Ord> Ord for BidirectionalDistanceSorted<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.distance.cmp(&other.distance)
     }
 }
 
