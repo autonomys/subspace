@@ -202,6 +202,33 @@ impl Plot {
         })
     }
 
+    /// Creates a new plot from any kind of plot file
+    pub fn with_plot_file(
+        plot: impl PlotFile + Send + 'static,
+        base_directory: impl AsRef<Path>,
+        address: PublicKey,
+        max_piece_count: u64,
+    ) -> Result<Plot, PlotError> {
+        let plot_worker =
+            PlotWorker::with_plot_file(plot, base_directory.as_ref(), address, max_piece_count)?;
+
+        let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
+
+        let piece_count = Arc::clone(&plot_worker.piece_count);
+        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
+
+        let inner = Inner {
+            handlers: Handlers::default(),
+            requests_sender,
+            piece_count,
+            address,
+        };
+
+        Ok(Plot {
+            inner: Arc::new(inner),
+        })
+    }
+
     /// How many pieces are there in the plot
     pub fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
