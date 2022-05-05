@@ -32,7 +32,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const TESTNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-snapshot-2022-mar-09.json");
-const TESTNET_BOOTSTRAP_NODE: &str = "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr";
+// const TESTNET_BOOTSTRAP_NODE: &str = "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr";
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -147,9 +147,9 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
             )
         },
         // Bootnodes
-        vec![TESTNET_BOOTSTRAP_NODE
-            .parse()
-            .expect("Bootstrap node must be correct")],
+        vec![
+            // TESTNET_BOOTSTRAP_NODE.parse().expect("Bootstrap node must be correct")
+        ],
         // Telemetry
         Some(
             TelemetryEndpoints::new(vec![
