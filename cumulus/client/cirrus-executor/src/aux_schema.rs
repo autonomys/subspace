@@ -13,7 +13,7 @@ const EXECUTION_RECEIPT_KEY: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
 const EXECUTION_RECEIPT_BLOCK_NUMBER: &[u8] = b"execution_receipt_block_number";
 /// Prune the execution receipts when they reach this number.
-const PRUNING_DEPTH: u64 = 1000;
+const PRUNING_DEPTH: u32 = 1000;
 
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
 	(EXECUTION_RECEIPT_KEY, block_hash).encode()
@@ -112,12 +112,14 @@ pub(super) fn target_receipt_is_pruned<Block: BlockT>(
 mod tests {
 	use super::*;
 	use sp_core::hash::H256;
-	use substrate_test_runtime::{Block, BlockNumber, Hash};
+	use subspace_runtime_primitives::{BlockNumber, Hash};
+	use subspace_test_runtime::Block;
 
 	type ExecutionReceipt = sp_executor::ExecutionReceipt<Hash>;
 
-	fn create_execution_receipt() -> ExecutionReceipt {
+	fn create_execution_receipt(primary_number: BlockNumber) -> ExecutionReceipt {
 		ExecutionReceipt {
+			primary_number,
 			primary_hash: H256::random(),
 			secondary_hash: H256::random(),
 			trace: Default::default(),
@@ -154,7 +156,7 @@ mod tests {
 		// Create PRUNING_DEPTH receipts.
 		let block_hash_list = (1..=PRUNING_DEPTH)
 			.map(|block_number| {
-				let receipt = create_execution_receipt();
+				let receipt = create_execution_receipt(block_number);
 				let block_hash = Hash::random();
 				write_receipt_at(block_hash, block_number, &receipt);
 				assert_eq!(receipt_at(block_hash), Some(receipt));
@@ -169,7 +171,11 @@ mod tests {
 		// Create PRUNING_DEPTH + 1 receipt.
 		let block_hash = Hash::random();
 		assert!(receipt_at(block_hash).is_none());
-		write_receipt_at(block_hash, PRUNING_DEPTH + 1, &create_execution_receipt());
+		write_receipt_at(
+			block_hash,
+			PRUNING_DEPTH + 1,
+			&create_execution_receipt(PRUNING_DEPTH + 1),
+		);
 		assert!(receipt_at(block_hash).is_some());
 		// ER of block #1 should be pruned.
 		assert!(receipt_at(block_hash_list[0]).is_none());
@@ -180,7 +186,11 @@ mod tests {
 
 		// Create PRUNING_DEPTH + 2 receipt.
 		let block_hash = Hash::random();
-		write_receipt_at(block_hash, PRUNING_DEPTH + 2, &create_execution_receipt());
+		write_receipt_at(
+			block_hash,
+			PRUNING_DEPTH + 2,
+			&create_execution_receipt(PRUNING_DEPTH + 2),
+		);
 		assert!(receipt_at(block_hash).is_some());
 		// ER of block #2 should be pruned.
 		assert!(receipt_at(block_hash_list[1]).is_none());
@@ -190,7 +200,11 @@ mod tests {
 
 		// Multiple hashes attached to the block #(PRUNING_DEPTH + 2)
 		let block_hash2 = Hash::random();
-		write_receipt_at(block_hash2, PRUNING_DEPTH + 2, &create_execution_receipt());
+		write_receipt_at(
+			block_hash2,
+			PRUNING_DEPTH + 2,
+			&create_execution_receipt(PRUNING_DEPTH + 2),
+		);
 		assert!(receipt_at(block_hash2).is_some());
 		assert_eq!(hashes_at(PRUNING_DEPTH + 2), Some(vec![block_hash, block_hash2]));
 	}

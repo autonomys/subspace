@@ -876,7 +876,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
- "substrate-test-runtime",
+ "subspace-test-runtime",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "thiserror",

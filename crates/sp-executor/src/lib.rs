@@ -28,7 +28,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{Randomness, Sha256Hash};
+use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
@@ -169,6 +169,8 @@ impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
 /// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
+    /// Primary block number.
+    pub primary_number: BlockNumber,
     /// Primary block hash.
     pub primary_hash: PHash,
     /// Secondary block hash.

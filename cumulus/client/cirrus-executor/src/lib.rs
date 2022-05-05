@@ -94,7 +94,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
@@ -737,23 +737,7 @@ where
 			})
 		}
 
-		let block_number = TryInto::<BlockNumber>::try_into(
-			self.primary_chain_client
-				.block_number_from_id(&BlockId::Hash(primary_hash))?
-				.ok_or_else(|| {
-					sp_blockchain::Error::Backend(format!(
-						"Primary block number not found for {:?}",
-						execution_receipt.primary_hash
-					))
-				})?,
-		)
-		.unwrap_or_else(|_error| {
-			panic!(
-				"Block number must be exactly the same size for both primary and secondary chains; qed"
-			)
-		})
-		.into();
-
+		let block_number = execution_receipt.primary_number.into();
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
