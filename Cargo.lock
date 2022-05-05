@@ -8568,6 +8568,7 @@ dependencies = [
  "sc-telemetry",
  "sc-tracing",
  "serde",
+ "serde_json",
  "sp-consensus",
  "sp-core",
  "sp-executor",

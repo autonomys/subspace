@@ -20,12 +20,15 @@ mod chain_spec;
 mod import_blocks_from_dsn;
 mod secondary_chain_cli;
 
+use crate::chain_spec::SubspaceChainSpec;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::secondary_chain_cli::SecondaryChainCli;
+use crate::serde_json::Value;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
+use sc_telemetry::serde_json;
 
 /// Executor dispatch for subspace runtime
 pub struct ExecutorDispatch;
@@ -156,15 +159,29 @@ impl SubstrateCli for Cli {
     }
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
-        Ok(match id {
-            "testnet" => Box::new(chain_spec::testnet_config_json()?),
-            "testnet-compiled" => Box::new(chain_spec::testnet_config_compiled()?),
-            "dev" => Box::new(chain_spec::dev_config()?),
-            "" | "local" => Box::new(chain_spec::local_config()?),
-            path => Box::new(chain_spec::SubspaceChainSpec::from_json_file(
-                std::path::PathBuf::from(path),
-            )?),
-        })
+        let mut chain_spec = match id {
+            "testnet" => chain_spec::testnet_config_json()?,
+            "testnet-compiled" => chain_spec::testnet_config_compiled()?,
+            "dev" => chain_spec::dev_config()?,
+            "" | "local" => chain_spec::local_config()?,
+            path => SubspaceChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        };
+
+        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+        // chain spec
+        if !self.run.base.network_params.bootnodes.is_empty() {
+            let mut chain_spec_value =
+                serde_json::from_str::<'_, Value>(&chain_spec.as_json(true)?)
+                    .map_err(|error| error.to_string())?;
+            if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
+                if let Some(boot_nodes) = boot_nodes.as_array_mut() {
+                    boot_nodes.clear();
+                }
+            }
+            chain_spec =
+                SubspaceChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
+        }
+        Ok(Box::new(chain_spec))
     }
 
     fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
