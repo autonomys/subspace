@@ -24,17 +24,18 @@ pub struct MultiFarming {
     archiving: Archiving,
 }
 
-fn get_plot_sizes(plot_size: u64, max_plot_size: u64) -> Vec<u64> {
+fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
     // less than it was specified before.
     // TODO: Piece count should account for database overhead of various additional databases
     // For now assume 80% will go for plot itself
-    let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
+    let total_plot_size = total_plot_size * 4 / 5 / PIECE_SIZE as u64;
 
-    let plot_sizes = std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
-    if plot_size % max_plot_size > 0 {
+    let plot_sizes =
+        std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
+    if total_plot_size % max_plot_size > 0 {
         plot_sizes
-            .chain(std::iter::once(plot_size % max_plot_size))
+            .chain(std::iter::once(total_plot_size % max_plot_size))
             .collect::<Vec<_>>()
     } else {
         plot_sizes.collect()
@@ -49,10 +50,10 @@ impl MultiFarming {
         object_mappings: ObjectMappings,
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
-        plot_size: u64,
+        total_plot_size: u64,
         max_plot_size: u64,
     ) -> anyhow::Result<Self> {
-        let plot_sizes = get_plot_sizes(plot_size, max_plot_size);
+        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
         Self::new_inner(
             base_directory.clone(),
             client,

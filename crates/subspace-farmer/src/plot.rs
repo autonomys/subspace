@@ -203,12 +203,15 @@ impl Plot {
     }
 
     /// Creates a new plot from any kind of plot file
-    pub fn with_plot_file(
-        plot: impl PlotFile + Send + 'static,
+    pub fn with_plot_file<P>(
+        plot: P,
         base_directory: impl AsRef<Path>,
         address: PublicKey,
         max_piece_count: u64,
-    ) -> Result<Plot, PlotError> {
+    ) -> Result<Plot, PlotError>
+    where
+        P: PlotFile + Send + 'static,
+    {
         let plot_worker =
             PlotWorker::with_plot_file(plot, base_directory.as_ref(), address, max_piece_count)?;
 
