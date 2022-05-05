@@ -64,28 +64,14 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
-    // less than it was specified before.
-    // TODO: Piece count should account for database overhead of various additional databases
-    // For now assume 80% will go for plot itself
-    let plot_size = plot_size * 4 / 5 / PIECE_SIZE as u64;
-
-    let plot_sizes = std::iter::repeat(max_plot_size).take((plot_size / max_plot_size) as usize);
-    let plot_sizes = if plot_size % max_plot_size > 0 {
-        plot_sizes
-            .chain(std::iter::once(plot_size % max_plot_size))
-            .collect::<Vec<_>>()
-    } else {
-        plot_sizes.collect()
-    };
-
     let multi_farming = MultiFarming::new(
         base_directory,
         client,
         object_mappings.clone(),
-        plot_sizes,
         reward_address,
         best_block_number_check_interval,
+        plot_size,
+        max_plot_size,
     )
     .await?;
 

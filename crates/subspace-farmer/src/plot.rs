@@ -202,6 +202,36 @@ impl Plot {
         })
     }
 
+    /// Creates a new plot from any kind of plot file
+    pub fn with_plot_file<P>(
+        plot: P,
+        base_directory: impl AsRef<Path>,
+        address: PublicKey,
+        max_piece_count: u64,
+    ) -> Result<Plot, PlotError>
+    where
+        P: PlotFile + Send + 'static,
+    {
+        let plot_worker =
+            PlotWorker::with_plot_file(plot, base_directory.as_ref(), address, max_piece_count)?;
+
+        let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
+
+        let piece_count = Arc::clone(&plot_worker.piece_count);
+        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
+
+        let inner = Inner {
+            handlers: Handlers::default(),
+            requests_sender,
+            piece_count,
+            address,
+        };
+
+        Ok(Plot {
+            inner: Arc::new(inner),
+        })
+    }
+
     /// How many pieces are there in the plot
     pub fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
@@ -579,15 +609,50 @@ impl IndexHashToOffsetDB {
     }
 }
 
-struct PlotWorker {
-    plot: File,
+/// Trait for mocking plot behaviour
+pub trait PlotFile {
+    /// Get number of pieces in plot
+    fn piece_count(&mut self) -> io::Result<u64>;
+
+    /// Write pieces sequentially under some offset
+    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
+    /// Read pieces from disk under some offset
+    fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
+
+    /// Sync all writes to the plot
+    fn sync_all(&mut self) -> io::Result<()>;
+}
+
+impl PlotFile for File {
+    fn piece_count(&mut self) -> io::Result<u64> {
+        self.metadata()
+            .map(|metadata| metadata.len() / PIECE_SIZE as u64)
+    }
+
+    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
+        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.write_all(pieces.as_ref())
+    }
+
+    fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
+        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.read_exact(buf.as_mut())
+    }
+
+    fn sync_all(&mut self) -> io::Result<()> {
+        File::sync_all(&*self)
+    }
+}
+
+struct PlotWorker<T> {
+    plot: T,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: File,
     piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
 }
 
-impl PlotWorker {
+impl PlotWorker<File> {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
         address: PublicKey,
@@ -599,13 +664,22 @@ impl PlotWorker {
             .create(true)
             .open(base_directory.as_ref().join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
+        Self::with_plot_file(plot, base_directory, address, max_piece_count)
+    }
+}
 
-        let plot_size = plot
-            .metadata()
-            .map(|metadata| metadata.len())
-            .map_err(PlotError::PlotOpen)?;
-
-        let piece_count = Arc::new(AtomicU64::new(plot_size / PIECE_SIZE as u64));
+impl<T: PlotFile> PlotWorker<T> {
+    fn with_plot_file(
+        mut plot: T,
+        base_directory: impl AsRef<Path>,
+        address: PublicKey,
+        max_piece_count: u64,
+    ) -> Result<Self, PlotError> {
+        let piece_count = plot
+            .piece_count()
+            .map_err(PlotError::PlotOpen)
+            .map(AtomicU64::new)
+            .map(Arc::new)?;
 
         let piece_offset_to_index = OpenOptions::new()
             .read(true)
@@ -639,9 +713,7 @@ impl PlotWorker {
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
-        self.plot
-            .seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.plot.read_exact(buffer.as_mut()).map(|()| buffer)
+        self.plot.read(offset, &mut buffer).map(|()| buffer)
     }
 
     fn get_piece_index(&mut self, offset: PieceOffset) -> io::Result<PieceIndex> {
@@ -685,9 +757,7 @@ impl PlotWorker {
 
         // Process sequential pieces
         {
-            self.plot
-                .seek(SeekFrom::Start(current_piece_count * PIECE_SIZE as u64))?;
-            self.plot.write_all(sequential_pieces)?;
+            self.plot.write(sequential_pieces, current_piece_count)?;
 
             for (piece_offset, &piece_index) in
                 (current_piece_count..).zip(sequential_piece_indexes)
@@ -733,13 +803,9 @@ impl PlotWorker {
                 .expect("Must be always present as plot is non-empty; qed");
 
             let mut old_piece = Piece::default();
-            self.plot
-                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-            self.plot.read_exact(&mut old_piece)?;
+            self.plot.read(piece_offset, &mut old_piece)?;
 
-            self.plot
-                .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-            self.plot.write_all(piece)?;
+            self.plot.write(piece, piece_offset)?;
 
             self.piece_index_hash_to_offset_db
                 .put(&piece_index.into(), piece_offset)?;
@@ -787,9 +853,7 @@ impl PlotWorker {
                         } => {
                             let result = try {
                                 let mut buffer = Piece::default();
-                                self.plot
-                                    .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
-                                self.plot.read_exact(buffer.as_mut())?;
+                                self.plot.read(piece_offset, &mut buffer)?;
                                 let index = self.get_piece_index(piece_offset)?;
                                 (buffer, index)
                             };
@@ -801,11 +865,9 @@ impl PlotWorker {
                             result_sender,
                         } => {
                             let result = try {
-                                self.plot
-                                    .seek(SeekFrom::Start(piece_offset * PIECE_SIZE as u64))?;
                                 let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
                                 buffer.resize(buffer.capacity(), 0);
-                                self.plot.read_exact(&mut buffer)?;
+                                self.plot.read(piece_offset, &mut buffer)?;
                                 buffer
                             };
                             let _ = result_sender.send(result);
