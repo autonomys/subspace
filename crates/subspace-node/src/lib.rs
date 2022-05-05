@@ -19,6 +19,7 @@
 mod chain_spec;
 mod import_blocks_from_dsn;
 mod secondary_chain_cli;
+mod secondary_chain_spec;
 
 use crate::chain_spec::SubspaceChainSpec;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
@@ -86,7 +87,7 @@ pub enum Subcommand {
 
     /// Run executor sub-commands.
     #[clap(subcommand)]
-    Executor(cirrus_node::cli::Subcommand),
+    Executor(secondary_chain_cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
