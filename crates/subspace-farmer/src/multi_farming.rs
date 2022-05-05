@@ -1,13 +1,17 @@
 use crate::{
     plotting, Archiving, Commitments, Farming, Identity, NodeRpcClient, ObjectMappings, Plot,
-    RpcClient,
+    PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
 use rayon::prelude::*;
-use std::{path::Path, sync::Arc, time::Duration};
-use subspace_core_primitives::PublicKey;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
+use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
@@ -20,15 +24,62 @@ pub struct MultiFarming {
     archiving: Archiving,
 }
 
+fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
+    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
+    // less than it was specified before.
+    // TODO: Piece count should account for database overhead of various additional databases
+    // For now assume 80% will go for plot itself
+    let total_plot_size = total_plot_size * 4 / 5 / PIECE_SIZE as u64;
+
+    let plot_sizes =
+        std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
+    if total_plot_size % max_plot_size > 0 {
+        plot_sizes
+            .chain(std::iter::once(total_plot_size % max_plot_size))
+            .collect::<Vec<_>>()
+    } else {
+        plot_sizes.collect()
+    }
+}
+
 impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new(
+        base_directory: PathBuf,
+        client: NodeRpcClient,
+        object_mappings: ObjectMappings,
+        reward_address: PublicKey,
+        best_block_number_check_interval: Duration,
+        total_plot_size: u64,
+        max_plot_size: u64,
+    ) -> anyhow::Result<Self> {
+        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
+        Self::new_inner(
+            base_directory.clone(),
+            client,
+            object_mappings,
+            reward_address,
+            best_block_number_check_interval,
+            plot_sizes,
+            move |plot_index, address, max_piece_count| {
+                Plot::open_or_create(
+                    base_directory.join(format!("plot{plot_index}")),
+                    address,
+                    max_piece_count,
+                )
+            },
+        )
+        .await
+    }
+
+    async fn new_inner(
         base_directory: impl AsRef<Path>,
         client: NodeRpcClient,
         object_mappings: ObjectMappings,
-        plot_sizes: Vec<u64>,
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
+        plot_sizes: Vec<u64>,
+        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
     ) -> anyhow::Result<Self> {
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
@@ -41,6 +92,7 @@ impl MultiFarming {
             .map(|(plot_index, max_plot_pieces)| {
                 let base_directory = base_directory.as_ref().to_owned();
                 let client = client.clone();
+                let new_plot = new_plot.clone();
 
                 tokio::task::spawn_blocking(move || {
                     let base_directory = base_directory.join(format!("plot{plot_index}"));
@@ -52,7 +104,7 @@ impl MultiFarming {
                     // TODO: This doesn't account for the fact that node can
                     // have a completely different history to what farmer expects
                     info!("Opening plot");
-                    let plot = Plot::open_or_create(&base_directory, public_key, max_plot_pieces)?;
+                    let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
 
                     info!("Opening commitments");
                     let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
