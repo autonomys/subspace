@@ -866,6 +866,12 @@ impl_runtime_apis! {
         }
     }
 
+    impl pallet_feeds::FeedsApi<Block, Hash> for Runtime {
+        fn successful_calls() -> Vec<Hash> {
+            Feeds::successful_calls()
+        }
+    }
+
     impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
             <Self as pallet_subspace::Config>::ConfirmationDepthK::get()

@@ -18,6 +18,7 @@ use crate::{ArchivedSegmentNotification, SubspaceLink, SubspaceNotificationSende
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
 use log::{debug, error, info};
+use pallet_feeds::FeedsApi;
 use sc_client_api::BlockBackend;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -88,7 +89,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block> + FeedsApi<Block, Block::Hash>,
 {
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
@@ -125,6 +126,9 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .expect("Older blocks must always exist")
             .expect("Older blocks must always exist");
 
+        let successful_feed_calls = client
+            .runtime_api()
+            .successful_calls(&BlockId::Number(last_archived_block_number.into()));
         let block_object_mapping = client
             .runtime_api()
             .extract_block_object_mapping(
@@ -186,6 +190,10 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     .block(&BlockId::Number(block_to_archive.into()))
                     .expect("Older block by number must always exist")
                     .expect("Older block by number must always exist");
+
+                let successful_feed_calls = client
+                    .runtime_api()
+                    .successful_calls(&BlockId::Number(block_to_archive.into()));
 
                 let block_object_mapping = client
                     .runtime_api()
@@ -283,6 +291,10 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .block(&BlockId::Number(block_to_archive))
                         .expect("Older block by number must always exist")
                         .expect("Older block by number must always exist");
+
+                    let successful_feed_calls = client
+                        .runtime_api()
+                        .successful_calls(&BlockId::Number(block_to_archive.into()));
 
                     let block_object_mapping = client
                         .runtime_api()

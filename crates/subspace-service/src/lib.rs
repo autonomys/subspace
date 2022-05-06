@@ -22,6 +22,7 @@ use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::mpsc;
+use pallet_feeds::FeedsApi;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::{ExecutorProvider, StateBackendFor};
@@ -49,7 +50,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
-use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
+use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Hash, Index as Nonce};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -143,6 +144,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block>
+        + FeedsApi<Block, Hash>
         + TaggedTransactionQueue<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
@@ -314,6 +316,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block>
+        + FeedsApi<Block, Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentApi<Block, Balance>,

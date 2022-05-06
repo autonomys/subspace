@@ -22,6 +22,7 @@ futures-timer = "3.0.2"
 log = "0.4.16"
 lru = "0.7.5"
 parking_lot = "0.12.0"
+pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d", version = "0.10.0-dev" }
 rand = "0.8.5"
 schnorrkel = "0.9.1"
