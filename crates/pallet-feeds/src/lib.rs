@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+use codec::Decode;
 use core::mem;
 pub use pallet::*;
 use sp_std::{vec, vec::Vec};
@@ -365,6 +366,18 @@ pub struct CallObject {
     pub key: Sha256Hash,
     /// Offset of object in the encoded call.
     pub offset: u32,
+}
+
+impl<T: Config> Pallet<T> {
+    pub fn successful_calls() -> Vec<T::Hash> {
+        SuccessfulCalls::<T>::get()
+    }
+}
+
+sp_api::decl_runtime_apis! {
+    pub trait FeedsApi<Hash: Decode> {
+        fn successful_calls() -> Vec<Hash>;
+    }
 }
 
 impl<T: Config> Call<T> {
