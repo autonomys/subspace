@@ -7,7 +7,7 @@ use sc_cli::{
 use sc_service::{config::PrometheusConfig, BasePath};
 use std::{net::SocketAddr, path::PathBuf};
 
-/// Sub-commands supported by the collator.
+/// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
     /// Build a chain specification.
