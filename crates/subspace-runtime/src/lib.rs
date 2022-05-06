@@ -63,7 +63,7 @@ use sp_runtime::{
     },
     ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
 };
-use sp_std::{borrow::Cow, prelude::*};
+use sp_std::{borrow::Cow, collections::vec_deque::VecDeque, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -712,7 +712,19 @@ fn extract_feeds_block_object_mapping(
     base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
+    successful_calls: &mut VecDeque<Hash>,
 ) {
+    let call_hash = successful_calls.front();
+    match call_hash {
+        Some(hash) => {
+            if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
+                return;
+            }
+
+            successful_calls.pop_front();
+        }
+        None => return,
+    }
     call.extract_call_objects()
         .into_iter()
         .for_each(|object_map| {
@@ -741,6 +753,7 @@ fn extract_utility_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
+    successful_calls: &mut VecDeque<Hash>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -756,7 +769,13 @@ fn extract_utility_block_object_mapping(
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                extract_call_block_object_mapping(base_offset, objects, call, recursion_depth_left);
+                extract_call_block_object_mapping(
+                    base_offset,
+                    objects,
+                    call,
+                    recursion_depth_left,
+                    successful_calls,
+                );
 
                 base_offset += call.encoded_size() as u32;
             }
@@ -769,6 +788,7 @@ fn extract_utility_block_object_mapping(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
+                successful_calls,
             );
         }
         pallet_utility::Call::dispatch_as { as_origin, call } => {
@@ -779,6 +799,7 @@ fn extract_utility_block_object_mapping(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
+                successful_calls,
             );
         }
         pallet_utility::Call::__Ignore(_, _) => {
@@ -792,19 +813,26 @@ fn extract_call_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &Call,
     recursion_depth_left: u16,
+    successful_calls: &mut VecDeque<Hash>,
 ) {
     // Add enum variant to the base offset.
     base_offset += 1;
 
     match call {
         Call::Feeds(call) => {
-            extract_feeds_block_object_mapping(base_offset, objects, call);
+            extract_feeds_block_object_mapping(base_offset, objects, call, successful_calls);
         }
         Call::ObjectStore(call) => {
             extract_object_store_block_object_mapping(base_offset, objects, call);
         }
         Call::Utility(call) => {
-            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left);
+            extract_utility_block_object_mapping(
+                base_offset,
+                objects,
+                call,
+                recursion_depth_left,
+                successful_calls,
+            );
         }
         _ => {}
     }
@@ -812,6 +840,7 @@ fn extract_call_block_object_mapping(
 
 fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
+    let mut successful_calls = VecDeque::from(successful_calls);
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
@@ -834,6 +863,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
             &mut block_object_mapping.objects,
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
+            &mut successful_calls,
         );
 
         base_offset += extrinsic.encoded_size();

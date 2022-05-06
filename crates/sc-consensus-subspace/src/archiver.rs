@@ -298,7 +298,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     let successful_feed_calls = client
                         .runtime_api()
-                        .successful_calls(&BlockId::Number(block_to_archive.into()))
+                        .successful_calls(&BlockId::Number(block_to_archive))
                         .expect("Block state must exist");
 
                     let block_object_mapping = client

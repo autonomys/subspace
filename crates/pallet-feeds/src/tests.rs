@@ -58,11 +58,16 @@ fn can_do_put() {
             }
         );
 
-        let mut data = FEED_ID.encode();
-        data.extend_from_slice(object.as_slice());
         assert_eq!(
             SuccessfulCalls::<Test>::get()[0],
-            BlakeTwo256::hash(data.as_slice())
+            BlakeTwo256::hash(
+                FeedsCall::<Test>::put {
+                    feed_id: FEED_ID,
+                    object: object.clone()
+                }
+                .encode()
+                .as_slice()
+            )
         );
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {

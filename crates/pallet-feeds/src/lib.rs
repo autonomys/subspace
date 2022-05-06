@@ -295,13 +295,10 @@ mod pallet {
                 object_size,
             });
 
-            // store the feedID + object as unique hash
+            // store the call
             // there could be multiple calls with same hash and that is fine
             // since we assume the same order
-            // this also makes an assumption that the first call in the duplicate call is the only successful one
-            let mut data = feed_id.encode();
-            data.extend_from_slice(object.as_slice());
-            let uniq = T::Hashing::hash(data.as_slice());
+            let uniq = T::Hashing::hash(Call::<T>::put { feed_id, object }.encode().as_slice());
             SuccessfulCalls::<T>::append(uniq);
             Ok(())
         }
