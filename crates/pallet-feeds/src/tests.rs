@@ -1,9 +1,11 @@
 use crate::{
     mock::{new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test},
-    Call as FeedsCall, Error, Object, TotalObjectsAndSize,
+    Call as FeedsCall, Error, Object, SuccessfulCalls, TotalObjectsAndSize,
 };
 use codec::{Decode, Encode};
 use frame_support::{assert_noop, assert_ok};
+use sp_core::Hasher;
+use sp_runtime::traits::BlakeTwo256;
 use subspace_core_primitives::crypto;
 
 const FEED_ID: u64 = 0;
@@ -54,6 +56,13 @@ fn can_do_put() {
                 count: 1,
                 size: object_size,
             }
+        );
+
+        let mut data = FEED_ID.encode();
+        data.extend_from_slice(object.as_slice());
+        assert_eq!(
+            SuccessfulCalls::<Test>::get()[0],
+            BlakeTwo256::hash(data.as_slice())
         );
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {
