@@ -733,7 +733,7 @@ fn extract_call_block_object_mapping(
     }
 }
 
-fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
@@ -929,8 +929,8 @@ impl_runtime_apis! {
             extract_root_blocks(ext)
         }
 
-        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
-            extract_block_object_mapping(block)
+        fn extract_block_object_mapping(block: Block, successful_calls: Vec<<Block as BlockT>::Hash>) -> BlockObjectMapping {
+            extract_block_object_mapping(block, successful_calls)
         }
     }
 

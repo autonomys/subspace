@@ -989,7 +989,7 @@ cfg_if! {
                 }
 
                 fn extract_block_object_mapping(
-                    _block: Block,
+                    _block: Block, _successful_calls: Vec<<Block as BlockT>::Hash>
                 ) -> subspace_core_primitives::objects::BlockObjectMapping {
                     subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
@@ -1311,7 +1311,7 @@ cfg_if! {
                 }
 
                 fn extract_block_object_mapping(
-                    _block: Block,
+                    _block: Block, _successful_calls: Vec<<Block as BlockT>::Hash>
                 ) -> subspace_core_primitives::objects::BlockObjectMapping {
                     subspace_core_primitives::objects::BlockObjectMapping::default()
                 }

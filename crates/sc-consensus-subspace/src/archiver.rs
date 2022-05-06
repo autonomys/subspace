@@ -126,14 +126,16 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .expect("Older blocks must always exist")
             .expect("Older blocks must always exist");
 
-        let successful_feed_calls = client
+        let successful_calls = client
             .runtime_api()
-            .successful_calls(&BlockId::Number(last_archived_block_number.into()));
+            .successful_calls(&BlockId::Number(last_archived_block_number.into()))
+            .expect("Block state must exist");
         let block_object_mapping = client
             .runtime_api()
             .extract_block_object_mapping(
                 &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
                 last_archived_block.block.clone(),
+                successful_calls,
             )
             .expect("Must be able to make runtime call");
 
@@ -193,13 +195,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                 let successful_feed_calls = client
                     .runtime_api()
-                    .successful_calls(&BlockId::Number(block_to_archive.into()));
+                    .successful_calls(&BlockId::Number(block_to_archive.into()))
+                    .expect("Block state must exist");
 
                 let block_object_mapping = client
                     .runtime_api()
                     .extract_block_object_mapping(
                         &BlockId::Number(block_to_archive.saturating_sub(1).into()),
                         block.block.clone(),
+                        successful_feed_calls,
                     )
                     .expect("Must be able to make runtime call");
 
@@ -294,13 +298,15 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
 
                     let successful_feed_calls = client
                         .runtime_api()
-                        .successful_calls(&BlockId::Number(block_to_archive.into()));
+                        .successful_calls(&BlockId::Number(block_to_archive.into()))
+                        .expect("Block state must exist");
 
                     let block_object_mapping = client
                         .runtime_api()
                         .extract_block_object_mapping(
                             &BlockId::Number(block_to_archive.saturating_sub(One::one())),
                             block.block.clone(),
+                            successful_feed_calls,
                         )
                         .expect("Must be able to make runtime call");
 
