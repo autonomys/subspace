@@ -1,3 +1,4 @@
+use crate::secondary_chain_spec;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -5,6 +6,35 @@ use sc_cli::{
 };
 use sc_service::{config::PrometheusConfig, BasePath};
 use std::{net::SocketAddr, path::PathBuf};
+
+/// Sub-commands supported by the executor.
+#[derive(Debug, clap::Subcommand)]
+pub enum Subcommand {
+    /// Build a chain specification.
+    BuildSpec(sc_cli::BuildSpecCmd),
+
+    /// Validate blocks.
+    CheckBlock(sc_cli::CheckBlockCmd),
+
+    /// Export blocks.
+    ExportBlocks(sc_cli::ExportBlocksCmd),
+
+    /// Export the state of a given block into a chain spec.
+    ExportState(sc_cli::ExportStateCmd),
+
+    /// Import blocks.
+    ImportBlocks(sc_cli::ImportBlocksCmd),
+
+    /// Remove the whole chain.
+    PurgeChain(cumulus_client_cli::PurgeChainCmd),
+
+    /// Revert the chain to a previous state.
+    Revert(sc_cli::RevertCmd),
+
+    /// Sub-commands concerned with benchmarking.
+    #[clap(subcommand)]
+    Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+}
 
 #[derive(Debug)]
 pub struct SecondaryChainCli {
@@ -63,14 +93,17 @@ impl SubstrateCli for SecondaryChainCli {
     }
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        <cirrus_node::cli::Cli as SubstrateCli>::from_iter(
-            [SecondaryChainCli::executable_name()].iter(),
-        )
-        .load_spec(id)
+        Ok(match id {
+            "dev" => Box::new(secondary_chain_spec::development_config()),
+            "" | "local" => Box::new(secondary_chain_spec::local_testnet_config()),
+            path => Box::new(secondary_chain_spec::ChainSpec::from_json_file(
+                std::path::PathBuf::from(path),
+            )?),
+        })
     }
 
-    fn native_runtime_version(chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        cirrus_node::cli::Cli::native_runtime_version(chain_spec)
+    fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
+        &cirrus_runtime::VERSION
     }
 }
 

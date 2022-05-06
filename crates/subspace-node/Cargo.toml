@@ -21,6 +21,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 cirrus-node = { version = "0.1.0", path = "../../cumulus/node" }
+cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
 clap = { version = "3.1.8", features = ["derive"] }
 cumulus-client-cli = { version = "0.1.0", path = "../../cumulus/client/cli" }
 dirs = "4.0.0"
@@ -61,5 +62,6 @@ do-not-enforce-cost-of-storage = [
 ]
 runtime-benchmarks = [
 	"cirrus-node/runtime-benchmarks",
+	"cirrus-runtime/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 ]

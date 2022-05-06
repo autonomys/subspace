@@ -72,7 +72,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-fn main() -> std::result::Result<(), Error> {
+fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 
     match &cli.subcommand {
