@@ -1,14 +1,31 @@
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 //! Secondary chain configurations.
 
 use cirrus_runtime::{AccountId, Signature};
 use frame_support::traits::Get;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainType, Properties};
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime::{SS58Prefix, DECIMAL_PLACES};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
-pub type ChainSpec = sc_service::GenericChainSpec<cirrus_runtime::GenesisConfig>;
+pub type ExecutionChainSpec = GenericChainSpec<cirrus_runtime::GenesisConfig>;
 
 /// Helper function to generate a crypto pair from seed
 pub fn get_pair_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -27,13 +44,13 @@ where
     AccountPublic::from(get_pair_from_seed::<TPublic>(seed)).into_account()
 }
 
-pub fn development_config() -> ChainSpec {
+pub fn development_config() -> ExecutionChainSpec {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
-    ChainSpec::from_genesis(
+    ExecutionChainSpec::from_genesis(
         // Name
         "Development",
         // ID
@@ -64,13 +81,13 @@ pub fn development_config() -> ChainSpec {
     )
 }
 
-pub fn local_testnet_config() -> ChainSpec {
+pub fn local_testnet_config() -> ExecutionChainSpec {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
-    ChainSpec::from_genesis(
+    ExecutionChainSpec::from_genesis(
         // Name
         "Local Testnet",
         // ID

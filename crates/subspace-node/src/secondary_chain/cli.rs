@@ -1,4 +1,20 @@
-use crate::secondary_chain_spec;
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+use crate::secondary_chain::chain_spec;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -94,9 +110,9 @@ impl SubstrateCli for SecondaryChainCli {
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
         Ok(match id {
-            "dev" => Box::new(secondary_chain_spec::development_config()),
-            "" | "local" => Box::new(secondary_chain_spec::local_testnet_config()),
-            path => Box::new(secondary_chain_spec::ChainSpec::from_json_file(
+            "dev" => Box::new(chain_spec::development_config()),
+            "" | "local" => Box::new(chain_spec::local_testnet_config()),
+            path => Box::new(chain_spec::ExecutionChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
             )?),
         })

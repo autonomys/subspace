@@ -18,12 +18,11 @@
 
 mod chain_spec;
 mod import_blocks_from_dsn;
-mod secondary_chain_cli;
-mod secondary_chain_spec;
+mod secondary_chain;
 
 use crate::chain_spec::SubspaceChainSpec;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::secondary_chain_cli::SecondaryChainCli;
+pub use crate::secondary_chain::cli::SecondaryChainCli;
 use crate::serde_json::Value;
 use clap::Parser;
 use sc_cli::SubstrateCli;
@@ -87,7 +86,7 @@ pub enum Subcommand {
 
     /// Run executor sub-commands.
     #[clap(subcommand)]
-    Executor(secondary_chain_cli::Subcommand),
+    Executor(secondary_chain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
