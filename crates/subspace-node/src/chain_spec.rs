@@ -66,7 +66,7 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
-/// The extensions for the [`ChainSpec`].
+/// The extensions for the [`ConsensusChainSpec`].
 #[derive(Clone, Serialize, Deserialize, ChainSpecExtension)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ChainSpecExtensions {
