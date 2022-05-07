@@ -25,7 +25,6 @@ pub use crate::chain_spec::{ChainSpecExtensions, ConsensusChainSpec};
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::secondary_chain::chain_spec::ExecutionChainSpec;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
-use crate::serde_json::Value;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -173,15 +172,14 @@ impl SubstrateCli for Cli {
         // chain spec
         if !self.run.base.network_params.bootnodes.is_empty() {
             let mut chain_spec_value =
-                serde_json::from_str::<'_, Value>(&chain_spec.as_json(true)?)
-                    .map_err(|error| error.to_string())?;
+                serde_json::to_value(&chain_spec).map_err(|error| error.to_string())?;
             if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
                 if let Some(boot_nodes) = boot_nodes.as_array_mut() {
                     boot_nodes.clear();
                 }
             }
             chain_spec =
-                ConsensusChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
+                serde_json::from_value(chain_spec_value).map_err(|error| error.to_string())?;
         }
         Ok(Box::new(chain_spec))
     }

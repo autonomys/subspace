@@ -16,14 +16,15 @@
 
 //! Secondary chain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, SerializableChainSpec,
+};
 use cirrus_runtime::AccountId;
-use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use subspace_runtime::SSC;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
-pub type ExecutionChainSpec = GenericChainSpec<cirrus_runtime::GenesisConfig>;
+pub type ExecutionChainSpec = SerializableChainSpec<cirrus_runtime::GenesisConfig>;
 
 pub fn development_config() -> ExecutionChainSpec {
     ExecutionChainSpec::from_genesis(

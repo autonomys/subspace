@@ -18,18 +18,16 @@
 
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+    SerializableChainSpec,
 };
 use crate::secondary_chain;
 use crate::secondary_chain::chain_spec::ExecutionChainSpec;
-use sc_chain_spec::{ChainSpecExtension, GenericChainSpec};
+use sc_chain_spec::ChainSpecExtension;
 use sc_service::ChainType;
 use sc_telemetry::TelemetryEndpoints;
-use serde::de::Visitor;
-use serde::ser::Error;
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
-use std::fmt;
 use subspace_runtime::{
     BalancesConfig, ExecutorConfig, GenesisConfig, SudoConfig, SystemConfig, VestingConfig,
     MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
@@ -73,55 +71,11 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ChainSpecExtensions {
     /// Chain spec of execution chain.
-    #[serde(
-        serialize_with = "serialize_execution_chain_spec",
-        deserialize_with = "deserialize_execution_chain_spec"
-    )]
     pub execution_chain_spec: ExecutionChainSpec,
 }
 
-fn serialize_execution_chain_spec<S>(
-    chain_spec: &ExecutionChainSpec,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&chain_spec.as_json(true).map_err(S::Error::custom)?)
-}
-
-fn deserialize_execution_chain_spec<'de, D>(deserializer: D) -> Result<ExecutionChainSpec, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct StringVisitor;
-
-    impl<'de> Visitor<'de> for StringVisitor {
-        type Value = ExecutionChainSpec;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("ExecutionChainSpec")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            self.visit_string(value.to_string())
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            ExecutionChainSpec::from_json_bytes(value.into_bytes()).map_err(E::custom)
-        }
-    }
-    deserializer.deserialize_string(StringVisitor)
-}
-
 /// The `ChainSpec` parameterized for the consensus runtime.
-pub type ConsensusChainSpec = GenericChainSpec<GenesisConfig, ChainSpecExtensions>;
+pub type ConsensusChainSpec = SerializableChainSpec<GenesisConfig, ChainSpecExtensions>;
 
 pub fn testnet_config_json() -> Result<ConsensusChainSpec, String> {
     ConsensusChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
