@@ -27,8 +27,8 @@ use codec::Codec;
 use frame_support::{
 	dispatch::PostDispatchInfo,
 	traits::{
-		EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle,
-		OnInitialize, OnRuntimeUpgrade,
+		EnsureInherentsAreFirst, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
+		OnRuntimeUpgrade,
 	},
 	weights::{DispatchClass, DispatchInfo, GetDispatchInfo},
 };
@@ -140,49 +140,6 @@ pub struct Executive<
 		OnRuntimeUpgrade,
 	)>,
 );
-
-impl<
-		System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-		Block: traits::Block<Header = System::Header, Hash = System::Hash>,
-		Context: Default,
-		UnsignedValidator,
-		AllPalletsWithSystem: OnRuntimeUpgrade
-			+ OnInitialize<System::BlockNumber>
-			+ OnIdle<System::BlockNumber>
-			+ OnFinalize<System::BlockNumber>
-			+ OffchainWorker<System::BlockNumber>,
-		ExecutiveConfig,
-		COnRuntimeUpgrade: OnRuntimeUpgrade,
-	> ExecuteBlock<Block>
-	for Executive<
-		System,
-		Block,
-		Context,
-		UnsignedValidator,
-		AllPalletsWithSystem,
-		ExecutiveConfig,
-		COnRuntimeUpgrade,
-	> where
-	Block::Extrinsic: Checkable<Context> + Codec,
-	CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
-	CallOf<Block::Extrinsic, Context>:
-		Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo>,
-	OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
-	UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
-{
-	#[allow(unconditional_recursion)]
-	fn execute_block(block: Block) {
-		Executive::<
-			System,
-			Block,
-			Context,
-			UnsignedValidator,
-			AllPalletsWithSystem,
-			ExecutiveConfig,
-			COnRuntimeUpgrade,
-		>::execute_block(block);
-	}
-}
 
 impl<
 		System: frame_system::Config + EnsureInherentsAreFirst<Block>,
