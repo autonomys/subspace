@@ -151,7 +151,7 @@ impl<
 			+ OnIdle<System::BlockNumber>
 			+ OnFinalize<System::BlockNumber>
 			+ OffchainWorker<System::BlockNumber>,
-		ExecutiveConfig,
+		ExecutiveConfig: Config,
 		COnRuntimeUpgrade: OnRuntimeUpgrade,
 	> ExecuteBlock<Block>
 	for Executive<
@@ -170,7 +170,6 @@ impl<
 	OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
 	UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
 {
-	#[allow(unconditional_recursion)]
 	fn execute_block(block: Block) {
 		Executive::<
 			System,
