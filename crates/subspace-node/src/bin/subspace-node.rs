@@ -22,7 +22,8 @@ use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
-use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
+use std::any::TypeId;
+use subspace_node::{Cli, ExecutionChainSpec, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::SubspaceConfiguration;
 
@@ -251,6 +252,13 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|primary_chain_node_config| async move {
                 let tokio_handle = primary_chain_node_config.tokio_handle.clone();
 
+                let maybe_secondary_chain_spec = primary_chain_node_config
+                    .chain_spec
+                    .extensions()
+                    .get_any(TypeId::of::<ExecutionChainSpec>())
+                    .downcast_ref()
+                    .cloned();
+
                 let mut primary_chain_full_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -285,7 +293,13 @@ fn main() -> Result<(), Error> {
                     let _enter = span.enter();
 
                     let secondary_chain_cli = SecondaryChainCli::new(
-                        cli.run.base.base_path()?,
+                        cli.run
+                            .base
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        maybe_secondary_chain_spec.ok_or_else(|| {
+                            "Primary chain spec must contain secondary chain spec".to_string()
+                        })?,
                         cli.secondary_chain_args.iter(),
                     );
                     let secondary_chain_config = SubstrateCli::create_configuration(

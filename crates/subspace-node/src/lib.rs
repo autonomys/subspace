@@ -20,8 +20,9 @@ mod chain_spec;
 mod import_blocks_from_dsn;
 mod secondary_chain;
 
-use crate::chain_spec::SubspaceChainSpec;
+pub use crate::chain_spec::{ChainSpecExtensions, ConsensusChainSpec};
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
+pub use crate::secondary_chain::chain_spec::ExecutionChainSpec;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
 use crate::serde_json::Value;
 use clap::Parser;
@@ -164,7 +165,7 @@ impl SubstrateCli for Cli {
             "testnet-compiled" => chain_spec::testnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
             "" | "local" => chain_spec::local_config()?,
-            path => SubspaceChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+            path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
@@ -179,7 +180,7 @@ impl SubstrateCli for Cli {
                 }
             }
             chain_spec =
-                SubspaceChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
+                ConsensusChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
         }
         Ok(Box::new(chain_spec))
     }

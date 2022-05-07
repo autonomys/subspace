@@ -16,13 +16,20 @@
 
 //! Subspace chain configurations.
 
+use crate::secondary_chain;
+use crate::secondary_chain::chain_spec::ExecutionChainSpec;
 use frame_support::traits::Get;
+use sc_chain_spec::{ChainSpecExtension, GenericChainSpec};
 use sc_service::{ChainType, Properties};
 use sc_telemetry::TelemetryEndpoints;
+use serde::de::Visitor;
+use serde::ser::Error;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use sp_core::crypto::Ss58Codec;
 use sp_core::{sr25519, Pair, Public};
 use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use std::fmt;
 use subspace_runtime::{
     BalancesConfig, ExecutorConfig, GenesisConfig, SS58Prefix, SudoConfig, SystemConfig,
     VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
@@ -61,8 +68,60 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
-/// The `ChainSpec` parameterized for the subspace runtime.
-pub type SubspaceChainSpec = sc_service::GenericChainSpec<GenesisConfig>;
+/// The extensions for the [`ChainSpec`].
+#[derive(Clone, Serialize, Deserialize, ChainSpecExtension)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ChainSpecExtensions {
+    /// Chain spec of execution chain.
+    #[serde(
+        serialize_with = "serialize_execution_chain_spec",
+        deserialize_with = "deserialize_execution_chain_spec"
+    )]
+    pub execution_chain_spec: ExecutionChainSpec,
+}
+
+fn serialize_execution_chain_spec<S>(
+    chain_spec: &ExecutionChainSpec,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&chain_spec.as_json(true).map_err(S::Error::custom)?)
+}
+
+fn deserialize_execution_chain_spec<'de, D>(deserializer: D) -> Result<ExecutionChainSpec, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringVisitor;
+
+    impl<'de> Visitor<'de> for StringVisitor {
+        type Value = ExecutionChainSpec;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("ExecutionChainSpec")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_string(value.to_string())
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            ExecutionChainSpec::from_json_bytes(value.into_bytes()).map_err(E::custom)
+        }
+    }
+    deserializer.deserialize_string(StringVisitor)
+}
+
+/// The `ChainSpec` parameterized for the consensus runtime.
+pub type ConsensusChainSpec = GenericChainSpec<GenesisConfig, ChainSpecExtensions>;
 
 /// Generate a crypto pair from seed.
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -78,16 +137,16 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
     AccountPublic::from(get_from_seed::<sr25519::Public>(seed)).into_account()
 }
 
-pub fn testnet_config_json() -> Result<SubspaceChainSpec, String> {
-    SubspaceChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
+pub fn testnet_config_json() -> Result<ConsensusChainSpec, String> {
+    ConsensusChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
 }
-pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
+pub fn testnet_config_compiled() -> Result<ConsensusChainSpec, String> {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".into(), "tSSC".into());
 
-    Ok(SubspaceChainSpec::from_genesis(
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace testnet",
         // ID
@@ -164,11 +223,13 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
         // Properties
         Some(properties),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::local_testnet_config(),
+        },
     ))
 }
 
-pub fn dev_config() -> Result<SubspaceChainSpec, String> {
+pub fn dev_config() -> Result<ConsensusChainSpec, String> {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
@@ -176,7 +237,7 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
 
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
-    Ok(SubspaceChainSpec::from_genesis(
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace development",
         // ID
@@ -211,11 +272,13 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
         // Properties
         Some(properties),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::development_config(),
+        },
     ))
 }
 
-pub fn local_config() -> Result<SubspaceChainSpec, String> {
+pub fn local_config() -> Result<ConsensusChainSpec, String> {
     let mut properties = Properties::new();
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
@@ -223,7 +286,7 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
 
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
-    Ok(SubspaceChainSpec::from_genesis(
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace local",
         // ID
@@ -266,7 +329,9 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
         // Properties
         Some(properties),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::local_testnet_config(),
+        },
     ))
 }
 
