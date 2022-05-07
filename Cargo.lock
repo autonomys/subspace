@@ -8562,6 +8562,7 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "parity-scale-codec",
+ "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",

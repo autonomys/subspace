@@ -17,14 +17,14 @@
 //! Subspace Node library.
 
 mod chain_spec;
+mod chain_spec_utils;
 mod import_blocks_from_dsn;
-mod secondary_chain_cli;
-mod secondary_chain_spec;
+mod secondary_chain;
 
-use crate::chain_spec::SubspaceChainSpec;
+pub use crate::chain_spec::{ChainSpecExtensions, ConsensusChainSpec};
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::secondary_chain_cli::SecondaryChainCli;
-use crate::serde_json::Value;
+pub use crate::secondary_chain::chain_spec::ExecutionChainSpec;
+pub use crate::secondary_chain::cli::SecondaryChainCli;
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -87,7 +87,7 @@ pub enum Subcommand {
 
     /// Run executor sub-commands.
     #[clap(subcommand)]
-    Executor(secondary_chain_cli::Subcommand),
+    Executor(secondary_chain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
@@ -165,22 +165,21 @@ impl SubstrateCli for Cli {
             "testnet-compiled" => chain_spec::testnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
             "" | "local" => chain_spec::local_config()?,
-            path => SubspaceChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+            path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
         if !self.run.base.network_params.bootnodes.is_empty() {
             let mut chain_spec_value =
-                serde_json::from_str::<'_, Value>(&chain_spec.as_json(true)?)
-                    .map_err(|error| error.to_string())?;
+                serde_json::to_value(&chain_spec).map_err(|error| error.to_string())?;
             if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
                 if let Some(boot_nodes) = boot_nodes.as_array_mut() {
                     boot_nodes.clear();
                 }
             }
             chain_spec =
-                SubspaceChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
+                serde_json::from_value(chain_spec_value).map_err(|error| error.to_string())?;
         }
         Ok(Box::new(chain_spec))
     }
