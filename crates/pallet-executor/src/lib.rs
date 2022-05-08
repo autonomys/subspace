@@ -231,6 +231,16 @@ mod pallet {
 
             Ok(())
         }
+
+        #[pallet::weight(10_000)]
+        pub fn set_receipts_pruning_depth(
+            origin: OriginFor<T>,
+            new: BlockNumber,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            <ReceiptsPruningDepth<T>>::put(new);
+            Ok(())
+        }
     }
 
     /// A tuple of (stable_executor_id, executor_signing_key).
