@@ -24,6 +24,7 @@ use sp_executor::{
     SignedOpaqueBundle,
 };
 use sp_runtime::RuntimeAppPublic;
+use subspace_core_primitives::BlockNumber;
 
 #[frame_support::pallet]
 mod pallet {
@@ -31,11 +32,12 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof,
+        BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
         SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
     use sp_std::fmt::Debug;
+    use subspace_core_primitives::BlockNumber;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -61,6 +63,7 @@ mod pallet {
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::error]
@@ -75,13 +78,18 @@ mod pallet {
         BadExecutionReceiptSignature,
         /// The signer of execution receipt is unexpected.
         UnexpectedExecutionReceiptSigner,
+        /// The parent execution receipt is unknown.
+        MissingParentReceipt,
     }
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A new candidate receipt was backed.
-        ExecutionReceiptStored { receipt_hash: H256 },
+        /// A new execution receipt was backed.
+        NewExecutionReceipt {
+            primary_number: BlockNumber,
+            primary_hash: H256,
+        },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
         /// A fraud proof was processed.
@@ -109,10 +117,37 @@ mod pallet {
 
             // TODO: ensure the receipt is ready to be applied
 
-            // TODO: apply the execution receipt.
+            let SignedExecutionReceipt {
+                execution_receipt, ..
+            } = signed_execution_receipt;
 
-            Self::deposit_event(Event::ExecutionReceiptStored {
-                receipt_hash: signed_execution_receipt.hash(),
+            let primary_hash = execution_receipt.primary_hash;
+            let primary_number = execution_receipt.primary_number;
+
+            // Execution receipt starts from the primary block #1.
+            if primary_number > 1u32 {
+                ensure!(
+                    Receipts::<T>::get(primary_number - 1u32).is_some(),
+                    Error::<T>::MissingParentReceipt
+                );
+            }
+
+            // Apply the execution receipt.
+            <Receipts<T>>::insert(primary_number, execution_receipt);
+            <ReceiptsRange<T>>::mutate(|range| {
+                range
+                    .get_or_insert_with(|| (primary_number, primary_number))
+                    .1 = primary_number + 1u32;
+            });
+
+            let pruning_depth = <ReceiptsPruningDepth<T>>::get();
+            if primary_number > pruning_depth {
+                Self::prune_receipts_up_to(primary_number - pruning_depth + 1);
+            }
+
+            Self::deposit_event(Event::NewExecutionReceipt {
+                primary_number,
+                primary_hash,
             });
 
             Ok(())
@@ -203,6 +238,20 @@ mod pallet {
     #[pallet::getter(fn executor)]
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
 
+    /// Mapping from the primary block number to the corresponding verified execution receipt.
+    #[pallet::storage]
+    pub(super) type Receipts<T: Config> =
+        StorageMap<_, Twox64Concat, BlockNumber, ExecutionReceipt<T::SecondaryHash>, OptionQuery>;
+
+    /// Number of execution receipts kept in the state.
+    #[pallet::storage]
+    pub(super) type ReceiptsPruningDepth<T: Config> = StorageValue<_, BlockNumber, ValueQuery>;
+
+    /// The range of receipts we currently store in the state. [first, last)
+    #[pallet::storage]
+    pub(super) type ReceiptsRange<T: Config> =
+        StorageValue<_, (BlockNumber, BlockNumber), OptionQuery>;
+
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub executor: Option<(T::AccountId, ExecutorId)>,
@@ -218,6 +267,7 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            <ReceiptsPruningDepth<T>>::put(256u32);
             <Executor<T>>::put(
                 self.executor
                     .clone()
@@ -411,6 +461,31 @@ impl<T: Config> Pallet<T> {
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
+    }
+
+    /// Prune old execution receipts up to (but not including) `up_to`.
+    fn prune_receipts_up_to(up_to: BlockNumber) {
+        ReceiptsRange::<T>::mutate(|range| {
+            let (start, end) = match *range {
+                Some(range) => range,
+                None => return, // nothing to prune.
+            };
+
+            let up_to = sp_std::cmp::min(up_to, end);
+
+            if up_to < start {
+                return; // out of bounds, harmless.
+            }
+
+            (start..up_to).for_each(Receipts::<T>::remove);
+
+            let new_start = up_to;
+            *range = if new_start == end {
+                None // nothing is stored.
+            } else {
+                Some((new_start, end))
+            };
+        })
     }
 }
 
