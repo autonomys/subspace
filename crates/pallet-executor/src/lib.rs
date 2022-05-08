@@ -97,20 +97,22 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+            signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::debug!(
                 target: "runtime::subspace::executor",
                 "Submitting execution receipt: {:?}",
-                execution_receipt
+                signed_execution_receipt
             );
 
-            // TODO: track the execution receipt
+            // TODO: ensure the receipt is ready to be applied
+
+            // TODO: apply the execution receipt.
 
             Self::deposit_event(Event::ExecutionReceiptStored {
-                receipt_hash: execution_receipt.hash(),
+                receipt_hash: signed_execution_receipt.hash(),
             });
 
             Ok(())
@@ -145,6 +147,8 @@ mod pallet {
                 "Submitting fraud proof: {:?}",
                 fraud_proof
             );
+
+            // TODO: revert the execution chain.
 
             // TODO: slash the executor accordingly.
 
@@ -263,8 +267,10 @@ mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::submit_execution_receipt { execution_receipt } => {
-                    if let Err(e) = Self::check_execution_receipt(execution_receipt) {
+                Call::submit_execution_receipt {
+                    signed_execution_receipt,
+                } => {
+                    if let Err(e) = Self::validate_execution_receipt(signed_execution_receipt) {
                         log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid execution receipt: {:?}",
@@ -272,12 +278,15 @@ mod pallet {
                         );
                         return InvalidTransactionCode::ExecutionReceipt.into();
                     }
-                    unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
+                    unsigned_validity(
+                        "SubspaceSubmitExecutionReceipt",
+                        signed_execution_receipt.hash(),
+                    )
                 }
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
                 } => {
-                    if let Err(e) = Self::check_bundle(signed_opaque_bundle) {
+                    if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
                         log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid signed opaque bundle: {:?}",
@@ -303,7 +312,8 @@ mod pallet {
                 Call::submit_bundle_equivocation_proof {
                     bundle_equivocation_proof,
                 } => {
-                    if let Err(e) = Self::check_bundle_equivocation_proof(bundle_equivocation_proof)
+                    if let Err(e) =
+                        Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
@@ -321,7 +331,8 @@ mod pallet {
                 Call::submit_invalid_transaction_proof {
                     invalid_transaction_proof,
                 } => {
-                    if let Err(e) = Self::check_invalid_transaction_proof(invalid_transaction_proof)
+                    if let Err(e) =
+                        Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
@@ -344,7 +355,7 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn check_execution_receipt(
+    fn validate_execution_receipt(
         SignedExecutionReceipt {
             execution_receipt,
             signature,
@@ -366,7 +377,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn check_bundle(
+    fn validate_bundle(
         SignedOpaqueBundle {
             opaque_bundle,
             signature,
@@ -389,14 +400,14 @@ impl<T: Config> Pallet<T> {
     }
 
     // TODO: Checks if the bundle equivocation proof is valid.
-    fn check_bundle_equivocation_proof(
+    fn validate_bundle_equivocation_proof(
         _bundle_equivocation_proof: &BundleEquivocationProof,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
 
     // TODO: Checks if the invalid transaction proof is valid.
-    fn check_invalid_transaction_proof(
+    fn validate_invalid_transaction_proof(
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
@@ -409,9 +420,11 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+        signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_execution_receipt { execution_receipt };
+        let call = Call::submit_execution_receipt {
+            signed_execution_receipt,
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
