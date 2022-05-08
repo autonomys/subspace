@@ -10,8 +10,7 @@ pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let mut input = Vec::<u8>::with_capacity(RECORDED_HISTORY_SEGMENT_SIZE.try_into().unwrap());
-    input.resize(input.capacity(), 1);
+    let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE.try_into().unwrap()];
 
     c.bench_function("archiving-2-blocks", |b| {
         b.iter(|| {

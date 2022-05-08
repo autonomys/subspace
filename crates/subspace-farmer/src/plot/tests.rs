@@ -16,12 +16,9 @@ fn generate_random_piece() -> Piece {
 }
 
 fn generate_random_pieces(n: usize) -> FlatPieces {
-    std::iter::from_fn(|| Some(generate_random_piece().to_vec().into_iter()))
-        .take(n)
-        .flatten()
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap()
+    let mut pieces = FlatPieces::new(n);
+    rand::thread_rng().fill(pieces.as_mut());
+    pieces
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -47,11 +47,11 @@ impl RecordShards {
     pub(super) fn new(number_of_shards: usize, shard_size: usize) -> Self {
         assert_eq!(shard_size % GF_16_ELEMENT_BYTES, 0);
 
-        let mut shards = Vec::with_capacity(number_of_shards * shard_size / GF_16_ELEMENT_BYTES);
-        shards.resize(shards.capacity(), Gf16Element::default());
-
         Self {
-            shards,
+            shards: vec![
+                Gf16Element::default();
+                number_of_shards * shard_size / GF_16_ELEMENT_BYTES
+            ],
             cursor: 0,
             shard_size,
         }
