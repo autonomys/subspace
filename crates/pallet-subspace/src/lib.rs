@@ -142,6 +142,9 @@ mod pallet {
             sp_consensus_subspace::SolutionRanges {
                 current: T::InitialSolutionRange::get(),
                 next: None,
+                voting_current: T::InitialSolutionRange::get()
+                    .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1),
+                voting_next: None,
             }
         }
     }
@@ -217,6 +220,12 @@ mod pallet {
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
+
+        /// Number of votes expected per block.
+        ///
+        /// This impacts solution range for votes in consensus.
+        #[pallet::constant]
+        type ExpectedVotesPerBlock: Get<u32>;
 
         type ShouldAdjustSolutionRange: Get<bool>;
 
@@ -512,30 +521,31 @@ impl<T: Config> Pallet<T> {
         let current_slot = Self::current_slot();
 
         SolutionRanges::<T>::mutate(|solution_ranges| {
-            solution_ranges.next.replace(
-                // Check if the solution range should be adjusted for next era.
-                if ShouldAdjustSolutionRange::<T>::get() {
-                    // If Era start slot is not found it means we have just finished the first era
-                    let era_start_slot =
-                        EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-                    let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
+            // Check if the solution range should be adjusted for next era.
+            let next_solution_range = if ShouldAdjustSolutionRange::<T>::get() {
+                // If Era start slot is not found it means we have just finished the first era
+                let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
+                let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-                    // Now we need to re-calculate solution range. The idea here is to keep block production at
-                    // the same pace while space pledged on the network changes. For this we adjust previous
-                    // solution range according to actual and expected number of blocks per era.
-                    let era_duration: u64 = T::EraDuration::get()
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-                    let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-                    let expected_slots_per_block =
-                        slot_probability.1 as f64 / slot_probability.0 as f64;
-                    let adjustment_factor =
-                        (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+                // Now we need to re-calculate solution range. The idea here is to keep block production at
+                // the same pace while space pledged on the network changes. For this we adjust previous
+                // solution range according to actual and expected number of blocks per era.
+                let era_duration: u64 = T::EraDuration::get()
+                    .try_into()
+                    .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
+                let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+                let expected_slots_per_block =
+                    slot_probability.1 as f64 / slot_probability.0 as f64;
+                let adjustment_factor =
+                    (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-                    (solution_ranges.current as f64 * adjustment_factor).round() as u64
-                } else {
-                    solution_ranges.current
-                },
+                (solution_ranges.current as f64 * adjustment_factor).round() as u64
+            } else {
+                solution_ranges.current
+            };
+            solution_ranges.next.replace(next_solution_range);
+            solution_ranges.voting_next.replace(
+                next_solution_range.saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1),
             )
         });
 
@@ -606,10 +616,17 @@ impl<T: Config> Pallet<T> {
         }
 
         // If solution range was updated in previous block, set it as current.
-        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+        if let sp_consensus_subspace::SolutionRanges {
+            next: Some(next),
+            voting_next: Some(voting_next),
+            ..
+        } = SolutionRanges::<T>::get()
+        {
             SolutionRanges::<T>::put(sp_consensus_subspace::SolutionRanges {
-                current: next_solution_range,
+                current: next,
                 next: None,
+                voting_current: voting_next,
+                voting_next: None,
             });
         }
 

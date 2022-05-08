@@ -151,6 +151,11 @@ const INITIAL_SOLUTION_RANGE: u64 =
     u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as u64 * SLOT_PROBABILITY.0
         / SLOT_PROBABILITY.1;
 
+/// Number of votes expected per block.
+///
+/// This impacts solution range for votes in consensus.
+const EXPECTED_VOTES_PER_BLOCK: u32 = 10;
+
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -261,6 +266,7 @@ impl pallet_subspace::Config for Runtime {
     type RecordSize = ConstU32<RECORD_SIZE>;
     type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
     type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
+    type ExpectedVotesPerBlock = ConstU32<EXPECTED_VOTES_PER_BLOCK>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;

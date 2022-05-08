@@ -202,14 +202,14 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                         {
                             Ok(_) => {
                                 info!(
-                                    "Successfully signed block 0x{} and sent signature to node",
+                                    "Successfully signed pre-header hash 0x{} and sent to node",
                                     hex::encode(header_hash)
                                 );
                             }
                             Err(error) => {
                                 warn!(
                                     %error,
-                                    "Failed to send signature for block 0x{}",
+                                    "Failed to send signature for pre-header hash 0x{}",
                                     hex::encode(header_hash),
                                 );
                             }

@@ -96,6 +96,9 @@ fn can_update_solution_range_on_era_change() {
         let initial_solution_ranges = SolutionRanges {
             current: INITIAL_SOLUTION_RANGE,
             next: None,
+            voting_current: INITIAL_SOLUTION_RANGE
+                .saturating_mul(u64::from(<Test as Config>::ExpectedVotesPerBlock::get()) + 1),
+            voting_next: None,
         };
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
         // enable solution range adjustment
@@ -122,7 +125,12 @@ fn can_update_solution_range_on_era_change() {
             Subspace::solution_ranges(),
             SolutionRanges {
                 current: updated_solution_ranges.next.unwrap(),
-                next: None
+                next: None,
+                voting_current: updated_solution_ranges
+                    .next
+                    .unwrap()
+                    .saturating_mul(u64::from(<Test as Config>::ExpectedVotesPerBlock::get()) + 1),
+                voting_next: None,
             }
         );
 
@@ -156,6 +164,9 @@ fn solution_range_should_not_update_when_disabled() {
         let initial_solution_ranges = SolutionRanges {
             current: INITIAL_SOLUTION_RANGE,
             next: None,
+            voting_current: INITIAL_SOLUTION_RANGE
+                .saturating_mul(u64::from(<Test as Config>::ExpectedVotesPerBlock::get()) + 1),
+            voting_next: None,
         };
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
 
@@ -180,7 +191,12 @@ fn solution_range_should_not_update_when_disabled() {
             Subspace::solution_ranges(),
             SolutionRanges {
                 current: updated_solution_ranges.next.unwrap(),
-                next: None
+                next: None,
+                voting_current: updated_solution_ranges
+                    .next
+                    .unwrap()
+                    .saturating_mul(u64::from(<Test as Config>::ExpectedVotesPerBlock::get()) + 1),
+                voting_next: None,
             }
         );
 
