@@ -25,6 +25,7 @@ pub mod objects;
 
 extern crate alloc;
 
+use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};

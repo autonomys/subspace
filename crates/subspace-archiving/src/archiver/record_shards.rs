@@ -1,22 +1,22 @@
-use crate::utils::{Gf16Element, GF_16_ELEMENT_BYTES};
-use std::io;
-use std::mem::ManuallyDrop;
+extern crate alloc;
 
-/// Wrapper data structure for record shards that correspond to the same recorded history segment
-/// for more convenient management.
-///
-/// Allows to accessing underlying data both as list of shards for erasure coding and regular slice
-/// of bytes for other purposes, also implements [`std::io::Write`] so that it can be used with
-/// `parity-scale-codec` to write encoded data right into [`RecordShards`].
-pub(super) struct RecordShards {
+use crate::archiver::Segment;
+use crate::utils::{Gf16Element, GF_16_ELEMENT_BYTES};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::mem::ManuallyDrop;
+use parity_scale_codec::{Encode, Output};
+
+/// Container that allows SCALE-encoding into directly while making sure nothing is written past
+/// data shard space and without extra memory copies.
+struct WritableShards {
+    data_shards_size: usize,
     shards: Vec<Gf16Element>,
     cursor: usize,
-    /// Shard size in bytes
-    shard_size: usize,
 }
 
-impl io::Write for RecordShards {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+impl Output for WritableShards {
+    fn write(&mut self, buf: &[u8]) {
         // SAFETY:
         // Lifetime is the same as source, de-allocation is prevented with `ManuallyDrop`, no
         // re-allocation will happen so interpreting one vector as different vector is fine.
@@ -27,32 +27,53 @@ impl io::Write for RecordShards {
                 self.shards.len() * GF_16_ELEMENT_BYTES,
             ));
 
-            let written_bytes = target[self.cursor..].as_mut().write(buf)?;
+            // May panic only if inputs are incorrect.
+            target[..self.data_shards_size][self.cursor..][..buf.len()]
+                .as_mut()
+                .copy_from_slice(buf);
 
-            self.cursor += written_bytes;
-
-            Ok(written_bytes)
+            self.cursor += buf.len();
         }
     }
+}
 
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
+/// Wrapper data structure for record shards that correspond to the same recorded history segment
+/// for more convenient management.
+///
+/// Allows to accessing underlying data both as list of shards for erasure coding and regular slice
+/// of bytes for other purposes, also implements [`std::io::Write`] so that it can be used with
+/// `parity-scale-codec` to write encoded data right into [`RecordShards`].
+pub(super) struct RecordShards {
+    shards: Vec<Gf16Element>,
+    /// Shard size in bytes
+    shard_size: usize,
 }
 
 impl RecordShards {
     /// Create new `Shards` struct for specified number of shards and shard size in bytes.
     ///
-    /// Panics if shard size is not multiple of 2.
-    pub(super) fn new(number_of_shards: usize, shard_size: usize) -> Self {
+    /// Panics if shard size is not multiple of 2 or encoded segment doesn't fit into data shards.
+    pub(super) fn new(
+        data_shards: usize,
+        parity_shards: usize,
+        shard_size: usize,
+        segment: &Segment,
+    ) -> Self {
         assert_eq!(shard_size % GF_16_ELEMENT_BYTES, 0);
 
-        Self {
+        let mut writable_shards = WritableShards {
+            data_shards_size: data_shards * shard_size,
             shards: vec![
                 Gf16Element::default();
-                number_of_shards * shard_size / GF_16_ELEMENT_BYTES
+                (data_shards + parity_shards) * shard_size / GF_16_ELEMENT_BYTES
             ],
             cursor: 0,
+        };
+
+        segment.encode_to(&mut writable_shards);
+
+        Self {
+            shards: writable_shards.shards,
             shard_size,
         }
     }

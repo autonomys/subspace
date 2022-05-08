@@ -109,8 +109,8 @@ pub enum SegmentItem {
 
 /// Archived segment as a combination of root block hash, segment index and corresponding pieces
 #[derive(Debug, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct ArchivedSegment {
     /// Root block of the segment
     pub root_block: RootBlock,
@@ -191,6 +191,10 @@ pub struct Archiver {
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: usize,
+    /// Number of data shards
+    data_shards: usize,
+    /// Number of parity shards
+    parity_shards: usize,
     /// Configuration parameter defining the size of one recorded history segment
     segment_size: usize,
     /// Erasure coding data structure
@@ -244,13 +248,16 @@ impl Archiver {
             return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }
 
-        let shards = segment_size / record_size;
-        let reed_solomon = ReedSolomon::new(shards, shards)
+        let data_shards = segment_size / record_size;
+        let parity_shards = data_shards;
+        let reed_solomon = ReedSolomon::new(data_shards, parity_shards)
             .expect("ReedSolomon should always be correctly instantiated");
 
         Ok(Self {
             buffer: VecDeque::default(),
             record_size,
+            data_shards,
+            parity_shards,
             segment_size,
             reed_solomon,
             segment_index: 0,
@@ -626,13 +633,13 @@ impl Archiver {
             }
             corrected_object_mapping
         };
-        let mut record_shards = {
-            // Allocate record shards that can hold both data and parity record shards (hence `*2`)
-            let mut record_shards =
-                RecordShards::new(self.segment_size / self.record_size * 2, self.record_size);
-            segment.encode_to(&mut record_shards);
-            record_shards
-        };
+
+        let mut record_shards = RecordShards::new(
+            self.data_shards,
+            self.parity_shards,
+            self.record_size,
+            &segment,
+        );
 
         drop(segment);
 
