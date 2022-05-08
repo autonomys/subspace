@@ -44,6 +44,11 @@ mod app {
 /// An executor authority signature.
 pub type ExecutorSignature = app::Signature;
 
+/// An executor authority keypair. Necessarily equivalent to the schnorrkel public key used in
+/// the main executor module. If that ever changes, then this must, too.
+#[cfg(feature = "std")]
+pub type ExecutorPair = app::Pair;
+
 /// An executor authority identifier.
 pub type ExecutorId = app::Public;
 

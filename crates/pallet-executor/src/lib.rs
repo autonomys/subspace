@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(test)]
+mod tests;
+
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
@@ -277,6 +280,7 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            // TODO: make it configurable from chain_spec?
             <ReceiptsPruningDepth<T>>::put(256u32);
             <Executor<T>>::put(
                 self.executor
