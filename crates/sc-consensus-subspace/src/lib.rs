@@ -922,8 +922,8 @@ where
         let solution_range = find_solution_range_descriptor(&header)?
             .ok_or(Error::MissingSolutionRange(block_hash))?
             .solution_range;
-        let correct_solution_range =
-            slot_worker::extract_solution_range_for_block(self.client.as_ref(), &parent_block_id)?;
+        let (correct_solution_range, _) =
+            slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
         if solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }

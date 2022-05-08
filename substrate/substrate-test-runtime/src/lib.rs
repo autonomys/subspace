@@ -987,6 +987,10 @@ cfg_if! {
                     )
                 }
 
+                fn submit_vote_extrinsic(_vote: <Block as BlockT>::Header) {
+                    unimplemented!()
+                }
+
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
@@ -1313,6 +1317,10 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::submit_test_equivocation_report(
                         equivocation_proof,
                     )
+                }
+
+                fn submit_vote_extrinsic(_vote: <Block as BlockT>::Header) {
+                    unimplemented!()
                 }
 
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {

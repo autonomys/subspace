@@ -33,6 +33,7 @@ use frame_support::{
     traits::{Get, OnTimestampSet},
     weights::{Pays, Weight},
 };
+use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 pub use pallet::*;
@@ -382,6 +383,19 @@ mod pallet {
             ShouldAdjustSolutionRange::<T>::put(true);
             Ok(())
         }
+
+        /// Farmer vote, currently only used for extra rewards to farmers.
+        // TODO: Proper weight
+        #[pallet::weight((100_000, DispatchClass::Operational, Pays::No))]
+        // Suppression because the custom syntax will also generate an enum and we need enum to have
+        // boxed value.
+        #[allow(clippy::boxed_local)]
+        pub fn vote(origin: OriginFor<T>, _vote: Box<T::Header>) -> DispatchResult {
+            ensure_none(origin)?;
+
+            // TODO: Process vote
+            Ok(())
+        }
     }
 
     #[pallet::inherent]
@@ -448,6 +462,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::validate_root_block(source, root_blocks)
                 }
+                Call::vote { vote } => Self::validate_vote(vote),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -460,6 +475,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::pre_dispatch_root_block(root_blocks)
                 }
+                Call::vote { vote } => Self::pre_dispatch_vote(vote),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -790,6 +806,28 @@ impl<T: Config> Pallet<T> {
     }
 }
 
+impl<T> Pallet<T>
+where
+    T: Config + SendTransactionTypes<Call<T>>,
+{
+    /// Submit farmer vote vote that is essentially a header with bigger solution range than
+    /// acceptable for block authoring.
+    pub fn submit_vote(vote: T::Header) {
+        let call = Call::vote {
+            vote: Box::new(vote),
+        };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::subspace", "Submitted Subspace vote");
+            }
+            Err(()) => {
+                log::error!(target: "runtime::subspace", "Error submitting Subspace vote");
+            }
+        }
+    }
+}
+
 /// Methods for the `ValidateUnsigned` implementation:
 /// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include root
@@ -826,6 +864,23 @@ impl<T: Config> Pallet<T> {
 
     fn pre_dispatch_root_block(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
         check_root_blocks::<T>(root_blocks)
+    }
+
+    fn validate_vote(_vote: &T::Header) -> TransactionValidity {
+        // TODO: Validate vote
+
+        ValidTransaction::with_tag_prefix("SubspaceVote")
+            // We assign the maximum priority for any vote.
+            .priority(TransactionPriority::MAX)
+            // Should be included in the next block or block after that, but not later
+            .longevity(1)
+            .build()
+    }
+
+    fn pre_dispatch_vote(_vote: &T::Header) -> Result<(), TransactionValidityError> {
+        // TODO: Validate vote
+
+        Ok(())
     }
 }
 

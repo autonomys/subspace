@@ -238,6 +238,10 @@ sp_api::decl_runtime_apis! {
             equivocation_proof: EquivocationProof<Block::Header>,
         ) -> Option<()>;
 
+        /// Submit farmer vote vote that is essentially a header with bigger solution range than
+        /// acceptable for block authoring. Only useful in an offchain context.
+        fn submit_vote_extrinsic(vote: Block::Header);
+
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 

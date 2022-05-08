@@ -225,7 +225,7 @@ where
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range: u64) -> bool {
+pub fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range: u64) -> bool {
     let solution_tag = u64::from_be_bytes(solution.tag);
     let target = u64::from_be_bytes(solution.local_challenge.derive_target());
 

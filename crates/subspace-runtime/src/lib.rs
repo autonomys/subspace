@@ -1032,6 +1032,10 @@ impl_runtime_apis! {
             Subspace::submit_equivocation_report(equivocation_proof)
         }
 
+        fn submit_vote_extrinsic(vote: <Block as BlockT>::Header) {
+            Subspace::submit_vote(vote)
+        }
+
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
