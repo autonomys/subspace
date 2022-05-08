@@ -11,8 +11,7 @@ async fn main() {
     let piece_count = 2u64.pow(20); // 4G
     let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
 
-    let mut pieces = Vec::with_capacity(batch_size as usize * PIECE_SIZE);
-    pieces.resize(batch_size as usize * PIECE_SIZE, 0u8);
+    let mut pieces = vec![0u8; batch_size as usize * PIECE_SIZE];
     rand::thread_rng().fill(&mut pieces[..]);
     let pieces = Arc::new(pieces.try_into().unwrap());
 

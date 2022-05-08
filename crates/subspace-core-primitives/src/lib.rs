@@ -25,6 +25,7 @@ pub mod objects;
 
 extern crate alloc;
 
+use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
@@ -264,9 +265,7 @@ pub struct FlatPieces(Vec<u8>);
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
     pub fn new(piece_count: usize) -> Self {
-        let mut pieces = Vec::with_capacity(piece_count * PIECE_SIZE);
-        pieces.resize(pieces.capacity(), 0);
-        Self(pieces)
+        Self(vec![0u8; piece_count * PIECE_SIZE])
     }
 
     /// Number of pieces contained.
