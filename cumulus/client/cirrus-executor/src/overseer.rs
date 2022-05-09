@@ -66,106 +66,6 @@ where
 	pub number: NumberFor<Block>,
 }
 
-/// Apply the transaction bundles for given primary block as follows:
-///
-/// 1. Extract the transaction bundles from the block.
-/// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient, ProcessorFn, SecondaryHash>(
-	primary_chain_client: &PClient,
-	processor: &ProcessorFn,
-	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
-) -> Result<(), ApiError>
-where
-	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
-	ProcessorFn: Fn(
-			(PBlock::Hash, NumberFor<PBlock>),
-			Vec<OpaqueBundle>,
-			Randomness,
-			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
-		+ Send
-		+ Sync,
-	SecondaryHash: Encode + Decode,
-{
-	let block_id = BlockId::Hash(block_hash);
-	let extrinsics = match primary_chain_client.block_body(&block_id) {
-		Err(err) => {
-			tracing::error!(
-				target: LOG_TARGET,
-				?err,
-				"Failed to get block body from primary chain"
-			);
-			return Ok(())
-		},
-		Ok(None) => {
-			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
-			return Ok(())
-		},
-		Ok(Some(body)) => body,
-	};
-
-	let bundles = primary_chain_client.runtime_api().extract_bundles(
-		&block_id,
-		extrinsics
-			.into_iter()
-			.map(|xt| {
-				OpaqueExtrinsic::from_bytes(&xt.encode()).expect("Certainly a correct extrinsic")
-			})
-			.collect(),
-	)?;
-
-	let header = match primary_chain_client.header(block_id) {
-		Err(err) => {
-			tracing::error!(target: LOG_TARGET, ?err, "Failed to get block from primary chain");
-			return Ok(())
-		},
-		Ok(None) => {
-			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
-			return Ok(())
-		},
-		Ok(Some(header)) => header,
-	};
-
-	let maybe_new_runtime = if header
-		.digest()
-		.logs
-		.iter()
-		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
-	{
-		Some(primary_chain_client.runtime_api().execution_wasm_bundle(&block_id)?)
-	} else {
-		None
-	};
-
-	let shuffling_seed = primary_chain_client
-		.runtime_api()
-		.extrinsics_shuffling_seed(&block_id, header)?;
-
-	let execution_receipt =
-		match processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime)
-			.await
-		{
-			Some(execution_receipt) => execution_receipt,
-			None => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Skip sending the execution receipt because executor is not elected",
-				);
-				return Ok(())
-			},
-		};
-
-	let best_hash = primary_chain_client.info().best_hash;
-
-	primary_chain_client
-		.runtime_api()
-		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
-
-	Ok(())
-}
-
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
 pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHash>(
@@ -328,6 +228,106 @@ where
 	{
 		tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 	}
+
+	Ok(())
+}
+
+/// Apply the transaction bundles for given primary block as follows:
+///
+/// 1. Extract the transaction bundles from the block.
+/// 2. Pass the bundles to secondary node and do the computation there.
+async fn process_primary_block<PBlock, PClient, ProcessorFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn,
+	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
+) -> Result<(), ApiError>
+where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
+		+ Send
+		+ Sync,
+	SecondaryHash: Encode + Decode,
+{
+	let block_id = BlockId::Hash(block_hash);
+	let extrinsics = match primary_chain_client.block_body(&block_id) {
+		Err(err) => {
+			tracing::error!(
+				target: LOG_TARGET,
+				?err,
+				"Failed to get block body from primary chain"
+			);
+			return Ok(())
+		},
+		Ok(None) => {
+			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
+			return Ok(())
+		},
+		Ok(Some(body)) => body,
+	};
+
+	let bundles = primary_chain_client.runtime_api().extract_bundles(
+		&block_id,
+		extrinsics
+			.into_iter()
+			.map(|xt| {
+				OpaqueExtrinsic::from_bytes(&xt.encode()).expect("Certainly a correct extrinsic")
+			})
+			.collect(),
+	)?;
+
+	let header = match primary_chain_client.header(block_id) {
+		Err(err) => {
+			tracing::error!(target: LOG_TARGET, ?err, "Failed to get block from primary chain");
+			return Ok(())
+		},
+		Ok(None) => {
+			tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
+			return Ok(())
+		},
+		Ok(Some(header)) => header,
+	};
+
+	let maybe_new_runtime = if header
+		.digest()
+		.logs
+		.iter()
+		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+	{
+		Some(primary_chain_client.runtime_api().execution_wasm_bundle(&block_id)?)
+	} else {
+		None
+	};
+
+	let shuffling_seed = primary_chain_client
+		.runtime_api()
+		.extrinsics_shuffling_seed(&block_id, header)?;
+
+	let execution_receipt =
+		match processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime)
+			.await
+		{
+			Some(execution_receipt) => execution_receipt,
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Skip sending the execution receipt because executor is not elected",
+				);
+				return Ok(())
+			},
+		};
+
+	let best_hash = primary_chain_client.info().best_hash;
+
+	primary_chain_client
+		.runtime_api()
+		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
 	Ok(())
 }
