@@ -120,8 +120,9 @@ mod pallet {
     pub enum Event<T: Config> {
         /// New object was added.
         ObjectSubmitted {
-            metadata: FeedMetadata,
             feed_id: T::FeedId,
+            who: T::AccountId,
+            metadata: FeedMetadata,
             object_size: u64,
         },
         /// New feed was created.
@@ -260,7 +261,7 @@ mod pallet {
         /// Put a new object into a feed
         #[pallet::weight((10_000, Pays::No))]
         pub fn put(origin: OriginFor<T>, feed_id: T::FeedId, object: Object) -> DispatchResult {
-            let (_owner, feed_config) = ensure_owner!(origin, feed_id);
+            let (owner, feed_config) = ensure_owner!(origin, feed_id);
             // ensure feed is active
             ensure!(feed_config.active, Error::<T>::FeedClosed);
 
@@ -278,8 +279,9 @@ mod pallet {
             });
 
             Self::deposit_event(Event::ObjectSubmitted {
-                metadata,
                 feed_id,
+                who: owner,
+                metadata,
                 object_size,
             });
 
