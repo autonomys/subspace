@@ -1,3 +1,5 @@
+use crate::overseer::ExecutorSlotInfo;
+use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
 use sc_client_api::BlockBackend;
@@ -5,6 +7,10 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_core::ByteArray;
+use sp_executor::{
+	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
+	SignedOpaqueBundle,
+};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
@@ -12,14 +18,6 @@ use sp_runtime::{
 	RuntimeAppPublic,
 };
 use std::{marker::PhantomData, sync::Arc, time};
-
-use crate::overseer::ExecutorSlotInfo;
-use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{
-	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
-	SignedOpaqueBundle,
-};
-
 use subspace_runtime_primitives::Hash as PHash;
 
 const LOG_TARGET: &str = "bundle-producer";

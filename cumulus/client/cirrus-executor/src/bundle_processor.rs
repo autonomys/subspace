@@ -1,12 +1,21 @@
+use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use cirrus_primitives::{AccountId, SecondaryApi};
+use codec::{Decode, Encode};
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
+use sc_network::NetworkService;
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
+use sp_executor::{
+	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
+	SignedExecutionReceipt,
+};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
@@ -20,19 +29,8 @@ use std::{
 	marker::PhantomData,
 	sync::Arc,
 };
-
-use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
-use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{
-	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
-	SignedExecutionReceipt,
-};
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
-
-use codec::{Decode, Encode};
-use sc_network::NetworkService;
-use sc_utils::mpsc::TracingUnboundedSender;
 
 const LOG_TARGET: &str = "bundle-processor";
 
