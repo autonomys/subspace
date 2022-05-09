@@ -39,7 +39,6 @@ impl<Block, PBlock, Client, PClient, TransactionPool> Clone
 	for BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
 	Block: BlockT,
-	PBlock: BlockT,
 {
 	fn clone(&self) -> Self {
 		Self {
