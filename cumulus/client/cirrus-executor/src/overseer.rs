@@ -387,6 +387,8 @@ pub async fn forward_events<PBlock, Client, Hash>(
 /// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
 /// The overseer.
+// TODO: temporarily suppress clippy and will be removed in the refactoring https://github.com/subspace/subspace/pull/429
+#[allow(clippy::type_complexity)]
 pub struct Overseer<PBlock, PClient, Hash>
 where
 	PBlock: BlockT,
