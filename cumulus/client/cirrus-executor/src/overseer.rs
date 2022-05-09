@@ -71,9 +71,9 @@ pub type BundlerFn = Box<
 /// Will be called with the hash of the primary chain block.
 ///
 /// Returns an optional [`OpaqueExecutionReceipt`].
-pub type ProcessorFn<Hash> = Box<
+pub type ProcessorFn<PHash, Number, Hash> = Box<
 	dyn Fn(
-			PHash,
+			(PHash, Number),
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
@@ -83,14 +83,14 @@ pub type ProcessorFn<Hash> = Box<
 >;
 
 /// Configuration for the collation generator
-pub struct CollationGenerationConfig<Hash> {
+pub struct CollationGenerationConfig<PHash, Number, Hash> {
 	/// Transaction bundle function. See [`BundlerFn`] for more details.
 	pub bundler: BundlerFn,
 	/// State processor function. See [`ProcessorFn`] for more details.
-	pub processor: ProcessorFn<Hash>,
+	pub processor: ProcessorFn<PHash, Number, Hash>,
 }
 
-impl<Hash> std::fmt::Debug for CollationGenerationConfig<Hash> {
+impl<PHash, Number, Hash> std::fmt::Debug for CollationGenerationConfig<PHash, Number, Hash> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "CollationGenerationConfig {{ ... }}")
 	}
@@ -98,9 +98,9 @@ impl<Hash> std::fmt::Debug for CollationGenerationConfig<Hash> {
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
-enum CollationGenerationMessage<Hash> {
+enum CollationGenerationMessage<PHash, Number, Hash> {
 	/// Initialize the collation generation subsystem
-	Initialize(CollationGenerationConfig<Hash>),
+	Initialize(CollationGenerationConfig<PHash, Number, Hash>),
 	/// Fraud proof needs to be submitted to primary chain.
 	FraudProof(FraudProof),
 	/// Bundle equivocation proof needs to be submitted to primary chain.
@@ -117,8 +117,8 @@ const LOG_TARGET: &str = "overseer";
 /// 2. Pass the bundles to secondary node and do the computation there.
 async fn process_primary_block<PBlock, PClient, Hash>(
 	client: Arc<PClient>,
-	config: &CollationGenerationConfig<Hash>,
-	block_hash: PBlock::Hash,
+	config: &CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
+	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
 ) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
@@ -183,11 +183,8 @@ where
 
 	let shuffling_seed = client.runtime_api().extrinsics_shuffling_seed(&block_id, header)?;
 
-	let non_generic_block_hash =
-		PHash::decode(&mut block_hash.encode().as_slice()).expect("Hash type must be correct");
-
 	let execution_receipt = match (config.processor)(
-		non_generic_block_hash,
+		(block_hash, block_number),
 		bundles,
 		shuffling_seed,
 		maybe_new_runtime,
@@ -247,7 +244,10 @@ where
 	}
 
 	/// Send some message to one of the `Subsystem`s.
-	async fn send_msg(&mut self, msg: CollationGenerationMessage<Hash>) {
+	async fn send_msg(
+		&mut self,
+		msg: CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>,
+	) {
 		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
 	}
 
@@ -264,7 +264,10 @@ where
 	}
 
 	/// TODO
-	pub async fn initialize(&mut self, config: CollationGenerationConfig<Hash>) {
+	pub async fn initialize(
+		&mut self,
+		config: CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
+	) {
 		self.send_msg(CollationGenerationMessage::Initialize(config)).await;
 	}
 
@@ -335,7 +338,7 @@ where
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
-	MsgToSubsystem(CollationGenerationMessage<Hash>),
+	MsgToSubsystem(CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -389,7 +392,7 @@ where
 	PBlock: BlockT,
 {
 	primary_chain_client: Arc<PClient>,
-	config: Option<Arc<CollationGenerationConfig<Hash>>>,
+	config: Option<Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>>,
 	/// A user specified addendum field.
 	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	/// A user specified addendum field.
@@ -494,7 +497,7 @@ where
 			process_primary_block(
 				Arc::clone(&self.primary_chain_client),
 				config,
-				activated_leaf.hash,
+				(activated_leaf.hash, activated_leaf.number),
 			)
 			.await?;
 		}
@@ -529,7 +532,7 @@ where
 
 	async fn handle_message(
 		&mut self,
-		message: CollationGenerationMessage<Hash>,
+		message: CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>,
 	) -> Result<(), ApiError> {
 		let client = &self.primary_chain_client;
 

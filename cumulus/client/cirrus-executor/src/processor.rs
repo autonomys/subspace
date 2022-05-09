@@ -4,8 +4,7 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
 use sp_keystore::SyncCryptoStore;
@@ -95,7 +94,7 @@ where
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
-	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient: ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
@@ -103,7 +102,7 @@ where
 	/// Actually implements `process_bundles`.
 	pub(super) async fn process_bundles_impl(
 		&self,
-		primary_hash: PHash,
+		(primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
@@ -203,22 +202,10 @@ where
 			header_hash
 		);
 
-		let primary_number = self
-			.primary_chain_client
-			.number(
-				PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
-					.expect("Primary block hash must be the correct type; qed"),
-			)?
-			.ok_or_else(|| {
-				sp_blockchain::Error::Backend(format!(
-					"Header not found for primary hash {:?}",
-					primary_hash
-				))
-			})?;
-
 		let execution_receipt = ExecutionReceipt {
 			primary_number: primary_number.saturated_into(),
-			primary_hash,
+			primary_hash: PHash::decode(&mut primary_hash.encode().as_slice())
+				.expect("Primary block hash must be the correct type; qed"),
 			secondary_hash: header_hash,
 			trace,
 			trace_root,

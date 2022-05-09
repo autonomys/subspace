@@ -547,20 +547,20 @@ where
 	/// Processes the bundles extracted from the primary block.
 	pub async fn process_bundles(
 		self,
-		primary_hash: PHash,
+		primary_info: (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Option<SignedExecutionReceipt<Block::Hash>> {
 		match self
-			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+			.process_bundles_impl(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
 			Ok(res) => res,
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
-					relay_parent = ?primary_hash,
+					?primary_info,
 					error = ?err,
 					"Error at processing bundles.",
 				);
