@@ -58,7 +58,7 @@ fn can_do_put() {
 
         System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {
             metadata: vec![],
-            who: OWNER,
+            feed_id: FEED_ID,
             object_size,
         }));
 
