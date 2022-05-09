@@ -56,9 +56,10 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{create_runtime_str, generic, ApplyExtrinsicResult, Perbill};
 use sp_runtime::{DispatchError, OpaqueExtrinsic};
 use sp_std::borrow::Cow;
-use sp_std::collections::vec_deque::VecDeque;
+use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
+use sp_std::vec::IntoIter;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -636,9 +637,9 @@ fn extract_feeds_block_object_mapping(
     base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
-    successful_calls: &mut VecDeque<Hash>,
+    successful_calls: &mut Peekable<IntoIter<Hash>>,
 ) {
-    let call_hash = successful_calls.front();
+    let call_hash = successful_calls.peek();
     match call_hash {
         Some(hash) => {
             if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
@@ -646,7 +647,7 @@ fn extract_feeds_block_object_mapping(
             }
 
             // remove the hash and fetch the object mapping for this call
-            successful_calls.pop_front();
+            successful_calls.next();
         }
         None => return,
     }
@@ -679,7 +680,7 @@ fn extract_utility_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut VecDeque<Hash>,
+    successful_calls: &mut Peekable<IntoIter<Hash>>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -739,7 +740,7 @@ fn extract_call_block_object_mapping(
     objects: &mut Vec<BlockObject>,
     call: &Call,
     recursion_depth_left: u16,
-    successful_calls: &mut VecDeque<Hash>,
+    successful_calls: &mut Peekable<IntoIter<Hash>>,
 ) {
     // Add enum variant to the base offset.
     base_offset += 1;
@@ -766,7 +767,7 @@ fn extract_call_block_object_mapping(
 
 fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = VecDeque::from(successful_calls);
+    let mut successful_calls = successful_calls.into_iter().peekable();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
