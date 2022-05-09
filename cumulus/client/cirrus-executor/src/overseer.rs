@@ -176,18 +176,6 @@ where
 	Ok(())
 }
 
-/// Activated leaf.
-#[derive(Debug, Clone)]
-pub struct ActivatedLeaf<Block>
-where
-	Block: BlockT,
-{
-	/// The block hash.
-	pub hash: Block::Hash,
-	/// The block number.
-	pub number: NumberFor<Block>,
-}
-
 /// A handle used to communicate with the [`Overseer`].
 ///
 /// [`Overseer`]: struct.Overseer.html
@@ -404,11 +392,10 @@ where
 		// Notify about active leaves on startup before starting the loop
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
-			let updated_leaf = ActivatedLeaf { hash, number };
-			if let Err(error) = on_activated_leaf(
+			if let Err(error) = process_primary_block(
 				self.primary_chain_client.as_ref(),
 				&self.overseer_config.processor,
-				updated_leaf,
+				(hash, number),
 			)
 			.await
 			{
@@ -441,16 +428,14 @@ where
 			},
 		};
 
-		let updated_leaf = ActivatedLeaf { hash: block.hash, number: block.number };
-
 		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
 			debug_assert_eq!(block.number.saturating_sub(One::one()), number);
 		}
 
-		if let Err(error) = on_activated_leaf(
+		if let Err(error) = process_primary_block(
 			self.primary_chain_client.as_ref(),
 			&self.overseer_config.processor,
-			updated_leaf,
+			(block.hash, block.number),
 		)
 		.await
 		{
@@ -459,30 +444,4 @@ where
 
 		Ok(())
 	}
-}
-
-async fn on_activated_leaf<PBlock, PClient, SecondaryHash>(
-	primary_chain_client: &PClient,
-	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
-	activated_leaf: ActivatedLeaf<PBlock>,
-) -> Result<(), ApiError>
-where
-	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ 'static
-		+ Sync,
-	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
-	SecondaryHash: Encode + Decode,
-{
-	// follow the procedure from the guide
-	// TODO: invoke this on finalized block?
-	process_primary_block(
-		primary_chain_client,
-		processor,
-		(activated_leaf.hash, activated_leaf.number),
-	)
-	.await
 }
