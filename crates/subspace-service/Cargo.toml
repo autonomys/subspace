@@ -21,7 +21,6 @@ derive_more = "0.99.17"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 futures = "0.3.21"
 jsonrpc-core = "18.0.0"
-pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -46,6 +45,7 @@ sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/parityt
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }
+sp-objects = { version = "1.0.0", path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }

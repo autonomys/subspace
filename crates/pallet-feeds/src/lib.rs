@@ -19,7 +19,6 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
-use codec::Decode;
 use core::mem;
 pub use pallet::*;
 use sp_std::{vec, vec::Vec};
@@ -188,8 +187,8 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            SuccessfulCalls::<T>::take();
-            T::DbWeight::get().reads_writes(1, 1)
+            SuccessfulCalls::<T>::kill();
+            T::DbWeight::get().reads_writes(0, 1)
         }
     }
 
@@ -368,12 +367,6 @@ pub struct CallObject {
 impl<T: Config> Pallet<T> {
     pub fn successful_calls() -> Vec<T::Hash> {
         SuccessfulCalls::<T>::get()
-    }
-}
-
-sp_api::decl_runtime_apis! {
-    pub trait FeedsApi<Hash: Decode> {
-        fn successful_calls() -> Vec<Hash>;
     }
 }
 

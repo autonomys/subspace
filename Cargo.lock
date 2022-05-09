@@ -5036,7 +5036,6 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-api",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -6587,7 +6586,6 @@ dependencies = [
  "futures-timer",
  "log",
  "lru 0.7.5",
- "pallet-feeds",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.8.5",
@@ -6612,6 +6610,7 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-io",
+ "sp-objects",
  "sp-runtime",
  "sp-timestamp",
  "sp-tracing",
@@ -8085,6 +8084,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-objects"
+version = "1.0.0"
+dependencies = [
+ "sp-api",
+ "sp-std",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
 name = "sp-offchain"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=c4f3d028621edb293d2c423516221aa396f76a2d#c4f3d028621edb293d2c423516221aa396f76a2d"
@@ -8632,6 +8641,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-inherents",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8667,7 +8677,6 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
  "jsonrpc-core",
- "pallet-feeds",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "sc-basic-authorship",
@@ -8693,6 +8702,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8785,6 +8795,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-inherents",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8923,7 +8934,6 @@ dependencies = [
  "log",
  "memory-db",
  "pallet-babe",
- "pallet-feeds",
  "pallet-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -8946,6 +8956,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-keyring",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-runtime-interface",

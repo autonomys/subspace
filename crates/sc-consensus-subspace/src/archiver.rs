@@ -18,12 +18,12 @@ use crate::{ArchivedSegmentNotification, SubspaceLink, SubspaceNotificationSende
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
 use log::{debug, error, info};
-use pallet_feeds::FeedsApi;
 use sc_client_api::BlockBackend;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
+use sp_objects::ObjectsApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
@@ -89,7 +89,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block> + FeedsApi<Block, Block::Hash>,
+    Client::Api: SubspaceApi<Block> + ObjectsApi<Block>,
 {
     let best_block_id = BlockId::Hash(client.info().best_hash);
 
@@ -126,16 +126,16 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .expect("Older blocks must always exist")
             .expect("Older blocks must always exist");
 
-        let successful_calls = client
+        let validated_object_calls = client
             .runtime_api()
-            .successful_calls(&BlockId::Number(last_archived_block_number.into()))
+            .validated_object_call_hashes(&BlockId::Number(last_archived_block_number.into()))
             .expect("Block state must exist");
         let block_object_mapping = client
             .runtime_api()
             .extract_block_object_mapping(
                 &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
                 last_archived_block.block.clone(),
-                successful_calls,
+                validated_object_calls,
             )
             .expect("Must be able to make runtime call");
 
@@ -193,9 +193,9 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     .expect("Older block by number must always exist")
                     .expect("Older block by number must always exist");
 
-                let successful_feed_calls = client
+                let validated_object_calls = client
                     .runtime_api()
-                    .successful_calls(&BlockId::Number(block_to_archive.into()))
+                    .validated_object_call_hashes(&BlockId::Number(block_to_archive.into()))
                     .expect("Block state must exist");
 
                 let block_object_mapping = client
@@ -203,7 +203,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     .extract_block_object_mapping(
                         &BlockId::Number(block_to_archive.saturating_sub(1).into()),
                         block.block.clone(),
-                        successful_feed_calls,
+                        validated_object_calls,
                     )
                     .expect("Must be able to make runtime call");
 
@@ -296,9 +296,9 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .expect("Older block by number must always exist")
                         .expect("Older block by number must always exist");
 
-                    let successful_feed_calls = client
+                    let validated_object_calls = client
                         .runtime_api()
-                        .successful_calls(&BlockId::Number(block_to_archive))
+                        .validated_object_call_hashes(&BlockId::Number(block_to_archive))
                         .expect("Block state must exist");
 
                     let block_object_mapping = client
@@ -306,7 +306,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .extract_block_object_mapping(
                             &BlockId::Number(block_to_archive.saturating_sub(One::one())),
                             block.block.clone(),
-                            successful_feed_calls,
+                            validated_object_calls,
                         )
                         .expect("Must be able to make runtime call");
 

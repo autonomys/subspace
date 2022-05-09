@@ -925,9 +925,15 @@ cfg_if! {
                 }
             }
 
-            impl pallet_feeds::FeedsApi<Block, Hash> for Runtime {
-                fn successful_calls() -> Vec<Hash> {
+            impl sp_objects::ObjectsApi<Block> for Runtime {
+                fn validated_object_call_hashes() -> Vec<Hash> {
                     Vec::new()
+                }
+
+                fn extract_block_object_mapping(
+                    _block: Block, _successful_calls: Vec<Hash>
+                ) -> subspace_core_primitives::objects::BlockObjectMapping {
+                    subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
             }
 
@@ -992,12 +998,6 @@ cfg_if! {
                     _ext: &<Block as BlockT>::Extrinsic
                 ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
-                }
-
-                fn extract_block_object_mapping(
-                    _block: Block, _successful_calls: Vec<<Block as BlockT>::Hash>
-                ) -> subspace_core_primitives::objects::BlockObjectMapping {
-                    subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
             }
 
@@ -1253,6 +1253,18 @@ cfg_if! {
                 }
             }
 
+            impl sp_objects::ObjectsApi<Block> for Runtime {
+                fn validated_object_call_hashes() -> Vec<Hash> {
+                    Vec::new()
+                }
+
+                fn extract_block_object_mapping(
+                    _block: Block, _successful_calls: Vec<Hash>
+                ) -> subspace_core_primitives::objects::BlockObjectMapping {
+                    subspace_core_primitives::objects::BlockObjectMapping::default()
+                }
+            }
+
             impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
@@ -1314,12 +1326,6 @@ cfg_if! {
                     _ext: &<Block as BlockT>::Extrinsic
                 ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
-                }
-
-                fn extract_block_object_mapping(
-                    _block: Block, _successful_calls: Vec<<Block as BlockT>::Hash>
-                ) -> subspace_core_primitives::objects::BlockObjectMapping {
-                    subspace_core_primitives::objects::BlockObjectMapping::default()
                 }
             }
 

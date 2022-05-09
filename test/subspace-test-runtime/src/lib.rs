@@ -899,8 +899,12 @@ impl_runtime_apis! {
         }
     }
 
-    impl pallet_feeds::FeedsApi<Block, Hash> for Runtime {
-        fn successful_calls() -> Vec<Hash> {
+    impl sp_objects::ObjectsApi<Block> for Runtime {
+        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
+            extract_block_object_mapping(block, successful_calls)
+        }
+
+        fn validated_object_call_hashes() -> Vec<Hash> {
             Feeds::successful_calls()
         }
     }
@@ -960,10 +964,6 @@ impl_runtime_apis! {
 
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
-        }
-
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<<Block as BlockT>::Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, successful_calls)
         }
     }
 
