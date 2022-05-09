@@ -509,62 +509,61 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(
-        fraud_proof: FraudProof,
-    ) -> frame_support::pallet_prelude::DispatchResult {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
         let call = Call::submit_fraud_proof { fraud_proof };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => log::info!(target: "runtime::subspace::executor", "Submitted fraud proof."),
-            Err(e) => {
-                log::error!(target: "runtime::subspace::executor", "Error submitting fraud proof: {:?}", e,)
+            Ok(()) => {
+                log::info!(target: "runtime::subspace::executor", "Submitted fraud proof");
+            }
+            Err(()) => {
+                log::error!(target: "runtime::subspace::executor", "Error submitting fraud proof");
             }
         }
-
-        Ok(())
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
         bundle_equivocation_proof: BundleEquivocationProof,
-    ) -> frame_support::pallet_prelude::DispatchResult {
+    ) {
         let call = Call::submit_bundle_equivocation_proof {
             bundle_equivocation_proof,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted bundle equivocation proof.")
+                log::info!(
+                    target: "runtime::subspace::executor",
+                    "Submitted bundle equivocation proof"
+                );
             }
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting bundle equivocation proof: {:?}",
-                e,
-            ),
+            Err(()) => {
+                log::error!(
+                    target: "runtime::subspace::executor",
+                    "Error submitting bundle equivocation proof",
+                );
+            }
         }
-
-        Ok(())
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_invalid_transaction_proof`].
     pub fn submit_invalid_transaction_proof_unsigned(
         invalid_transaction_proof: InvalidTransactionProof,
-    ) -> frame_support::pallet_prelude::DispatchResult {
+    ) {
         let call = Call::submit_invalid_transaction_proof {
             invalid_transaction_proof,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted invalid transaction proof.")
+                log::info!(target: "runtime::subspace::executor", "Submitted invalid transaction proof")
             }
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting invalid transaction proof: {:?}",
-                e,
-            ),
+            Err(()) => {
+                log::error!(
+                    target: "runtime::subspace::executor",
+                    "Error submitting invalid transaction proof",
+                );
+            }
         }
-
-        Ok(())
     }
 }

@@ -401,8 +401,9 @@ where
 	}
 
 	fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-		let mut overseer_handle = self.overseer_handle.clone();
-		self.spawner.spawn(
+		let primary_chain_client = self.primary_chain_client.clone();
+		// TODO: No backpressure
+		self.spawner.spawn_blocking(
 			"cirrus-submit-bundle-equivocation-proof",
 			None,
 			async move {
@@ -410,21 +411,26 @@ where
 					target: LOG_TARGET,
 					"Submitting bundle equivocation proof in a background task..."
 				);
-				overseer_handle
-					.submit_bundle_equivocation_proof(bundle_equivocation_proof)
-					.await;
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Bundle equivocation proof submission finished"
-				);
+				if let Err(error) =
+					primary_chain_client.runtime_api().submit_bundle_equivocation_proof_unsigned(
+						&BlockId::Hash(primary_chain_client.info().best_hash),
+						bundle_equivocation_proof,
+					) {
+					tracing::debug!(
+						target: LOG_TARGET,
+						error = ?error,
+						"Failed to submit bundle equivocation proof"
+					);
+				}
 			}
 			.boxed(),
 		);
 	}
 
 	fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-		let mut overseer_handle = self.overseer_handle.clone();
-		self.spawner.spawn(
+		let primary_chain_client = self.primary_chain_client.clone();
+		// TODO: No backpressure
+		self.spawner.spawn_blocking(
 			"cirrus-submit-fraud-proof",
 			None,
 			async move {
@@ -432,16 +438,25 @@ where
 					target: LOG_TARGET,
 					"Submitting fraud proof in a background task..."
 				);
-				overseer_handle.submit_fraud_proof(fraud_proof).await;
-				tracing::debug!(target: LOG_TARGET, "Fraud proof submission finished");
+				if let Err(error) = primary_chain_client.runtime_api().submit_fraud_proof_unsigned(
+					&BlockId::Hash(primary_chain_client.info().best_hash),
+					fraud_proof,
+				) {
+					tracing::debug!(
+						target: LOG_TARGET,
+						error = ?error,
+						"Failed to submit fraud proof"
+					);
+				}
 			}
 			.boxed(),
 		);
 	}
 
 	fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-		let mut overseer_handle = self.overseer_handle.clone();
-		self.spawner.spawn(
+		let primary_chain_client = self.primary_chain_client.clone();
+		// TODO: No backpressure
+		self.spawner.spawn_blocking(
 			"cirrus-submit-invalid-transaction-proof",
 			None,
 			async move {
@@ -449,13 +464,17 @@ where
 					target: LOG_TARGET,
 					"Submitting invalid transaction proof in a background task..."
 				);
-				overseer_handle
-					.submit_invalid_transaction_proof(invalid_transaction_proof)
-					.await;
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Invalid transaction proof submission finished"
-				);
+				if let Err(error) =
+					primary_chain_client.runtime_api().submit_invalid_transaction_proof_unsigned(
+						&BlockId::Hash(primary_chain_client.info().best_hash),
+						invalid_transaction_proof,
+					) {
+					tracing::debug!(
+						target: LOG_TARGET,
+						error = ?error,
+						"Failed to submit invalid transaction proof"
+					);
+				}
 			}
 			.boxed(),
 		);

@@ -372,17 +372,17 @@ sp_api::decl_runtime_apis! {
         fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) -> Option<()>;
 
         /// Submits the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()>;
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);
 
         /// Submits the bundle equivocation proof via an unsigned extrinsic.
         fn submit_bundle_equivocation_proof_unsigned(
             bundle_equivocation_proof: BundleEquivocationProof,
-        ) -> Option<()>;
+        );
 
         /// Submits the invalid transaction proof via an unsigned extrinsic.
         fn submit_invalid_transaction_proof_unsigned(
             invalid_transaction_proof: InvalidTransactionProof,
-        ) -> Option<()>;
+        );
 
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;

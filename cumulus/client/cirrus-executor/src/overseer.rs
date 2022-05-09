@@ -23,10 +23,7 @@ use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_executor::{
-	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	SignedExecutionReceipt, SignedOpaqueBundle,
-};
+use sp_executor::{ExecutorApi, OpaqueBundle, SignedExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{Header as HeaderT, NumberFor, One, Saturating},
@@ -94,17 +91,6 @@ impl<PHash, Number, Hash> std::fmt::Debug for CollationGenerationConfig<PHash, N
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "CollationGenerationConfig {{ ... }}")
 	}
-}
-
-/// Message to the Collation Generation subsystem.
-#[derive(Debug)]
-enum ProofMessage {
-	/// Fraud proof needs to be submitted to primary chain.
-	Fraud(FraudProof),
-	/// Bundle equivocation proof needs to be submitted to primary chain.
-	BundleEquivocation(BundleEquivocationProof),
-	/// Invalid transaction proof needs to be submitted to primary chain.
-	InvalidTransaction(InvalidTransactionProof),
 }
 
 const LOG_TARGET: &str = "overseer";
@@ -241,11 +227,6 @@ where
 		self.send_and_log_error(Event::BlockImported(block)).await
 	}
 
-	/// Send some message to one of the `Subsystem`s.
-	async fn send_msg(&mut self, msg: ProofMessage) {
-		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
-	}
-
 	/// Inform the `Overseer` that a new slot was triggered.
 	async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
 		self.send_and_log_error(Event::NewSlot(slot_info)).await
@@ -256,27 +237,6 @@ where
 		if self.0.send(event).await.is_err() {
 			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
 		}
-	}
-
-	/// TODO
-	pub async fn submit_bundle_equivocation_proof(
-		&mut self,
-		bundle_equivocation_proof: BundleEquivocationProof,
-	) {
-		self.send_msg(ProofMessage::BundleEquivocation(bundle_equivocation_proof)).await
-	}
-
-	/// TODO
-	pub async fn submit_fraud_proof(&mut self, fraud_proof: FraudProof) {
-		self.send_msg(ProofMessage::Fraud(fraud_proof)).await;
-	}
-
-	/// TODO
-	pub async fn submit_invalid_transaction_proof(
-		&mut self,
-		invalid_transaction_proof: InvalidTransactionProof,
-	) {
-		self.send_msg(ProofMessage::InvalidTransaction(invalid_transaction_proof)).await;
 	}
 }
 
@@ -318,8 +278,6 @@ where
 	BlockImported(BlockInfo<PBlock>),
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
-	/// Message as sent to a subsystem.
-	MsgToSubsystem(ProofMessage),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
@@ -430,14 +388,6 @@ where
 
 		while let Some(msg) = self.events_rx.next().await {
 			match msg {
-				Event::MsgToSubsystem(message) => {
-					if let Err(error) = self.handle_message(message).await {
-						tracing::error!(
-							target: LOG_TARGET,
-							"Collation generation processing error: {error}"
-						);
-					}
-				},
 				// TODO: we still need the context of block, e.g., executor gossips no message
 				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
@@ -490,39 +440,6 @@ where
 		let _ = client
 			.runtime_api()
 			.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-
-		Ok(())
-	}
-
-	async fn handle_message(&mut self, message: ProofMessage) -> Result<(), ApiError> {
-		let client = &self.primary_chain_client;
-
-		match message {
-			ProofMessage::Fraud(fraud_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_fraud_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					fraud_proof,
-				)?;
-			},
-			ProofMessage::BundleEquivocation(bundle_equivocation_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					bundle_equivocation_proof,
-				)?;
-			},
-			ProofMessage::InvalidTransaction(invalid_transaction_proof) => {
-				// TODO: Handle returned result?
-				let _ = self
-					.primary_chain_client
-					.runtime_api()
-					.submit_invalid_transaction_proof_unsigned(
-						&BlockId::Hash(client.info().best_hash),
-						invalid_transaction_proof,
-					)?;
-			},
-		}
 
 		Ok(())
 	}
