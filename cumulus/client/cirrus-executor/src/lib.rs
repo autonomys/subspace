@@ -72,7 +72,7 @@ use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{future, FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -230,65 +230,72 @@ where
 				"collation-generation-subsystem",
 				Some("collation-generation-subsystem"),
 				async move {
-					overseer::forward_events(
-						primary_chain_client.as_ref(),
-						{
-							let span = span.clone();
-
-							move |primary_hash, slot_info| {
-								let bundle_producer = bundle_producer.clone();
-								let produce_bundle_fut = bundle_producer
-									.produce_bundle(primary_hash, slot_info)
-									.instrument(span.clone());
-
-								Box::pin(async move {
-									produce_bundle_fut.await.unwrap_or_else(|error| {
-										tracing::error!(
-											target: LOG_TARGET,
-											relay_parent = ?primary_hash,
-											error = ?error,
-											"Error at producing bundle.",
-										);
-										None
-									})
-								})
-							}
-						},
-						{
-							&move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-								let bundle_processor = bundle_processor.clone();
+					let handle_block_import_notifications_fut =
+						overseer::handle_block_import_notifications(
+							primary_chain_client.as_ref(),
+							{
 								let span = span.clone();
 
-								Box::pin(async move {
-									let process_bundles_fut = bundle_processor
-										.process_bundles(
-											primary_hash,
-											bundles,
-											shuffling_seed,
-											maybe_new_runtime,
-										)
-										.instrument(span.clone());
+								move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+									let bundle_processor = bundle_processor.clone();
+									let span = span.clone();
 
-									process_bundles_fut.await.unwrap_or_else(|error| {
-										tracing::error!(
-											target: LOG_TARGET,
-											relay_parent = ?primary_hash,
-											error = ?error,
-											"Error at processing bundles.",
-										);
-										None
+									Box::pin(async move {
+										let process_bundles_fut = bundle_processor
+											.process_bundles(
+												primary_hash,
+												bundles,
+												shuffling_seed,
+												maybe_new_runtime,
+											)
+											.instrument(span.clone());
+
+										process_bundles_fut.await.unwrap_or_else(|error| {
+											tracing::error!(
+												target: LOG_TARGET,
+												relay_parent = ?primary_hash,
+												error = ?error,
+												"Error at processing bundles.",
+											);
+											None
+										})
 									})
+								}
+							},
+							active_leaves
+								.into_iter()
+								.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
+								.collect(),
+							Box::pin(imported_block_notification_stream),
+						);
+					let handle_slot_notifications_fut = overseer::handle_slot_notifications(
+						primary_chain_client.as_ref(),
+						move |primary_hash, slot_info| {
+							let bundle_producer = bundle_producer.clone();
+							let produce_bundle_fut = bundle_producer
+								.produce_bundle(primary_hash, slot_info)
+								.instrument(span.clone());
+
+							Box::pin(async move {
+								produce_bundle_fut.await.unwrap_or_else(|error| {
+									tracing::error!(
+										target: LOG_TARGET,
+										relay_parent = ?primary_hash,
+										error = ?error,
+										"Error at producing bundle.",
+									);
+									None
 								})
-							}
+							})
 						},
-						active_leaves
-							.into_iter()
-							.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
-							.collect(),
-						Box::pin(imported_block_notification_stream.fuse()),
-						Box::pin(new_slot_notification_stream.fuse()),
+						Box::pin(new_slot_notification_stream),
+					);
+
+					let _ = future::select(
+						Box::pin(handle_block_import_notifications_fut),
+						Box::pin(handle_slot_notifications_fut),
 					)
-					.await
+					.await;
 				}
 				.boxed(),
 			);

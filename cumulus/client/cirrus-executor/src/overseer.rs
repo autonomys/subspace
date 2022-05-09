@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use codec::{Decode, Encode};
-use futures::{select, stream::FusedStream, StreamExt};
+use futures::{Stream, StreamExt};
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -66,18 +66,13 @@ where
 	pub number: NumberFor<Block>,
 }
 
-/// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
-/// import and finality notifications to it.
-pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHash>(
+pub(super) async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
 	primary_chain_client: &PClient,
 	bundler: BundlerFn,
-	processor: &ProcessorFn,
-	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
-	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
+	mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
 ) where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
 	BundlerFn: Fn(
 			PHash,
@@ -85,6 +80,29 @@ pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHa
 		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
 		+ Send
 		+ Sync,
+	SecondaryHash: Encode + Decode,
+{
+	while let Some(executor_slot_info) = slots.next().await {
+		if let Err(error) = on_new_slot(primary_chain_client, &bundler, executor_slot_info).await {
+			tracing::error!(
+				target: LOG_TARGET,
+				error = ?error,
+				"Failed to submit transaction bundle"
+			);
+			break
+		}
+	}
+}
+
+pub(super) async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: ProcessorFn,
+	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
+	mut block_imports: impl Stream<Item = NumberFor<PBlock>> + Unpin,
+) where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
 	ProcessorFn: Fn(
 			(PBlock::Hash, NumberFor<PBlock>),
 			Vec<OpaqueBundle>,
@@ -106,49 +124,27 @@ pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHa
 			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 	}
-	loop {
-		select! {
-			i = imports.next() => {
-				match i {
-					Some(block_number) => {
-						let header = primary_chain_client
-							.header(BlockId::Number(block_number))
-							.expect("Header of imported block must exist; qed")
-							.expect("Header of imported block must exist; qed");
-						let block_info = BlockInfo {
-							hash: header.hash(),
-							parent_hash: *header.parent_hash(),
-							number: *header.number(),
-						};
 
-						if let Err(error) = block_imported(primary_chain_client, processor, &mut active_leaves, block_info).await {
-							tracing::error!(
-								target: LOG_TARGET,
-								error = ?error,
-								"Failed to process primary block"
-							);
-							break;
-						}
-					}
-					None => break,
-				}
-			},
-			s = slots.next() => {
-				match s {
-					Some(executor_slot_info) => {
-						if let Err(error) = on_new_slot(primary_chain_client, &bundler, executor_slot_info).await {
-							tracing::error!(
-								target: LOG_TARGET,
-								error = ?error,
-								"Failed to submit transaction bundle"
-							);
-							break;
-						}
-					}
-					None => break,
-				}
-			}
-			complete => break,
+	while let Some(block_number) = block_imports.next().await {
+		let header = primary_chain_client
+			.header(BlockId::Number(block_number))
+			.expect("Header of imported block must exist; qed")
+			.expect("Header of imported block must exist; qed");
+		let block_info = BlockInfo {
+			hash: header.hash(),
+			parent_hash: *header.parent_hash(),
+			number: *header.number(),
+		};
+
+		if let Err(error) =
+			block_imported(primary_chain_client, &processor, &mut active_leaves, block_info).await
+		{
+			tracing::error!(
+				target: LOG_TARGET,
+				error = ?error,
+				"Failed to process primary block"
+			);
+			break
 		}
 	}
 }
