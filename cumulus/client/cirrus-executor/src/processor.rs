@@ -4,14 +4,14 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
-use sp_api::ProvideRuntimeApi;
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
 use sp_keystore::SyncCryptoStore;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
-	RuntimeAppPublic,
+	RuntimeAppPublic, SaturatedConversion,
 };
 use std::{
 	borrow::Cow,
@@ -102,7 +102,7 @@ where
 	/// Actually implements `process_bundles`.
 	pub(super) async fn process_bundles_impl(
 		&self,
-		primary_hash: PHash,
+		(primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
@@ -202,8 +202,14 @@ where
 			header_hash
 		);
 
-		let execution_receipt =
-			ExecutionReceipt { primary_hash, secondary_hash: header_hash, trace, trace_root };
+		let execution_receipt = ExecutionReceipt {
+			primary_number: primary_number.saturated_into(),
+			primary_hash: PHash::decode(&mut primary_hash.encode().as_slice())
+				.expect("Primary block hash must be the correct type; qed"),
+			secondary_hash: header_hash,
+			trace,
+			trace_root,
+		};
 
 		crate::aux_schema::write_execution_receipt::<_, Block>(
 			&*self.client,

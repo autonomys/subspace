@@ -876,7 +876,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
- "substrate-test-runtime",
+ "subspace-test-runtime",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "thiserror",
@@ -5001,8 +5001,10 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-executor",
+ "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]

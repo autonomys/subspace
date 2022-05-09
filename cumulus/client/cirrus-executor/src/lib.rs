@@ -94,7 +94,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
@@ -547,20 +547,20 @@ where
 	/// Processes the bundles extracted from the primary block.
 	pub async fn process_bundles(
 		self,
-		primary_hash: PHash,
+		primary_info: (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Option<SignedExecutionReceipt<Block::Hash>> {
 		match self
-			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+			.process_bundles_impl(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
 			Ok(res) => res,
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
-					relay_parent = ?primary_hash,
+					?primary_info,
 					error = ?err,
 					"Error at processing bundles.",
 				);
@@ -737,23 +737,7 @@ where
 			})
 		}
 
-		let block_number = TryInto::<BlockNumber>::try_into(
-			self.primary_chain_client
-				.block_number_from_id(&BlockId::Hash(primary_hash))?
-				.ok_or_else(|| {
-					sp_blockchain::Error::Backend(format!(
-						"Primary block number not found for {:?}",
-						execution_receipt.primary_hash
-					))
-				})?,
-		)
-		.unwrap_or_else(|_error| {
-			panic!(
-				"Block number must be exactly the same size for both primary and secondary chains; qed"
-			)
-		})
-		.into();
-
+		let block_number = execution_receipt.primary_number.into();
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
