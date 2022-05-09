@@ -228,29 +228,8 @@ where
 		let overseer_handle = {
 			let span = tracing::Span::current();
 			let overseer_config = CollationGenerationConfig {
-				bundler: {
-					let span = span.clone();
-
-					Box::new(move |primary_hash, slot_info| {
-						let bundle_producer = bundle_producer.clone();
-						let produce_bundle_fut = bundle_producer
-							.produce_bundle(primary_hash, slot_info)
-							.instrument(span.clone());
-
-						Box::pin(async move {
-							produce_bundle_fut.await.unwrap_or_else(|error| {
-								tracing::error!(
-									target: LOG_TARGET,
-									relay_parent = ?primary_hash,
-									error = ?error,
-									"Error at producing bundle.",
-								);
-								None
-							})
-						})
-					})
-				},
 				processor: {
+					let span = span.clone();
 					let bundle_processor = bundle_processor.clone();
 
 					Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
@@ -299,7 +278,29 @@ where
 					Some("collation-generation-subsystem"),
 					Box::pin(async move {
 						let forward = overseer::forward_events(
-							primary_chain_client,
+							primary_chain_client.as_ref(),
+							{
+								let span = span.clone();
+
+								move |primary_hash, slot_info| {
+									let bundle_producer = bundle_producer.clone();
+									let produce_bundle_fut = bundle_producer
+										.produce_bundle(primary_hash, slot_info)
+										.instrument(span.clone());
+
+									Box::pin(async move {
+										produce_bundle_fut.await.unwrap_or_else(|error| {
+											tracing::error!(
+												target: LOG_TARGET,
+												relay_parent = ?primary_hash,
+												error = ?error,
+												"Error at producing bundle.",
+											);
+											None
+										})
+									})
+								}
+							},
 							Box::pin(imported_block_notification_stream.fuse()),
 							Box::pin(new_slot_notification_stream.fuse()),
 							overseer_handle,

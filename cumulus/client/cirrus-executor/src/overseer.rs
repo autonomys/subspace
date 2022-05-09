@@ -49,20 +49,6 @@ pub struct ExecutorSlotInfo {
 	pub global_challenge: Tag,
 }
 
-/// Bundle function.
-///
-/// Will be called with each slot of the primary chain.
-///
-/// Returns an optional [`SignedOpaqueBundle`].
-pub type BundlerFn = Box<
-	dyn Fn(
-			PHash,
-			ExecutorSlotInfo,
-		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
-		+ Send
-		+ Sync,
->;
-
 /// Process function.
 ///
 /// Will be called with the hash of the primary chain block.
@@ -81,8 +67,6 @@ pub type ProcessorFn<PHash, Number, Hash> = Box<
 
 /// Configuration for the collation generator
 pub struct CollationGenerationConfig<PHash, Number, Hash> {
-	/// Transaction bundle function. See [`BundlerFn`] for more details.
-	pub bundler: BundlerFn,
 	/// State processor function. See [`ProcessorFn`] for more details.
 	pub processor: ProcessorFn<PHash, Number, Hash>,
 }
@@ -226,11 +210,6 @@ where
 		self.send_and_log_error(Event::BlockImported(block)).await
 	}
 
-	/// Inform the `Overseer` that a new slot was triggered.
-	async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
-		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
 	/// Most basic operation, to stop a server.
 	async fn send_and_log_error(&mut self, event: Event<PBlock>) {
 		if self.0.send(event).await.is_err() {
@@ -275,27 +254,34 @@ where
 {
 	/// A new block was imported.
 	BlockImported(BlockInfo<PBlock>),
-	/// A new slot arrived.
-	NewSlot(ExecutorSlotInfo),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<PBlock, Client>(
-	client: Arc<Client>,
+pub async fn forward_events<PBlock, PClient, BundlerFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	bundler: BundlerFn,
 	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
 	mut handle: OverseerHandle<PBlock>,
 ) where
 	PBlock: BlockT,
-	Client: HeaderBackend<PBlock>,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	BundlerFn: Fn(
+			PHash,
+			ExecutorSlotInfo,
+		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
+		+ Send
+		+ Sync,
+	SecondaryHash: Encode + Decode,
 {
 	loop {
 		select! {
 			i = imports.next() => {
 				match i {
 					Some(block_number) => {
-						let header = client
+						let header = primary_chain_client
 							.header(BlockId::Number(block_number))
 							.expect("Header of imported block must exist; qed")
 							.expect("Header of imported block must exist; qed");
@@ -312,7 +298,14 @@ pub async fn forward_events<PBlock, Client>(
 			s = slots.next() => {
 				match s {
 					Some(executor_slot_info) => {
-						handle.slot_arrived(executor_slot_info).await;
+						if let Err(error) = on_new_slot(primary_chain_client, &bundler, executor_slot_info).await {
+							tracing::error!(
+								target: LOG_TARGET,
+								error = ?error,
+								"Failed to submit transaction bundle"
+							);
+							break;
+						}
 					}
 					None => break,
 				}
@@ -320,6 +313,43 @@ pub async fn forward_events<PBlock, Client>(
 			complete => break,
 		}
 	}
+}
+
+async fn on_new_slot<PBlock, PClient, BundlerFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	bundler: &BundlerFn,
+	executor_slot_info: ExecutorSlotInfo,
+) -> Result<(), ApiError>
+where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	BundlerFn: Fn(
+			PHash,
+			ExecutorSlotInfo,
+		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
+		+ Send
+		+ Sync,
+	SecondaryHash: Encode + Decode,
+{
+	let best_hash = primary_chain_client.info().best_hash;
+
+	let non_generic_best_hash =
+		PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
+
+	let opaque_bundle = match bundler(non_generic_best_hash, executor_slot_info).await {
+		Some(opaque_bundle) => opaque_bundle,
+		None => {
+			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+			return Ok(())
+		},
+	};
+
+	let () = primary_chain_client
+		.runtime_api()
+		.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+
+	Ok(())
 }
 
 /// Capacity of a signal channel between a subsystem and the overseer.
@@ -392,13 +422,6 @@ where
 				Event::BlockImported(block) => {
 					self.block_imported(block).await?;
 				},
-				Event::NewSlot(slot_info) =>
-					if let Err(error) = self.on_new_slot(slot_info).await {
-						tracing::error!(
-							target: LOG_TARGET,
-							"Collation generation processing error: {error}"
-						);
-					},
 			}
 		}
 
@@ -417,29 +440,6 @@ where
 			(activated_leaf.hash, activated_leaf.number),
 		)
 		.await
-	}
-
-	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
-		let client = &self.primary_chain_client;
-		let best_hash = client.info().best_hash;
-
-		let non_generic_best_hash =
-			PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
-
-		let opaque_bundle =
-			match (self.overseer_config.bundler)(non_generic_best_hash, slot_info).await {
-				Some(opaque_bundle) => opaque_bundle,
-				None => {
-					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
-					return Ok(())
-				},
-			};
-
-		let () = client
-			.runtime_api()
-			.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-
-		Ok(())
 	}
 
 	async fn block_imported(&mut self, block: BlockInfo<PBlock>) -> Result<(), ApiError> {
