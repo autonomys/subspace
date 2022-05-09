@@ -20,7 +20,6 @@
 
 pub mod chain_spec;
 
-use cirrus_client_executor::ExecutorSlotInfo;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 use futures::StreamExt;
@@ -242,10 +241,8 @@ async fn start_node_impl(
 			primary_chain_full_node.new_slot_notification_stream.subscribe().then(
 				|slot_notification| async move {
 					let slot_info = slot_notification.new_slot_info;
-					ExecutorSlotInfo {
-						slot: slot_info.slot,
-						global_challenge: slot_info.global_challenge,
-					}
+
+					(slot_info.slot, slot_info.global_challenge)
 				},
 			),
 			client.clone(),

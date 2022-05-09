@@ -36,15 +36,15 @@ use std::{
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::Hash as PHash;
 
-const LOG_TARGET: &str = "overseer";
+const LOG_TARGET: &str = "executor-worker";
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
-pub struct ExecutorSlotInfo {
+pub(super) struct ExecutorSlotInfo {
 	/// Slot
-	pub slot: Slot,
+	pub(super) slot: Slot,
 	/// Global slot challenge
-	pub global_challenge: Tag,
+	pub(super) global_challenge: Tag,
 }
 
 /// An event telling the `Overseer` on the particular block

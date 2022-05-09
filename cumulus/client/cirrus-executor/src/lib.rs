@@ -60,25 +60,27 @@ mod aux_schema;
 mod bundle_processor;
 mod bundle_producer;
 mod merkle_tree;
-mod overseer;
 #[cfg(test)]
 mod tests;
+mod worker;
 
-pub use crate::overseer::ExecutorSlotInfo;
 use crate::{
-	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, overseer::BlockInfo,
+	bundle_processor::BundleProcessor,
+	bundle_producer::BundleProducer,
+	worker::{BlockInfo, ExecutorSlotInfo},
 };
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{future, FutureExt, Stream};
+use futures::{future, FutureExt, Stream, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockStatus, SelectChain};
+use sp_consensus_slots::Slot;
 use sp_core::{
 	traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed},
 	H256,
@@ -95,7 +97,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, Tag};
 use tracing::Instrument;
 
 /// The logging target.
@@ -198,7 +200,7 @@ where
 		SE: SpawnEssentialNamed,
 		SC: SelectChain<PBlock>,
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-		NSNS: Stream<Item = ExecutorSlotInfo> + Send + 'static,
+		NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
 	{
 		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
 
@@ -227,11 +229,11 @@ where
 			let bundle_processor = bundle_processor.clone();
 
 			spawn_essential.spawn_essential_blocking(
-				"collation-generation-subsystem",
-				Some("collation-generation-subsystem"),
+				"executor-worker",
+				None,
 				async move {
 					let handle_block_import_notifications_fut =
-						overseer::handle_block_import_notifications(
+						worker::handle_block_import_notifications(
 							primary_chain_client.as_ref(),
 							{
 								let span = span.clone();
@@ -268,7 +270,7 @@ where
 								.collect(),
 							Box::pin(imported_block_notification_stream),
 						);
-					let handle_slot_notifications_fut = overseer::handle_slot_notifications(
+					let handle_slot_notifications_fut = worker::handle_slot_notifications(
 						primary_chain_client.as_ref(),
 						move |primary_hash, slot_info| {
 							let bundle_producer = bundle_producer.clone();
@@ -288,7 +290,9 @@ where
 								})
 							})
 						},
-						Box::pin(new_slot_notification_stream),
+						Box::pin(new_slot_notification_stream.map(|(slot, global_challenge)| {
+							ExecutorSlotInfo { slot, global_challenge }
+						})),
 					);
 
 					let _ = future::select(

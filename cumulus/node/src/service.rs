@@ -1,9 +1,9 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-use cirrus_client_executor::{Executor, ExecutorSlotInfo};
+use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_runtime::{opaque::Block, Hash, RuntimeApi};
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -235,9 +235,7 @@ where
 			&spawn_essential,
 			select_chain,
 			imported_block_notification_stream,
-			new_slot_notification_stream.then(|(slot, global_challenge)| async move {
-				ExecutorSlotInfo { slot, global_challenge }
-			}),
+			new_slot_notification_stream,
 			client.clone(),
 			Box::new(task_manager.spawn_handle()),
 			transaction_pool,

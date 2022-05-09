@@ -1,4 +1,4 @@
-use crate::overseer::ExecutorSlotInfo;
+use crate::worker::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
