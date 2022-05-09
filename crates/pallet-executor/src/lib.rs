@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(test)]
+mod tests;
+
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
@@ -31,11 +34,12 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutorId, FraudProof, InvalidTransactionProof,
+        BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
         SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
     use sp_std::fmt::Debug;
+    use subspace_core_primitives::BlockNumber;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -57,10 +61,15 @@ mod pallet {
             + AsMut<[u8]>
             + MaybeMallocSizeOf
             + MaxEncodedLen;
+
+        /// Number of execution receipts kept in the state.
+        #[pallet::constant]
+        type ReceiptsPruningDepth: Get<BlockNumber>;
     }
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::error]
@@ -75,13 +84,18 @@ mod pallet {
         BadExecutionReceiptSignature,
         /// The signer of execution receipt is unexpected.
         UnexpectedExecutionReceiptSigner,
+        /// The parent execution receipt is unknown.
+        MissingParentReceipt,
     }
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A new candidate receipt was backed.
-        ExecutionReceiptStored { receipt_hash: H256 },
+        /// A new execution receipt was backed.
+        NewExecutionReceipt {
+            primary_number: BlockNumber,
+            primary_hash: H256,
+        },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
         /// A fraud proof was processed.
@@ -94,28 +108,54 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+            signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::debug!(
                 target: "runtime::subspace::executor",
                 "Submitting execution receipt: {:?}",
-                execution_receipt
+                signed_execution_receipt
             );
 
-            // TODO: track the execution receipt
+            // TODO: ensure the receipt is ready to be applied
 
-            Self::deposit_event(Event::ExecutionReceiptStored {
-                receipt_hash: execution_receipt.hash(),
+            let SignedExecutionReceipt {
+                execution_receipt, ..
+            } = signed_execution_receipt;
+
+            let primary_hash = execution_receipt.primary_hash;
+            let primary_number = execution_receipt.primary_number;
+
+            // Execution receipt starts from the primary block #1.
+            if primary_number > 1u32 {
+                ensure!(
+                    Receipts::<T>::get(primary_number - 1u32).is_some(),
+                    Error::<T>::MissingParentReceipt
+                );
+            }
+
+            // Apply the execution receipt.
+            <Receipts<T>>::insert(primary_number, execution_receipt);
+
+            // Remove the oldest once the receipts cache is full.
+            if let Some(to_prune) = primary_number.checked_sub(T::ReceiptsPruningDepth::get()) {
+                Receipts::<T>::remove(to_prune);
+            }
+
+            Self::deposit_event(Event::NewExecutionReceipt {
+                primary_number,
+                primary_hash,
             });
 
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
@@ -136,6 +176,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
@@ -146,6 +187,8 @@ mod pallet {
                 fraud_proof
             );
 
+            // TODO: revert the execution chain.
+
             // TODO: slash the executor accordingly.
 
             Self::deposit_event(Event::FraudProofProcessed);
@@ -153,6 +196,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -173,6 +217,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
@@ -198,6 +243,11 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn executor)]
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
+
+    /// Mapping from the primary block number to the corresponding verified execution receipt.
+    #[pallet::storage]
+    pub(super) type Receipts<T: Config> =
+        StorageMap<_, Twox64Concat, BlockNumber, ExecutionReceipt<T::SecondaryHash>, OptionQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -263,8 +313,10 @@ mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::submit_execution_receipt { execution_receipt } => {
-                    if let Err(e) = Self::check_execution_receipt(execution_receipt) {
+                Call::submit_execution_receipt {
+                    signed_execution_receipt,
+                } => {
+                    if let Err(e) = Self::validate_execution_receipt(signed_execution_receipt) {
                         log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid execution receipt: {:?}",
@@ -272,12 +324,15 @@ mod pallet {
                         );
                         return InvalidTransactionCode::ExecutionReceipt.into();
                     }
-                    unsigned_validity("SubspaceSubmitExecutionReceipt", execution_receipt.hash())
+                    unsigned_validity(
+                        "SubspaceSubmitExecutionReceipt",
+                        signed_execution_receipt.hash(),
+                    )
                 }
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
                 } => {
-                    if let Err(e) = Self::check_bundle(signed_opaque_bundle) {
+                    if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
                         log::error!(
                             target: "runtime::subspace::executor",
                             "Invalid signed opaque bundle: {:?}",
@@ -303,7 +358,8 @@ mod pallet {
                 Call::submit_bundle_equivocation_proof {
                     bundle_equivocation_proof,
                 } => {
-                    if let Err(e) = Self::check_bundle_equivocation_proof(bundle_equivocation_proof)
+                    if let Err(e) =
+                        Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
@@ -321,7 +377,8 @@ mod pallet {
                 Call::submit_invalid_transaction_proof {
                     invalid_transaction_proof,
                 } => {
-                    if let Err(e) = Self::check_invalid_transaction_proof(invalid_transaction_proof)
+                    if let Err(e) =
+                        Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
@@ -344,7 +401,7 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn check_execution_receipt(
+    fn validate_execution_receipt(
         SignedExecutionReceipt {
             execution_receipt,
             signature,
@@ -366,7 +423,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn check_bundle(
+    fn validate_bundle(
         SignedOpaqueBundle {
             opaque_bundle,
             signature,
@@ -389,14 +446,14 @@ impl<T: Config> Pallet<T> {
     }
 
     // TODO: Checks if the bundle equivocation proof is valid.
-    fn check_bundle_equivocation_proof(
+    fn validate_bundle_equivocation_proof(
         _bundle_equivocation_proof: &BundleEquivocationProof,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
 
     // TODO: Checks if the invalid transaction proof is valid.
-    fn check_invalid_transaction_proof(
+    fn validate_invalid_transaction_proof(
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
@@ -409,9 +466,11 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+        signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
     ) -> frame_support::pallet_prelude::DispatchResult {
-        let call = Call::submit_execution_receipt { execution_receipt };
+        let call = Call::submit_execution_receipt {
+            signed_execution_receipt,
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
