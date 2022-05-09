@@ -83,9 +83,9 @@ const LOG_TARGET: &str = "overseer";
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient, Hash>(
-	client: Arc<PClient>,
-	config: &CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
+async fn process_primary_block<PBlock, PClient, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
 	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
 ) -> Result<(), ApiError>
 where
@@ -94,13 +94,13 @@ where
 		+ BlockBackend<PBlock>
 		+ ProvideRuntimeApi<PBlock>
 		+ Send
-		+ 'static
-		+ Sync,
-	PClient::Api: ExecutorApi<PBlock, Hash>,
-	Hash: Encode + Decode,
+		+ Sync
+		+ 'static,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	SecondaryHash: Encode + Decode,
 {
 	let block_id = BlockId::Hash(block_hash);
-	let extrinsics = match client.block_body(&block_id) {
+	let extrinsics = match primary_chain_client.block_body(&block_id) {
 		Err(err) => {
 			tracing::error!(
 				target: LOG_TARGET,
@@ -116,7 +116,7 @@ where
 		Ok(Some(body)) => body,
 	};
 
-	let bundles = client.runtime_api().extract_bundles(
+	let bundles = primary_chain_client.runtime_api().extract_bundles(
 		&block_id,
 		extrinsics
 			.into_iter()
@@ -126,7 +126,7 @@ where
 			.collect(),
 	)?;
 
-	let header = match client.header(block_id) {
+	let header = match primary_chain_client.header(block_id) {
 		Err(err) => {
 			tracing::error!(target: LOG_TARGET, ?err, "Failed to get block from primary chain");
 			return Ok(())
@@ -144,34 +144,32 @@ where
 		.iter()
 		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
 	{
-		Some(client.runtime_api().execution_wasm_bundle(&block_id)?)
+		Some(primary_chain_client.runtime_api().execution_wasm_bundle(&block_id)?)
 	} else {
 		None
 	};
 
-	let shuffling_seed = client.runtime_api().extrinsics_shuffling_seed(&block_id, header)?;
+	let shuffling_seed = primary_chain_client
+		.runtime_api()
+		.extrinsics_shuffling_seed(&block_id, header)?;
 
-	let execution_receipt = match (config.processor)(
-		(block_hash, block_number),
-		bundles,
-		shuffling_seed,
-		maybe_new_runtime,
-	)
-	.await
-	{
-		Some(execution_receipt) => execution_receipt,
-		None => {
-			tracing::debug!(
-				target: LOG_TARGET,
-				"Skip sending the execution receipt because executor is not elected",
-			);
-			return Ok(())
-		},
-	};
+	let execution_receipt =
+		match processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime)
+			.await
+		{
+			Some(execution_receipt) => execution_receipt,
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Skip sending the execution receipt because executor is not elected",
+				);
+				return Ok(())
+			},
+		};
 
-	let best_hash = client.info().best_hash;
+	let best_hash = primary_chain_client.info().best_hash;
 
-	let () = client
+	let () = primary_chain_client
 		.runtime_api()
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
@@ -407,7 +405,13 @@ where
 		for (hash, number) in std::mem::take(&mut self.leaves) {
 			let _ = self.active_leaves.insert(hash, number);
 			let updated_leaf = ActivatedLeaf { hash, number };
-			if let Err(error) = self.on_activated_leaf(updated_leaf).await {
+			if let Err(error) = on_activated_leaf(
+				self.primary_chain_client.as_ref(),
+				&self.overseer_config.processor,
+				updated_leaf,
+			)
+			.await
+			{
 				tracing::error!(
 					target: LOG_TARGET,
 					"Collation generation processing error: {error}"
@@ -428,20 +432,6 @@ where
 		Ok(())
 	}
 
-	async fn on_activated_leaf(
-		&self,
-		activated_leaf: ActivatedLeaf<PBlock>,
-	) -> Result<(), ApiError> {
-		// follow the procedure from the guide
-		// TODO: invoke this on finalized block?
-		process_primary_block(
-			Arc::clone(&self.primary_chain_client),
-			&self.overseer_config,
-			(activated_leaf.hash, activated_leaf.number),
-		)
-		.await
-	}
-
 	async fn block_imported(&mut self, block: BlockInfo<PBlock>) -> Result<(), ApiError> {
 		match self.active_leaves.entry(block.hash) {
 			Entry::Vacant(entry) => entry.insert(block.number),
@@ -457,10 +447,42 @@ where
 			debug_assert_eq!(block.number.saturating_sub(One::one()), number);
 		}
 
-		if let Err(error) = self.on_activated_leaf(updated_leaf).await {
+		if let Err(error) = on_activated_leaf(
+			self.primary_chain_client.as_ref(),
+			&self.overseer_config.processor,
+			updated_leaf,
+		)
+		.await
+		{
 			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 
 		Ok(())
 	}
+}
+
+async fn on_activated_leaf<PBlock, PClient, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
+	activated_leaf: ActivatedLeaf<PBlock>,
+) -> Result<(), ApiError>
+where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ 'static
+		+ Sync,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	SecondaryHash: Encode + Decode,
+{
+	// follow the procedure from the guide
+	// TODO: invoke this on finalized block?
+	process_primary_block(
+		primary_chain_client,
+		processor,
+		(activated_leaf.hash, activated_leaf.number),
+	)
+	.await
 }
