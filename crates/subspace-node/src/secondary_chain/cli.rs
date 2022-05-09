@@ -26,20 +26,8 @@ use std::{net::SocketAddr, path::PathBuf};
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
-    /// Build a chain specification.
-    BuildSpec(sc_cli::BuildSpecCmd),
-
-    /// Validate blocks.
-    CheckBlock(sc_cli::CheckBlockCmd),
-
-    /// Export blocks.
-    ExportBlocks(sc_cli::ExportBlocksCmd),
-
     /// Export the state of a given block into a chain spec.
     ExportState(sc_cli::ExportStateCmd),
-
-    /// Import blocks.
-    ImportBlocks(sc_cli::ImportBlocksCmd),
 
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
