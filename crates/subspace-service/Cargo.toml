@@ -45,7 +45,7 @@ sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/parityt
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }
-sp-objects = { version = "1.0.0", path = "../sp-objects" }
+sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }

@@ -5045,7 +5045,7 @@ dependencies = [
 
 [[package]]
 name = "pallet-grandpa-finality-verifier"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "finality-grandpa",
@@ -8085,7 +8085,7 @@ dependencies = [
 
 [[package]]
 name = "sp-objects"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "sp-api",
  "sp-std",
