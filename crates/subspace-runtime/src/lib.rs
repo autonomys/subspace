@@ -981,7 +981,7 @@ impl_runtime_apis! {
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {
-            Feeds::successful_calls()
+            Feeds::successful_puts()
         }
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     mock::{new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test},
-    Call as FeedsCall, Error, Object, SuccessfulCalls, TotalObjectsAndSize,
+    Call as FeedsCall, Error, Object, SuccessfulPuts, TotalObjectsAndSize,
 };
 use codec::{Decode, Encode};
 use frame_support::{assert_noop, assert_ok};
@@ -59,7 +59,7 @@ fn can_do_put() {
         );
 
         assert_eq!(
-            SuccessfulCalls::<Test>::get()[0],
+            SuccessfulPuts::<Test>::get()[0],
             BlakeTwo256::hash(
                 FeedsCall::<Test>::put {
                     feed_id: FEED_ID,

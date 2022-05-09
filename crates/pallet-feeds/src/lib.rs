@@ -115,7 +115,7 @@ mod pallet {
     pub(super) type NextFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
 
     #[pallet::storage]
-    pub(super) type SuccessfulCalls<T: Config> = StorageValue<_, Vec<T::Hash>, ValueQuery>;
+    pub(super) type SuccessfulPuts<T: Config> = StorageValue<_, Vec<T::Hash>, ValueQuery>;
 
     /// `pallet-feeds` events
     #[pallet::event]
@@ -187,8 +187,8 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            SuccessfulCalls::<T>::kill();
-            T::DbWeight::get().reads_writes(0, 1)
+            SuccessfulPuts::<T>::kill();
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -298,7 +298,7 @@ mod pallet {
             // there could be multiple calls with same hash and that is fine
             // since we assume the same order
             let uniq = T::Hashing::hash(Call::<T>::put { feed_id, object }.encode().as_slice());
-            SuccessfulCalls::<T>::append(uniq);
+            SuccessfulPuts::<T>::append(uniq);
             Ok(())
         }
 
@@ -365,8 +365,8 @@ pub struct CallObject {
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn successful_calls() -> Vec<T::Hash> {
-        SuccessfulCalls::<T>::get()
+    pub fn successful_puts() -> Vec<T::Hash> {
+        SuccessfulPuts::<T>::get()
     }
 }
 
