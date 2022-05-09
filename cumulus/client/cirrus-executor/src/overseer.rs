@@ -98,15 +98,13 @@ impl<PHash, Number, Hash> std::fmt::Debug for CollationGenerationConfig<PHash, N
 
 /// Message to the Collation Generation subsystem.
 #[derive(Debug)]
-enum CollationGenerationMessage<PHash, Number, Hash> {
-	/// Initialize the collation generation subsystem
-	Initialize(CollationGenerationConfig<PHash, Number, Hash>),
+enum ProofMessage {
 	/// Fraud proof needs to be submitted to primary chain.
-	FraudProof(FraudProof),
+	Fraud(FraudProof),
 	/// Bundle equivocation proof needs to be submitted to primary chain.
-	BundleEquivocationProof(BundleEquivocationProof),
+	BundleEquivocation(BundleEquivocationProof),
 	/// Invalid transaction proof needs to be submitted to primary chain.
-	InvalidTransactionProof(InvalidTransactionProof),
+	InvalidTransaction(InvalidTransactionProof),
 }
 
 const LOG_TARGET: &str = "overseer";
@@ -227,14 +225,14 @@ where
 ///
 /// [`Overseer`]: struct.Overseer.html
 #[derive(Clone)]
-pub struct OverseerHandle<PBlock: BlockT, Hash>(mpsc::Sender<Event<PBlock, Hash>>);
+pub struct OverseerHandle<PBlock: BlockT>(mpsc::Sender<Event<PBlock>>);
 
-impl<PBlock, Hash> OverseerHandle<PBlock, Hash>
+impl<PBlock> OverseerHandle<PBlock>
 where
 	PBlock: BlockT,
 {
 	/// Create a new [`Handle`].
-	fn new(raw: mpsc::Sender<Event<PBlock, Hash>>) -> Self {
+	fn new(raw: mpsc::Sender<Event<PBlock>>) -> Self {
 		Self(raw)
 	}
 
@@ -244,10 +242,7 @@ where
 	}
 
 	/// Send some message to one of the `Subsystem`s.
-	async fn send_msg(
-		&mut self,
-		msg: CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>,
-	) {
+	async fn send_msg(&mut self, msg: ProofMessage) {
 		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
 	}
 
@@ -257,18 +252,10 @@ where
 	}
 
 	/// Most basic operation, to stop a server.
-	async fn send_and_log_error(&mut self, event: Event<PBlock, Hash>) {
+	async fn send_and_log_error(&mut self, event: Event<PBlock>) {
 		if self.0.send(event).await.is_err() {
 			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
 		}
-	}
-
-	/// TODO
-	pub async fn initialize(
-		&mut self,
-		config: CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
-	) {
-		self.send_msg(CollationGenerationMessage::Initialize(config)).await;
 	}
 
 	/// TODO
@@ -276,15 +263,12 @@ where
 		&mut self,
 		bundle_equivocation_proof: BundleEquivocationProof,
 	) {
-		self.send_msg(CollationGenerationMessage::BundleEquivocationProof(
-			bundle_equivocation_proof,
-		))
-		.await
+		self.send_msg(ProofMessage::BundleEquivocation(bundle_equivocation_proof)).await
 	}
 
 	/// TODO
 	pub async fn submit_fraud_proof(&mut self, fraud_proof: FraudProof) {
-		self.send_msg(CollationGenerationMessage::FraudProof(fraud_proof)).await;
+		self.send_msg(ProofMessage::Fraud(fraud_proof)).await;
 	}
 
 	/// TODO
@@ -292,10 +276,7 @@ where
 		&mut self,
 		invalid_transaction_proof: InvalidTransactionProof,
 	) {
-		self.send_msg(CollationGenerationMessage::InvalidTransactionProof(
-			invalid_transaction_proof,
-		))
-		.await;
+		self.send_msg(ProofMessage::InvalidTransaction(invalid_transaction_proof)).await;
 	}
 }
 
@@ -329,7 +310,7 @@ where
 
 /// An event from outside the overseer scope, such
 /// as the substrate framework or user interaction.
-enum Event<PBlock, Hash>
+enum Event<PBlock>
 where
 	PBlock: BlockT,
 {
@@ -338,16 +319,16 @@ where
 	/// A new slot arrived.
 	NewSlot(ExecutorSlotInfo),
 	/// Message as sent to a subsystem.
-	MsgToSubsystem(CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>),
+	MsgToSubsystem(ProofMessage),
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<PBlock, Client, Hash>(
+pub async fn forward_events<PBlock, Client>(
 	client: Arc<Client>,
 	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
-	mut handle: OverseerHandle<PBlock, Hash>,
+	mut handle: OverseerHandle<PBlock>,
 ) where
 	PBlock: BlockT,
 	Client: HeaderBackend<PBlock>,
@@ -394,13 +375,13 @@ where
 	PBlock: BlockT,
 {
 	primary_chain_client: Arc<PClient>,
-	config: Option<Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>>,
+	overseer_config: Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>,
 	/// A user specified addendum field.
 	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	/// A user specified addendum field.
 	active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
 	/// Events that are sent to the overseer from the outside world.
-	events_rx: mpsc::Receiver<Event<PBlock, Hash>>,
+	events_rx: mpsc::Receiver<Event<PBlock>>,
 }
 
 impl<PBlock, PClient, Hash> Overseer<PBlock, PClient, Hash>
@@ -420,10 +401,16 @@ where
 		primary_chain_client: Arc<PClient>,
 		leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-	) -> (Self, OverseerHandle<PBlock, Hash>) {
+		overseer_config: CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
+	) -> (Self, OverseerHandle<PBlock>) {
 		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer =
-			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
+		let overseer = Overseer {
+			primary_chain_client,
+			overseer_config: Arc::new(overseer_config),
+			leaves,
+			active_leaves,
+			events_rx,
+		};
 		(overseer, OverseerHandle::new(handle))
 	}
 
@@ -441,11 +428,6 @@ where
 			}
 		}
 
-		// TODO: remove this once the config can be initialized in [`Self::new`].
-		let mut config_initialized = false;
-		// Only a few dozens of backlog blocks.
-		let mut imports_backlog = Vec::new();
-
 		while let Some(msg) = self.events_rx.next().await {
 			match msg {
 				Event::MsgToSubsystem(message) => {
@@ -459,22 +441,7 @@ where
 				// TODO: we still need the context of block, e.g., executor gossips no message
 				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
-					if !config_initialized {
-						if self.config.is_some() {
-							// Process the backlog first once the config has been initialized.
-							if !imports_backlog.is_empty() {
-								for b in imports_backlog.drain(..) {
-									self.block_imported(b).await?;
-								}
-							}
-							config_initialized = true;
-							self.block_imported(block).await?;
-						} else {
-							imports_backlog.push(block);
-						}
-					} else {
-						self.block_imported(block).await?;
-					}
+					self.block_imported(block).await?;
 				},
 				Event::NewSlot(slot_info) =>
 					if let Err(error) = self.on_new_slot(slot_info).await {
@@ -494,28 +461,24 @@ where
 		activated_leaf: ActivatedLeaf<PBlock>,
 	) -> Result<(), ApiError> {
 		// follow the procedure from the guide
-		if let Some(config) = &self.config {
-			// TODO: invoke this on finalized block?
-			process_primary_block(
-				Arc::clone(&self.primary_chain_client),
-				config,
-				(activated_leaf.hash, activated_leaf.number),
-			)
-			.await?;
-		}
-
-		Ok(())
+		// TODO: invoke this on finalized block?
+		process_primary_block(
+			Arc::clone(&self.primary_chain_client),
+			&self.overseer_config,
+			(activated_leaf.hash, activated_leaf.number),
+		)
+		.await
 	}
 
 	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
-		if let Some(config) = &self.config {
-			let client = &self.primary_chain_client;
-			let best_hash = client.info().best_hash;
+		let client = &self.primary_chain_client;
+		let best_hash = client.info().best_hash;
 
-			let non_generic_best_hash = PHash::decode(&mut best_hash.encode().as_slice())
-				.expect("Hash type must be correct");
+		let non_generic_best_hash =
+			PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
 
-			let opaque_bundle = match (config.bundler)(non_generic_best_hash, slot_info).await {
+		let opaque_bundle =
+			match (self.overseer_config.bundler)(non_generic_best_hash, slot_info).await {
 				Some(opaque_bundle) => opaque_bundle,
 				None => {
 					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
@@ -523,43 +486,33 @@ where
 				},
 			};
 
-			// TODO: Handle returned result?
-			let _ = client
-				.runtime_api()
-				.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-		}
+		// TODO: Handle returned result?
+		let _ = client
+			.runtime_api()
+			.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
 
 		Ok(())
 	}
 
-	async fn handle_message(
-		&mut self,
-		message: CollationGenerationMessage<PBlock::Hash, NumberFor<PBlock>, Hash>,
-	) -> Result<(), ApiError> {
+	async fn handle_message(&mut self, message: ProofMessage) -> Result<(), ApiError> {
 		let client = &self.primary_chain_client;
 
 		match message {
-			CollationGenerationMessage::Initialize(config) =>
-				if self.config.is_some() {
-					tracing::error!(target: LOG_TARGET, "double initialization");
-				} else {
-					self.config = Some(Arc::new(config));
-				},
-			CollationGenerationMessage::FraudProof(fraud_proof) => {
+			ProofMessage::Fraud(fraud_proof) => {
 				// TODO: Handle returned result?
 				let _ = client.runtime_api().submit_fraud_proof_unsigned(
 					&BlockId::Hash(client.info().best_hash),
 					fraud_proof,
 				)?;
 			},
-			CollationGenerationMessage::BundleEquivocationProof(bundle_equivocation_proof) => {
+			ProofMessage::BundleEquivocation(bundle_equivocation_proof) => {
 				// TODO: Handle returned result?
 				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
 					&BlockId::Hash(client.info().best_hash),
 					bundle_equivocation_proof,
 				)?;
 			},
-			CollationGenerationMessage::InvalidTransactionProof(invalid_transaction_proof) => {
+			ProofMessage::InvalidTransaction(invalid_transaction_proof) => {
 				// TODO: Handle returned result?
 				let _ = self
 					.primary_chain_client

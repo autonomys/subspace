@@ -1,13 +1,22 @@
+use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use cirrus_primitives::{AccountId, SecondaryApi};
+use codec::{Decode, Encode};
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
 	BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
+use sc_network::NetworkService;
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
-use sp_keystore::SyncCryptoStore;
+use sp_executor::{
+	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
+	SignedExecutionReceipt,
+};
+use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
@@ -17,19 +26,13 @@ use std::{
 	borrow::Cow,
 	collections::{BTreeMap, VecDeque},
 	fmt::Debug,
-};
-
-use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
-use cirrus_primitives::{AccountId, SecondaryApi};
-use sp_executor::{
-	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
-	SignedExecutionReceipt,
+	marker::PhantomData,
+	sync::Arc,
 };
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Hash as PHash;
 
-use super::{Executor, LOG_TARGET};
-use codec::{Decode, Encode};
+const LOG_TARGET: &str = "bundle-processor";
 
 /// Shuffles the extrinsics in a deterministic way.
 ///
@@ -74,8 +77,43 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend>
+where
+	Block: BlockT,
+	PBlock: BlockT,
+{
+	primary_chain_client: Arc<PClient>,
+	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+	client: Arc<Client>,
+	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
+	backend: Arc<Backend>,
+	is_authority: bool,
+	keystore: SyncCryptoStorePtr,
+	_phantom_data: PhantomData<PBlock>,
+}
+
+impl<Block, PBlock, Client, PClient, Backend> Clone
+	for BundleProcessor<Block, PBlock, Client, PClient, Backend>
+where
+	Block: BlockT,
+	PBlock: BlockT,
+{
+	fn clone(&self) -> Self {
+		Self {
+			primary_chain_client: self.primary_chain_client.clone(),
+			primary_network: self.primary_network.clone(),
+			client: self.client.clone(),
+			execution_receipt_sender: self.execution_receipt_sender.clone(),
+			backend: self.backend.clone(),
+			is_authority: self.is_authority,
+			keystore: self.keystore.clone(),
+			_phantom_data: self._phantom_data,
+		}
+	}
+}
+
+impl<Block, PBlock, Client, PClient, Backend>
+	BundleProcessor<Block, PBlock, Client, PClient, Backend>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -89,7 +127,7 @@ where
 			Block,
 			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
 		>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
+	for<'b> &'b Client: BlockImport<
 		Block,
 		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
@@ -97,10 +135,29 @@ where
 	PClient: ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-	/// Actually implements `process_bundles`.
-	pub(super) async fn process_bundles_impl(
+	pub(crate) fn new(
+		primary_chain_client: Arc<PClient>,
+		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+		client: Arc<Client>,
+		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
+		backend: Arc<Backend>,
+		is_authority: bool,
+		keystore: SyncCryptoStorePtr,
+	) -> Self {
+		Self {
+			primary_chain_client,
+			primary_network,
+			client,
+			execution_receipt_sender,
+			backend,
+			is_authority,
+			keystore,
+			_phantom_data: PhantomData::default(),
+		}
+	}
+
+	pub(crate) async fn process_bundles(
 		&self,
 		(primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
