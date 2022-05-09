@@ -1,4 +1,4 @@
-use crate::{self as pallet_executor, Error, Receipts, ReceiptsRange};
+use crate::{self as pallet_executor, Error, Receipts};
 use frame_support::{
     assert_noop, assert_ok,
     traits::{ConstU16, ConstU32, ConstU64, GenesisBuild},
@@ -54,6 +54,7 @@ impl frame_system::Config for Test {
 impl pallet_executor::Config for Test {
     type Event = Event;
     type SecondaryHash = H256;
+    type ReceiptsPruningDepth = ConstU32<256>;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -107,17 +108,15 @@ fn submit_execution_receipt_should_work() {
                 dummy_receipts[index].clone(),
             ));
         });
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (1, 257));
 
         assert!(Receipts::<Test>::get(257).is_none());
         assert_ok!(Executor::submit_execution_receipt(
             Origin::none(),
             dummy_receipts[256].clone(),
         ));
-        // Delete the old ER.
+        // The oldest ER should be deleted.
         assert!(Receipts::<Test>::get(1).is_none());
         assert!(Receipts::<Test>::get(257).is_some());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (2, 258));
 
         assert!(Receipts::<Test>::get(2).is_some());
         assert!(Receipts::<Test>::get(258).is_none());
@@ -131,79 +130,5 @@ fn submit_execution_receipt_should_work() {
         ));
         assert!(Receipts::<Test>::get(2).is_none());
         assert!(Receipts::<Test>::get(258).is_some());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (3, 259));
-    });
-}
-
-#[test]
-fn set_new_receipts_pruning_depth_should_work() {
-    let dummy_receipts = (1..=1280)
-        .map(|i| create_dummy_receipt(i))
-        .collect::<Vec<_>>();
-
-    new_test_ext().execute_with(|| {
-        (0..256).for_each(|index| {
-            assert_ok!(Executor::submit_execution_receipt(
-                Origin::none(),
-                dummy_receipts[index].clone(),
-            ));
-        });
-
-        // Set a smaller pruning depth.
-        assert_ok!(Executor::set_receipts_pruning_depth(Origin::root(), 128));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[256].clone(),
-        ));
-        assert!(Receipts::<Test>::get(129).is_none());
-        assert!(Receipts::<Test>::get(130).is_some());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (130, 258));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[257].clone(),
-        ));
-        assert!(Receipts::<Test>::get(130).is_none());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (131, 259));
-
-        // Set a larger pruning depth.
-        assert_ok!(Executor::set_receipts_pruning_depth(Origin::root(), 1024));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[258].clone(),
-        ));
-        assert!(Receipts::<Test>::get(130).is_none());
-        assert!(Receipts::<Test>::get(131).is_some());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (131, 260));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[259].clone(),
-        ));
-        assert!(Receipts::<Test>::get(130).is_none());
-        assert!(Receipts::<Test>::get(131).is_some());
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (131, 261));
-
-        (260..1154).for_each(|index| {
-            assert_ok!(Executor::submit_execution_receipt(
-                Origin::none(),
-                dummy_receipts[index].clone(),
-            ));
-        });
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (131, 1155));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[1154].clone(),
-        ));
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (132, 1156));
-
-        assert_ok!(Executor::submit_execution_receipt(
-            Origin::none(),
-            dummy_receipts[1155].clone(),
-        ));
-        assert_eq!(ReceiptsRange::<Test>::get().unwrap(), (133, 1157));
     });
 }

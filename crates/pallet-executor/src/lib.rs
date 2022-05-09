@@ -27,7 +27,6 @@ use sp_executor::{
     SignedOpaqueBundle,
 };
 use sp_runtime::RuntimeAppPublic;
-use subspace_core_primitives::BlockNumber;
 
 #[frame_support::pallet]
 mod pallet {
@@ -62,6 +61,10 @@ mod pallet {
             + AsMut<[u8]>
             + MaybeMallocSizeOf
             + MaxEncodedLen;
+
+        /// Number of execution receipts kept in the state.
+        #[pallet::constant]
+        type ReceiptsPruningDepth: Get<BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -138,15 +141,10 @@ mod pallet {
 
             // Apply the execution receipt.
             <Receipts<T>>::insert(primary_number, execution_receipt);
-            <ReceiptsRange<T>>::mutate(|range| {
-                range
-                    .get_or_insert_with(|| (primary_number, primary_number))
-                    .1 = primary_number + 1u32;
-            });
 
-            let pruning_depth = <ReceiptsPruningDepth<T>>::get();
-            if let Some(to_prune) = primary_number.checked_sub(pruning_depth - 1) {
-                Self::prune_receipts_up_to(to_prune);
+            // Remove the oldest once the receipts cache is full.
+            if let Some(to_prune) = primary_number.checked_sub(T::ReceiptsPruningDepth::get()) {
+                Receipts::<T>::remove(to_prune);
             }
 
             Self::deposit_event(Event::NewExecutionReceipt {
@@ -239,17 +237,6 @@ mod pallet {
 
             Ok(())
         }
-
-        // TODO: proper weight
-        #[pallet::weight(10_000)]
-        pub fn set_receipts_pruning_depth(
-            origin: OriginFor<T>,
-            new: BlockNumber,
-        ) -> DispatchResult {
-            ensure_root(origin)?;
-            <ReceiptsPruningDepth<T>>::put(new);
-            Ok(())
-        }
     }
 
     /// A tuple of (stable_executor_id, executor_signing_key).
@@ -261,15 +248,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type Receipts<T: Config> =
         StorageMap<_, Twox64Concat, BlockNumber, ExecutionReceipt<T::SecondaryHash>, OptionQuery>;
-
-    /// Number of execution receipts kept in the state.
-    #[pallet::storage]
-    pub(super) type ReceiptsPruningDepth<T: Config> = StorageValue<_, BlockNumber, ValueQuery>;
-
-    /// The range of receipts we currently store in the state. [first, last)
-    #[pallet::storage]
-    pub(super) type ReceiptsRange<T: Config> =
-        StorageValue<_, (BlockNumber, BlockNumber), OptionQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -286,8 +264,6 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            // TODO: make it configurable from chain_spec?
-            <ReceiptsPruningDepth<T>>::put(256u32);
             <Executor<T>>::put(
                 self.executor
                     .clone()
@@ -481,31 +457,6 @@ impl<T: Config> Pallet<T> {
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
-    }
-
-    /// Prune old execution receipts up to (but not including) `up_to`.
-    fn prune_receipts_up_to(up_to: BlockNumber) {
-        ReceiptsRange::<T>::mutate(|range| {
-            let (start, end) = match *range {
-                Some(range) => range,
-                None => return, // nothing to prune.
-            };
-
-            let up_to = up_to.min(end);
-
-            if up_to < start {
-                return; // out of bounds, harmless.
-            }
-
-            (start..up_to).for_each(Receipts::<T>::remove);
-
-            let new_start = up_to;
-            *range = if new_start == end {
-                None // nothing is stored.
-            } else {
-                Some((new_start, end))
-            };
-        })
     }
 }
 
