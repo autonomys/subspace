@@ -57,15 +57,16 @@
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 
 mod aux_schema;
+mod bundle_processor;
 mod bundle_producer;
 mod merkle_tree;
 mod overseer;
-mod processor;
 #[cfg(test)]
 mod tests;
 
 pub use crate::overseer::ExecutorSlotInfo;
 use crate::{
+	bundle_processor::BundleProcessor,
 	bundle_producer::BundleProducer,
 	overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle},
 };
@@ -115,11 +116,10 @@ where
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
-	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
 	is_authority: bool,
-	keystore: SyncCryptoStorePtr,
+	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -136,11 +136,10 @@ where
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
-			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
-			keystore: self.keystore.clone(),
+			bundle_processor: self.bundle_processor.clone(),
 		}
 	}
 }
@@ -216,6 +215,16 @@ where
 			keystore.clone(),
 		);
 
+		let bundle_processor = BundleProcessor::new(
+			primary_chain_client.clone(),
+			primary_network.clone(),
+			client.clone(),
+			execution_receipt_sender,
+			backend.clone(),
+			is_authority,
+			keystore,
+		);
+
 		let overseer_handle = {
 			let (overseer, overseer_handle) = Overseer::new(
 				primary_chain_client.clone(),
@@ -265,11 +274,10 @@ where
 			spawner,
 			overseer_handle,
 			transaction_pool,
-			execution_receipt_sender,
 			backend,
 			code_executor,
 			is_authority,
-			keystore,
+			bundle_processor: bundle_processor.clone(),
 		};
 
 		let span = tracing::Span::current();
@@ -297,20 +305,30 @@ where
 				})
 			},
 			processor: {
-				let executor = executor.clone();
-
 				Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-					let executor = executor.clone();
-					Box::pin(
-						executor
+					let bundle_processor = bundle_processor.clone();
+					let span = span.clone();
+
+					Box::pin(async move {
+						let process_bundles_fut = bundle_processor
 							.process_bundles(
 								primary_hash,
 								bundles,
 								shuffling_seed,
 								maybe_new_runtime,
 							)
-							.instrument(span.clone()),
-					)
+							.instrument(span.clone());
+
+						process_bundles_fut.await.unwrap_or_else(|error| {
+							tracing::error!(
+								target: LOG_TARGET,
+								relay_parent = ?primary_hash,
+								error = ?error,
+								"Error at processing bundles.",
+							);
+							None
+						})
+					})
 				})
 			},
 		};
@@ -544,6 +562,9 @@ where
 	}
 
 	/// Processes the bundles extracted from the primary block.
+	// TODO: Remove this whole method, `self.bundle_processor` as a property and fix
+	// `set_new_code_should_work` test to do an actual runtime upgrade
+	#[doc(hidden)]
 	pub async fn process_bundles(
 		self,
 		primary_info: (PBlock::Hash, NumberFor<PBlock>),
@@ -552,7 +573,8 @@ where
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Option<SignedExecutionReceipt<Block::Hash>> {
 		match self
-			.process_bundles_impl(primary_info, bundles, shuffling_seed, maybe_new_runtime)
+			.bundle_processor
+			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
 			Ok(res) => res,
