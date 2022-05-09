@@ -18,7 +18,7 @@
 #![warn(missing_docs)]
 
 use codec::{Decode, Encode};
-use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
+use futures::{select, stream::FusedStream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -35,7 +35,6 @@ use std::{
 	fmt::Debug,
 	future::Future,
 	pin::Pin,
-	sync::Arc,
 };
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::Hash as PHash;
@@ -49,54 +48,29 @@ pub struct ExecutorSlotInfo {
 	pub global_challenge: Tag,
 }
 
-/// Process function.
-///
-/// Will be called with the hash of the primary chain block.
-///
-/// Returns an optional [`OpaqueExecutionReceipt`].
-pub type ProcessorFn<PHash, Number, Hash> = Box<
-	dyn Fn(
-			(PHash, Number),
-			Vec<OpaqueBundle>,
-			Randomness,
-			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<Hash>>> + Send>>
-		+ Send
-		+ Sync,
->;
-
-/// Configuration for the collation generator
-pub struct CollationGenerationConfig<PHash, Number, Hash> {
-	/// State processor function. See [`ProcessorFn`] for more details.
-	pub processor: ProcessorFn<PHash, Number, Hash>,
-}
-
-impl<PHash, Number, Hash> std::fmt::Debug for CollationGenerationConfig<PHash, Number, Hash> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "CollationGenerationConfig {{ ... }}")
-	}
-}
-
 const LOG_TARGET: &str = "overseer";
 
 /// Apply the transaction bundles for given primary block as follows:
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient, SecondaryHash>(
+async fn process_primary_block<PBlock, PClient, ProcessorFn, SecondaryHash>(
 	primary_chain_client: &PClient,
-	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
+	processor: &ProcessorFn,
 	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
 ) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ Sync
-		+ 'static,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
 	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
+		+ Send
+		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
 	let block_id = BlockId::Hash(block_hash);
@@ -176,34 +150,6 @@ where
 	Ok(())
 }
 
-/// A handle used to communicate with the [`Overseer`].
-///
-/// [`Overseer`]: struct.Overseer.html
-#[derive(Clone)]
-pub struct OverseerHandle<PBlock: BlockT>(mpsc::Sender<Event<PBlock>>);
-
-impl<PBlock> OverseerHandle<PBlock>
-where
-	PBlock: BlockT,
-{
-	/// Create a new [`Handle`].
-	fn new(raw: mpsc::Sender<Event<PBlock>>) -> Self {
-		Self(raw)
-	}
-
-	/// Inform the `Overseer` that that some block was imported.
-	async fn block_imported(&mut self, block: BlockInfo<PBlock>) {
-		self.send_and_log_error(Event::BlockImported(block)).await
-	}
-
-	/// Most basic operation, to stop a server.
-	async fn send_and_log_error(&mut self, event: Event<PBlock>) {
-		if self.0.send(event).await.is_err() {
-			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
-		}
-	}
-}
-
 /// An event telling the `Overseer` on the particular block
 /// that has been imported or finalized.
 ///
@@ -232,27 +178,18 @@ where
 	}
 }
 
-/// An event from outside the overseer scope, such
-/// as the substrate framework or user interaction.
-enum Event<PBlock>
-where
-	PBlock: BlockT,
-{
-	/// A new block was imported.
-	BlockImported(BlockInfo<PBlock>),
-}
-
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<PBlock, PClient, BundlerFn, SecondaryHash>(
+pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHash>(
 	primary_chain_client: &PClient,
 	bundler: BundlerFn,
+	processor: &ProcessorFn,
+	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
-	mut handle: OverseerHandle<PBlock>,
 ) where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
 	BundlerFn: Fn(
 			PHash,
@@ -260,8 +197,27 @@ pub async fn forward_events<PBlock, PClient, BundlerFn, SecondaryHash>(
 		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
 		+ Send
 		+ Sync,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
+		+ Send
+		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
+	let mut active_leaves = HashMap::with_capacity(leaves.len());
+
+	// Notify about active leaves on startup before starting the loop
+	for (hash, number) in std::mem::take(&mut leaves) {
+		let _ = active_leaves.insert(hash, number);
+		if let Err(error) =
+			process_primary_block(primary_chain_client, &processor, (hash, number)).await
+		{
+			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
+		}
+	}
 	loop {
 		select! {
 			i = imports.next() => {
@@ -271,12 +227,20 @@ pub async fn forward_events<PBlock, PClient, BundlerFn, SecondaryHash>(
 							.header(BlockId::Number(block_number))
 							.expect("Header of imported block must exist; qed")
 							.expect("Header of imported block must exist; qed");
-						let block = BlockInfo {
+						let block_info = BlockInfo {
 							hash: header.hash(),
 							parent_hash: *header.parent_hash(),
 							number: *header.number(),
 						};
-						handle.block_imported(block).await;
+
+						if let Err(error) = block_imported(primary_chain_client, processor, &mut active_leaves, block_info).await {
+							tracing::error!(
+								target: LOG_TARGET,
+								error = ?error,
+								"Failed to process primary block"
+							);
+							break;
+						}
 					}
 					None => break,
 				}
@@ -338,128 +302,44 @@ where
 	Ok(())
 }
 
-async fn block_imported<PBlock, PClient, SecondaryHash>(
+async fn block_imported<PBlock, PClient, ProcessorFn, SecondaryHash>(
 	primary_chain_client: &PClient,
-	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
+	processor: &ProcessorFn,
 	active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
-	block: BlockInfo<PBlock>,
+	block_info: BlockInfo<PBlock>,
 ) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ 'static
-		+ Sync,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
 	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
+		+ Send
+		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
-	match active_leaves.entry(block.hash) {
-		Entry::Vacant(entry) => entry.insert(block.number),
+	match active_leaves.entry(block_info.hash) {
+		Entry::Vacant(entry) => entry.insert(block_info.number),
 		Entry::Occupied(entry) => {
-			debug_assert_eq!(*entry.get(), block.number);
+			debug_assert_eq!(*entry.get(), block_info.number);
 			return Ok(())
 		},
 	};
 
-	if let Some(number) = active_leaves.remove(&block.parent_hash) {
-		debug_assert_eq!(block.number.saturating_sub(One::one()), number);
+	if let Some(number) = active_leaves.remove(&block_info.parent_hash) {
+		debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
 	}
 
 	if let Err(error) =
-		process_primary_block(primary_chain_client, processor, (block.hash, block.number)).await
+		process_primary_block(primary_chain_client, processor, (block_info.hash, block_info.number))
+			.await
 	{
 		tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 	}
 
 	Ok(())
-}
-
-/// Capacity of a signal channel between a subsystem and the overseer.
-const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
-/// The overseer.
-// TODO: temporarily suppress clippy and will be removed in the refactoring https://github.com/subspace/subspace/pull/429
-#[allow(clippy::type_complexity)]
-pub struct Overseer<PBlock, PClient, Hash>
-where
-	PBlock: BlockT,
-{
-	primary_chain_client: Arc<PClient>,
-	overseer_config: Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>,
-	/// A user specified addendum field.
-	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-	/// A user specified addendum field.
-	active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-	/// Events that are sent to the overseer from the outside world.
-	events_rx: mpsc::Receiver<Event<PBlock>>,
-}
-
-impl<PBlock, PClient, Hash> Overseer<PBlock, PClient, Hash>
-where
-	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ 'static
-		+ Sync,
-	PClient::Api: ExecutorApi<PBlock, Hash>,
-	Hash: Encode + Decode,
-{
-	/// Create a new overseer.
-	pub fn new(
-		primary_chain_client: Arc<PClient>,
-		leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-		overseer_config: CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
-	) -> (Self, OverseerHandle<PBlock>) {
-		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer = Overseer {
-			primary_chain_client,
-			overseer_config: Arc::new(overseer_config),
-			leaves,
-			active_leaves,
-			events_rx,
-		};
-		(overseer, OverseerHandle::new(handle))
-	}
-
-	/// Run the `Overseer`.
-	pub async fn run(mut self) -> Result<(), ApiError> {
-		// Notify about active leaves on startup before starting the loop
-		for (hash, number) in std::mem::take(&mut self.leaves) {
-			let _ = self.active_leaves.insert(hash, number);
-			if let Err(error) = process_primary_block(
-				self.primary_chain_client.as_ref(),
-				&self.overseer_config.processor,
-				(hash, number),
-			)
-			.await
-			{
-				tracing::error!(
-					target: LOG_TARGET,
-					"Collation generation processing error: {error}"
-				);
-			}
-		}
-
-		while let Some(msg) = self.events_rx.next().await {
-			match msg {
-				// TODO: we still need the context of block, e.g., executor gossips no message
-				// to the primary node during the major sync.
-				Event::BlockImported(block) => {
-					block_imported(
-						self.primary_chain_client.as_ref(),
-						&self.overseer_config.processor,
-						&mut self.active_leaves,
-						block,
-					)
-					.await?;
-				},
-			}
-		}
-
-		Ok(())
-	}
 }

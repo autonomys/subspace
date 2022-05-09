@@ -66,15 +66,13 @@ mod tests;
 
 pub use crate::overseer::ExecutorSlotInfo;
 use crate::{
-	bundle_processor::BundleProcessor,
-	bundle_producer::BundleProducer,
-	overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle},
+	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, overseer::BlockInfo,
 };
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{pin_mut, select, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -114,7 +112,6 @@ where
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle<PBlock>,
 	transaction_pool: Arc<TransactionPool>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
@@ -134,7 +131,6 @@ where
 			primary_network: self.primary_network.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
-			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
@@ -225,111 +221,84 @@ where
 			keystore,
 		);
 
-		let overseer_handle = {
+		{
 			let span = tracing::Span::current();
-			let overseer_config = CollationGenerationConfig {
-				processor: {
-					let span = span.clone();
-					let bundle_processor = bundle_processor.clone();
+			let primary_chain_client = primary_chain_client.clone();
+			let bundle_processor = bundle_processor.clone();
 
-					Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-						let bundle_processor = bundle_processor.clone();
-						let span = span.clone();
+			spawn_essential.spawn_essential_blocking(
+				"collation-generation-subsystem",
+				Some("collation-generation-subsystem"),
+				async move {
+					overseer::forward_events(
+						primary_chain_client.as_ref(),
+						{
+							let span = span.clone();
 
-						Box::pin(async move {
-							let process_bundles_fut = bundle_processor
-								.process_bundles(
-									primary_hash,
-									bundles,
-									shuffling_seed,
-									maybe_new_runtime,
-								)
-								.instrument(span.clone());
+							move |primary_hash, slot_info| {
+								let bundle_producer = bundle_producer.clone();
+								let produce_bundle_fut = bundle_producer
+									.produce_bundle(primary_hash, slot_info)
+									.instrument(span.clone());
 
-							process_bundles_fut.await.unwrap_or_else(|error| {
-								tracing::error!(
-									target: LOG_TARGET,
-									relay_parent = ?primary_hash,
-									error = ?error,
-									"Error at processing bundles.",
-								);
-								None
-							})
-						})
-					})
-				},
-			};
-
-			let (overseer, overseer_handle) = Overseer::new(
-				primary_chain_client.clone(),
-				active_leaves
-					.into_iter()
-					.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
-					.collect(),
-				Default::default(),
-				overseer_config,
-			);
-
-			{
-				let primary_chain_client = primary_chain_client.clone();
-				let overseer_handle = overseer_handle.clone();
-				spawn_essential.spawn_essential_blocking(
-					"collation-generation-subsystem",
-					Some("collation-generation-subsystem"),
-					Box::pin(async move {
-						let forward = overseer::forward_events(
-							primary_chain_client.as_ref(),
-							{
+								Box::pin(async move {
+									produce_bundle_fut.await.unwrap_or_else(|error| {
+										tracing::error!(
+											target: LOG_TARGET,
+											relay_parent = ?primary_hash,
+											error = ?error,
+											"Error at producing bundle.",
+										);
+										None
+									})
+								})
+							}
+						},
+						{
+							&move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+								let bundle_processor = bundle_processor.clone();
 								let span = span.clone();
 
-								move |primary_hash, slot_info| {
-									let bundle_producer = bundle_producer.clone();
-									let produce_bundle_fut = bundle_producer
-										.produce_bundle(primary_hash, slot_info)
+								Box::pin(async move {
+									let process_bundles_fut = bundle_processor
+										.process_bundles(
+											primary_hash,
+											bundles,
+											shuffling_seed,
+											maybe_new_runtime,
+										)
 										.instrument(span.clone());
 
-									Box::pin(async move {
-										produce_bundle_fut.await.unwrap_or_else(|error| {
-											tracing::error!(
-												target: LOG_TARGET,
-												relay_parent = ?primary_hash,
-												error = ?error,
-												"Error at producing bundle.",
-											);
-											None
-										})
+									process_bundles_fut.await.unwrap_or_else(|error| {
+										tracing::error!(
+											target: LOG_TARGET,
+											relay_parent = ?primary_hash,
+											error = ?error,
+											"Error at processing bundles.",
+										);
+										None
 									})
-								}
-							},
-							Box::pin(imported_block_notification_stream.fuse()),
-							Box::pin(new_slot_notification_stream.fuse()),
-							overseer_handle,
-						);
-
-						let forward = forward.fuse();
-						let overseer_fut = overseer.run().fuse();
-
-						pin_mut!(overseer_fut);
-						pin_mut!(forward);
-
-						select! {
-							_ = forward => (),
-							_ = overseer_fut => (),
-							complete => (),
-						}
-					}),
-				);
-			}
-
-			overseer_handle
-		};
+								})
+							}
+						},
+						active_leaves
+							.into_iter()
+							.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
+							.collect(),
+						Box::pin(imported_block_notification_stream.fuse()),
+						Box::pin(new_slot_notification_stream.fuse()),
+					)
+					.await
+				}
+				.boxed(),
+			);
+		}
 
 		Ok(Self {
 			primary_chain_client,
 			primary_network,
 			client,
 			spawner,
-			overseer_handle,
 			transaction_pool,
 			backend,
 			code_executor,
