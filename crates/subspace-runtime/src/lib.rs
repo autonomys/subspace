@@ -1013,12 +1013,12 @@ impl_runtime_apis! {
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
             execution_receipt: sp_executor::SignedExecutionReceipt<cirrus_primitives::Hash>,
-        ) -> Option<()> {
-            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+        ) {
+            Executor::submit_execution_receipt_unsigned(execution_receipt)
         }
 
-        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) -> Option<()> {
-            Executor::submit_transaction_bundle_unsigned(opaque_bundle).ok()
+        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) {
+            Executor::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {

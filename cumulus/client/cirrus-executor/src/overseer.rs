@@ -187,8 +187,7 @@ where
 
 	let best_hash = client.info().best_hash;
 
-	// TODO: Handle returned result?
-	client
+	let () = client
 		.runtime_api()
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
@@ -436,8 +435,7 @@ where
 				},
 			};
 
-		// TODO: Handle returned result?
-		let _ = client
+		let () = client
 			.runtime_api()
 			.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
 

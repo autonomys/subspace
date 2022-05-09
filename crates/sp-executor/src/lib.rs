@@ -366,10 +366,10 @@ sp_api::decl_runtime_apis! {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
             execution_receipt: SignedExecutionReceipt<SecondaryHash>,
-        ) -> Option<()>;
+        );
 
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) -> Option<()>;
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle);
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);

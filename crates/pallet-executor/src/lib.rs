@@ -467,45 +467,41 @@ where
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
         signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
-    ) -> frame_support::pallet_prelude::DispatchResult {
+    ) {
         let call = Call::submit_execution_receipt {
             signed_execution_receipt,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted execution receipt.")
+                log::info!(target: "runtime::subspace::executor", "Submitted execution receipt");
             }
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting execution receipt: {:?}",
-                e
-            ),
+            Err(()) => {
+                log::error!(
+                    target: "runtime::subspace::executor",
+                    "Error submitting execution receipt",
+                );
+            }
         }
-
-        Ok(())
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
-    pub fn submit_transaction_bundle_unsigned(
-        signed_opaque_bundle: SignedOpaqueBundle,
-    ) -> frame_support::pallet_prelude::DispatchResult {
+    pub fn submit_transaction_bundle_unsigned(signed_opaque_bundle: SignedOpaqueBundle) {
         let call = Call::submit_transaction_bundle {
             signed_opaque_bundle,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted transaction bundle.")
+                log::info!(target: "runtime::subspace::executor", "Submitted transaction bundle");
             }
-            Err(e) => log::error!(
-                target: "runtime::subspace::executor",
-                "Error submitting transaction bundle: {:?}",
-                e,
-            ),
+            Err(()) => {
+                log::error!(
+                    target: "runtime::subspace::executor",
+                    "Error submitting transaction bundle",
+                );
+            }
         }
-
-        Ok(())
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
