@@ -114,7 +114,7 @@ where
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
+	overseer_handle: OverseerHandle<PBlock>,
 	transaction_pool: Arc<TransactionPool>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
@@ -226,6 +226,61 @@ where
 		);
 
 		let overseer_handle = {
+			let span = tracing::Span::current();
+			let overseer_config = CollationGenerationConfig {
+				bundler: {
+					let span = span.clone();
+
+					Box::new(move |primary_hash, slot_info| {
+						let bundle_producer = bundle_producer.clone();
+						let produce_bundle_fut = bundle_producer
+							.produce_bundle(primary_hash, slot_info)
+							.instrument(span.clone());
+
+						Box::pin(async move {
+							produce_bundle_fut.await.unwrap_or_else(|error| {
+								tracing::error!(
+									target: LOG_TARGET,
+									relay_parent = ?primary_hash,
+									error = ?error,
+									"Error at producing bundle.",
+								);
+								None
+							})
+						})
+					})
+				},
+				processor: {
+					let bundle_processor = bundle_processor.clone();
+
+					Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+						let bundle_processor = bundle_processor.clone();
+						let span = span.clone();
+
+						Box::pin(async move {
+							let process_bundles_fut = bundle_processor
+								.process_bundles(
+									primary_hash,
+									bundles,
+									shuffling_seed,
+									maybe_new_runtime,
+								)
+								.instrument(span.clone());
+
+							process_bundles_fut.await.unwrap_or_else(|error| {
+								tracing::error!(
+									target: LOG_TARGET,
+									relay_parent = ?primary_hash,
+									error = ?error,
+									"Error at processing bundles.",
+								);
+								None
+							})
+						})
+					})
+				},
+			};
+
 			let (overseer, overseer_handle) = Overseer::new(
 				primary_chain_client.clone(),
 				active_leaves
@@ -233,6 +288,7 @@ where
 					.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
 					.collect(),
 				Default::default(),
+				overseer_config,
 			);
 
 			{
@@ -267,7 +323,7 @@ where
 			overseer_handle
 		};
 
-		let mut executor = Self {
+		Ok(Self {
 			primary_chain_client,
 			primary_network,
 			client,
@@ -277,65 +333,8 @@ where
 			backend,
 			code_executor,
 			is_authority,
-			bundle_processor: bundle_processor.clone(),
-		};
-
-		let span = tracing::Span::current();
-		let config = CollationGenerationConfig {
-			bundler: {
-				let span = span.clone();
-
-				Box::new(move |primary_hash, slot_info| {
-					let bundle_producer = bundle_producer.clone();
-					let produce_bundle_fut = bundle_producer
-						.produce_bundle(primary_hash, slot_info)
-						.instrument(span.clone());
-
-					Box::pin(async move {
-						produce_bundle_fut.await.unwrap_or_else(|error| {
-							tracing::error!(
-								target: LOG_TARGET,
-								relay_parent = ?primary_hash,
-								error = ?error,
-								"Error at producing bundle.",
-							);
-							None
-						})
-					})
-				})
-			},
-			processor: {
-				Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-					let bundle_processor = bundle_processor.clone();
-					let span = span.clone();
-
-					Box::pin(async move {
-						let process_bundles_fut = bundle_processor
-							.process_bundles(
-								primary_hash,
-								bundles,
-								shuffling_seed,
-								maybe_new_runtime,
-							)
-							.instrument(span.clone());
-
-						process_bundles_fut.await.unwrap_or_else(|error| {
-							tracing::error!(
-								target: LOG_TARGET,
-								relay_parent = ?primary_hash,
-								error = ?error,
-								"Error at processing bundles.",
-							);
-							None
-						})
-					})
-				})
-			},
-		};
-
-		executor.overseer_handle.initialize(config).await;
-
-		Ok(executor)
+			bundle_processor,
+		})
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
