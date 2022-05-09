@@ -14,15 +14,60 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::marker::PhantomData;
-
 use sc_consensus::{
 	import_queue::{BasicQueue, Verifier as VerifierT},
-	BlockImport, BlockImportParams,
+	BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sp_blockchain::Result as ClientResult;
-use sp_consensus::{error::Error as ConsensusError, CacheKeyId};
+use sp_consensus::{error::Error as ConsensusError, BlockOrigin, CacheKeyId};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use std::{collections::HashMap, marker::PhantomData};
+use substrate_prometheus_endpoint::Registry;
+
+/// Secondary chain specific block import.
+///
+/// This is used to set `block_import_params.fork_choice` to `false` as long as the block origin is
+/// not `NetworkInitialSync`. The best block for secondary chain is determined by the primary chain.
+/// Meaning we will update the best block, as it is included by the primary chain.
+struct SecondaryChainBlockImport<I>(I);
+
+impl<I> SecondaryChainBlockImport<I> {
+	/// Create a new instance.
+	fn new(inner: I) -> Self {
+		Self(inner)
+	}
+}
+
+#[async_trait::async_trait]
+impl<Block, I> BlockImport<Block> for SecondaryChainBlockImport<I>
+where
+	Block: BlockT,
+	I: BlockImport<Block> + Send,
+{
+	type Error = I::Error;
+	type Transaction = I::Transaction;
+
+	async fn check_block(
+		&mut self,
+		block: BlockCheckParams<Block>,
+	) -> Result<ImportResult, Self::Error> {
+		self.0.check_block(block).await
+	}
+
+	async fn import_block(
+		&mut self,
+		mut block_import_params: BlockImportParams<Block, Self::Transaction>,
+		cache: HashMap<CacheKeyId, Vec<u8>>,
+	) -> Result<ImportResult, Self::Error> {
+		// Best block is determined by the primary chain, or if we are doing the initial sync
+		// we import all blocks as new best.
+		block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
+			block_import_params.origin == BlockOrigin::NetworkInitialSync,
+		));
+		self.0.import_block(block_import_params, cache).await
+	}
+}
 
 /// A verifier that just checks the inherents.
 pub struct Verifier<Block> {
@@ -54,8 +99,8 @@ where
 /// Start an import queue for a Cumulus collator that does not uses any special authoring logic.
 pub fn import_queue<Block: BlockT, I>(
 	block_import: I,
-	spawner: &impl sp_core::traits::SpawnEssentialNamed,
-	registry: Option<&substrate_prometheus_endpoint::Registry>,
+	spawner: &impl SpawnEssentialNamed,
+	registry: Option<&Registry>,
 ) -> ClientResult<BasicQueue<Block, I::Transaction>>
 where
 	I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
@@ -63,7 +108,7 @@ where
 {
 	Ok(BasicQueue::new(
 		Verifier::default(),
-		Box::new(cumulus_client_consensus_common::ParachainBlockImport::new(block_import)),
+		Box::new(SecondaryChainBlockImport::new(block_import)),
 		None,
 		spawner,
 		registry,

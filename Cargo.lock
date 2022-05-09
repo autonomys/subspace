@@ -1528,21 +1528,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cumulus-client-consensus-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "sc-consensus",
- "sp-consensus",
- "sp-runtime",
-]
-
-[[package]]
 name = "cumulus-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cumulus-client-consensus-common",
  "sc-consensus",
  "sp-blockchain",
  "sp-consensus",
