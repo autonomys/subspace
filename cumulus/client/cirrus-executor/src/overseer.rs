@@ -394,7 +394,7 @@ where
 	PBlock: BlockT,
 {
 	primary_chain_client: Arc<PClient>,
-	config: Option<Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>>,
+	overseer_config: Option<Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>>,
 	/// A user specified addendum field.
 	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	/// A user specified addendum field.
@@ -422,8 +422,13 @@ where
 		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
 	) -> (Self, OverseerHandle<PBlock, Hash>) {
 		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer =
-			Overseer { primary_chain_client, config: None, leaves, active_leaves, events_rx };
+		let overseer = Overseer {
+			primary_chain_client,
+			overseer_config: None,
+			leaves,
+			active_leaves,
+			events_rx,
+		};
 		(overseer, OverseerHandle::new(handle))
 	}
 
@@ -460,7 +465,7 @@ where
 				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
 					if !config_initialized {
-						if self.config.is_some() {
+						if self.overseer_config.is_some() {
 							// Process the backlog first once the config has been initialized.
 							if !imports_backlog.is_empty() {
 								for b in imports_backlog.drain(..) {
@@ -494,7 +499,7 @@ where
 		activated_leaf: ActivatedLeaf<PBlock>,
 	) -> Result<(), ApiError> {
 		// follow the procedure from the guide
-		if let Some(config) = &self.config {
+		if let Some(config) = &self.overseer_config {
 			// TODO: invoke this on finalized block?
 			process_primary_block(
 				Arc::clone(&self.primary_chain_client),
@@ -508,7 +513,7 @@ where
 	}
 
 	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
-		if let Some(config) = &self.config {
+		if let Some(config) = &self.overseer_config {
 			let client = &self.primary_chain_client;
 			let best_hash = client.info().best_hash;
 
@@ -540,10 +545,10 @@ where
 
 		match message {
 			CollationGenerationMessage::Initialize(config) =>
-				if self.config.is_some() {
+				if self.overseer_config.is_some() {
 					tracing::error!(target: LOG_TARGET, "double initialization");
 				} else {
-					self.config = Some(Arc::new(config));
+					self.overseer_config = Some(Arc::new(config));
 				},
 			CollationGenerationMessage::FraudProof(fraud_proof) => {
 				// TODO: Handle returned result?

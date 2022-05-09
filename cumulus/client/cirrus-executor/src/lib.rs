@@ -57,7 +57,7 @@
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 
 mod aux_schema;
-mod bundler;
+mod bundle_producer;
 mod merkle_tree;
 mod overseer;
 mod processor;
@@ -65,7 +65,10 @@ mod processor;
 mod tests;
 
 pub use crate::overseer::ExecutorSlotInfo;
-use crate::overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle};
+use crate::{
+	bundle_producer::BundleProducer,
+	overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle},
+};
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
@@ -84,7 +87,6 @@ use sp_core::{
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
 	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
-	SignedOpaqueBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -95,7 +97,6 @@ use sp_runtime::{
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
 /// The logging target.
@@ -114,7 +115,6 @@ where
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
 	transaction_pool: Arc<TransactionPool>,
-	bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
 	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
@@ -136,7 +136,6 @@ where
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
-			bundle_sender: self.bundle_sender.clone(),
 			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
@@ -208,6 +207,15 @@ where
 	{
 		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
 
+		let bundle_producer = BundleProducer::new(
+			primary_chain_client.clone(),
+			client.clone(),
+			transaction_pool.clone(),
+			bundle_sender,
+			is_authority,
+			keystore.clone(),
+		);
+
 		let overseer_handle = {
 			let (overseer, overseer_handle) = Overseer::new(
 				primary_chain_client.clone(),
@@ -257,7 +265,6 @@ where
 			spawner,
 			overseer_handle,
 			transaction_pool,
-			bundle_sender,
 			execution_receipt_sender,
 			backend,
 			code_executor,
@@ -268,14 +275,25 @@ where
 		let span = tracing::Span::current();
 		let config = CollationGenerationConfig {
 			bundler: {
-				let executor = executor.clone();
 				let span = span.clone();
 
 				Box::new(move |primary_hash, slot_info| {
-					let executor = executor.clone();
-					Box::pin(
-						executor.produce_bundle(primary_hash, slot_info).instrument(span.clone()),
-					)
+					let bundle_producer = bundle_producer.clone();
+					let produce_bundle_fut = bundle_producer
+						.produce_bundle(primary_hash, slot_info)
+						.instrument(span.clone());
+
+					Box::pin(async move {
+						produce_bundle_fut.await.unwrap_or_else(|error| {
+							tracing::error!(
+								target: LOG_TARGET,
+								relay_parent = ?primary_hash,
+								error = ?error,
+								"Error at producing bundle.",
+							);
+							None
+						})
+					})
 				})
 			},
 			processor: {
@@ -522,25 +540,6 @@ where
 				},
 				Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
 			}
-		}
-	}
-
-	pub async fn produce_bundle(
-		self,
-		primary_hash: PHash,
-		slot_info: ExecutorSlotInfo,
-	) -> Option<SignedOpaqueBundle> {
-		match self.produce_bundle_impl(primary_hash, slot_info).await {
-			Ok(res) => res,
-			Err(err) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					relay_parent = ?primary_hash,
-					error = ?err,
-					"Error at producing bundle.",
-				);
-				None
-			},
 		}
 	}
 

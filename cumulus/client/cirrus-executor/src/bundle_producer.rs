@@ -2,15 +2,16 @@ use codec::{Decode, Encode};
 use futures::{select, FutureExt};
 use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_core::ByteArray;
-use sp_keystore::SyncCryptoStore;
+use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
 	RuntimeAppPublic,
 };
-use std::time;
+use std::{marker::PhantomData, sync::Arc, time};
 
 use crate::overseer::ExecutorSlotInfo;
 use cirrus_primitives::{AccountId, SecondaryApi};
@@ -21,26 +22,71 @@ use sp_executor::{
 
 use subspace_runtime_primitives::Hash as PHash;
 
-use super::{Executor, LOG_TARGET};
+const LOG_TARGET: &str = "bundle-producer";
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+pub(super) struct BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+where
+	Block: BlockT,
+{
+	primary_chain_client: Arc<PClient>,
+	client: Arc<Client>,
+	transaction_pool: Arc<TransactionPool>,
+	bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+	is_authority: bool,
+	keystore: SyncCryptoStorePtr,
+	_phantom_data: PhantomData<PBlock>,
+}
+
+impl<Block, PBlock, Client, PClient, TransactionPool> Clone
+	for BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+where
+	Block: BlockT,
+	PBlock: BlockT,
+{
+	fn clone(&self) -> Self {
+		Self {
+			primary_chain_client: self.primary_chain_client.clone(),
+			client: self.client.clone(),
+			transaction_pool: self.transaction_pool.clone(),
+			bundle_sender: self.bundle_sender.clone(),
+			is_authority: self.is_authority,
+			keystore: self.keystore.clone(),
+			_phantom_data: self._phantom_data,
+		}
+	}
+}
+
+impl<Block, PBlock, Client, PClient, TransactionPool>
+	BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
 	Block: BlockT,
 	PBlock: BlockT,
 	Client: sp_blockchain::HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-	Client::Api: SecondaryApi<Block, AccountId>
-		+ sp_block_builder::BlockBuilder<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-		>,
+	Client::Api: SecondaryApi<Block, AccountId> + sp_block_builder::BlockBuilder<Block>,
 	PClient: ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-	Backend: sc_client_api::Backend<Block>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-	pub(super) async fn produce_bundle_impl(
+	pub(super) fn new(
+		primary_chain_client: Arc<PClient>,
+		client: Arc<Client>,
+		transaction_pool: Arc<TransactionPool>,
+		bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+		is_authority: bool,
+		keystore: SyncCryptoStorePtr,
+	) -> Self {
+		Self {
+			primary_chain_client,
+			client,
+			transaction_pool,
+			bundle_sender,
+			is_authority,
+			keystore,
+			_phantom_data: PhantomData::default(),
+		}
+	}
+
+	pub(super) async fn produce_bundle(
 		self,
 		primary_hash: PHash,
 		slot_info: ExecutorSlotInfo,
