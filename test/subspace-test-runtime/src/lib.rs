@@ -462,10 +462,14 @@ impl pallet_offences_subspace::Config for Runtime {
     type OnOffenceHandler = Subspace;
 }
 
+parameter_types! {
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
+}
+
 impl pallet_executor::Config for Runtime {
     type Event = Event;
     type SecondaryHash = cirrus_primitives::Hash;
-    type ReceiptsPruningDepth = ConstU32<256>;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {

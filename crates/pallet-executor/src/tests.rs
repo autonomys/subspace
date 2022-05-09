@@ -97,9 +97,7 @@ fn create_dummy_receipt(primary_number: u32) -> SignedExecutionReceipt<H256> {
 
 #[test]
 fn submit_execution_receipt_should_work() {
-    let dummy_receipts = (1..=256 + 3)
-        .map(|i| create_dummy_receipt(i))
-        .collect::<Vec<_>>();
+    let dummy_receipts = (1..=256 + 3).map(create_dummy_receipt).collect::<Vec<_>>();
 
     new_test_ext().execute_with(|| {
         (0..256).for_each(|index| {
