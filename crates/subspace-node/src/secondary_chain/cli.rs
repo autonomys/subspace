@@ -16,10 +16,9 @@
 
 use crate::ExecutionChainSpec;
 use clap::Parser;
-use cumulus_client_cli::RunCmd;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
-    NetworkParams, Result, RuntimeVersion, SharedParams, SubstrateCli,
+    NetworkParams, Result, RunCmd, RuntimeVersion, SharedParams, SubstrateCli,
 };
 use sc_service::{config::PrometheusConfig, BasePath};
 use std::{net::SocketAddr, path::PathBuf};
@@ -42,9 +41,6 @@ pub enum Subcommand {
     /// Import blocks.
     ImportBlocks(sc_cli::ImportBlocksCmd),
 
-    /// Remove the whole chain.
-    PurgeChain(cumulus_client_cli::PurgeChainCmd),
-
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
 
@@ -54,7 +50,7 @@ pub enum Subcommand {
 }
 
 pub struct SecondaryChainCli {
-    /// Secondary chain cli object.
+    /// Run a node.
     pub run: RunCmd,
 
     /// The base path that should be used by the secondary chain.
@@ -117,7 +113,7 @@ impl SubstrateCli for SecondaryChainCli {
 
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
-        if !self.run.base.network_params.bootnodes.is_empty() {
+        if !self.run.network_params.bootnodes.is_empty() {
             let mut chain_spec_value =
                 serde_json::to_value(&chain_spec).map_err(|error| error.to_string())?;
             if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
@@ -157,19 +153,19 @@ impl DefaultConfigurationValues for SecondaryChainCli {
 
 impl CliConfiguration<Self> for SecondaryChainCli {
     fn shared_params(&self) -> &SharedParams {
-        self.run.base.shared_params()
+        self.run.shared_params()
     }
 
     fn import_params(&self) -> Option<&ImportParams> {
-        self.run.base.import_params()
+        self.run.import_params()
     }
 
     fn network_params(&self) -> Option<&NetworkParams> {
-        self.run.base.network_params()
+        self.run.network_params()
     }
 
     fn keystore_params(&self) -> Option<&KeystoreParams> {
-        self.run.base.keystore_params()
+        self.run.keystore_params()
     }
 
     fn base_path(&self) -> Result<Option<BasePath>> {
@@ -180,15 +176,15 @@ impl CliConfiguration<Self> for SecondaryChainCli {
     }
 
     fn rpc_http(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.base.rpc_http(default_listen_port)
+        self.run.rpc_http(default_listen_port)
     }
 
     fn rpc_ipc(&self) -> Result<Option<String>> {
-        self.run.base.rpc_ipc()
+        self.run.rpc_ipc()
     }
 
     fn rpc_ws(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.base.rpc_ws(default_listen_port)
+        self.run.rpc_ws(default_listen_port)
     }
 
     fn prometheus_config(
@@ -196,67 +192,65 @@ impl CliConfiguration<Self> for SecondaryChainCli {
         default_listen_port: u16,
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<PrometheusConfig>> {
-        self.run
-            .base
-            .prometheus_config(default_listen_port, chain_spec)
+        self.run.prometheus_config(default_listen_port, chain_spec)
     }
 
     fn chain_id(&self, is_dev: bool) -> Result<String> {
-        self.run.base.chain_id(is_dev)
+        self.run.chain_id(is_dev)
     }
 
     fn role(&self, is_dev: bool) -> Result<sc_service::Role> {
-        self.run.base.role(is_dev)
+        self.run.role(is_dev)
     }
 
     fn transaction_pool(&self) -> Result<sc_service::config::TransactionPoolOptions> {
-        self.run.base.transaction_pool()
+        self.run.transaction_pool()
     }
 
     fn state_cache_child_ratio(&self) -> Result<Option<usize>> {
-        self.run.base.state_cache_child_ratio()
+        self.run.state_cache_child_ratio()
     }
 
     fn rpc_methods(&self) -> Result<sc_service::config::RpcMethods> {
-        self.run.base.rpc_methods()
+        self.run.rpc_methods()
     }
 
     fn rpc_ws_max_connections(&self) -> Result<Option<usize>> {
-        self.run.base.rpc_ws_max_connections()
+        self.run.rpc_ws_max_connections()
     }
 
     fn rpc_cors(&self, is_dev: bool) -> Result<Option<Vec<String>>> {
-        self.run.base.rpc_cors(is_dev)
+        self.run.rpc_cors(is_dev)
     }
 
     fn default_heap_pages(&self) -> Result<Option<u64>> {
-        self.run.base.default_heap_pages()
+        self.run.default_heap_pages()
     }
 
     fn force_authoring(&self) -> Result<bool> {
-        self.run.base.force_authoring()
+        self.run.force_authoring()
     }
 
     fn disable_grandpa(&self) -> Result<bool> {
-        self.run.base.disable_grandpa()
+        self.run.disable_grandpa()
     }
 
     fn max_runtime_instances(&self) -> Result<Option<usize>> {
-        self.run.base.max_runtime_instances()
+        self.run.max_runtime_instances()
     }
 
     fn announce_block(&self) -> Result<bool> {
-        self.run.base.announce_block()
+        self.run.announce_block()
     }
 
     fn dev_key_seed(&self, is_dev: bool) -> Result<Option<String>> {
-        self.run.base.dev_key_seed(is_dev)
+        self.run.dev_key_seed(is_dev)
     }
 
     fn telemetry_endpoints(
         &self,
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<sc_telemetry::TelemetryEndpoints>> {
-        self.run.base.telemetry_endpoints(chain_spec)
+        self.run.telemetry_endpoints(chain_spec)
     }
 }

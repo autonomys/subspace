@@ -165,7 +165,7 @@ fn main() -> Result<(), Error> {
         Some(Subcommand::PurgeChain(cmd)) => {
             // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
             //  wipe old data from disks of our users
-            if cmd.shared_params.base_path().is_none() {
+            if cmd.base.shared_params.base_path().is_none() {
                 let old_dirs = &[
                     "subspace-node-x86_64-macos-11-snapshot-2022-jan-05",
                     "subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05",
@@ -181,8 +181,40 @@ fn main() -> Result<(), Error> {
                     }
                 }
             }
-            let runner = cli.create_runner(cmd)?;
-            runner.sync_run(|config| cmd.run(config.database))?
+
+            let runner = cli.create_runner(&cmd.base)?;
+
+            runner.sync_run(|primary_chain_config| {
+                let maybe_secondary_chain_spec = primary_chain_config
+                    .chain_spec
+                    .extensions()
+                    .get_any(TypeId::of::<ExecutionChainSpec>())
+                    .downcast_ref()
+                    .cloned();
+
+                let secondary_chain_cli = SecondaryChainCli::new(
+                    cmd.base
+                        .base_path()?
+                        .map(|base_path| base_path.path().to_path_buf()),
+                    maybe_secondary_chain_spec.ok_or_else(|| {
+                        "Primary chain spec must contain secondary chain spec".to_string()
+                    })?,
+                    cli.secondary_chain_args.iter(),
+                );
+                let secondary_chain_config = SubstrateCli::create_configuration(
+                    &secondary_chain_cli,
+                    &secondary_chain_cli,
+                    primary_chain_config.tokio_handle.clone(),
+                )
+                .map_err(|error| {
+                    sc_service::Error::Other(format!(
+                        "Failed to create secondary chain configuration: {}",
+                        error
+                    ))
+                })?;
+
+                cmd.run(primary_chain_config, secondary_chain_config)
+            })?;
         }
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -247,33 +279,33 @@ fn main() -> Result<(), Error> {
             unimplemented!("Executor subcommand");
         }
         None => {
-            let runner = cli.create_runner(&cli.run.base)?;
+            let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.run_node_until_exit(|primary_chain_node_config| async move {
-                let tokio_handle = primary_chain_node_config.tokio_handle.clone();
+            runner.run_node_until_exit(|primary_chain_config| async move {
+                let tokio_handle = primary_chain_config.tokio_handle.clone();
 
-                let maybe_secondary_chain_spec = primary_chain_node_config
+                let maybe_secondary_chain_spec = primary_chain_config
                     .chain_spec
                     .extensions()
                     .get_any(TypeId::of::<ExecutionChainSpec>())
                     .downcast_ref()
                     .cloned();
 
-                let mut primary_chain_full_node = {
+                let mut primary_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "PrimaryChain"
                     );
                     let _enter = span.enter();
 
-                    let primary_chain_node_config = SubspaceConfiguration {
-                        base: primary_chain_node_config,
+                    let primary_chain_config = SubspaceConfiguration {
+                        base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                     };
 
                     subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                        primary_chain_node_config,
+                        primary_chain_config,
                         true,
                     )
                     .map_err(|error| {
@@ -294,7 +326,6 @@ fn main() -> Result<(), Error> {
 
                     let secondary_chain_cli = SecondaryChainCli::new(
                         cli.run
-                            .base
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
                         maybe_secondary_chain_spec.ok_or_else(|| {
@@ -314,16 +345,16 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_full_node_fut = cirrus_node::service::new_full(
+                    let secondary_chain_node_fut = cirrus_node::service::new_full(
                         secondary_chain_config,
-                        primary_chain_full_node.client.clone(),
-                        primary_chain_full_node.network.clone(),
-                        &primary_chain_full_node.select_chain,
-                        primary_chain_full_node
+                        primary_chain_node.client.clone(),
+                        primary_chain_node.network.clone(),
+                        &primary_chain_node.select_chain,
+                        primary_chain_node
                             .imported_block_notification_stream
                             .subscribe()
                             .then(|(block_number, _)| async move { block_number }),
-                        primary_chain_full_node
+                        primary_chain_node
                             .new_slot_notification_stream
                             .subscribe()
                             .then(|slot_notification| async move {
@@ -334,17 +365,17 @@ fn main() -> Result<(), Error> {
                             }),
                     );
 
-                    let secondary_chain_full_node = secondary_chain_full_node_fut.await?;
+                    let secondary_chain_node = secondary_chain_node_fut.await?;
 
-                    primary_chain_full_node
+                    primary_chain_node
                         .task_manager
-                        .add_child(secondary_chain_full_node.task_manager);
+                        .add_child(secondary_chain_node.task_manager);
 
-                    secondary_chain_full_node.network_starter.start_network();
+                    secondary_chain_node.network_starter.start_network();
                 }
 
-                primary_chain_full_node.network_starter.start_network();
-                Ok::<_, Error>(primary_chain_full_node.task_manager)
+                primary_chain_node.network_starter.start_network();
+                Ok::<_, Error>(primary_chain_node.task_manager)
             })?;
         }
     }

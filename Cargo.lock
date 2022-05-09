@@ -909,7 +909,6 @@ dependencies = [
  "cirrus-primitives",
  "cirrus-runtime",
  "clap 3.1.8",
- "cumulus-client-cli",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -1516,15 +1515,6 @@ dependencies = [
  "byteorder 1.4.3",
  "fnv",
  "rand 0.7.3",
-]
-
-[[package]]
-name = "cumulus-client-cli"
-version = "0.1.0"
-dependencies = [
- "clap 3.1.8",
- "sc-cli",
- "sc-service",
 ]
 
 [[package]]
@@ -8544,7 +8534,6 @@ dependencies = [
  "cirrus-node",
  "cirrus-runtime",
  "clap 3.1.8",
- "cumulus-client-cli",
  "dirs",
  "frame-benchmarking-cli",
  "frame-support",
