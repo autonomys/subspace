@@ -73,7 +73,7 @@ use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{future, FutureExt, Stream, StreamExt};
+use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -239,20 +239,16 @@ where
 								let span = span.clone();
 
 								move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-									let bundle_processor = bundle_processor.clone();
-									let span = span.clone();
-
-									Box::pin(async move {
-										let process_bundles_fut = bundle_processor
-											.process_bundles(
-												primary_hash,
-												bundles,
-												shuffling_seed,
-												maybe_new_runtime,
-											)
-											.instrument(span.clone());
-
-										process_bundles_fut.await.unwrap_or_else(|error| {
+									bundle_processor
+										.clone()
+										.process_bundles(
+											primary_hash,
+											bundles,
+											shuffling_seed,
+											maybe_new_runtime,
+										)
+										.instrument(span.clone())
+										.unwrap_or_else(move |error| {
 											tracing::error!(
 												target: LOG_TARGET,
 												relay_parent = ?primary_hash,
@@ -261,7 +257,7 @@ where
 											);
 											None
 										})
-									})
+										.boxed()
 								}
 							},
 							active_leaves
@@ -273,13 +269,11 @@ where
 					let handle_slot_notifications_fut = worker::handle_slot_notifications(
 						primary_chain_client.as_ref(),
 						move |primary_hash, slot_info| {
-							let bundle_producer = bundle_producer.clone();
-							let produce_bundle_fut = bundle_producer
+							bundle_producer
+								.clone()
 								.produce_bundle(primary_hash, slot_info)
-								.instrument(span.clone());
-
-							Box::pin(async move {
-								produce_bundle_fut.await.unwrap_or_else(|error| {
+								.instrument(span.clone())
+								.unwrap_or_else(move |error| {
 									tracing::error!(
 										target: LOG_TARGET,
 										relay_parent = ?primary_hash,
@@ -288,7 +282,7 @@ where
 									);
 									None
 								})
-							})
+								.boxed()
 						},
 						Box::pin(new_slot_notification_stream.map(|(slot, global_challenge)| {
 							ExecutorSlotInfo { slot, global_challenge }

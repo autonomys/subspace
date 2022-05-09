@@ -158,7 +158,7 @@ where
 	}
 
 	pub(crate) async fn process_bundles(
-		&self,
+		self,
 		(primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
