@@ -171,6 +171,7 @@ impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
     }
 }
 
+// TODO: use generic instead of the concrete type PHash, BlockNumber.
 /// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {

@@ -105,6 +105,7 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
@@ -144,8 +145,8 @@ mod pallet {
             });
 
             let pruning_depth = <ReceiptsPruningDepth<T>>::get();
-            if primary_number > pruning_depth {
-                Self::prune_receipts_up_to(primary_number - pruning_depth + 1);
+            if let Some(to_prune) = primary_number.checked_sub(pruning_depth - 1) {
+                Self::prune_receipts_up_to(to_prune);
             }
 
             Self::deposit_event(Event::NewExecutionReceipt {
@@ -156,6 +157,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
@@ -176,6 +178,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
@@ -195,6 +198,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -215,6 +219,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
@@ -235,6 +240,7 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: proper weight
         #[pallet::weight(10_000)]
         pub fn set_receipts_pruning_depth(
             origin: OriginFor<T>,
@@ -485,7 +491,7 @@ impl<T: Config> Pallet<T> {
                 None => return, // nothing to prune.
             };
 
-            let up_to = sp_std::cmp::min(up_to, end);
+            let up_to = up_to.min(end);
 
             if up_to < start {
                 return; // out of bounds, harmless.
