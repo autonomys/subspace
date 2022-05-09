@@ -65,15 +65,13 @@ mod tests;
 mod worker;
 
 use crate::{
-	bundle_processor::BundleProcessor,
-	bundle_producer::BundleProducer,
-	worker::{BlockInfo, ExecutorSlotInfo},
+	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, worker::BlockInfo,
 };
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -98,7 +96,6 @@ use sp_runtime::{
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
 use subspace_core_primitives::{Randomness, Tag};
-use tracing::Instrument;
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -202,7 +199,7 @@ where
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
 		NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
 	{
-		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
+		let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
 		let bundle_producer = BundleProducer::new(
 			primary_chain_client.clone(),
@@ -223,81 +220,19 @@ where
 			keystore,
 		);
 
-		{
-			let span = tracing::Span::current();
-			let primary_chain_client = primary_chain_client.clone();
-			let bundle_processor = bundle_processor.clone();
-
-			spawn_essential.spawn_essential_blocking(
-				"executor-worker",
-				None,
-				async move {
-					let handle_block_import_notifications_fut =
-						worker::handle_block_import_notifications(
-							primary_chain_client.as_ref(),
-							{
-								let span = span.clone();
-
-								move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-									bundle_processor
-										.clone()
-										.process_bundles(
-											primary_hash,
-											bundles,
-											shuffling_seed,
-											maybe_new_runtime,
-										)
-										.instrument(span.clone())
-										.unwrap_or_else(move |error| {
-											tracing::error!(
-												target: LOG_TARGET,
-												relay_parent = ?primary_hash,
-												error = ?error,
-												"Error at processing bundles.",
-											);
-											None
-										})
-										.boxed()
-								}
-							},
-							active_leaves
-								.into_iter()
-								.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
-								.collect(),
-							Box::pin(imported_block_notification_stream),
-						);
-					let handle_slot_notifications_fut = worker::handle_slot_notifications(
-						primary_chain_client.as_ref(),
-						move |primary_hash, slot_info| {
-							bundle_producer
-								.clone()
-								.produce_bundle(primary_hash, slot_info)
-								.instrument(span.clone())
-								.unwrap_or_else(move |error| {
-									tracing::error!(
-										target: LOG_TARGET,
-										relay_parent = ?primary_hash,
-										error = ?error,
-										"Error at producing bundle.",
-									);
-									None
-								})
-								.boxed()
-						},
-						Box::pin(new_slot_notification_stream.map(|(slot, global_challenge)| {
-							ExecutorSlotInfo { slot, global_challenge }
-						})),
-					);
-
-					let _ = future::select(
-						Box::pin(handle_block_import_notifications_fut),
-						Box::pin(handle_slot_notifications_fut),
-					)
-					.await;
-				}
-				.boxed(),
-			);
-		}
+		spawn_essential.spawn_essential_blocking(
+			"executor-worker",
+			None,
+			worker::start_worker(
+				primary_chain_client.clone(),
+				bundle_producer,
+				bundle_processor.clone(),
+				imported_block_notification_stream,
+				new_slot_notification_stream,
+				active_leaves,
+			)
+			.boxed(),
+		);
 
 		Ok(Self {
 			primary_chain_client,

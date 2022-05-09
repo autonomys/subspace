@@ -14,10 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::{BundleProcessor, BundleProducer};
+use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{Stream, StreamExt};
-use sc_client_api::BlockBackend;
-use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
+use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
+use sc_client_api::{AuxStore, BlockBackend};
+use sc_consensus::BlockImport;
+use sp_api::{ApiError, BlockT, ProvideRuntimeApi, TransactionFor};
+use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_executor::{ExecutorApi, OpaqueBundle, SignedExecutionReceipt, SignedOpaqueBundle};
@@ -32,9 +36,11 @@ use std::{
 	fmt::Debug,
 	future::Future,
 	pin::Pin,
+	sync::Arc,
 };
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::Hash as PHash;
+use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
 
@@ -66,7 +72,107 @@ where
 	pub number: NumberFor<Block>,
 }
 
-pub(super) async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
+pub(super) async fn start_worker<
+	Block,
+	PBlock,
+	Client,
+	PClient,
+	TransactionPool,
+	Backend,
+	IBNS,
+	NSNS,
+>(
+	primary_chain_client: Arc<PClient>,
+	bundle_producer: BundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
+	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
+	imported_block_notification_stream: IBNS,
+	new_slot_notification_stream: NSNS,
+	active_leaves: Vec<BlockInfo<PBlock>>,
+) where
+	Block: BlockT,
+	PBlock: BlockT,
+	Client:
+		HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+	Client::Api: SecondaryApi<Block, AccountId>
+		+ BlockBuilder<Block>
+		+ sp_api::ApiExt<
+			Block,
+			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+		>,
+	for<'b> &'b Client: BlockImport<
+		Block,
+		Transaction = TransactionFor<Client, Block>,
+		Error = sp_consensus::Error,
+	>,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+	Backend: sc_client_api::Backend<Block> + 'static,
+	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+	NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
+{
+	let span = tracing::Span::current();
+
+	let handle_block_import_notifications_fut = handle_block_import_notifications(
+		primary_chain_client.as_ref(),
+		{
+			let span = span.clone();
+
+			move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+				bundle_processor
+					.clone()
+					.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+					.instrument(span.clone())
+					.unwrap_or_else(move |error| {
+						tracing::error!(
+							target: LOG_TARGET,
+							relay_parent = ?primary_hash,
+							error = ?error,
+							"Error at processing bundles.",
+						);
+						None
+					})
+					.boxed()
+			}
+		},
+		active_leaves
+			.into_iter()
+			.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
+			.collect(),
+		Box::pin(imported_block_notification_stream),
+	);
+	let handle_slot_notifications_fut = handle_slot_notifications(
+		primary_chain_client.as_ref(),
+		move |primary_hash, slot_info| {
+			bundle_producer
+				.clone()
+				.produce_bundle(primary_hash, slot_info)
+				.instrument(span.clone())
+				.unwrap_or_else(move |error| {
+					tracing::error!(
+						target: LOG_TARGET,
+						relay_parent = ?primary_hash,
+						error = ?error,
+						"Error at producing bundle.",
+					);
+					None
+				})
+				.boxed()
+		},
+		Box::pin(
+			new_slot_notification_stream
+				.map(|(slot, global_challenge)| ExecutorSlotInfo { slot, global_challenge }),
+		),
+	);
+
+	let _ = future::select(
+		Box::pin(handle_block_import_notifications_fut),
+		Box::pin(handle_slot_notifications_fut),
+	)
+	.await;
+}
+
+async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
 	primary_chain_client: &PClient,
 	bundler: BundlerFn,
 	mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
@@ -94,7 +200,7 @@ pub(super) async fn handle_slot_notifications<PBlock, PClient, BundlerFn, Second
 	}
 }
 
-pub(super) async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, SecondaryHash>(
+async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, SecondaryHash>(
 	primary_chain_client: &PClient,
 	processor: ProcessorFn,
 	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,

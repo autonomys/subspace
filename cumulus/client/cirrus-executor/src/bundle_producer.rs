@@ -6,6 +6,8 @@ use sc_client_api::BlockBackend;
 use sc_transaction_pool_api::InPoolTransaction;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
+use sp_block_builder::BlockBuilder;
+use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
 	Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
@@ -58,8 +60,8 @@ impl<Block, PBlock, Client, PClient, TransactionPool>
 where
 	Block: BlockT,
 	PBlock: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-	Client::Api: SecondaryApi<Block, AccountId> + sp_block_builder::BlockBuilder<Block>,
+	Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
+	Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
 	PClient: ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
