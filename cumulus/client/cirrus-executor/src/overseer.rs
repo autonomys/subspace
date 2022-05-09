@@ -338,6 +338,44 @@ where
 	Ok(())
 }
 
+async fn block_imported<PBlock, PClient, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn<PBlock::Hash, NumberFor<PBlock>, SecondaryHash>,
+	active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
+	block: BlockInfo<PBlock>,
+) -> Result<(), ApiError>
+where
+	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock>
+		+ BlockBackend<PBlock>
+		+ ProvideRuntimeApi<PBlock>
+		+ Send
+		+ 'static
+		+ Sync,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	SecondaryHash: Encode + Decode,
+{
+	match active_leaves.entry(block.hash) {
+		Entry::Vacant(entry) => entry.insert(block.number),
+		Entry::Occupied(entry) => {
+			debug_assert_eq!(*entry.get(), block.number);
+			return Ok(())
+		},
+	};
+
+	if let Some(number) = active_leaves.remove(&block.parent_hash) {
+		debug_assert_eq!(block.number.saturating_sub(One::one()), number);
+	}
+
+	if let Err(error) =
+		process_primary_block(primary_chain_client, processor, (block.hash, block.number)).await
+	{
+		tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
+	}
+
+	Ok(())
+}
+
 /// Capacity of a signal channel between a subsystem and the overseer.
 const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
 /// The overseer.
@@ -411,35 +449,15 @@ where
 				// TODO: we still need the context of block, e.g., executor gossips no message
 				// to the primary node during the major sync.
 				Event::BlockImported(block) => {
-					self.block_imported(block).await?;
+					block_imported(
+						self.primary_chain_client.as_ref(),
+						&self.overseer_config.processor,
+						&mut self.active_leaves,
+						block,
+					)
+					.await?;
 				},
 			}
-		}
-
-		Ok(())
-	}
-
-	async fn block_imported(&mut self, block: BlockInfo<PBlock>) -> Result<(), ApiError> {
-		match self.active_leaves.entry(block.hash) {
-			Entry::Vacant(entry) => entry.insert(block.number),
-			Entry::Occupied(entry) => {
-				debug_assert_eq!(*entry.get(), block.number);
-				return Ok(())
-			},
-		};
-
-		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
-			debug_assert_eq!(block.number.saturating_sub(One::one()), number);
-		}
-
-		if let Err(error) = process_primary_block(
-			self.primary_chain_client.as_ref(),
-			&self.overseer_config.processor,
-			(block.hash, block.number),
-		)
-		.await
-		{
-			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 		}
 
 		Ok(())
