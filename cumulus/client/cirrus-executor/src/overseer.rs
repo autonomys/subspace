@@ -14,12 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-//! TODO
-#![warn(missing_docs)]
-
 use codec::{Decode, Encode};
 use futures::{select, stream::FusedStream, StreamExt};
-use sc_client_api::{BlockBackend, BlockImportNotification};
+use sc_client_api::BlockBackend;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -39,6 +36,8 @@ use std::{
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::Hash as PHash;
 
+const LOG_TARGET: &str = "overseer";
+
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
 pub struct ExecutorSlotInfo {
@@ -48,7 +47,24 @@ pub struct ExecutorSlotInfo {
 	pub global_challenge: Tag,
 }
 
-const LOG_TARGET: &str = "overseer";
+/// An event telling the `Overseer` on the particular block
+/// that has been imported or finalized.
+///
+/// This structure exists solely for the purposes of decoupling
+/// `Overseer` code from the client code and the necessity to call
+/// `HeaderBackend::block_number_from_id()`.
+#[derive(Debug, Clone)]
+pub struct BlockInfo<Block>
+where
+	Block: BlockT,
+{
+	/// hash of the block.
+	pub hash: Block::Hash,
+	/// hash of the parent block.
+	pub parent_hash: Block::Hash,
+	/// block's number.
+	pub number: NumberFor<Block>,
+}
 
 /// Apply the transaction bundles for given primary block as follows:
 ///
@@ -148,34 +164,6 @@ where
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
 	Ok(())
-}
-
-/// An event telling the `Overseer` on the particular block
-/// that has been imported or finalized.
-///
-/// This structure exists solely for the purposes of decoupling
-/// `Overseer` code from the client code and the necessity to call
-/// `HeaderBackend::block_number_from_id()`.
-#[derive(Debug, Clone)]
-pub struct BlockInfo<Block>
-where
-	Block: BlockT,
-{
-	/// hash of the block.
-	pub hash: Block::Hash,
-	/// hash of the parent block.
-	pub parent_hash: Block::Hash,
-	/// block's number.
-	pub number: NumberFor<Block>,
-}
-
-impl<Block> From<BlockImportNotification<Block>> for BlockInfo<Block>
-where
-	Block: BlockT,
-{
-	fn from(n: BlockImportNotification<Block>) -> Self {
-		BlockInfo { hash: n.hash, parent_hash: *n.header.parent_hash(), number: *n.header.number() }
-	}
 }
 
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
