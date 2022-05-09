@@ -5,7 +5,7 @@ use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_executor::ExecutionReceipt;
 use sp_runtime::{
-	traits::{Block as BlockT, Header as HeaderT, One, Saturating},
+	traits::{AtLeast32BitUnsigned, Block as BlockT, Header as HeaderT, One, Saturating},
 	SaturatedConversion,
 };
 
@@ -90,21 +90,21 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 }
 
 /// Load the execution receipt associated with a block.
-pub(super) fn load_execution_receipt<Block, Backend>(
+pub(super) fn load_execution_receipt<Backend, Hash>(
 	backend: &Backend,
-	block_hash: Block::Hash,
-) -> ClientResult<Option<ExecutionReceipt<Block::Hash>>>
+	block_hash: Hash,
+) -> ClientResult<Option<ExecutionReceipt<Hash>>>
 where
-	Block: BlockT,
 	Backend: AuxStore,
+	Hash: Encode + Decode,
 {
 	load_decode(backend, execution_receipt_key(block_hash).as_slice())
 }
 
-pub(super) fn target_receipt_is_pruned<Block: BlockT>(
-	current_block: <<Block as BlockT>::Header as HeaderT>::Number,
-	target_block: <<Block as BlockT>::Header as HeaderT>::Number,
-) -> bool {
+pub(super) fn target_receipt_is_pruned<Number>(current_block: Number, target_block: Number) -> bool
+where
+	Number: AtLeast32BitUnsigned,
+{
 	current_block > target_block && current_block - target_block >= PRUNING_DEPTH.saturated_into()
 }
 
@@ -144,8 +144,7 @@ mod tests {
 			.unwrap()
 		};
 
-		let receipt_at =
-			|block_hash: Hash| load_execution_receipt::<Block, _>(&client, block_hash).unwrap();
+		let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
 		let write_receipt_at = |hash: Hash, number: BlockNumber, receipt: &ExecutionReceipt| {
 			write_execution_receipt::<_, Block>(&client, hash, number, receipt).unwrap()
@@ -166,7 +165,7 @@ mod tests {
 			})
 			.collect::<Vec<_>>();
 
-		assert!(!target_receipt_is_pruned::<Block>(PRUNING_DEPTH, 1));
+		assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
 
 		// Create PRUNING_DEPTH + 1 receipt.
 		let block_hash = Hash::random();
@@ -181,7 +180,7 @@ mod tests {
 		assert!(receipt_at(block_hash_list[0]).is_none());
 		// block number mapping should be pruned as well.
 		assert!(hashes_at(1).is_none());
-		assert!(target_receipt_is_pruned::<Block>(PRUNING_DEPTH + 1, 1));
+		assert!(target_receipt_is_pruned(PRUNING_DEPTH + 1, 1));
 		assert_eq!(receipt_start(), Some(2));
 
 		// Create PRUNING_DEPTH + 2 receipt.
@@ -194,8 +193,8 @@ mod tests {
 		assert!(receipt_at(block_hash).is_some());
 		// ER of block #2 should be pruned.
 		assert!(receipt_at(block_hash_list[1]).is_none());
-		assert!(target_receipt_is_pruned::<Block>(PRUNING_DEPTH + 2, 2));
-		assert!(!target_receipt_is_pruned::<Block>(PRUNING_DEPTH + 2, 3));
+		assert!(target_receipt_is_pruned(PRUNING_DEPTH + 2, 2));
+		assert!(!target_receipt_is_pruned(PRUNING_DEPTH + 2, 3));
 		assert_eq!(receipt_start(), Some(3));
 
 		// Multiple hashes attached to the block #(PRUNING_DEPTH + 2)

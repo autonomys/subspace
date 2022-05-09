@@ -108,13 +108,11 @@ where
 {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	primary_chain_client: Arc<PClient>,
-	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	transaction_pool: Arc<TransactionPool>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
-	is_authority: bool,
 	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 }
 
@@ -127,13 +125,11 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			primary_chain_client: self.primary_chain_client.clone(),
-			primary_network: self.primary_network.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
-			is_authority: self.is_authority,
 			bundle_processor: self.bundle_processor.clone(),
 		}
 	}
@@ -212,7 +208,7 @@ where
 
 		let bundle_processor = BundleProcessor::new(
 			primary_chain_client.clone(),
-			primary_network.clone(),
+			primary_network,
 			client.clone(),
 			execution_receipt_sender,
 			backend.clone(),
@@ -236,13 +232,11 @@ where
 
 		Ok(Self {
 			primary_chain_client,
-			primary_network,
 			client,
 			spawner,
 			transaction_pool,
 			backend,
 			code_executor,
-			is_authority,
 			bundle_processor,
 		})
 	}
@@ -450,10 +444,7 @@ where
 		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
 	) -> Result<(), GossipMessageError> {
 		loop {
-			match crate::aux_schema::load_execution_receipt::<Block, _>(
-				&*self.client,
-				secondary_block_hash,
-			) {
+			match aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
 				Ok(Some(local_receipt)) =>
 					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
 				Ok(None) => {
@@ -467,16 +458,14 @@ where
 						let local_block_hash = self
 							.client
 							.expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
-						let local_receipt_result = aux_schema::load_execution_receipt::<Block, _>(
-							&*self.client,
-							local_block_hash,
-						)?
-						.ok_or_else(|| {
-							sp_blockchain::Error::Backend(format!(
-								"Execution receipt not found for {:?}",
-								local_block_hash
-							))
-						});
+						let local_receipt_result =
+							aux_schema::load_execution_receipt(&*self.client, local_block_hash)?
+								.ok_or_else(|| {
+									sp_blockchain::Error::Backend(format!(
+										"Execution receipt not found for {:?}",
+										local_block_hash
+									))
+								});
 						return tx
 							.send(local_receipt_result)
 							.map_err(|_| GossipMessageError::SendError)
@@ -690,13 +679,13 @@ where
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
-		if aux_schema::target_receipt_is_pruned::<Block>(best_number, block_number) {
+		if aux_schema::target_receipt_is_pruned(best_number, block_number) {
 			return Ok(Action::Empty)
 		}
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
-			crate::aux_schema::load_execution_receipt::<Block, _>(&*self.client, block_hash)?
+			aux_schema::load_execution_receipt(&*self.client, block_hash)?
 		{
 			local_receipt
 		} else {
