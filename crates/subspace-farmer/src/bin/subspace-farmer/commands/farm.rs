@@ -31,7 +31,7 @@ pub(crate) async fn farm(
     }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
-    match std::panic::catch_unwind(|| fdlimit::raise_fd_limit()) {
+    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
         Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
         Ok(None) => log::debug!("Failed to increase file limit"),
         Err(err) => {
