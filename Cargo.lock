@@ -8463,6 +8463,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "event-listener-primitives",
+ "fdlimit",
  "futures 0.3.21",
  "hex",
  "hex-buffer-serde",
