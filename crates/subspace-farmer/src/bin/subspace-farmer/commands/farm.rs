@@ -36,11 +36,11 @@ pub(crate) async fn farm(
         Ok(None) => log::debug!("Failed to increase file limit"),
         Err(err) => {
             let err = if let Some(err) = err.downcast_ref::<&str>() {
-                err
+                *err
             } else if let Some(err) = err.downcast_ref::<String>() {
                 err
             } else {
-                "Failed to fetch error"
+                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
             };
             log::warn!("Failed to increase file limit: {err}")
         }
