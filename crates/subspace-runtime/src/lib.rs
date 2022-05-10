@@ -492,12 +492,14 @@ impl pallet_offences_subspace::Config for Runtime {
 
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
 impl pallet_executor::Config for Runtime {
     type Event = Event;
     type SecondaryHash = cirrus_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
 }
 
 parameter_types! {

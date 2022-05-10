@@ -8,7 +8,7 @@ use sp_blockchain::HeaderBackend;
 use sp_executor::{executor_ext::ExecutionReceiptError, ExecutionReceipt, ExecutorApi};
 use sp_runtime::{
     generic::BlockId,
-    traits::{Block as BlockT, Header as HeaderT},
+    traits::{Block as BlockT, Header as HeaderT, NumberFor},
 };
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ where
     /// Verifies the execution receipt.
     pub fn check_execution_receipt(
         &self,
-        execution_receipt: ExecutionReceipt<Hash>,
+        execution_receipt: ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Hash>,
     ) -> Result<(), ExecutionReceiptError> {
         let primary_hash =
             PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
@@ -61,7 +61,7 @@ where
             })?
             .ok_or(ExecutionReceiptError::UnknownBlock)?;
 
-        if *header.number() != execution_receipt.primary_number.into() {
+        if *header.number() != execution_receipt.primary_number {
             return Err(ExecutionReceiptError::UnexpectedPrimaryNumber);
         }
 

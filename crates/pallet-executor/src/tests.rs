@@ -56,12 +56,14 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
 impl pallet_executor::Config for Test {
     type Event = Event;
     type SecondaryHash = H256;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
