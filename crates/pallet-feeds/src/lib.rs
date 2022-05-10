@@ -35,7 +35,7 @@ mod pallet {
     use crate::feed_processor::{FeedMetadata, FeedProcessor as FeedProcessorT};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{CheckedAdd, One, StaticLookup};
+    use sp_runtime::traits::{CheckedAdd, Hash, One, StaticLookup};
     use sp_runtime::ArithmeticError;
     use sp_std::prelude::*;
 
@@ -114,6 +114,9 @@ mod pallet {
     #[pallet::getter(fn next_feed_id)]
     pub(super) type NextFeedId<T: Config> = StorageValue<_, T::FeedId, ValueQuery>;
 
+    #[pallet::storage]
+    pub(super) type SuccessfulPuts<T: Config> = StorageValue<_, Vec<T::Hash>, ValueQuery>;
+
     /// `pallet-feeds` events
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -180,6 +183,14 @@ mod pallet {
             ensure!(feed_config.owner == sender, Error::<T>::NotFeedOwner);
             (sender, feed_config)
         }};
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
+            SuccessfulPuts::<T>::kill();
+            T::DbWeight::get().writes(1)
+        }
     }
 
     #[pallet::call]
@@ -285,6 +296,11 @@ mod pallet {
                 object_size,
             });
 
+            // store the call
+            // there could be multiple calls with same hash and that is fine
+            // since we assume the same order
+            let uniq = T::Hashing::hash(Call::<T>::put { feed_id, object }.encode().as_slice());
+            SuccessfulPuts::<T>::append(uniq);
             Ok(())
         }
 
@@ -348,6 +364,12 @@ pub struct CallObject {
     pub key: Sha256Hash,
     /// Offset of object in the encoded call.
     pub offset: u32,
+}
+
+impl<T: Config> Pallet<T> {
+    pub fn successful_puts() -> Vec<T::Hash> {
+        SuccessfulPuts::<T>::get()
+    }
 }
 
 impl<T: Config> Call<T> {
