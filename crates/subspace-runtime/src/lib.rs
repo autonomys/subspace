@@ -1050,28 +1050,28 @@ impl_runtime_apis! {
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
             execution_receipt: sp_executor::SignedExecutionReceipt<cirrus_primitives::Hash>,
-        ) -> Option<()> {
-            Executor::submit_execution_receipt_unsigned(execution_receipt).ok()
+        ) {
+            Executor::submit_execution_receipt_unsigned(execution_receipt)
         }
 
-        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) -> Option<()> {
-            Executor::submit_transaction_bundle_unsigned(opaque_bundle).ok()
+        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) {
+            Executor::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) -> Option<()> {
-            Executor::submit_fraud_proof_unsigned(fraud_proof).ok()
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+            Executor::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
             bundle_equivocation_proof: sp_executor::BundleEquivocationProof,
-        ) -> Option<()> {
-            Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof).ok()
+        ) {
+            Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
 
         fn submit_invalid_transaction_proof_unsigned(
             invalid_transaction_proof: sp_executor::InvalidTransactionProof,
-        ) -> Option<()> {
-            Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof).ok()
+        ) {
+            Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {

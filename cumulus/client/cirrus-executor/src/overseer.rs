@@ -18,15 +18,12 @@
 #![warn(missing_docs)]
 
 use codec::{Decode, Encode};
-use futures::{channel::mpsc, select, stream::FusedStream, SinkExt, StreamExt};
+use futures::{select, stream::FusedStream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_executor::{
-	BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTransactionProof, OpaqueBundle,
-	SignedExecutionReceipt, SignedOpaqueBundle,
-};
+use sp_executor::{ExecutorApi, OpaqueBundle, SignedExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{Header as HeaderT, NumberFor, One, Saturating},
@@ -38,7 +35,6 @@ use std::{
 	fmt::Debug,
 	future::Future,
 	pin::Pin,
-	sync::Arc,
 };
 use subspace_core_primitives::{Randomness, Tag};
 use subspace_runtime_primitives::Hash as PHash;
@@ -52,85 +48,33 @@ pub struct ExecutorSlotInfo {
 	pub global_challenge: Tag,
 }
 
-/// Bundle function.
-///
-/// Will be called with each slot of the primary chain.
-///
-/// Returns an optional [`SignedOpaqueBundle`].
-pub type BundlerFn = Box<
-	dyn Fn(
-			PHash,
-			ExecutorSlotInfo,
-		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
-		+ Send
-		+ Sync,
->;
-
-/// Process function.
-///
-/// Will be called with the hash of the primary chain block.
-///
-/// Returns an optional [`OpaqueExecutionReceipt`].
-pub type ProcessorFn<PHash, Number, Hash> = Box<
-	dyn Fn(
-			(PHash, Number),
-			Vec<OpaqueBundle>,
-			Randomness,
-			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<Hash>>> + Send>>
-		+ Send
-		+ Sync,
->;
-
-/// Configuration for the collation generator
-pub struct CollationGenerationConfig<PHash, Number, Hash> {
-	/// Transaction bundle function. See [`BundlerFn`] for more details.
-	pub bundler: BundlerFn,
-	/// State processor function. See [`ProcessorFn`] for more details.
-	pub processor: ProcessorFn<PHash, Number, Hash>,
-}
-
-impl<PHash, Number, Hash> std::fmt::Debug for CollationGenerationConfig<PHash, Number, Hash> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "CollationGenerationConfig {{ ... }}")
-	}
-}
-
-/// Message to the Collation Generation subsystem.
-#[derive(Debug)]
-enum ProofMessage {
-	/// Fraud proof needs to be submitted to primary chain.
-	Fraud(FraudProof),
-	/// Bundle equivocation proof needs to be submitted to primary chain.
-	BundleEquivocation(BundleEquivocationProof),
-	/// Invalid transaction proof needs to be submitted to primary chain.
-	InvalidTransaction(InvalidTransactionProof),
-}
-
 const LOG_TARGET: &str = "overseer";
 
 /// Apply the transaction bundles for given primary block as follows:
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient, Hash>(
-	client: Arc<PClient>,
-	config: &CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
+async fn process_primary_block<PBlock, PClient, ProcessorFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn,
 	(block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
 ) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
 		+ Send
-		+ 'static
 		+ Sync,
-	PClient::Api: ExecutorApi<PBlock, Hash>,
-	Hash: Encode + Decode,
+	SecondaryHash: Encode + Decode,
 {
 	let block_id = BlockId::Hash(block_hash);
-	let extrinsics = match client.block_body(&block_id) {
+	let extrinsics = match primary_chain_client.block_body(&block_id) {
 		Err(err) => {
 			tracing::error!(
 				target: LOG_TARGET,
@@ -146,7 +90,7 @@ where
 		Ok(Some(body)) => body,
 	};
 
-	let bundles = client.runtime_api().extract_bundles(
+	let bundles = primary_chain_client.runtime_api().extract_bundles(
 		&block_id,
 		extrinsics
 			.into_iter()
@@ -156,7 +100,7 @@ where
 			.collect(),
 	)?;
 
-	let header = match client.header(block_id) {
+	let header = match primary_chain_client.header(block_id) {
 		Err(err) => {
 			tracing::error!(target: LOG_TARGET, ?err, "Failed to get block from primary chain");
 			return Ok(())
@@ -174,110 +118,36 @@ where
 		.iter()
 		.any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
 	{
-		Some(client.runtime_api().execution_wasm_bundle(&block_id)?)
+		Some(primary_chain_client.runtime_api().execution_wasm_bundle(&block_id)?)
 	} else {
 		None
 	};
 
-	let shuffling_seed = client.runtime_api().extrinsics_shuffling_seed(&block_id, header)?;
+	let shuffling_seed = primary_chain_client
+		.runtime_api()
+		.extrinsics_shuffling_seed(&block_id, header)?;
 
-	let execution_receipt = match (config.processor)(
-		(block_hash, block_number),
-		bundles,
-		shuffling_seed,
-		maybe_new_runtime,
-	)
-	.await
-	{
-		Some(execution_receipt) => execution_receipt,
-		None => {
-			tracing::debug!(
-				target: LOG_TARGET,
-				"Skip sending the execution receipt because executor is not elected",
-			);
-			return Ok(())
-		},
-	};
+	let execution_receipt =
+		match processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime)
+			.await
+		{
+			Some(execution_receipt) => execution_receipt,
+			None => {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Skip sending the execution receipt because executor is not elected",
+				);
+				return Ok(())
+			},
+		};
 
-	let best_hash = client.info().best_hash;
+	let best_hash = primary_chain_client.info().best_hash;
 
-	// TODO: Handle returned result?
-	client
+	primary_chain_client
 		.runtime_api()
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
 	Ok(())
-}
-
-/// Activated leaf.
-#[derive(Debug, Clone)]
-pub struct ActivatedLeaf<Block>
-where
-	Block: BlockT,
-{
-	/// The block hash.
-	pub hash: Block::Hash,
-	/// The block number.
-	pub number: NumberFor<Block>,
-}
-
-/// A handle used to communicate with the [`Overseer`].
-///
-/// [`Overseer`]: struct.Overseer.html
-#[derive(Clone)]
-pub struct OverseerHandle<PBlock: BlockT>(mpsc::Sender<Event<PBlock>>);
-
-impl<PBlock> OverseerHandle<PBlock>
-where
-	PBlock: BlockT,
-{
-	/// Create a new [`Handle`].
-	fn new(raw: mpsc::Sender<Event<PBlock>>) -> Self {
-		Self(raw)
-	}
-
-	/// Inform the `Overseer` that that some block was imported.
-	async fn block_imported(&mut self, block: BlockInfo<PBlock>) {
-		self.send_and_log_error(Event::BlockImported(block)).await
-	}
-
-	/// Send some message to one of the `Subsystem`s.
-	async fn send_msg(&mut self, msg: ProofMessage) {
-		self.send_and_log_error(Event::MsgToSubsystem(msg)).await
-	}
-
-	/// Inform the `Overseer` that a new slot was triggered.
-	async fn slot_arrived(&mut self, slot_info: ExecutorSlotInfo) {
-		self.send_and_log_error(Event::NewSlot(slot_info)).await
-	}
-
-	/// Most basic operation, to stop a server.
-	async fn send_and_log_error(&mut self, event: Event<PBlock>) {
-		if self.0.send(event).await.is_err() {
-			tracing::info!(target: LOG_TARGET, "Failed to send an event to Overseer");
-		}
-	}
-
-	/// TODO
-	pub async fn submit_bundle_equivocation_proof(
-		&mut self,
-		bundle_equivocation_proof: BundleEquivocationProof,
-	) {
-		self.send_msg(ProofMessage::BundleEquivocation(bundle_equivocation_proof)).await
-	}
-
-	/// TODO
-	pub async fn submit_fraud_proof(&mut self, fraud_proof: FraudProof) {
-		self.send_msg(ProofMessage::Fraud(fraud_proof)).await;
-	}
-
-	/// TODO
-	pub async fn submit_invalid_transaction_proof(
-		&mut self,
-		invalid_transaction_proof: InvalidTransactionProof,
-	) {
-		self.send_msg(ProofMessage::InvalidTransaction(invalid_transaction_proof)).await;
-	}
 }
 
 /// An event telling the `Overseer` on the particular block
@@ -308,46 +178,69 @@ where
 	}
 }
 
-/// An event from outside the overseer scope, such
-/// as the substrate framework or user interaction.
-enum Event<PBlock>
-where
-	PBlock: BlockT,
-{
-	/// A new block was imported.
-	BlockImported(BlockInfo<PBlock>),
-	/// A new slot arrived.
-	NewSlot(ExecutorSlotInfo),
-	/// Message as sent to a subsystem.
-	MsgToSubsystem(ProofMessage),
-}
-
 /// Glues together the [`Overseer`] and `BlockchainEvents` by forwarding
 /// import and finality notifications to it.
-pub async fn forward_events<PBlock, Client>(
-	client: Arc<Client>,
+pub async fn forward_events<PBlock, PClient, BundlerFn, ProcessorFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	bundler: BundlerFn,
+	processor: &ProcessorFn,
+	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	mut imports: impl FusedStream<Item = NumberFor<PBlock>> + Unpin,
 	mut slots: impl FusedStream<Item = ExecutorSlotInfo> + Unpin,
-	mut handle: OverseerHandle<PBlock>,
 ) where
 	PBlock: BlockT,
-	Client: HeaderBackend<PBlock>,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	BundlerFn: Fn(
+			PHash,
+			ExecutorSlotInfo,
+		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
+		+ Send
+		+ Sync,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
+		+ Send
+		+ Sync,
+	SecondaryHash: Encode + Decode,
 {
+	let mut active_leaves = HashMap::with_capacity(leaves.len());
+
+	// Notify about active leaves on startup before starting the loop
+	for (hash, number) in std::mem::take(&mut leaves) {
+		let _ = active_leaves.insert(hash, number);
+		if let Err(error) =
+			process_primary_block(primary_chain_client, &processor, (hash, number)).await
+		{
+			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
+		}
+	}
 	loop {
 		select! {
 			i = imports.next() => {
 				match i {
 					Some(block_number) => {
-						let header = client
+						let header = primary_chain_client
 							.header(BlockId::Number(block_number))
 							.expect("Header of imported block must exist; qed")
 							.expect("Header of imported block must exist; qed");
-						let block = BlockInfo {
+						let block_info = BlockInfo {
 							hash: header.hash(),
 							parent_hash: *header.parent_hash(),
 							number: *header.number(),
 						};
-						handle.block_imported(block).await;
+
+						if let Err(error) = block_imported(primary_chain_client, processor, &mut active_leaves, block_info).await {
+							tracing::error!(
+								target: LOG_TARGET,
+								error = ?error,
+								"Failed to process primary block"
+							);
+							break;
+						}
 					}
 					None => break,
 				}
@@ -355,7 +248,14 @@ pub async fn forward_events<PBlock, Client>(
 			s = slots.next() => {
 				match s {
 					Some(executor_slot_info) => {
-						handle.slot_arrived(executor_slot_info).await;
+						if let Err(error) = on_new_slot(primary_chain_client, &bundler, executor_slot_info).await {
+							tracing::error!(
+								target: LOG_TARGET,
+								error = ?error,
+								"Failed to submit transaction bundle"
+							);
+							break;
+						}
 					}
 					None => break,
 				}
@@ -365,187 +265,81 @@ pub async fn forward_events<PBlock, Client>(
 	}
 }
 
-/// Capacity of a signal channel between a subsystem and the overseer.
-const SIGNAL_CHANNEL_CAPACITY: usize = 64usize;
-/// The overseer.
-// TODO: temporarily suppress clippy and will be removed in the refactoring https://github.com/subspace/subspace/pull/429
-#[allow(clippy::type_complexity)]
-pub struct Overseer<PBlock, PClient, Hash>
+async fn on_new_slot<PBlock, PClient, BundlerFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	bundler: &BundlerFn,
+	executor_slot_info: ExecutorSlotInfo,
+) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	BundlerFn: Fn(
+			PHash,
+			ExecutorSlotInfo,
+		) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
+		+ Send
+		+ Sync,
+	SecondaryHash: Encode + Decode,
 {
-	primary_chain_client: Arc<PClient>,
-	overseer_config: Arc<CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>>,
-	/// A user specified addendum field.
-	leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-	/// A user specified addendum field.
-	active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-	/// Events that are sent to the overseer from the outside world.
-	events_rx: mpsc::Receiver<Event<PBlock>>,
+	let best_hash = primary_chain_client.info().best_hash;
+
+	let non_generic_best_hash =
+		PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
+
+	let opaque_bundle = match bundler(non_generic_best_hash, executor_slot_info).await {
+		Some(opaque_bundle) => opaque_bundle,
+		None => {
+			tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
+			return Ok(())
+		},
+	};
+
+	primary_chain_client
+		.runtime_api()
+		.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+
+	Ok(())
 }
 
-impl<PBlock, PClient, Hash> Overseer<PBlock, PClient, Hash>
+async fn block_imported<PBlock, PClient, ProcessorFn, SecondaryHash>(
+	primary_chain_client: &PClient,
+	processor: &ProcessorFn,
+	active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
+	block_info: BlockInfo<PBlock>,
+) -> Result<(), ApiError>
 where
 	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
+	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+	ProcessorFn: Fn(
+			(PBlock::Hash, NumberFor<PBlock>),
+			Vec<OpaqueBundle>,
+			Randomness,
+			Option<Cow<'static, [u8]>>,
+		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
 		+ Send
-		+ 'static
 		+ Sync,
-	PClient::Api: ExecutorApi<PBlock, Hash>,
-	Hash: Encode + Decode,
+	SecondaryHash: Encode + Decode,
 {
-	/// Create a new overseer.
-	pub fn new(
-		primary_chain_client: Arc<PClient>,
-		leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-		active_leaves: HashMap<PBlock::Hash, NumberFor<PBlock>>,
-		overseer_config: CollationGenerationConfig<PBlock::Hash, NumberFor<PBlock>, Hash>,
-	) -> (Self, OverseerHandle<PBlock>) {
-		let (handle, events_rx) = mpsc::channel(SIGNAL_CHANNEL_CAPACITY);
-		let overseer = Overseer {
-			primary_chain_client,
-			overseer_config: Arc::new(overseer_config),
-			leaves,
-			active_leaves,
-			events_rx,
-		};
-		(overseer, OverseerHandle::new(handle))
+	match active_leaves.entry(block_info.hash) {
+		Entry::Vacant(entry) => entry.insert(block_info.number),
+		Entry::Occupied(entry) => {
+			debug_assert_eq!(*entry.get(), block_info.number);
+			return Ok(())
+		},
+	};
+
+	if let Some(number) = active_leaves.remove(&block_info.parent_hash) {
+		debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
 	}
 
-	/// Run the `Overseer`.
-	pub async fn run(mut self) -> Result<(), ApiError> {
-		// Notify about active leaves on startup before starting the loop
-		for (hash, number) in std::mem::take(&mut self.leaves) {
-			let _ = self.active_leaves.insert(hash, number);
-			let updated_leaf = ActivatedLeaf { hash, number };
-			if let Err(error) = self.on_activated_leaf(updated_leaf).await {
-				tracing::error!(
-					target: LOG_TARGET,
-					"Collation generation processing error: {error}"
-				);
-			}
-		}
-
-		while let Some(msg) = self.events_rx.next().await {
-			match msg {
-				Event::MsgToSubsystem(message) => {
-					if let Err(error) = self.handle_message(message).await {
-						tracing::error!(
-							target: LOG_TARGET,
-							"Collation generation processing error: {error}"
-						);
-					}
-				},
-				// TODO: we still need the context of block, e.g., executor gossips no message
-				// to the primary node during the major sync.
-				Event::BlockImported(block) => {
-					self.block_imported(block).await?;
-				},
-				Event::NewSlot(slot_info) =>
-					if let Err(error) = self.on_new_slot(slot_info).await {
-						tracing::error!(
-							target: LOG_TARGET,
-							"Collation generation processing error: {error}"
-						);
-					},
-			}
-		}
-
-		Ok(())
+	if let Err(error) =
+		process_primary_block(primary_chain_client, processor, (block_info.hash, block_info.number))
+			.await
+	{
+		tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
 	}
 
-	async fn on_activated_leaf(
-		&self,
-		activated_leaf: ActivatedLeaf<PBlock>,
-	) -> Result<(), ApiError> {
-		// follow the procedure from the guide
-		// TODO: invoke this on finalized block?
-		process_primary_block(
-			Arc::clone(&self.primary_chain_client),
-			&self.overseer_config,
-			(activated_leaf.hash, activated_leaf.number),
-		)
-		.await
-	}
-
-	async fn on_new_slot(&self, slot_info: ExecutorSlotInfo) -> Result<(), ApiError> {
-		let client = &self.primary_chain_client;
-		let best_hash = client.info().best_hash;
-
-		let non_generic_best_hash =
-			PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
-
-		let opaque_bundle =
-			match (self.overseer_config.bundler)(non_generic_best_hash, slot_info).await {
-				Some(opaque_bundle) => opaque_bundle,
-				None => {
-					tracing::debug!(target: LOG_TARGET, "executor returned no bundle on bundling",);
-					return Ok(())
-				},
-			};
-
-		// TODO: Handle returned result?
-		let _ = client
-			.runtime_api()
-			.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
-
-		Ok(())
-	}
-
-	async fn handle_message(&mut self, message: ProofMessage) -> Result<(), ApiError> {
-		let client = &self.primary_chain_client;
-
-		match message {
-			ProofMessage::Fraud(fraud_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_fraud_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					fraud_proof,
-				)?;
-			},
-			ProofMessage::BundleEquivocation(bundle_equivocation_proof) => {
-				// TODO: Handle returned result?
-				let _ = client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-					&BlockId::Hash(client.info().best_hash),
-					bundle_equivocation_proof,
-				)?;
-			},
-			ProofMessage::InvalidTransaction(invalid_transaction_proof) => {
-				// TODO: Handle returned result?
-				let _ = self
-					.primary_chain_client
-					.runtime_api()
-					.submit_invalid_transaction_proof_unsigned(
-						&BlockId::Hash(client.info().best_hash),
-						invalid_transaction_proof,
-					)?;
-			},
-		}
-
-		Ok(())
-	}
-
-	async fn block_imported(&mut self, block: BlockInfo<PBlock>) -> Result<(), ApiError> {
-		match self.active_leaves.entry(block.hash) {
-			Entry::Vacant(entry) => entry.insert(block.number),
-			Entry::Occupied(entry) => {
-				debug_assert_eq!(*entry.get(), block.number);
-				return Ok(())
-			},
-		};
-
-		let updated_leaf = ActivatedLeaf { hash: block.hash, number: block.number };
-
-		if let Some(number) = self.active_leaves.remove(&block.parent_hash) {
-			debug_assert_eq!(block.number.saturating_sub(One::one()), number);
-		}
-
-		if let Err(error) = self.on_activated_leaf(updated_leaf).await {
-			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
-		}
-
-		Ok(())
-	}
+	Ok(())
 }
