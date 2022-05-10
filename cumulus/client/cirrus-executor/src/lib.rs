@@ -57,15 +57,19 @@
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 
 mod aux_schema;
-mod bundler;
+mod bundle_processor;
+mod bundle_producer;
 mod merkle_tree;
 mod overseer;
-mod processor;
 #[cfg(test)]
 mod tests;
 
 pub use crate::overseer::ExecutorSlotInfo;
-use crate::overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle};
+use crate::{
+	bundle_processor::BundleProcessor,
+	bundle_producer::BundleProducer,
+	overseer::{BlockInfo, CollationGenerationConfig, Overseer, OverseerHandle},
+};
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
@@ -84,7 +88,6 @@ use sp_core::{
 use sp_executor::{
 	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
 	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
-	SignedOpaqueBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -94,8 +97,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::{BlockNumber, Randomness};
-use subspace_runtime_primitives::Hash as PHash;
+use subspace_core_primitives::Randomness;
 use tracing::Instrument;
 
 /// The logging target.
@@ -112,14 +114,12 @@ where
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	overseer_handle: OverseerHandle<PBlock, Block::Hash>,
+	overseer_handle: OverseerHandle<PBlock>,
 	transaction_pool: Arc<TransactionPool>,
-	bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
-	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
 	is_authority: bool,
-	keystore: SyncCryptoStorePtr,
+	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -136,12 +136,10 @@ where
 			spawner: self.spawner.clone(),
 			overseer_handle: self.overseer_handle.clone(),
 			transaction_pool: self.transaction_pool.clone(),
-			bundle_sender: self.bundle_sender.clone(),
-			execution_receipt_sender: self.execution_receipt_sender.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
 			is_authority: self.is_authority,
-			keystore: self.keystore.clone(),
+			bundle_processor: self.bundle_processor.clone(),
 		}
 	}
 }
@@ -208,7 +206,81 @@ where
 	{
 		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
 
+		let bundle_producer = BundleProducer::new(
+			primary_chain_client.clone(),
+			client.clone(),
+			transaction_pool.clone(),
+			bundle_sender,
+			is_authority,
+			keystore.clone(),
+		);
+
+		let bundle_processor = BundleProcessor::new(
+			primary_chain_client.clone(),
+			primary_network.clone(),
+			client.clone(),
+			execution_receipt_sender,
+			backend.clone(),
+			is_authority,
+			keystore,
+		);
+
 		let overseer_handle = {
+			let span = tracing::Span::current();
+			let overseer_config = CollationGenerationConfig {
+				bundler: {
+					let span = span.clone();
+
+					Box::new(move |primary_hash, slot_info| {
+						let bundle_producer = bundle_producer.clone();
+						let produce_bundle_fut = bundle_producer
+							.produce_bundle(primary_hash, slot_info)
+							.instrument(span.clone());
+
+						Box::pin(async move {
+							produce_bundle_fut.await.unwrap_or_else(|error| {
+								tracing::error!(
+									target: LOG_TARGET,
+									relay_parent = ?primary_hash,
+									error = ?error,
+									"Error at producing bundle.",
+								);
+								None
+							})
+						})
+					})
+				},
+				processor: {
+					let bundle_processor = bundle_processor.clone();
+
+					Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+						let bundle_processor = bundle_processor.clone();
+						let span = span.clone();
+
+						Box::pin(async move {
+							let process_bundles_fut = bundle_processor
+								.process_bundles(
+									primary_hash,
+									bundles,
+									shuffling_seed,
+									maybe_new_runtime,
+								)
+								.instrument(span.clone());
+
+							process_bundles_fut.await.unwrap_or_else(|error| {
+								tracing::error!(
+									target: LOG_TARGET,
+									relay_parent = ?primary_hash,
+									error = ?error,
+									"Error at processing bundles.",
+								);
+								None
+							})
+						})
+					})
+				},
+			};
+
 			let (overseer, overseer_handle) = Overseer::new(
 				primary_chain_client.clone(),
 				active_leaves
@@ -216,6 +288,7 @@ where
 					.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
 					.collect(),
 				Default::default(),
+				overseer_config,
 			);
 
 			{
@@ -250,56 +323,18 @@ where
 			overseer_handle
 		};
 
-		let mut executor = Self {
+		Ok(Self {
 			primary_chain_client,
 			primary_network,
 			client,
 			spawner,
 			overseer_handle,
 			transaction_pool,
-			bundle_sender,
-			execution_receipt_sender,
 			backend,
 			code_executor,
 			is_authority,
-			keystore,
-		};
-
-		let span = tracing::Span::current();
-		let config = CollationGenerationConfig {
-			bundler: {
-				let executor = executor.clone();
-				let span = span.clone();
-
-				Box::new(move |primary_hash, slot_info| {
-					let executor = executor.clone();
-					Box::pin(
-						executor.produce_bundle(primary_hash, slot_info).instrument(span.clone()),
-					)
-				})
-			},
-			processor: {
-				let executor = executor.clone();
-
-				Box::new(move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-					let executor = executor.clone();
-					Box::pin(
-						executor
-							.process_bundles(
-								primary_hash,
-								bundles,
-								shuffling_seed,
-								maybe_new_runtime,
-							)
-							.instrument(span.clone()),
-					)
-				})
-			},
-		};
-
-		executor.overseer_handle.initialize(config).await;
-
-		Ok(executor)
+			bundle_processor,
+		})
 	}
 
 	/// Checks the status of the given block hash in the Parachain.
@@ -525,42 +560,27 @@ where
 		}
 	}
 
-	pub async fn produce_bundle(
-		self,
-		primary_hash: PHash,
-		slot_info: ExecutorSlotInfo,
-	) -> Option<SignedOpaqueBundle> {
-		match self.produce_bundle_impl(primary_hash, slot_info).await {
-			Ok(res) => res,
-			Err(err) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					relay_parent = ?primary_hash,
-					error = ?err,
-					"Error at producing bundle.",
-				);
-				None
-			},
-		}
-	}
-
 	/// Processes the bundles extracted from the primary block.
+	// TODO: Remove this whole method, `self.bundle_processor` as a property and fix
+	// `set_new_code_should_work` test to do an actual runtime upgrade
+	#[doc(hidden)]
 	pub async fn process_bundles(
 		self,
-		primary_hash: PHash,
+		primary_info: (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
 	) -> Option<SignedExecutionReceipt<Block::Hash>> {
 		match self
-			.process_bundles_impl(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+			.bundle_processor
+			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
 			Ok(res) => res,
 			Err(err) => {
 				tracing::error!(
 					target: LOG_TARGET,
-					relay_parent = ?primary_hash,
+					?primary_info,
 					error = ?err,
 					"Error at processing bundles.",
 				);
@@ -737,23 +757,7 @@ where
 			})
 		}
 
-		let block_number = TryInto::<BlockNumber>::try_into(
-			self.primary_chain_client
-				.block_number_from_id(&BlockId::Hash(primary_hash))?
-				.ok_or_else(|| {
-					sp_blockchain::Error::Backend(format!(
-						"Primary block number not found for {:?}",
-						execution_receipt.primary_hash
-					))
-				})?,
-		)
-		.unwrap_or_else(|_error| {
-			panic!(
-				"Block number must be exactly the same size for both primary and secondary chains; qed"
-			)
-		})
-		.into();
-
+		let block_number = execution_receipt.primary_number.into();
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.

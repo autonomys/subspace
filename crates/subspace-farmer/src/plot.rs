@@ -865,8 +865,7 @@ impl<T: PlotFile> PlotWorker<T> {
                             result_sender,
                         } => {
                             let result = try {
-                                let mut buffer = Vec::with_capacity(count as usize * PIECE_SIZE);
-                                buffer.resize(buffer.capacity(), 0);
+                                let mut buffer = vec![0u8; count as usize * PIECE_SIZE];
                                 self.plot.read(piece_offset, &mut buffer)?;
                                 buffer
                             };

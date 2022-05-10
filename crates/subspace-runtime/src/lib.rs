@@ -491,9 +491,14 @@ impl pallet_offences_subspace::Config for Runtime {
     type OnOffenceHandler = Subspace;
 }
 
+parameter_types! {
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
+}
+
 impl pallet_executor::Config for Runtime {
     type Event = Event;
     type SecondaryHash = cirrus_primitives::Hash;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {
@@ -685,7 +690,7 @@ pub type SignedExtra = (
     frame_system::CheckSpecVersion<Runtime>,
     frame_system::CheckTxVersion<Runtime>,
     frame_system::CheckGenesis<Runtime>,
-    frame_system::CheckEra<Runtime>,
+    frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,

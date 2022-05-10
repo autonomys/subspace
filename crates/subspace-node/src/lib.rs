@@ -17,18 +17,21 @@
 //! Subspace Node library.
 
 mod chain_spec;
+mod chain_spec_utils;
 mod import_blocks_from_dsn;
-mod secondary_chain_cli;
+mod secondary_chain;
 
-use crate::chain_spec::SubspaceChainSpec;
+pub use crate::chain_spec::{ChainSpecExtensions, ConsensusChainSpec};
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::secondary_chain_cli::SecondaryChainCli;
-use crate::serde_json::Value;
+pub use crate::secondary_chain::chain_spec::ExecutionChainSpec;
+pub use crate::secondary_chain::cli::SecondaryChainCli;
 use clap::Parser;
-use sc_cli::SubstrateCli;
+use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
 use sc_telemetry::serde_json;
+use std::io::Write;
+use std::{fs, io};
 
 /// Executor dispatch for subspace runtime
 pub struct ExecutorDispatch;
@@ -50,6 +53,68 @@ impl NativeExecutionDispatch for ExecutorDispatch {
 
     fn native_version() -> sc_executor::NativeVersion {
         subspace_runtime::native_version()
+    }
+}
+
+/// This `purge-chain` command used to remove both primary and secondary chains.
+#[derive(Debug, Parser)]
+pub struct PurgeChainCmd {
+    /// The base struct of the purge-chain command.
+    #[clap(flatten)]
+    pub base: sc_cli::PurgeChainCmd,
+}
+
+impl PurgeChainCmd {
+    /// Run the purge command
+    pub fn run(
+        &self,
+        primary_chain_config: sc_service::Configuration,
+        secondary_chain_config: sc_service::Configuration,
+    ) -> sc_cli::Result<()> {
+        let db_paths = vec![
+            secondary_chain_config
+                .database
+                .path()
+                .expect("No custom database used here; qed"),
+            primary_chain_config
+                .database
+                .path()
+                .expect("No custom database used here; qed"),
+        ];
+
+        if !self.base.yes {
+            for db_path in &db_paths {
+                println!("{}", db_path.display());
+            }
+            print!("Are you sure to remove? [y/N]: ");
+            io::stdout().flush().expect("failed to flush stdout");
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+
+            match input.chars().next() {
+                Some('y') | Some('Y') => {}
+                _ => {
+                    println!("Aborted");
+                    return Ok(());
+                }
+            }
+        }
+
+        for db_path in &db_paths {
+            match fs::remove_dir_all(&db_path) {
+                Ok(_) => {
+                    println!("{:?} removed.", &db_path);
+                }
+                Err(ref err) if err.kind() == io::ErrorKind::NotFound => {
+                    eprintln!("{:?} did not exist.", &db_path);
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -79,26 +144,18 @@ pub enum Subcommand {
     ImportBlocksFromDsn(ImportBlocksFromDsnCmd),
 
     /// Remove the whole chain.
-    PurgeChain(sc_cli::PurgeChainCmd),
+    PurgeChain(PurgeChainCmd),
 
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
 
     /// Run executor sub-commands.
     #[clap(subcommand)]
-    Executor(cirrus_node::cli::Subcommand),
+    Executor(secondary_chain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
-}
-
-/// Command used to run a Subspace node.
-#[derive(Debug, Parser)]
-pub struct RunCmd {
-    /// Base command to run a node.
-    #[clap(flatten)]
-    pub base: sc_cli::RunCmd,
 }
 
 /// Subspace Cli.
@@ -164,22 +221,21 @@ impl SubstrateCli for Cli {
             "testnet-compiled" => chain_spec::testnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
             "" | "local" => chain_spec::local_config()?,
-            path => SubspaceChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+            path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
-        if !self.run.base.network_params.bootnodes.is_empty() {
+        if !self.run.network_params.bootnodes.is_empty() {
             let mut chain_spec_value =
-                serde_json::from_str::<'_, Value>(&chain_spec.as_json(true)?)
-                    .map_err(|error| error.to_string())?;
+                serde_json::to_value(&chain_spec).map_err(|error| error.to_string())?;
             if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
                 if let Some(boot_nodes) = boot_nodes.as_array_mut() {
                     boot_nodes.clear();
                 }
             }
             chain_spec =
-                SubspaceChainSpec::from_json_bytes(chain_spec_value.to_string().into_bytes())?;
+                serde_json::from_value(chain_spec_value).map_err(|error| error.to_string())?;
         }
         Ok(Box::new(chain_spec))
     }

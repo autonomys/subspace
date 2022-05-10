@@ -63,7 +63,6 @@ sp-session = { git = "https://github.com/paritytech/substrate", rev = "c4f3d0286
 sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 # Cumulus dependencies
-cumulus-client-cli = { path = "../client/cli" }
 cumulus-client-consensus-relay-chain = { path = "../client/consensus/relay-chain" }
 cirrus-client-executor = { path = "../client/cirrus-executor" }
 cirrus-client-executor-gossip = { path = "../client/executor-gossip" }

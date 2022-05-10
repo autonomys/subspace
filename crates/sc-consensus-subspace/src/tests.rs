@@ -125,6 +125,9 @@ type SubspaceBlockImport = PanickingBlockImport<
     >,
 >;
 
+type SubspaceProposal =
+    Proposal<TestBlock, TransactionFor<substrate_test_runtime_client::Backend, TestBlock>, ()>;
+
 #[derive(Clone)]
 struct DummyFactory {
     client: Arc<TestClient>,
@@ -153,16 +156,7 @@ impl DummyProposer {
     fn propose_with(
         &mut self,
         pre_digests: Digest,
-    ) -> future::Ready<
-        Result<
-            Proposal<
-                TestBlock,
-                sc_client_api::TransactionFor<substrate_test_runtime_client::Backend, TestBlock>,
-                (),
-            >,
-            sp_blockchain::Error,
-        >,
-    > {
+    ) -> future::Ready<Result<SubspaceProposal, sp_blockchain::Error>> {
         let block_builder = self
             .factory
             .client
@@ -200,9 +194,8 @@ impl DummyProposer {
 
 impl Proposer<TestBlock> for DummyProposer {
     type Error = sp_blockchain::Error;
-    type Transaction =
-        sc_client_api::TransactionFor<substrate_test_runtime_client::Backend, TestBlock>;
-    type Proposal = future::Ready<Result<Proposal<TestBlock, Self::Transaction, ()>, Self::Error>>;
+    type Transaction = TransactionFor<substrate_test_runtime_client::Backend, TestBlock>;
+    type Proposal = future::Ready<Result<SubspaceProposal, Self::Error>>;
     type ProofRecording = DisableProofRecording;
     type Proof = ();
 

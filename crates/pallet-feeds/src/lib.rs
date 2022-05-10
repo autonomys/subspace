@@ -123,8 +123,9 @@ mod pallet {
     pub enum Event<T: Config> {
         /// New object was added.
         ObjectSubmitted {
-            metadata: FeedMetadata,
+            feed_id: T::FeedId,
             who: T::AccountId,
+            metadata: FeedMetadata,
             object_size: u64,
         },
         /// New feed was created.
@@ -289,8 +290,9 @@ mod pallet {
             });
 
             Self::deposit_event(Event::ObjectSubmitted {
-                metadata,
+                feed_id,
                 who: owner,
+                metadata,
                 object_size,
             });
 

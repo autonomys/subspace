@@ -21,14 +21,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 cirrus-node = { version = "0.1.0", path = "../../cumulus/node" }
+cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
 clap = { version = "3.1.8", features = ["derive"] }
-cumulus-client-cli = { version = "0.1.0", path = "../../cumulus/client/cli" }
 dirs = "4.0.0"
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 futures = "0.3.21"
 log = "0.4.16"
 parity-scale-codec = "3.1.2"
+sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d", features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -61,5 +62,6 @@ do-not-enforce-cost-of-storage = [
 ]
 runtime-benchmarks = [
 	"cirrus-node/runtime-benchmarks",
+	"cirrus-runtime/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 ]

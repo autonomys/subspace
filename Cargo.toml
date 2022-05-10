@@ -3,9 +3,7 @@ resolver = "2"
 members = [
     "crates/*",
     "cumulus/client/block-builder",
-    "cumulus/client/cli",
     "cumulus/client/cirrus-executor",
-    "cumulus/client/consensus/common",
     "cumulus/client/consensus/relay-chain",
     "cumulus/client/executor-gossip",
     "cumulus/pallets/executive",
@@ -87,5 +85,3 @@ codegen-units = 1
 [patch.crates-io]
 # TODO: Remove once chacha20poly1305 0.10 appears in libp2p's dependencies
 chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
-# TODO: Remove once https://github.com/rust-rse/reed-solomon-erasure/pull/98 is released
-reed-solomon-erasure = { git = "https://github.com/nazar-pc/reed-solomon-erasure", rev = "b6596ee10904faff3b68bbb3a82faa1d8ab05a7b" }

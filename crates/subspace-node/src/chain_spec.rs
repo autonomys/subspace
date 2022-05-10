@@ -16,18 +16,23 @@
 
 //! Subspace chain configurations.
 
-use frame_support::traits::Get;
-use sc_service::{ChainType, Properties};
-use sc_telemetry::TelemetryEndpoints;
-use sp_core::crypto::Ss58Codec;
-use sp_core::{sr25519, Pair, Public};
-use sp_executor::ExecutorId;
-use sp_runtime::traits::{IdentifyAccount, Verify};
-use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SS58Prefix, SudoConfig, SystemConfig,
-    VestingConfig, DECIMAL_PLACES, MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+    SerializableChainSpec,
 };
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
+use crate::secondary_chain;
+use crate::secondary_chain::chain_spec::ExecutionChainSpec;
+use sc_chain_spec::ChainSpecExtension;
+use sc_service::ChainType;
+use sc_telemetry::TelemetryEndpoints;
+use serde::{Deserialize, Serialize};
+use sp_core::crypto::Ss58Codec;
+use sp_executor::ExecutorId;
+use subspace_runtime::{
+    BalancesConfig, ExecutorConfig, GenesisConfig, SudoConfig, SystemConfig, VestingConfig,
+    MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
+};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
@@ -61,33 +66,22 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
-/// The `ChainSpec` parameterized for the subspace runtime.
-pub type SubspaceChainSpec = sc_service::GenericChainSpec<GenesisConfig>;
-
-/// Generate a crypto pair from seed.
-pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
-    TPublic::Pair::from_string(&format!("//{}", seed), None)
-        .expect("static values are valid; qed")
-        .public()
+/// The extensions for the [`ConsensusChainSpec`].
+#[derive(Clone, Serialize, Deserialize, ChainSpecExtension)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ChainSpecExtensions {
+    /// Chain spec of execution chain.
+    pub execution_chain_spec: ExecutionChainSpec,
 }
 
-type AccountPublic = <Signature as Verify>::Signer;
+/// The `ChainSpec` parameterized for the consensus runtime.
+pub type ConsensusChainSpec = SerializableChainSpec<GenesisConfig, ChainSpecExtensions>;
 
-/// Generate an account ID from seed.
-pub fn get_account_id_from_seed(seed: &str) -> AccountId {
-    AccountPublic::from(get_from_seed::<sr25519::Public>(seed)).into_account()
+pub fn testnet_config_json() -> Result<ConsensusChainSpec, String> {
+    ConsensusChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
 }
-
-pub fn testnet_config_json() -> Result<SubspaceChainSpec, String> {
-    SubspaceChainSpec::from_json_bytes(TESTNET_CHAIN_SPEC)
-}
-pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
-    let mut properties = Properties::new();
-    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
-    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
-    properties.insert("tokenSymbol".into(), "tSSC".into());
-
-    Ok(SubspaceChainSpec::from_genesis(
+pub fn testnet_config_compiled() -> Result<ConsensusChainSpec, String> {
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace testnet",
         // ID
@@ -142,7 +136,7 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
                 vesting_schedules,
                 (
                     get_account_id_from_seed("Alice"),
-                    get_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
             )
         },
@@ -162,21 +156,18 @@ pub fn testnet_config_compiled() -> Result<SubspaceChainSpec, String> {
         Some("subspace-substrate"),
         None,
         // Properties
-        Some(properties),
+        Some(chain_spec_properties()),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::local_testnet_config(),
+        },
     ))
 }
 
-pub fn dev_config() -> Result<SubspaceChainSpec, String> {
-    let mut properties = Properties::new();
-    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
-    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
-    properties.insert("tokenSymbol".into(), "tSSC".into());
-
+pub fn dev_config() -> Result<ConsensusChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
-    Ok(SubspaceChainSpec::from_genesis(
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace development",
         // ID
@@ -197,7 +188,7 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
                 vec![],
                 (
                     get_account_id_from_seed("Alice"),
-                    get_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
             )
         },
@@ -209,21 +200,18 @@ pub fn dev_config() -> Result<SubspaceChainSpec, String> {
         None,
         None,
         // Properties
-        Some(properties),
+        Some(chain_spec_properties()),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::development_config(),
+        },
     ))
 }
 
-pub fn local_config() -> Result<SubspaceChainSpec, String> {
-    let mut properties = Properties::new();
-    properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
-    properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
-    properties.insert("tokenSymbol".into(), "tSSC".into());
-
+pub fn local_config() -> Result<ConsensusChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
-    Ok(SubspaceChainSpec::from_genesis(
+    Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace local",
         // ID
@@ -252,7 +240,7 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
                 vec![],
                 (
                     get_account_id_from_seed("Alice"),
-                    get_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
             )
         },
@@ -264,9 +252,11 @@ pub fn local_config() -> Result<SubspaceChainSpec, String> {
         None,
         None,
         // Properties
-        Some(properties),
+        Some(chain_spec_properties()),
         // Extensions
-        None,
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::local_testnet_config(),
+        },
     ))
 }
 

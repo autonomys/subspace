@@ -28,7 +28,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{Randomness, Sha256Hash};
+use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
@@ -43,6 +43,11 @@ mod app {
 
 /// An executor authority signature.
 pub type ExecutorSignature = app::Signature;
+
+/// An executor authority keypair. Necessarily equivalent to the schnorrkel public key used in
+/// the main executor module. If that ever changes, then this must, too.
+#[cfg(feature = "std")]
+pub type ExecutorPair = app::Pair;
 
 /// An executor authority identifier.
 pub type ExecutorId = app::Public;
@@ -166,9 +171,12 @@ impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
     }
 }
 
+// TODO: use generic instead of the concrete type PHash, BlockNumber.
 /// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct ExecutionReceipt<Hash> {
+    /// Primary block number.
+    pub primary_number: BlockNumber,
     /// Primary block hash.
     pub primary_hash: PHash,
     /// Secondary block hash.

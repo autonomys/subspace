@@ -587,7 +587,7 @@ pub fn construct_extrinsic(
 		frame_system::CheckSpecVersion::<runtime::Runtime>::new(),
 		frame_system::CheckTxVersion::<runtime::Runtime>::new(),
 		frame_system::CheckGenesis::<runtime::Runtime>::new(),
-		frame_system::CheckEra::<runtime::Runtime>::from(if immortal {
+		frame_system::CheckMortality::<runtime::Runtime>::from(if immortal {
 			generic::Era::Immortal
 		} else {
 			generic::Era::mortal(period, current_block)

@@ -876,7 +876,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
- "substrate-test-runtime",
+ "subspace-test-runtime",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "thiserror",
@@ -909,7 +909,6 @@ dependencies = [
  "cirrus-primitives",
  "cirrus-runtime",
  "clap 3.1.8",
- "cumulus-client-cli",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -1519,30 +1518,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cumulus-client-cli"
-version = "0.1.0"
-dependencies = [
- "clap 3.1.8",
- "sc-cli",
- "sc-service",
-]
-
-[[package]]
-name = "cumulus-client-consensus-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "sc-consensus",
- "sp-consensus",
- "sp-runtime",
-]
-
-[[package]]
 name = "cumulus-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cumulus-client-consensus-common",
  "sc-consensus",
  "sp-blockchain",
  "sp-consensus",
@@ -5022,8 +5001,10 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-executor",
+ "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -6070,7 +6051,8 @@ dependencies = [
 [[package]]
 name = "reed-solomon-erasure"
 version = "5.0.2"
-source = "git+https://github.com/nazar-pc/reed-solomon-erasure?rev=b6596ee10904faff3b68bbb3a82faa1d8ab05a7b#b6596ee10904faff3b68bbb3a82faa1d8ab05a7b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521342afeca28aec72cefa21941c640549a8d61d9dd13710da63a1c975b78dba"
 dependencies = [
  "cc",
  "libc",
@@ -8563,14 +8545,15 @@ name = "subspace-node"
 version = "0.1.0"
 dependencies = [
  "cirrus-node",
+ "cirrus-runtime",
  "clap 3.1.8",
- "cumulus-client-cli",
  "dirs",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.21",
  "log",
  "parity-scale-codec",
+ "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
