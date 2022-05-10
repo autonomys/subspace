@@ -31,6 +31,21 @@ pub(crate) async fn farm(
     }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
+    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
+        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
+        Ok(None) => log::debug!("Failed to increase file limit"),
+        Err(err) => {
+            let err = if let Some(err) = err.downcast_ref::<&str>() {
+                *err
+            } else if let Some(err) = err.downcast_ref::<String>() {
+                err
+            } else {
+                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
+            };
+            log::warn!("Failed to increase file limit: {err}")
+        }
+    }
+
     let base_directory = crate::utils::get_path(custom_path);
 
     info!("Connecting to node at {}", node_rpc_url);
