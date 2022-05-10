@@ -32,6 +32,7 @@ frame-support = { version = "4.0.0-dev", default-features = false, git = "https:
 sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sp-objects = { version = "0.1.0", default-features = false, path = "../../crates/sp-objects" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-babe = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-subspace" }
@@ -90,6 +91,7 @@ std = [
 	"serde",
 	"sp-session/std",
 	"sp-api/std",
+	"sp-objects/std",
 	"sp-runtime/std",
 	"sp-externalities/std",
 	"sp-state-machine/std",

@@ -1,11 +1,13 @@
 use codec::Encode;
 use frame_support::sp_io;
 use hex_literal::hex;
-use sp_consensus_subspace::runtime_decl_for_SubspaceApi::SubspaceApi;
+use sp_objects::runtime_decl_for_ObjectsApi::ObjectsApi;
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subspace_core_primitives::{crypto, objects::BlockObjectMapping, Sha256Hash};
 use subspace_runtime::{
     Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
 };
+use subspace_runtime_primitives::Hash;
 
 #[test]
 fn object_mapping() {
@@ -35,6 +37,14 @@ fn object_mapping() {
                 function: Call::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data1.clone(),
+                }),
+            },
+            // assuming this call fails, we will remove the 3rd hash from calls
+            UncheckedExtrinsic {
+                signature: None,
+                function: Call::Feeds(pallet_feeds::Call::put {
+                    feed_id: 0,
+                    object: data0.clone(),
                 }),
             },
             UncheckedExtrinsic {
@@ -80,6 +90,10 @@ fn object_mapping() {
         ],
     };
 
+    let mut successful_calls = get_successful_calls(block.clone());
+    assert_eq!(successful_calls.len(), 8);
+    // remove third call signifying that it failed
+    successful_calls.remove(2);
     let encoded_block = block.encode();
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed
@@ -90,7 +104,7 @@ fn object_mapping() {
         )
         .expect("create feed should not fail");
 
-        Runtime::extract_block_object_mapping(block)
+        Runtime::extract_block_object_mapping(block, successful_calls)
     });
 
     // Expect all 7 objects to be mapped.
@@ -136,6 +150,36 @@ fn object_mapping() {
     );
 }
 
+fn get_successful_calls(block: Block) -> Vec<Hash> {
+    block
+        .extrinsics
+        .iter()
+        .filter_map(|ext| match &ext.function {
+            Call::Feeds(call) => Some(vec![call.encode()]),
+            Call::Utility(call) => match call {
+                pallet_utility::Call::batch { calls }
+                | pallet_utility::Call::batch_all { calls } => Some(
+                    calls
+                        .iter()
+                        .filter_map(|call| match &call {
+                            Call::Feeds(call) => Some(call.encode()),
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                pallet_utility::Call::as_derivative { call, .. } => match call.as_ref() {
+                    Call::Feeds(call) => Some(vec![call.encode()]),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .flatten()
+        .map(|call_encoded| BlakeTwo256::hash(call_encoded.as_slice()))
+        .collect()
+}
+
 fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
     crypto::sha256_hash_pair(feed_id.encode(), data)
 }
@@ -159,6 +203,7 @@ fn grandpa_object_mapping() {
             }),
         }],
     };
+    let successful_calls = get_successful_calls(block.clone());
     let encoded_block = block.encode();
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed
@@ -169,7 +214,7 @@ fn grandpa_object_mapping() {
         )
         .expect("create feed should not fail");
 
-        Runtime::extract_block_object_mapping(block)
+        Runtime::extract_block_object_mapping(block, successful_calls)
     });
 
     assert_eq!(objects.len(), 2);

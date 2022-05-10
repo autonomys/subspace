@@ -42,6 +42,7 @@ use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::SubspaceApi;
 use sp_executor::ExecutorApi;
+use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -143,6 +144,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block>
+        + ObjectsApi<Block>
         + TaggedTransactionQueue<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
@@ -314,6 +316,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block>
+        + ObjectsApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentApi<Block, Balance>,

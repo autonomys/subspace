@@ -34,7 +34,6 @@ use sp_api::{BlockT, HeaderT};
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
-use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash};
 
 /// Key type for Subspace pallet.
@@ -229,8 +228,5 @@ sp_api::decl_runtime_apis! {
 
         /// Returns `Vec<RootBlock>` if a given extrinsic has them.
         fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;
-
-        /// Extract block object mapping for a given block
-        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping;
     }
 }

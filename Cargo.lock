@@ -5026,7 +5026,7 @@ dependencies = [
 
 [[package]]
 name = "pallet-grandpa-finality-verifier"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "finality-grandpa",
@@ -6592,6 +6592,7 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-io",
+ "sp-objects",
  "sp-runtime",
  "sp-timestamp",
  "sp-tracing",
@@ -8065,6 +8066,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-objects"
+version = "0.1.0"
+dependencies = [
+ "sp-api",
+ "sp-std",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
 name = "sp-offchain"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=c4f3d028621edb293d2c423516221aa396f76a2d#c4f3d028621edb293d2c423516221aa396f76a2d"
@@ -8614,6 +8625,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-inherents",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8674,6 +8686,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8766,6 +8779,7 @@ dependencies = [
  "sp-core",
  "sp-executor",
  "sp-inherents",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
@@ -8926,6 +8940,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-keyring",
+ "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-runtime-interface",

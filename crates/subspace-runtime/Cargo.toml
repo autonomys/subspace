@@ -27,7 +27,7 @@ orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https:/
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
-pallet-grandpa-finality-verifier = { version = "1.0.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
+pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
@@ -45,6 +45,7 @@ sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
 sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d", default-features = false, version = "4.0.0-dev"}
+sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
@@ -103,6 +104,7 @@ std = [
 	"sp-core/std",
 	"sp-executor/std",
 	"sp-inherents/std",
+	"sp-objects/std",
 	"sp-offchain/std",
 	"sp-runtime/std",
 	"sp-session/std",
