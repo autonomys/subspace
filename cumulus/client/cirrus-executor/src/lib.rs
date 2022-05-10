@@ -60,25 +60,25 @@ mod aux_schema;
 mod bundle_processor;
 mod bundle_producer;
 mod merkle_tree;
-mod overseer;
 #[cfg(test)]
 mod tests;
+mod worker;
 
-pub use crate::overseer::ExecutorSlotInfo;
 use crate::{
-	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, overseer::BlockInfo,
+	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, worker::BlockInfo,
 };
 use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockStatus, SelectChain};
+use sp_consensus_slots::Slot;
 use sp_core::{
 	traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed},
 	H256,
@@ -95,8 +95,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::Randomness;
-use tracing::Instrument;
+use subspace_core_primitives::{Randomness, Tag};
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -109,13 +108,11 @@ where
 {
 	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
 	primary_chain_client: Arc<PClient>,
-	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	transaction_pool: Arc<TransactionPool>,
 	backend: Arc<Backend>,
 	code_executor: Arc<E>,
-	is_authority: bool,
 	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 }
 
@@ -128,13 +125,11 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			primary_chain_client: self.primary_chain_client.clone(),
-			primary_network: self.primary_network.clone(),
 			client: self.client.clone(),
 			spawner: self.spawner.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			backend: self.backend.clone(),
 			code_executor: self.code_executor.clone(),
-			is_authority: self.is_authority,
 			bundle_processor: self.bundle_processor.clone(),
 		}
 	}
@@ -198,9 +193,9 @@ where
 		SE: SpawnEssentialNamed,
 		SC: SelectChain<PBlock>,
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-		NSNS: Stream<Item = ExecutorSlotInfo> + Send + 'static,
+		NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
 	{
-		let active_leaves = active_leaves(&*primary_chain_client, select_chain).await?;
+		let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
 		let bundle_producer = BundleProducer::new(
 			primary_chain_client.clone(),
@@ -213,7 +208,7 @@ where
 
 		let bundle_processor = BundleProcessor::new(
 			primary_chain_client.clone(),
-			primary_network.clone(),
+			primary_network,
 			client.clone(),
 			execution_receipt_sender,
 			backend.clone(),
@@ -221,88 +216,27 @@ where
 			keystore,
 		);
 
-		{
-			let span = tracing::Span::current();
-			let primary_chain_client = primary_chain_client.clone();
-			let bundle_processor = bundle_processor.clone();
-
-			spawn_essential.spawn_essential_blocking(
-				"collation-generation-subsystem",
-				Some("collation-generation-subsystem"),
-				async move {
-					overseer::forward_events(
-						primary_chain_client.as_ref(),
-						{
-							let span = span.clone();
-
-							move |primary_hash, slot_info| {
-								let bundle_producer = bundle_producer.clone();
-								let produce_bundle_fut = bundle_producer
-									.produce_bundle(primary_hash, slot_info)
-									.instrument(span.clone());
-
-								Box::pin(async move {
-									produce_bundle_fut.await.unwrap_or_else(|error| {
-										tracing::error!(
-											target: LOG_TARGET,
-											relay_parent = ?primary_hash,
-											error = ?error,
-											"Error at producing bundle.",
-										);
-										None
-									})
-								})
-							}
-						},
-						{
-							&move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-								let bundle_processor = bundle_processor.clone();
-								let span = span.clone();
-
-								Box::pin(async move {
-									let process_bundles_fut = bundle_processor
-										.process_bundles(
-											primary_hash,
-											bundles,
-											shuffling_seed,
-											maybe_new_runtime,
-										)
-										.instrument(span.clone());
-
-									process_bundles_fut.await.unwrap_or_else(|error| {
-										tracing::error!(
-											target: LOG_TARGET,
-											relay_parent = ?primary_hash,
-											error = ?error,
-											"Error at processing bundles.",
-										);
-										None
-									})
-								})
-							}
-						},
-						active_leaves
-							.into_iter()
-							.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
-							.collect(),
-						Box::pin(imported_block_notification_stream.fuse()),
-						Box::pin(new_slot_notification_stream.fuse()),
-					)
-					.await
-				}
-				.boxed(),
-			);
-		}
+		spawn_essential.spawn_essential_blocking(
+			"executor-worker",
+			None,
+			worker::start_worker(
+				primary_chain_client.clone(),
+				bundle_producer,
+				bundle_processor.clone(),
+				imported_block_notification_stream,
+				new_slot_notification_stream,
+				active_leaves,
+			)
+			.boxed(),
+		);
 
 		Ok(Self {
 			primary_chain_client,
-			primary_network,
 			client,
 			spawner,
 			transaction_pool,
 			backend,
 			code_executor,
-			is_authority,
 			bundle_processor,
 		})
 	}
@@ -510,10 +444,7 @@ where
 		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
 	) -> Result<(), GossipMessageError> {
 		loop {
-			match crate::aux_schema::load_execution_receipt::<Block, _>(
-				&*self.client,
-				secondary_block_hash,
-			) {
+			match aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
 				Ok(Some(local_receipt)) =>
 					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
 				Ok(None) => {
@@ -527,16 +458,14 @@ where
 						let local_block_hash = self
 							.client
 							.expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
-						let local_receipt_result = aux_schema::load_execution_receipt::<Block, _>(
-							&*self.client,
-							local_block_hash,
-						)?
-						.ok_or_else(|| {
-							sp_blockchain::Error::Backend(format!(
-								"Execution receipt not found for {:?}",
-								local_block_hash
-							))
-						});
+						let local_receipt_result =
+							aux_schema::load_execution_receipt(&*self.client, local_block_hash)?
+								.ok_or_else(|| {
+									sp_blockchain::Error::Backend(format!(
+										"Execution receipt not found for {:?}",
+										local_block_hash
+									))
+								});
 						return tx
 							.send(local_receipt_result)
 							.map_err(|_| GossipMessageError::SendError)
@@ -750,13 +679,13 @@ where
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
-		if aux_schema::target_receipt_is_pruned::<Block>(best_number, block_number) {
+		if aux_schema::target_receipt_is_pruned(best_number, block_number) {
 			return Ok(Action::Empty)
 		}
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
-			crate::aux_schema::load_execution_receipt::<Block, _>(&*self.client, block_hash)?
+			aux_schema::load_execution_receipt(&*self.client, block_hash)?
 		{
 			local_receipt
 		} else {

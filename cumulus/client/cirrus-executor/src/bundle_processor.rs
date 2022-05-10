@@ -9,7 +9,8 @@ use sc_consensus::{
 };
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
 use sp_executor::{
@@ -117,10 +118,7 @@ impl<Block, PBlock, Client, PClient, Backend>
 where
 	Block: BlockT,
 	PBlock: BlockT,
-	Client: sp_blockchain::HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ AuxStore
-		+ ProvideRuntimeApi<Block>,
+	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -129,7 +127,7 @@ where
 		>,
 	for<'b> &'b Client: BlockImport<
 		Block,
-		Transaction = sp_api::TransactionFor<Client, Block>,
+		Transaction = TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
 	PClient: ProvideRuntimeApi<PBlock>,
@@ -158,7 +156,7 @@ where
 	}
 
 	pub(crate) async fn process_bundles(
-		&self,
+		self,
 		(primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
