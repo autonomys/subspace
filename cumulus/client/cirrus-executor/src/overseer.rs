@@ -143,7 +143,7 @@ where
 
 	let best_hash = primary_chain_client.info().best_hash;
 
-	let () = primary_chain_client
+	primary_chain_client
 		.runtime_api()
 		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
 
@@ -295,7 +295,7 @@ where
 		},
 	};
 
-	let () = primary_chain_client
+	primary_chain_client
 		.runtime_api()
 		.submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
 
