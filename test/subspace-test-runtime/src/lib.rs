@@ -59,7 +59,6 @@ use sp_std::borrow::Cow;
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_std::vec::IntoIter;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -638,11 +637,11 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     }
 }
 
-fn extract_feeds_block_object_mapping(
+fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
     base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
-    successful_calls: &mut Peekable<IntoIter<Hash>>,
+    successful_calls: &mut Peekable<I>,
 ) {
     let call_hash = successful_calls.peek();
     match call_hash {
@@ -680,12 +679,12 @@ fn extract_object_store_block_object_mapping(
     }
 }
 
-fn extract_utility_block_object_mapping(
+fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut Peekable<IntoIter<Hash>>,
+    successful_calls: &mut Peekable<I>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -740,12 +739,12 @@ fn extract_utility_block_object_mapping(
     }
 }
 
-fn extract_call_block_object_mapping(
+fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &Call,
     recursion_depth_left: u16,
-    successful_calls: &mut Peekable<IntoIter<Hash>>,
+    successful_calls: &mut Peekable<I>,
 ) {
     // Add enum variant to the base offset.
     base_offset += 1;
