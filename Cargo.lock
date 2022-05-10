@@ -8462,6 +8462,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-executor"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-executor",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-farmer"
 version = "0.3.0"
 dependencies = [
@@ -8685,6 +8699,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
+ "sp-externalities",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
@@ -8693,6 +8708,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "subspace-core-primitives",
+ "subspace-executor",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",

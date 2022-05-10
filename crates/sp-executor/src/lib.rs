@@ -435,3 +435,67 @@ pub mod fraud_proof_ext {
         }
     }
 }
+
+pub mod executor_ext {
+    use parity_scale_codec::{Decode, Encode};
+    use scale_info::TypeInfo;
+    use sp_externalities::ExternalitiesExt;
+    use sp_runtime::RuntimeDebug;
+    use sp_runtime_interface::pass_by::PassBy;
+    use sp_runtime_interface::runtime_interface;
+    use sp_std::vec::Vec;
+
+    /// Errors that can occur while checking the execution receipt.
+    #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+    pub enum ExecutionReceiptError {
+        /// Failed to decode the encoded [`crate::SignedExecutionReceipt`].
+        Decode,
+        /// Blockchain error.
+        Blockchain,
+        /// Error occurred while calling a runtime api.
+        RuntimeApi,
+        /// The block at which execution receipt was created is unknown to the history.
+        UnknownBlock,
+        /// Primary block number specified in the execution receipt is not same with the one in the header.
+        UnexpectedPrimaryNumber,
+    }
+
+    impl PassBy for ExecutionReceiptError {
+        type PassBy = sp_runtime_interface::pass_by::Codec<Self>;
+    }
+
+    /// Externalities for checking various executor-related business.
+    pub trait Externalities: Send {
+        /// Check if the execution receipt is able to be included.
+        fn check_execution_receipt(
+            &self,
+            encoded_execution_receipt: Vec<u8>,
+        ) -> Result<(), ExecutionReceiptError>;
+    }
+
+    #[cfg(feature = "std")]
+    sp_externalities::decl_extension! {
+        /// An extension to verify the execution receipt, bundle, etc.
+        pub struct ExecutorExt(Box<dyn Externalities>);
+    }
+
+    #[cfg(feature = "std")]
+    impl ExecutorExt {
+        pub fn new<E: Externalities + 'static>(executor: E) -> Self {
+            Self(Box::new(executor))
+        }
+    }
+
+    #[runtime_interface]
+    pub trait Executor {
+        /// Check if the execution receipt is able to be included.
+        fn check_execution_receipt(
+            &mut self,
+            encoded_execution_receipt: Vec<u8>,
+        ) -> Result<(), ExecutionReceiptError> {
+            self.extension::<ExecutorExt>()
+                .expect("No `Executor` associated for the current context!")
+                .check_execution_receipt(encoded_execution_receipt)
+        }
+    }
+}

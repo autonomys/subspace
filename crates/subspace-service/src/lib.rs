@@ -24,6 +24,7 @@ use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::mpsc;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
+use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{ExecutorProvider, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
@@ -41,6 +42,7 @@ use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::SubspaceApi;
+use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_executor::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -106,6 +108,38 @@ impl From<Configuration> for SubspaceConfiguration {
             base,
             force_new_slot_notifications: false,
         }
+    }
+}
+
+struct Extensions<Block, C, B, Exec, Spawn, SecondaryHash> {
+    fraud_proof: subspace_fraud_proof::ProofVerifier<Block, C, B, Exec, Spawn, SecondaryHash>,
+    executor: subspace_executor::ExecutorExtension<Block, C, SecondaryHash>,
+}
+
+impl<Block, C, B, Exec, Spawn, SecondaryHash> ExtensionsFactory
+    for Extensions<Block, C, B, Exec, Spawn, SecondaryHash>
+where
+    Block: BlockT,
+    C: sp_blockchain::HeaderBackend<Block>
+        + sp_api::ProvideRuntimeApi<Block>
+        + Send
+        + Sync
+        + 'static,
+    C::Api: ExecutorApi<Block, SecondaryHash>,
+    B: sc_client_api::backend::Backend<Block> + 'static,
+    Exec: CodeExecutor + Clone + Send + Sync,
+    Spawn: SpawnNamed + Clone + Send + Sync + 'static,
+    SecondaryHash: sp_core::Encode + sp_core::Decode + Send + Sync + 'static,
+{
+    fn extensions_for(&self, _: sp_core::offchain::Capabilities) -> sp_externalities::Extensions {
+        let mut exts = sp_externalities::Extensions::new();
+        exts.register(sp_executor::fraud_proof_ext::FraudProofExt::new(
+            self.fraud_proof.clone(),
+        ));
+        exts.register(sp_executor::executor_ext::ExecutorExt::new(
+            self.executor.clone(),
+        ));
+        exts
     }
 }
 
@@ -181,9 +215,14 @@ where
         executor,
         task_manager.spawn_handle(),
     );
+    let executor_extension = subspace_executor::ExecutorExtension::new(client.clone());
+    let extensions = Extensions {
+        fraud_proof: proof_verifier,
+        executor: executor_extension,
+    };
     client
         .execution_extensions()
-        .set_extensions_factory(Box::new(proof_verifier));
+        .set_extensions_factory(Box::new(extensions));
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager

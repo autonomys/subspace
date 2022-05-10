@@ -20,6 +20,7 @@
 #[cfg(test)]
 mod tests;
 
+use codec::Encode;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
@@ -87,6 +88,8 @@ mod pallet {
         UnexpectedExecutionReceiptSigner,
         /// The parent execution receipt is unknown.
         MissingParentReceipt,
+        ///
+        InvalidExecutionReceipt,
     }
 
     #[pallet::event]
@@ -421,6 +424,17 @@ impl<T: Config> Pallet<T> {
         if !signer.verify(&execution_receipt.hash(), signature) {
             return Err(Error::<T>::BadExecutionReceiptSignature);
         }
+
+        // TODO: activate it once we want to test the executor feature.
+        //
+        // Disable this check as it will break the current testnet runtime
+        // upgrade(https://github.com/subspace/subspace/pull/353).
+        //
+        // if let Err(error) =
+        // sp_executor::executor_ext::executor::check_execution_receipt(execution_receipt.encode())
+        // {
+        // return Err(Error::<T>::InvalidExecutionReceipt);
+        // }
 
         // TODO: upgrade once the trusted executor system is upgraded.
         let expected_executor = Self::executor()
