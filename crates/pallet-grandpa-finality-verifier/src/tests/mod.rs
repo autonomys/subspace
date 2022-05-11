@@ -6,8 +6,8 @@ use crate::chain::OpaqueExtrinsic;
 use crate::{
     chain::Chain,
     grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification},
-    initialize, validate_finalized_block, BestKnownFinalized, CurrentAuthoritySet, Error as ErrorP,
-    InitializationData, LastImportedBlock,
+    initialize, validate_finalized_block, CurrentAuthoritySet, Error as ErrorP, InitializationData,
+    LatestDescendant, OldestKnownParent, ValidationCheckPoint,
 };
 use codec::{Decode, Encode};
 use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
@@ -223,8 +223,9 @@ fn init_with_origin(chain_id: ChainId, number: u32) -> Result<InitializationData
             .into_iter()
             .for_each(|digest| best_finalized.digest.push(digest));
     }
-    let init_data = crate::InitializationData {
-        genesis_hash: test_header::<TestHeader>(0).hash().into(),
+    let init_data = InitializationData {
+        oldest_parent_height: 0,
+        oldest_parent_hash: test_header::<TestHeader>(0).hash().into(),
         best_known_finalized_header: best_finalized.encode(),
         set_id: 1,
     };
@@ -280,21 +281,22 @@ fn init_storage_entries_are_correctly_initialized() {
     run_test(|| {
         let chain_id: ChainId = 1;
         let InitializationData {
-            genesis_hash,
+            oldest_parent_height,
+            oldest_parent_hash: genesis_hash,
             best_known_finalized_header,
             ..
         } = init_with_origin(chain_id, 0).unwrap();
-        assert_eq!(
-            LastImportedBlock::<TestRuntime>::get(chain_id),
-            (0u64, genesis_hash)
-        );
         assert_eq!(
             CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
             authority_list()
         );
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            best_known_finalized_header
+            <ValidationCheckPoint<TestRuntime>>::get(chain_id),
+            (0, best_known_finalized_header)
+        );
+        assert_eq!(
+            <OldestKnownParent<TestRuntime>>::get(chain_id),
+            (oldest_parent_height, genesis_hash)
         );
     })
 }
@@ -308,15 +310,15 @@ fn successfully_imports_header_with_valid_finality() {
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
         let header = test_header::<TestHeader>(1);
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            header.encode()
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (1, header.hash().0)
         );
 
         assert_ok!(submit_valid_finality_proof(chain_id, 2));
         let header = test_header::<TestHeader>(2);
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            header.encode()
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (2, header.hash().0)
         );
     })
 }
@@ -332,10 +334,10 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
 
         // import block 1
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
-        // best is still 2
+        let header = test_header::<TestHeader>(1);
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            best_known_finalized_header
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (1, header.hash().0)
         );
 
         // import block 2
@@ -345,10 +347,9 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
             header.clone(),
             make_default_justification(&header)
         ));
-        // best is still 2
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            best_known_finalized_header
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (2, header.hash().0)
         );
 
         // import block 3
@@ -360,10 +361,9 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
             header.clone(),
             make_default_justification(&header)
         ));
-        // best is 3
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            header.encode()
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (3, header.hash().0)
         );
     })
 }
@@ -452,8 +452,9 @@ fn disallows_invalid_authority_set() {
             .encode(),
         ));
         genesis.digest = digest;
-        let init_data = crate::InitializationData {
-            genesis_hash: genesis.hash().into(),
+        let init_data = InitializationData {
+            oldest_parent_height: 0,
+            oldest_parent_hash: genesis.hash().into(),
             best_known_finalized_header: genesis.encode(),
             set_id: 1,
         };
@@ -530,8 +531,8 @@ fn importing_header_enacts_new_authority_set() {
 
         // Make sure that our header is the best finalized
         assert_eq!(
-            <BestKnownFinalized<TestRuntime>>::get(chain_id),
-            header.encode()
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (1, header.hash().into())
         );
 
         // Make sure that the authority set actually changed upon importing our header

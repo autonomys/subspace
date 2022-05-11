@@ -49,8 +49,10 @@ pub use pallet::*;
 #[derive(Default, Debug, Encode, Decode, Clone, PartialEq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct InitializationData {
+    /// Oldest known parent height
+    pub oldest_parent_height: BlockHeight,
     /// Genesis hash of the chain
-    pub genesis_hash: BlockHash,
+    pub oldest_parent_hash: BlockHash,
     /// Scale encoded best finalized header we know.
     pub best_known_finalized_header: Vec<u8>,
     /// The ID of the current authority set
@@ -84,15 +86,20 @@ pub mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(PhantomData<T>);
 
-    /// Best known finalized header of a Chain.
+    /// The point after which the block validation begins
     #[pallet::storage]
-    pub(super) type BestKnownFinalized<T: Config> =
-        StorageMap<_, Identity, T::ChainId, Vec<u8>, ValueQuery>;
+    pub(super) type ValidationCheckPoint<T: Config> =
+        StorageMap<_, Identity, T::ChainId, (BlockHeight, Vec<u8>), ValueQuery>;
 
-    /// Latest known height of the chain.
+    /// Oldest known parent
     #[pallet::storage]
-    pub(super) type LastImportedBlock<T: Config> =
+    pub(super) type OldestKnownParent<T: Config> =
         StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), ValueQuery>;
+
+    /// Latest known descendant
+    #[pallet::storage]
+    pub(super) type LatestDescendant<T: Config> =
+        StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), OptionQuery>;
 
     /// The current GRANDPA Authority set for a given Chain
     #[pallet::storage]
@@ -130,21 +137,24 @@ pub mod pallet {
         init_params: InitializationData,
     ) -> DispatchResult {
         let InitializationData {
-            genesis_hash,
+            oldest_parent_height,
+            oldest_parent_hash,
             best_known_finalized_header,
             set_id,
         } = init_params;
         let header_decoded = C::decode_header::<T>(best_known_finalized_header.as_slice())?;
         let change =
             find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
-        // Set the best known finalized header
-        BestKnownFinalized::<T>::insert(chain_id, best_known_finalized_header);
+        let block_height = (*header_decoded.number()).into();
+        // Set the validation point
+        ValidationCheckPoint::<T>::insert(chain_id, (block_height, best_known_finalized_header));
         let authority_set = AuthoritySet {
             authorities: change.next_authorities,
             set_id,
         };
-        LastImportedBlock::<T>::insert(chain_id, (0, genesis_hash));
         CurrentAuthoritySet::<T>::insert(chain_id, authority_set);
+        // set the oldest known parent
+        OldestKnownParent::<T>::insert(chain_id, (oldest_parent_height, oldest_parent_hash));
         Ok(())
     }
 
@@ -152,19 +162,11 @@ pub mod pallet {
         chain_id: T::ChainId,
         object: &[u8],
     ) -> Result<(C::Hash, C::BlockNumber), DispatchError> {
+        // basic block validation
         let block = C::decode_block::<T>(object)?;
         let number = *block.block.header.number();
         let hash = block.block.header.hash();
 
-        // get last imported block height and hash
-        let (parent_number, parent_hash) = LastImportedBlock::<T>::get(chain_id);
-
-        // block validation
-        ensure!(number.into() == parent_number + 1, Error::<T>::InvalidBlock);
-        ensure!(
-            (*block.block.header.parent_hash()).into() == parent_hash,
-            Error::<T>::InvalidBlock
-        );
         let extrinsics_root = C::Hasher::ordered_trie_root(
             block.block.extrinsics.iter().map(Encode::encode).collect(),
             sp_runtime::StateVersion::V0,
@@ -174,19 +176,59 @@ pub mod pallet {
             Error::<T>::InvalidBlock
         );
 
-        // double check the finalized header before importing the block
-        let best_finalized_header =
-            C::decode_header::<T>(BestKnownFinalized::<T>::get(chain_id).as_slice())?;
-        let best_finalized_number = *best_finalized_header.number();
-        if number == best_finalized_number {
+        // if the block is the parent of the oldest known parent
+        // we update our state with its parent and import it
+        let (oldest_known_parent_height, oldest_known_parent_hash) =
+            OldestKnownParent::<T>::get(chain_id);
+        if oldest_known_parent_height == number.into() {
             ensure!(
-                best_finalized_header == block.block.header,
+                oldest_known_parent_hash == hash.into(),
+                Error::<T>::InvalidBlock
+            );
+
+            // update our oldest known parent if we have not reached block 0 already
+            // Note: this means, once we reach block 0, it can be imported times since the parent is not updated
+            if oldest_known_parent_height > 0 {
+                OldestKnownParent::<T>::insert(
+                    chain_id,
+                    (
+                        oldest_known_parent_height - 1,
+                        (*block.block.header.parent_hash()).into(),
+                    ),
+                )
+            }
+
+            return Ok((hash, number));
+        }
+
+        // get last imported block height and hash
+        let (parent_number, parent_hash) = match LatestDescendant::<T>::get(chain_id) {
+            Some((parent_number, parent_hash)) => (parent_number, parent_hash),
+            None => {
+                // this is only None for the first block that is a descendant to known parent
+                // so we return the parent hash and height so that we can process this
+                (oldest_known_parent_height, oldest_known_parent_hash)
+            }
+        };
+
+        // block height must be always increasing
+        ensure!(number.into() == parent_number + 1, Error::<T>::InvalidBlock);
+        ensure!(
+            (*block.block.header.parent_hash()).into() == parent_hash,
+            Error::<T>::InvalidBlock
+        );
+
+        // double check the validation header before importing the block
+        let (validation_block_height, validation_header) = ValidationCheckPoint::<T>::get(chain_id);
+        if number.into() == validation_block_height {
+            ensure!(
+                validation_header == block.block.header.encode(),
                 Error::<T>::InvalidHeader
             );
         }
 
-        // if the target header is a descendent of our best known finalized header, validate the justification and import
-        if number > best_finalized_number {
+        // if the target header is a descendent of validation block, validate the justification
+        if number.into() > validation_block_height {
             let justification = block
                 .justifications
                 .ok_or(Error::<T>::MissingJustification)?
@@ -214,12 +256,10 @@ pub mod pallet {
 
             // Update any next authority set if any
             try_enact_authority_change::<T, C>(chain_id, &block.block.header, set_id)?;
-
-            // Update best finalized header
-            BestKnownFinalized::<T>::insert(chain_id, block.block.header.encode());
         }
 
-        LastImportedBlock::<T>::insert(chain_id, (number.into(), hash.into()));
+        // update the latest descendant
+        LatestDescendant::<T>::insert(chain_id, (number.into(), hash.into()));
         Ok((hash, number))
     }
 
@@ -291,9 +331,9 @@ pub mod pallet {
 
     /// purges the on chain state of a given chain
     pub fn purge<T: Config>(chain_id: T::ChainId) -> DispatchResult {
-        BestKnownFinalized::<T>::remove(chain_id);
+        ValidationCheckPoint::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
-        LastImportedBlock::<T>::remove(chain_id);
+        LatestDescendant::<T>::remove(chain_id);
         Ok(())
     }
 }
