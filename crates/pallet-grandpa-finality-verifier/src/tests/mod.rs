@@ -439,6 +439,13 @@ fn successfully_imports_in_reverse_order_with_oldest_parent_as_validation_point(
 
             assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
         }
+
+        // cannot import 0 block again
+        let header = test_header::<TestHeader>(0);
+        assert_err!(
+            submit_finality_proof(chain_id, header, None),
+            ErrorP::<TestRuntime>::InvalidBlock
+        );
     })
 }
 

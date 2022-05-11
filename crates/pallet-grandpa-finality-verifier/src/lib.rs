@@ -91,6 +91,11 @@ pub mod pallet {
     pub(super) type ValidationCheckPoint<T: Config> =
         StorageMap<_, Identity, T::ChainId, (BlockHeight, Vec<u8>), ValueQuery>;
 
+    /// Signals if a given chain has imported genesis block
+    #[pallet::storage]
+    pub(super) type GenesisImported<T: Config> =
+        StorageMap<_, Identity, T::ChainId, bool, ValueQuery>;
+
     /// Oldest known parent
     #[pallet::storage]
     pub(super) type OldestKnownParent<T: Config> =
@@ -196,7 +201,6 @@ pub mod pallet {
             );
 
             // update our oldest known parent if we have not reached block 0 already
-            // Note: this means, once we reach block 0, it can be imported times since the parent is not updated
             if oldest_known_parent_height > 0 {
                 OldestKnownParent::<T>::insert(
                     chain_id,
@@ -205,6 +209,14 @@ pub mod pallet {
                         (*block.block.header.parent_hash()).into(),
                     ),
                 )
+            } else {
+                // chain has reached genesis.
+                // import this block and update the state so that further genesis block will fail when tried to import again
+                ensure!(
+                    !GenesisImported::<T>::get(chain_id),
+                    Error::<T>::InvalidBlock
+                );
+                GenesisImported::<T>::insert(chain_id, true);
             }
 
             return Ok((hash, number));
