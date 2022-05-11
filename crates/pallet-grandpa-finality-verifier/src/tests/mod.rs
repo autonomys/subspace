@@ -269,8 +269,23 @@ fn submit_finality_proof(
         justifications: Some((GRANDPA_ENGINE_ID, justification.encode()).into()),
     };
 
-    println!("Hash: {:?}", block.block.header.hash());
-    print!("Block: {:?}", block.encode());
+    validate_finalized_block::<TestRuntime, TestFeedChain>(chain_id, block.encode().as_slice())?;
+    Ok(())
+}
+
+// TODO: reuse the above func
+fn submit_finality_proof_without_justification(
+    chain_id: ChainId,
+    header: TestHeader,
+) -> DispatchResult {
+    let block = SignedBlock {
+        block: generic::Block::<TestHeader, OpaqueExtrinsic> {
+            header,
+            extrinsics: valid_extrinsics(),
+        },
+        justifications: None,
+    };
+
     validate_finalized_block::<TestRuntime, TestFeedChain>(chain_id, block.encode().as_slice())?;
     Ok(())
 }
@@ -382,6 +397,69 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
             <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
             (3, header.hash().0)
         );
+    })
+}
+
+#[test]
+fn successfully_imports_in_reverse_order_without_grandpa_validation() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let mut header = test_header::<TestHeader>(5);
+        valid_digests()
+            .into_iter()
+            .for_each(|digest| header.digest.push(digest));
+        let init_data = InitializationData {
+            oldest_parent_height: 5,
+            oldest_parent_hash: header.hash().into(),
+            best_known_finalized_header: header.encode(),
+            set_id: 1,
+        };
+        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
+        assert_ok!(res);
+        assert_eq!(
+            OldestKnownParent::<TestRuntime>::get(chain_id),
+            (5, header.hash().0)
+        );
+
+        // import block 5
+        assert_ok!(submit_finality_proof_without_justification(
+            chain_id,
+            header.clone()
+        ));
+        assert_eq!(
+            OldestKnownParent::<TestRuntime>::get(chain_id),
+            (4, header.parent_hash.into())
+        );
+        assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
+
+        // import block 3 should not work
+        let header = test_header::<TestHeader>(3);
+        assert_err!(
+            submit_finality_proof_without_justification(chain_id, header),
+            ErrorP::<TestRuntime>::InvalidBlock
+        );
+
+        // import block 4, 3, 2, 1, 0
+        for h in (0..=4).rev() {
+            let header = test_header::<TestHeader>(h);
+            assert_ok!(submit_finality_proof_without_justification(
+                chain_id,
+                header.clone()
+            ));
+            if h == 0 {
+                assert_eq!(
+                    OldestKnownParent::<TestRuntime>::get(chain_id),
+                    (0_u64, header.hash().into())
+                );
+            } else {
+                assert_eq!(
+                    OldestKnownParent::<TestRuntime>::get(chain_id),
+                    ((h - 1) as u64, header.parent_hash.into())
+                );
+            }
+
+            assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
+        }
     })
 }
 
