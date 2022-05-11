@@ -849,6 +849,11 @@ where
 {
 	let best_block = select_chain.best_chain().await?;
 
+	// No leaves if starting from the genesis.
+	if best_block.number().is_zero() {
+		return Ok(Vec::new())
+	}
+
 	let mut leaves = select_chain
 		.leaves()
 		.await

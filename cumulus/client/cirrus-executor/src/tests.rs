@@ -45,6 +45,12 @@ async fn test_executor_full_node_catching_up() {
 	// dave is able to sync blocks.
 	futures::future::join(charlie.wait_for_blocks(10), dave.wait_for_blocks(10)).await;
 
+	assert_eq!(
+		alice.client.info().best_number,
+		charlie.client.info().best_number,
+		"Primary chain and secondary chain must be on the same best height"
+	);
+
 	let charlie_block_hash = charlie.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
 
 	let dave_block_hash = dave.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
