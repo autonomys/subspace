@@ -126,6 +126,8 @@ pub mod pallet {
         FailedDecodingJustifications,
         /// The header is already finalized
         InvalidHeader,
+        /// The validation checkpoint is invalid
+        InvalidValidationCheckPoint,
         /// The scheduled authority set change found in the header is unsupported by the pallet.
         ///
         /// This is the case for non-standard (e.g forced) authority set changes.
@@ -143,11 +145,18 @@ pub mod pallet {
             set_id,
         } = init_params;
         let header_decoded = C::decode_header::<T>(best_known_finalized_header.as_slice())?;
+        let block_height = (*header_decoded.number()).into();
+        ensure!(
+            block_height >= oldest_parent_height,
+            Error::<T>::InvalidValidationCheckPoint
+        );
+
         let change =
             find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
-        let block_height = (*header_decoded.number()).into();
+
         // Set the validation point
         ValidationCheckPoint::<T>::insert(chain_id, (block_height, best_known_finalized_header));
+
         let authority_set = AuthoritySet {
             authorities: change.next_authorities,
             set_id,

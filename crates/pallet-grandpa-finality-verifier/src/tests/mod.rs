@@ -231,7 +231,6 @@ fn init_with_origin(chain_id: ChainId, number: u32) -> Result<InitializationData
     };
 
     initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice())?;
-    println!("Init data: {:?}", init_data.encode());
     Ok(init_data)
 }
 
@@ -298,6 +297,24 @@ fn init_storage_entries_are_correctly_initialized() {
             <OldestKnownParent<TestRuntime>>::get(chain_id),
             (oldest_parent_height, genesis_hash)
         );
+    })
+}
+
+#[test]
+fn init_validation_check_point_is_invalid() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let best_finalized = test_header::<TestHeader>(1);
+
+        let init_data = InitializationData {
+            oldest_parent_height: 2,
+            oldest_parent_hash: test_header::<TestHeader>(2).hash().into(),
+            best_known_finalized_header: best_finalized.encode(),
+            set_id: 1,
+        };
+
+        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
+        assert_err!(res, ErrorP::<TestRuntime>::InvalidValidationCheckPoint)
     })
 }
 
