@@ -28,7 +28,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{Randomness, Sha256Hash};
+use subspace_core_primitives::{Randomness, Sha256Hash, BlockNumber};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
@@ -301,6 +301,8 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
 pub struct FraudProof {
+    /// Parent number.
+    pub parent_number: BlockNumber,
     /// Parent hash of the block at which the invalid execution occurred.
     ///
     /// Runtime code for this block's execution is retrieved on top of the parent block.
