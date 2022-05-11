@@ -252,38 +252,23 @@ fn valid_extrinsics_root<H: Header>() -> H::Hash {
 fn submit_valid_finality_proof(chain_id: ChainId, header: u8) -> Result<TestHeader, DispatchError> {
     let header = test_header::<TestHeader>(header.into());
     let justification = make_default_justification(&header);
-    submit_finality_proof(chain_id, header.clone(), justification)?;
+    submit_finality_proof(chain_id, header.clone(), Some(justification))?;
     Ok(header)
 }
 
 fn submit_finality_proof(
     chain_id: ChainId,
     header: TestHeader,
-    justification: GrandpaJustification<TestHeader>,
+    maybe_justification: Option<GrandpaJustification<TestHeader>>,
 ) -> DispatchResult {
+    let justification =
+        maybe_justification.map(|justification| (GRANDPA_ENGINE_ID, justification.encode()).into());
     let block = SignedBlock {
         block: generic::Block::<TestHeader, OpaqueExtrinsic> {
             header,
             extrinsics: valid_extrinsics(),
         },
-        justifications: Some((GRANDPA_ENGINE_ID, justification.encode()).into()),
-    };
-
-    validate_finalized_block::<TestRuntime, TestFeedChain>(chain_id, block.encode().as_slice())?;
-    Ok(())
-}
-
-// TODO: reuse the above func
-fn submit_finality_proof_without_justification(
-    chain_id: ChainId,
-    header: TestHeader,
-) -> DispatchResult {
-    let block = SignedBlock {
-        block: generic::Block::<TestHeader, OpaqueExtrinsic> {
-            header,
-            extrinsics: valid_extrinsics(),
-        },
-        justifications: None,
+        justifications: justification,
     };
 
     validate_finalized_block::<TestRuntime, TestFeedChain>(chain_id, block.encode().as_slice())?;
@@ -377,7 +362,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
         assert_ok!(submit_finality_proof(
             chain_id,
             header.clone(),
-            make_default_justification(&header)
+            Some(make_default_justification(&header))
         ));
         assert_eq!(
             <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
@@ -391,7 +376,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
         assert_ok!(submit_finality_proof(
             chain_id,
             header.clone(),
-            make_default_justification(&header)
+            Some(make_default_justification(&header))
         ));
         assert_eq!(
             <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
@@ -422,10 +407,7 @@ fn successfully_imports_in_reverse_order_without_grandpa_validation() {
         );
 
         // import block 5
-        assert_ok!(submit_finality_proof_without_justification(
-            chain_id,
-            header.clone()
-        ));
+        assert_ok!(submit_finality_proof(chain_id, header.clone(), None,));
         assert_eq!(
             OldestKnownParent::<TestRuntime>::get(chain_id),
             (4, header.parent_hash.into())
@@ -435,17 +417,14 @@ fn successfully_imports_in_reverse_order_without_grandpa_validation() {
         // import block 3 should not work
         let header = test_header::<TestHeader>(3);
         assert_err!(
-            submit_finality_proof_without_justification(chain_id, header),
+            submit_finality_proof(chain_id, header, None),
             ErrorP::<TestRuntime>::InvalidBlock
         );
 
         // import block 4, 3, 2, 1, 0
         for h in (0..=4).rev() {
             let header = test_header::<TestHeader>(h);
-            assert_ok!(submit_finality_proof_without_justification(
-                chain_id,
-                header.clone()
-            ));
+            assert_ok!(submit_finality_proof(chain_id, header.clone(), None));
             if h == 0 {
                 assert_eq!(
                     OldestKnownParent::<TestRuntime>::get(chain_id),
@@ -477,7 +456,7 @@ fn rejects_justification_that_skips_authority_set_transition() {
         let justification = make_justification_for_header(params);
 
         assert_err!(
-            submit_finality_proof(chain_id, header, justification),
+            submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::InvalidJustification
         );
     })
@@ -494,7 +473,7 @@ fn does_not_import_header_with_invalid_finality_proof() {
         justification.round = 42;
 
         assert_err!(
-            submit_finality_proof(chain_id, header, justification),
+            submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::InvalidJustification
         );
     })
@@ -564,7 +543,7 @@ fn disallows_invalid_authority_set() {
         let justification = make_default_justification(&header);
 
         assert_err!(
-            submit_finality_proof(chain_id, header, justification),
+            submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::InvalidAuthoritySet
         );
     })
@@ -586,11 +565,10 @@ fn importing_header_ensures_that_chain_is_extended() {
 }
 
 fn change_log(delay: u32) -> Digest {
-    let consensus_log =
-        ConsensusLog::<u32>::ScheduledChange(sp_finality_grandpa::ScheduledChange {
-            next_authorities: vec![(ALICE.into(), 1), (BOB.into(), 1)],
-            delay,
-        });
+    let consensus_log = ConsensusLog::<u32>::ScheduledChange(ScheduledChange {
+        next_authorities: vec![(ALICE.into(), 1), (BOB.into(), 1)],
+        delay,
+    });
 
     Digest {
         logs: vec![DigestItem::Consensus(
@@ -621,7 +599,7 @@ fn importing_header_enacts_new_authority_set() {
         assert_ok!(submit_finality_proof(
             chain_id,
             header.clone(),
-            justification
+            Some(justification)
         ));
 
         // Make sure that our header is the best finalized
@@ -657,7 +635,7 @@ fn importing_header_rejects_header_with_scheduled_change_delay() {
 
         // Should not be allowed to import this header
         assert_err!(
-            submit_finality_proof(chain_id, header, justification),
+            submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::UnsupportedScheduledChange
         );
     })
@@ -666,7 +644,7 @@ fn importing_header_rejects_header_with_scheduled_change_delay() {
 fn forced_change_log(delay: u32) -> Digest {
     let consensus_log = ConsensusLog::<u32>::ForcedChange(
         delay,
-        sp_finality_grandpa::ScheduledChange {
+        ScheduledChange {
             next_authorities: vec![(ALICE.into(), 1), (BOB.into(), 1)],
             delay,
         },
@@ -696,7 +674,7 @@ fn importing_header_rejects_header_with_forced_changes() {
 
         // Should not be allowed to import this header
         assert_err!(
-            submit_finality_proof(chain_id, header, justification),
+            submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::UnsupportedScheduledChange
         );
     })
