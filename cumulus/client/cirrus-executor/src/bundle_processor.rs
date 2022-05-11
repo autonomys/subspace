@@ -1,3 +1,4 @@
+use crate::SignedExecutionReceiptFor;
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -21,7 +22,7 @@ use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
-	RuntimeAppPublic, SaturatedConversion,
+	RuntimeAppPublic,
 };
 use std::{
 	borrow::Cow,
@@ -31,7 +32,6 @@ use std::{
 	sync::Arc,
 };
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Hash as PHash;
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -86,7 +86,8 @@ where
 	primary_chain_client: Arc<PClient>,
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	client: Arc<Client>,
-	execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
+	execution_receipt_sender:
+		Arc<TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>>,
 	backend: Arc<Backend>,
 	is_authority: bool,
 	keystore: SyncCryptoStorePtr,
@@ -138,7 +139,9 @@ where
 		primary_chain_client: Arc<PClient>,
 		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 		client: Arc<Client>,
-		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
+		execution_receipt_sender: Arc<
+			TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
+		>,
 		backend: Arc<Backend>,
 		is_authority: bool,
 		keystore: SyncCryptoStorePtr,
@@ -161,7 +164,10 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<SignedExecutionReceipt<Block::Hash>>, sp_blockchain::Error> {
+	) -> Result<
+		Option<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+		sp_blockchain::Error,
+	> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -258,15 +264,14 @@ where
 		);
 
 		let execution_receipt = ExecutionReceipt {
-			primary_number: primary_number.saturated_into(),
-			primary_hash: PHash::decode(&mut primary_hash.encode().as_slice())
-				.expect("Primary block hash must be the correct type; qed"),
+			primary_number,
+			primary_hash,
 			secondary_hash: header_hash,
 			trace,
 			trace_root,
 		};
 
-		crate::aux_schema::write_execution_receipt::<_, Block>(
+		crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
 			&*self.client,
 			header_hash,
 			header_number,

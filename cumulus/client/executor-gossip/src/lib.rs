@@ -11,10 +11,11 @@ use sc_network_gossip::{
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
 use sp_executor::{SignedBundle, SignedExecutionReceipt};
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::{
 	collections::HashSet,
 	fmt::Debug,
+	marker::PhantomData,
 	sync::Arc,
 	time::{Duration, Instant},
 };
@@ -47,19 +48,26 @@ fn topic<Block: BlockT>() -> Block::Hash {
 ///
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
-pub enum GossipMessage<Block: BlockT> {
+pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
 	Bundle(SignedBundle<Block::Extrinsic>),
-	ExecutionReceipt(SignedExecutionReceipt<Block::Hash>),
+	ExecutionReceipt(SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
 }
 
-impl<Block: BlockT> From<SignedBundle<Block::Extrinsic>> for GossipMessage<Block> {
+impl<PBlock: BlockT, Block: BlockT> From<SignedBundle<Block::Extrinsic>>
+	for GossipMessage<PBlock, Block>
+{
 	fn from(bundle: SignedBundle<Block::Extrinsic>) -> Self {
 		Self::Bundle(bundle)
 	}
 }
 
-impl<Block: BlockT> From<SignedExecutionReceipt<Block::Hash>> for GossipMessage<Block> {
-	fn from(execution_receipt: SignedExecutionReceipt<Block::Hash>) -> Self {
+impl<PBlock: BlockT, Block: BlockT>
+	From<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+	for GossipMessage<PBlock, Block>
+{
+	fn from(
+		execution_receipt: SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+	) -> Self {
 		Self::ExecutionReceipt(execution_receipt)
 	}
 }
@@ -86,8 +94,9 @@ impl Action {
 }
 
 /// Handler for the messages received from the executor gossip network.
-pub trait GossipMessageHandler<Block>
+pub trait GossipMessageHandler<PBlock, Block>
 where
+	PBlock: BlockT,
 	Block: BlockT,
 {
 	/// Error type.
@@ -99,26 +108,29 @@ where
 	/// Validates and applies when an execution receipt was received.
 	fn on_execution_receipt(
 		&self,
-		execution_receipt: &SignedExecutionReceipt<Block::Hash>,
+		execution_receipt: &SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 	) -> Result<Action, Self::Error>;
 }
 
 /// Validator for the gossip messages.
-pub struct GossipValidator<Block, Executor>
+pub struct GossipValidator<PBlock, Block, Executor>
 where
+	PBlock: BlockT,
 	Block: BlockT,
-	Executor: GossipMessageHandler<Block>,
+	Executor: GossipMessageHandler<PBlock, Block>,
 {
 	topic: Block::Hash,
 	executor: Executor,
 	next_rebroadcast: Mutex<Instant>,
 	known_rebroadcasted: RwLock<HashSet<MessageHash>>,
+	_phantom_data: PhantomData<PBlock>,
 }
 
-impl<Block, Executor> GossipValidator<Block, Executor>
+impl<PBlock, Block, Executor> GossipValidator<PBlock, Block, Executor>
 where
+	PBlock: BlockT,
 	Block: BlockT,
-	Executor: GossipMessageHandler<Block>,
+	Executor: GossipMessageHandler<PBlock, Block>,
 {
 	pub fn new(executor: Executor) -> Self {
 		Self {
@@ -126,6 +138,7 @@ where
 			executor,
 			next_rebroadcast: Mutex::new(Instant::now() + REBROADCAST_AFTER),
 			known_rebroadcasted: RwLock::new(HashSet::new()),
+			_phantom_data: PhantomData::default(),
 		}
 	}
 
@@ -134,7 +147,7 @@ where
 		known_rebroadcasted.insert(twox_64(encoded_message));
 	}
 
-	fn validate_message(&self, msg: GossipMessage<Block>) -> ValidationResult<Block::Hash> {
+	fn validate_message(&self, msg: GossipMessage<PBlock, Block>) -> ValidationResult<Block::Hash> {
 		match msg {
 			GossipMessage::Bundle(bundle) => {
 				let outcome = self.executor.on_bundle(&bundle);
@@ -172,10 +185,11 @@ where
 	}
 }
 
-impl<Block, Executor> Validator<Block> for GossipValidator<Block, Executor>
+impl<PBlock, Block, Executor> Validator<Block> for GossipValidator<PBlock, Block, Executor>
 where
+	PBlock: BlockT,
 	Block: BlockT,
-	Executor: GossipMessageHandler<Block> + Send + Sync,
+	Executor: GossipMessageHandler<PBlock, Block> + Send + Sync,
 {
 	fn new_peer(
 		&self,
@@ -193,7 +207,7 @@ where
 		_sender: &PeerId,
 		mut data: &[u8],
 	) -> ValidationResult<Block::Hash> {
-		match GossipMessage::<Block>::decode(&mut data) {
+		match GossipMessage::<PBlock, Block>::decode(&mut data) {
 			Ok(msg) => {
 				tracing::debug!(target: LOG_TARGET, ?msg, "Validating incoming message");
 				self.validate_message(msg)
@@ -218,7 +232,7 @@ where
 		Box::new(move |_topic, mut data| {
 			let msg_hash = twox_64(data);
 			// TODO: can be expired due to the message itself might be too old?
-			let _msg = match GossipMessage::<Block>::decode(&mut data) {
+			let _msg = match GossipMessage::<PBlock, Block>::decode(&mut data) {
 				Ok(msg) => msg,
 				Err(_) => return true,
 			};
@@ -256,13 +270,13 @@ where
 				return do_rebroadcast
 			}
 
-			GossipMessage::<Block>::decode(&mut data).is_ok()
+			GossipMessage::<PBlock, Block>::decode(&mut data).is_ok()
 		})
 	}
 }
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<Block: BlockT, Network, Executor> {
+pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor> {
 	/// Substrate network service.
 	pub network: Network,
 	/// Executor instance.
@@ -270,16 +284,19 @@ pub struct ExecutorGossipParams<Block: BlockT, Network, Executor> {
 	/// Stream of transaction bundle produced locally.
 	pub bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
 	/// Stream of execution receipt produced locally.
-	pub execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
+	pub execution_receipt_receiver: TracingUnboundedReceiver<
+		SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+	>,
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<Block, Network, Executor>(
-	gossip_params: ExecutorGossipParams<Block, Network, Executor>,
+pub async fn start_gossip_worker<PBlock, Block, Network, Executor>(
+	gossip_params: ExecutorGossipParams<PBlock, Block, Network, Executor>,
 ) where
+	PBlock: BlockT,
 	Block: BlockT,
 	Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
-	Executor: GossipMessageHandler<Block> + Send + Sync + 'static,
+	Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
 {
 	let ExecutorGossipParams { network, executor, bundle_receiver, execution_receipt_receiver } =
 		gossip_params;

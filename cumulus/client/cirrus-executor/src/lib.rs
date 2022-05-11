@@ -91,7 +91,7 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
-	RuntimeAppPublic,
+	RuntimeAppPublic, SaturatedConversion,
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
@@ -134,6 +134,12 @@ where
 		}
 	}
 }
+
+type ExecutionReceiptFor<PBlock, Hash> =
+	ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
+
+type SignedExecutionReceiptFor<PBlock, Hash> =
+	SignedExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
 
 type TransactionFor<Backend, Block> =
 	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
@@ -183,7 +189,9 @@ where
 		spawner: Box<dyn SpawnNamed + Send + Sync>,
 		transaction_pool: Arc<TransactionPool>,
 		bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
-		execution_receipt_sender: Arc<TracingUnboundedSender<SignedExecutionReceipt<Block::Hash>>>,
+		execution_receipt_sender: Arc<
+			TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
+		>,
 		backend: Arc<Backend>,
 		code_executor: Arc<E>,
 		is_authority: bool,
@@ -441,7 +449,9 @@ where
 		&self,
 		secondary_block_hash: Block::Hash,
 		secondary_block_number: <Block::Header as HeaderT>::Number,
-		tx: crossbeam::channel::Sender<sp_blockchain::Result<ExecutionReceipt<Block::Hash>>>,
+		tx: crossbeam::channel::Sender<
+			sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
+		>,
 	) -> Result<(), GossipMessageError> {
 		loop {
 			match aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
@@ -488,7 +498,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<SignedExecutionReceipt<Block::Hash>> {
+	) -> Option<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>> {
 		match self
 			.bundle_processor
 			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
@@ -541,7 +551,8 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> GossipMessageHandler<Block>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+	GossipMessageHandler<PBlock, Block>
 	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
 	Block: BlockT,
@@ -648,7 +659,11 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		signed_execution_receipt: &SignedExecutionReceipt<Block::Hash>,
+		signed_execution_receipt: &SignedExecutionReceipt<
+			NumberFor<PBlock>,
+			PBlock::Hash,
+			Block::Hash,
+		>,
 	) -> Result<Action, Self::Error> {
 		let SignedExecutionReceipt { execution_receipt, signature, signer } =
 			signed_execution_receipt;
@@ -675,13 +690,19 @@ where
 			})
 		}
 
-		let block_number = execution_receipt.primary_number.into();
+		let primary_number = execution_receipt.primary_number;
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
-		if aux_schema::target_receipt_is_pruned(best_number, block_number) {
+		if aux_schema::target_receipt_is_pruned(
+			best_number.saturated_into(),
+			primary_number.saturated_into(),
+		) {
 			return Ok(Action::Empty)
 		}
+
+		let block_number = <NumberFor<Block>>::decode(&mut primary_number.encode().as_slice())
+			.expect("Primary number and secondary number must use the same type; qed");
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =
@@ -691,7 +712,9 @@ where
 		} else {
 			// Wait for the local execution receipt until it's ready.
 			let (tx, rx) = crossbeam::channel::bounded::<
-				sp_blockchain::Result<ExecutionReceipt<Block::Hash>>,
+				sp_blockchain::Result<
+					ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+				>,
 			>(1);
 			let executor = self.clone();
 			self.spawner.spawn(

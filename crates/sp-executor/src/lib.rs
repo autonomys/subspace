@@ -22,13 +22,13 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
+use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
@@ -171,23 +171,24 @@ impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
     }
 }
 
-// TODO: use generic instead of the concrete type PHash, BlockNumber.
 /// Receipt of state execution.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct ExecutionReceipt<Hash> {
+pub struct ExecutionReceipt<Number, Hash, SecondaryHash> {
     /// Primary block number.
-    pub primary_number: BlockNumber,
+    pub primary_number: Number,
     /// Primary block hash.
-    pub primary_hash: PHash,
+    pub primary_hash: Hash,
     /// Secondary block hash.
-    pub secondary_hash: Hash,
+    pub secondary_hash: SecondaryHash,
     /// List of storage roots collected during the block execution.
-    pub trace: Vec<Hash>,
+    pub trace: Vec<SecondaryHash>,
     /// The merkle root of `trace`.
     pub trace_root: Sha256Hash,
 }
 
-impl<Hash: Encode> ExecutionReceipt<Hash> {
+impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
+    ExecutionReceipt<Number, Hash, SecondaryHash>
+{
     /// Returns the hash of this execution receipt.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -196,16 +197,18 @@ impl<Hash: Encode> ExecutionReceipt<Hash> {
 
 /// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct SignedExecutionReceipt<Hash> {
+pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
     /// Execution receipt
-    pub execution_receipt: ExecutionReceipt<Hash>,
+    pub execution_receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
     /// Signature of the execution receipt.
     pub signature: ExecutorSignature,
     /// Signer of the signature.
     pub signer: ExecutorId,
 }
 
-impl<Hash: Encode> SignedExecutionReceipt<Hash> {
+impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
+    SignedExecutionReceipt<Number, Hash, SecondaryHash>
+{
     /// Returns the hash of inner execution receipt.
     pub fn hash(&self) -> H256 {
         self.execution_receipt.hash()
@@ -365,7 +368,7 @@ sp_api::decl_runtime_apis! {
     pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
-            execution_receipt: SignedExecutionReceipt<SecondaryHash>,
+            execution_receipt: SignedExecutionReceipt<NumberFor<Block>, Block::Hash, SecondaryHash>,
         );
 
         /// Submits the transaction bundle via an unsigned extrinsic.

@@ -57,7 +57,7 @@ use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::{
     create_runtime_str, generic,
-    traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, PostDispatchInfoOf, Zero},
+    traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero},
     transaction_validity::{
         InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
     },
@@ -1049,7 +1049,7 @@ impl_runtime_apis! {
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
-            execution_receipt: sp_executor::SignedExecutionReceipt<cirrus_primitives::Hash>,
+            execution_receipt: sp_executor::SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
         ) {
             Executor::submit_execution_receipt_unsigned(execution_receipt)
         }

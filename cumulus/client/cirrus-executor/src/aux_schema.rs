@@ -4,16 +4,16 @@ use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_executor::ExecutionReceipt;
-use sp_runtime::{
-	traits::{AtLeast32BitUnsigned, Block as BlockT, Header as HeaderT, One, Saturating},
-	SaturatedConversion,
+use sp_runtime::traits::{
+	Block as BlockT, Header as HeaderT, NumberFor, One, SaturatedConversion, Saturating,
 };
+use subspace_core_primitives::BlockNumber;
 
 const EXECUTION_RECEIPT_KEY: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
 const EXECUTION_RECEIPT_BLOCK_NUMBER: &[u8] = b"execution_receipt_block_number";
 /// Prune the execution receipts when they reach this number.
-const PRUNING_DEPTH: u32 = 1000;
+const PRUNING_DEPTH: BlockNumber = 1000;
 
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
 	(EXECUTION_RECEIPT_KEY, block_hash).encode()
@@ -35,11 +35,11 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 
 /// Write the execution receipt of a block to aux storage, optionally prune the receipts that are
 /// too old.
-pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
+pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: BlockT>(
 	backend: &Backend,
 	block_hash: Block::Hash,
 	block_number: <<Block as BlockT>::Header as HeaderT>::Number,
-	execution_receipt: &ExecutionReceipt<Block::Hash>,
+	execution_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 ) -> Result<(), sp_blockchain::Error> {
 	let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
 	let mut hashes_at_block_number =
@@ -90,32 +90,35 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT>(
 }
 
 /// Load the execution receipt associated with a block.
-pub(super) fn load_execution_receipt<Backend, Hash>(
+pub(super) fn load_execution_receipt<Backend, Hash, Number, PHash>(
 	backend: &Backend,
 	block_hash: Hash,
-) -> ClientResult<Option<ExecutionReceipt<Hash>>>
+) -> ClientResult<Option<ExecutionReceipt<Number, PHash, Hash>>>
 where
 	Backend: AuxStore,
 	Hash: Encode + Decode,
+	Number: Decode,
+	PHash: Decode,
 {
 	load_decode(backend, execution_receipt_key(block_hash).as_slice())
 }
 
-pub(super) fn target_receipt_is_pruned<Number>(current_block: Number, target_block: Number) -> bool
-where
-	Number: AtLeast32BitUnsigned,
-{
-	current_block > target_block && current_block - target_block >= PRUNING_DEPTH.saturated_into()
+pub(super) fn target_receipt_is_pruned(
+	current_block: BlockNumber,
+	target_block: BlockNumber,
+) -> bool {
+	current_block > target_block && current_block - target_block >= PRUNING_DEPTH
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use cirrus_test_service::runtime::Block;
 	use sp_core::hash::H256;
 	use subspace_runtime_primitives::{BlockNumber, Hash};
-	use subspace_test_runtime::Block;
+	use subspace_test_runtime::Block as PBlock;
 
-	type ExecutionReceipt = sp_executor::ExecutionReceipt<Hash>;
+	type ExecutionReceipt = sp_executor::ExecutionReceipt<BlockNumber, Hash, Hash>;
 
 	fn create_execution_receipt(primary_number: BlockNumber) -> ExecutionReceipt {
 		ExecutionReceipt {
@@ -147,7 +150,7 @@ mod tests {
 		let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
 		let write_receipt_at = |hash: Hash, number: BlockNumber, receipt: &ExecutionReceipt| {
-			write_execution_receipt::<_, Block>(&client, hash, number, receipt).unwrap()
+			write_execution_receipt::<_, Block, PBlock>(&client, hash, number, receipt).unwrap()
 		};
 
 		assert_eq!(receipt_start(), None);
