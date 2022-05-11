@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{BundleProcessor, BundleProducer};
+use crate::{BundleProcessor, BundleProducer, SignedExecutionReceiptFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
@@ -24,7 +24,7 @@ use sp_api::{ApiError, BlockT, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_executor::{ExecutorApi, OpaqueBundle, SignedExecutionReceipt, SignedOpaqueBundle};
+use sp_executor::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{Header as HeaderT, NumberFor, One, Saturating},
@@ -214,8 +214,12 @@ async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, Seconda
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
-		+ Send
+		) -> Pin<
+			Box<
+				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
+					+ Send,
+			>,
+		> + Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
@@ -307,8 +311,12 @@ where
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
-		+ Send
+		) -> Pin<
+			Box<
+				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
+					+ Send,
+			>,
+		> + Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
@@ -352,8 +360,12 @@ where
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<Box<dyn Future<Output = Option<SignedExecutionReceipt<SecondaryHash>>> + Send>>
-		+ Send
+		) -> Pin<
+			Box<
+				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
+					+ Send,
+			>,
+		> + Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {

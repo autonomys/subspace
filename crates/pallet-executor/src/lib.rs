@@ -37,9 +37,10 @@ mod pallet {
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionProof,
         SignedExecutionReceipt, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps};
+    use sp_runtime::traits::{
+        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps,
+    };
     use sp_std::fmt::Debug;
-    use subspace_core_primitives::BlockNumber;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -64,7 +65,7 @@ mod pallet {
 
         /// Number of execution receipts kept in the state.
         #[pallet::constant]
-        type ReceiptsPruningDepth: Get<BlockNumber>;
+        type ReceiptsPruningDepth: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -93,8 +94,8 @@ mod pallet {
     pub enum Event<T: Config> {
         /// A new execution receipt was backed.
         NewExecutionReceipt {
-            primary_number: BlockNumber,
-            primary_hash: H256,
+            primary_number: T::BlockNumber,
+            primary_hash: T::Hash,
         },
         /// A transaction bundle was included.
         TransactionBundleStored { bundle_hash: H256 },
@@ -112,7 +113,11 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_execution_receipt(
             origin: OriginFor<T>,
-            signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+            signed_execution_receipt: SignedExecutionReceipt<
+                T::BlockNumber,
+                T::Hash,
+                T::SecondaryHash,
+            >,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -132,9 +137,9 @@ mod pallet {
             let primary_number = execution_receipt.primary_number;
 
             // Execution receipt starts from the primary block #1.
-            if primary_number > 1u32 {
+            if primary_number > 1u32.into() {
                 ensure!(
-                    Receipts::<T>::get(primary_number - 1u32).is_some(),
+                    Receipts::<T>::get(primary_number - 1u32.into()).is_some(),
                     Error::<T>::MissingParentReceipt
                 );
             }
@@ -143,7 +148,7 @@ mod pallet {
             <Receipts<T>>::insert(primary_number, execution_receipt);
 
             // Remove the oldest once the receipts cache is full.
-            if let Some(to_prune) = primary_number.checked_sub(T::ReceiptsPruningDepth::get()) {
+            if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
                 Receipts::<T>::remove(to_prune);
             }
 
@@ -246,8 +251,13 @@ mod pallet {
 
     /// Mapping from the primary block number to the corresponding verified execution receipt.
     #[pallet::storage]
-    pub(super) type Receipts<T: Config> =
-        StorageMap<_, Twox64Concat, BlockNumber, ExecutionReceipt<T::SecondaryHash>, OptionQuery>;
+    pub(super) type Receipts<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        T::BlockNumber,
+        ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        OptionQuery,
+    >;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -406,7 +416,7 @@ impl<T: Config> Pallet<T> {
             execution_receipt,
             signature,
             signer,
-        }: &SignedExecutionReceipt<T::SecondaryHash>,
+        }: &SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
         if !signer.verify(&execution_receipt.hash(), signature) {
             return Err(Error::<T>::BadExecutionReceiptSignature);
@@ -466,7 +476,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
     pub fn submit_execution_receipt_unsigned(
-        signed_execution_receipt: SignedExecutionReceipt<T::SecondaryHash>,
+        signed_execution_receipt: SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) {
         let call = Call::submit_execution_receipt {
             signed_execution_receipt,

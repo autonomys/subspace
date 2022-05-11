@@ -5,37 +5,43 @@ use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_executor::{SignedBundle, SignedExecutionReceipt};
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<Block, Executor>
+pub struct GossipWorker<PBlock, Block, Executor>
 where
+	PBlock: BlockT,
 	Block: BlockT,
-	Executor: GossipMessageHandler<Block>,
+	Executor: GossipMessageHandler<PBlock, Block>,
 {
-	gossip_validator: Arc<GossipValidator<Block, Executor>>,
+	gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
 	gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 	bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
-	execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
+	execution_receipt_receiver: TracingUnboundedReceiver<
+		SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+	>,
 }
 
-impl<Block, Executor> GossipWorker<Block, Executor>
+impl<PBlock, Block, Executor> GossipWorker<PBlock, Block, Executor>
 where
+	PBlock: BlockT,
 	Block: BlockT,
-	Executor: GossipMessageHandler<Block>,
+	Executor: GossipMessageHandler<PBlock, Block>,
 {
 	pub(super) fn new(
-		gossip_validator: Arc<GossipValidator<Block, Executor>>,
+		gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
 		gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
 		bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
-		execution_receipt_receiver: TracingUnboundedReceiver<SignedExecutionReceipt<Block::Hash>>,
+		execution_receipt_receiver: TracingUnboundedReceiver<
+			SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+		>,
 	) -> Self {
 		Self { gossip_validator, gossip_engine, bundle_receiver, execution_receipt_receiver }
 	}
 
 	fn gossip_bundle(&self, bundle: SignedBundle<Block::Extrinsic>) {
-		let outgoing_message: GossipMessage<Block> = bundle.into();
+		let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
 		let encoded_message = outgoing_message.encode();
 		self.gossip_validator.note_rebroadcasted(&encoded_message);
 		self.gossip_engine
@@ -43,8 +49,11 @@ where
 			.gossip_message(topic::<Block>(), encoded_message, false);
 	}
 
-	fn gossip_execution_receipt(&self, execution_receipt: SignedExecutionReceipt<Block::Hash>) {
-		let outgoing_message: GossipMessage<Block> = execution_receipt.into();
+	fn gossip_execution_receipt(
+		&self,
+		execution_receipt: SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+	) {
+		let outgoing_message: GossipMessage<PBlock, Block> = execution_receipt.into();
 		let encoded_message = outgoing_message.encode();
 		self.gossip_validator.note_rebroadcasted(&encoded_message);
 		self.gossip_engine
@@ -56,7 +65,7 @@ where
 		let mut incoming =
 			Box::pin(self.gossip_engine.lock().messages_for(topic::<Block>()).filter_map(
 				|notification| async move {
-					GossipMessage::<Block>::decode(&mut &notification.message[..]).ok()
+					GossipMessage::<PBlock, Block>::decode(&mut &notification.message[..]).ok()
 				},
 			));
 

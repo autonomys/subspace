@@ -5004,7 +5004,6 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "subspace-core-primitives",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 use crate::{self as pallet_executor, Error, Receipts};
 use frame_support::{
-    assert_noop, assert_ok,
+    assert_noop, assert_ok, parameter_types,
     traits::{ConstU16, ConstU32, ConstU64, GenesisBuild},
 };
 use sp_core::{crypto::Pair, H256, U256};
@@ -24,6 +24,9 @@ frame_support::construct_runtime!(
     }
 );
 
+type BlockNumber = u64;
+type Hash = H256;
+
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -32,8 +35,8 @@ impl frame_system::Config for Test {
     type Origin = Origin;
     type Call = Call;
     type Index = u64;
-    type BlockNumber = u64;
-    type Hash = H256;
+    type BlockNumber = BlockNumber;
+    type Hash = Hash;
     type Hashing = BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
@@ -51,10 +54,14 @@ impl frame_system::Config for Test {
     type MaxConsumers = ConstU32<16>;
 }
 
+parameter_types! {
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
+}
+
 impl pallet_executor::Config for Test {
     type Event = Event;
     type SecondaryHash = H256;
-    type ReceiptsPruningDepth = ConstU32<256>;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -74,7 +81,9 @@ fn new_test_ext() -> sp_io::TestExternalities {
     t.into()
 }
 
-fn create_dummy_receipt(primary_number: u32) -> SignedExecutionReceipt<H256> {
+fn create_dummy_receipt(
+    primary_number: BlockNumber,
+) -> SignedExecutionReceipt<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
     let signer = pair.public();
 
@@ -97,7 +106,9 @@ fn create_dummy_receipt(primary_number: u32) -> SignedExecutionReceipt<H256> {
 
 #[test]
 fn submit_execution_receipt_should_work() {
-    let dummy_receipts = (1..=256 + 3).map(create_dummy_receipt).collect::<Vec<_>>();
+    let dummy_receipts = (1u64..=256u64 + 3u64)
+        .map(create_dummy_receipt)
+        .collect::<Vec<_>>();
 
     new_test_ext().execute_with(|| {
         (0..256).for_each(|index| {
