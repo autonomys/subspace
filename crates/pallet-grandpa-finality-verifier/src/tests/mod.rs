@@ -386,7 +386,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
 }
 
 #[test]
-fn successfully_imports_in_reverse_order_without_grandpa_validation() {
+fn successfully_imports_in_reverse_order_with_oldest_parent_as_validation_point() {
     run_test(|| {
         let chain_id: ChainId = 1;
         let mut header = test_header::<TestHeader>(5);
@@ -438,6 +438,66 @@ fn successfully_imports_in_reverse_order_without_grandpa_validation() {
             }
 
             assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
+        }
+    })
+}
+
+#[test]
+fn successfully_imports_in_reverse_order_with_validation_point_as_descendant() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let mut header = test_header::<TestHeader>(10);
+        valid_digests()
+            .into_iter()
+            .for_each(|digest| header.digest.push(digest));
+        let init_data = InitializationData {
+            oldest_parent_height: 3,
+            oldest_parent_hash: test_header::<TestHeader>(3).hash().into(),
+            best_known_finalized_header: header.encode(),
+            set_id: 1,
+        };
+        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
+        assert_ok!(res);
+        assert_eq!(
+            OldestKnownParent::<TestRuntime>::get(chain_id),
+            (3, test_header::<TestHeader>(3).hash().into())
+        );
+
+        // you can only import 3 or 4
+        assert_err!(
+            submit_finality_proof(chain_id, header, None,),
+            ErrorP::<TestRuntime>::InvalidBlock
+        );
+
+        // import block 4 should work
+        let header = test_header::<TestHeader>(4);
+        assert_ok!(submit_finality_proof(chain_id, header.clone(), None),);
+        assert_eq!(
+            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            (4, header.hash().into())
+        );
+
+        // import block 3, 2, 1, 0 and 5, 6, 7, 8, 9
+        for (p, n) in (0..=3).rev().zip(5..=9) {
+            let header = test_header::<TestHeader>(p);
+            assert_ok!(submit_finality_proof(chain_id, header.clone(), None));
+            if p == 0 {
+                assert_eq!(
+                    OldestKnownParent::<TestRuntime>::get(chain_id),
+                    (0_u64, header.hash().into())
+                );
+            } else {
+                assert_eq!(
+                    OldestKnownParent::<TestRuntime>::get(chain_id),
+                    ((p - 1) as u64, header.parent_hash.into())
+                );
+            }
+
+            assert_ok!(submit_valid_finality_proof(chain_id, n));
+            assert_eq!(
+                LatestDescendant::<TestRuntime>::get(chain_id).unwrap(),
+                (n as u64, test_header::<TestHeader>(n as u32).hash().into())
+            )
         }
     })
 }
