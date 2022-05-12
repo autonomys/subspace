@@ -70,6 +70,31 @@ impl MultiFarming {
         .await
     }
 
+    /// Starts multiple farmers for benchmarking (basically disables farming, just plots pieces
+    /// from the archiver)
+    pub async fn benchmarking(
+        options: Options<impl RpcClient>,
+        total_plot_size: u64,
+        max_plot_size: u64,
+    ) -> anyhow::Result<Self> {
+        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
+        let base_directory = options.base_directory.clone();
+
+        Self::new_inner(
+            options,
+            plot_sizes,
+            move |plot_index, address, max_piece_count| {
+                Plot::open_or_create(
+                    base_directory.join(format!("plot{plot_index}")),
+                    address,
+                    max_piece_count,
+                )
+            },
+            false,
+        )
+        .await
+    }
+
     async fn new_inner(
         Options {
             base_directory,
@@ -183,6 +208,10 @@ impl MultiFarming {
 
     /// Waits for farming and plotting completion (or errors)
     pub async fn wait(self) -> anyhow::Result<()> {
+        if self.farmings.is_empty() {
+            return self.archiving.wait().await.map_err(Into::into);
+        }
+
         let mut farming = self
             .farmings
             .into_iter()

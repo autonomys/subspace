@@ -2,9 +2,11 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::{info, warn};
 use std::mem;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_farmer::bench_rpc_client::BenchRpcClient;
 use subspace_farmer::multi_farming::{self, MultiFarming};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, Plot, RpcClient};
@@ -154,6 +156,74 @@ pub(crate) async fn farm(
 
         node_runner.run().await;
     });
+
+    multi_farming.wait().await
+}
+
+const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
+    record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
+    recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
+    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+};
+
+pub(crate) async fn bench(
+    custom_path: Option<PathBuf>,
+    plot_size: u64,
+    max_plot_size: Option<u64>,
+    best_block_number_check_interval: Duration,
+) -> anyhow::Result<()> {
+    let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
+
+    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
+        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
+        Ok(None) => log::debug!("Failed to increase file limit"),
+        Err(err) => {
+            let err = if let Some(err) = err.downcast_ref::<&str>() {
+                *err
+            } else if let Some(err) = err.downcast_ref::<String>() {
+                err
+            } else {
+                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
+            };
+            log::warn!("Failed to increase file limit: {err}")
+        }
+    }
+
+    let base_directory = crate::utils::get_path(custom_path);
+
+    let metadata = client
+        .farmer_metadata()
+        .await
+        .map_err(|error| anyhow!(error))?;
+
+    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
+        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+            log::warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+            metadata.max_plot_size
+        }
+        Some(max_plot_size) => max_plot_size,
+        None => metadata.max_plot_size,
+    };
+
+    info!("Opening object mapping");
+    let object_mappings = tokio::task::spawn_blocking({
+        let base_directory = base_directory.clone();
+        move || ObjectMappings::open_or_create(&base_directory)
+    })
+    .await??;
+
+    let multi_farming = MultiFarming::benchmarking(
+        multi_farming::Options {
+            base_directory,
+            client,
+            object_mappings: object_mappings.clone(),
+            reward_address: PublicKey::default(),
+            best_block_number_check_interval,
+        },
+        plot_size,
+        max_plot_size,
+    )
+    .await?;
 
     multi_farming.wait().await
 }

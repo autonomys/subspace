@@ -61,6 +61,26 @@ enum Command {
     },
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
+    /// Benchmark disk in order to see a throughput of the disk for farming
+    Bench {
+        /// Custom path for data storage instead of platform-specific default
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        custom_path: Option<PathBuf>,
+        /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+        ///
+        /// Not all disk space will be used, but please give some precise numbers for your setup.
+        ///
+        /// Only `G` and `T` endings are supported.
+        #[clap(long, parse(try_from_str = parse_human_readable_size))]
+        plot_size: u64,
+        /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+        ///
+        /// Only `G` and `T` endings are supported.
+        ///
+        /// Only a developer testing flag, as it might be needed for testing.
+        #[clap(long, parse(try_from_str = parse_human_readable_size))]
+        max_plot_size: Option<u64>,
+    },
 }
 
 fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
@@ -95,6 +115,19 @@ async fn main() -> Result<()> {
         }
         Command::Farm(args) => {
             commands::farm(args, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?;
+        }
+        Command::Bench {
+            custom_path,
+            plot_size,
+            max_plot_size,
+        } => {
+            commands::bench(
+                custom_path,
+                plot_size,
+                max_plot_size,
+                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+            )
+            .await?
         }
     }
     Ok(())
