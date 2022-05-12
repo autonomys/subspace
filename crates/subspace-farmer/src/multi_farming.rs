@@ -1,6 +1,5 @@
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, NodeRpcClient, ObjectMappings, Plot,
-    PlotError, RpcClient,
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -46,7 +45,7 @@ impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new(
         base_directory: PathBuf,
-        client: NodeRpcClient,
+        client: impl RpcClient,
         object_mappings: ObjectMappings,
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
@@ -74,7 +73,7 @@ impl MultiFarming {
 
     async fn new_inner(
         base_directory: impl AsRef<Path>,
-        client: NodeRpcClient,
+        client: impl RpcClient,
         object_mappings: ObjectMappings,
         reward_address: PublicKey,
         best_block_number_check_interval: Duration,
