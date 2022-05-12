@@ -1,5 +1,5 @@
 use cirrus_block_builder::{BlockBuilder, RecordProof};
-use cirrus_primitives::{Hash, SecondaryApi};
+use cirrus_primitives::{BlockNumber, Hash, SecondaryApi};
 use cirrus_test_service::{
 	run_primary_chain_validator_node,
 	runtime::Header,
@@ -8,9 +8,12 @@ use cirrus_test_service::{
 use codec::Encode;
 use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
 use sc_service::Role;
+use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::FetchRuntimeCode;
-use sp_executor::{ExecutionPhase, FraudProof};
+use sp_core::{traits::FetchRuntimeCode, Pair};
+use sp_executor::{
+	ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
+};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
@@ -536,4 +539,83 @@ async fn set_new_code_should_work() {
 		charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
 		vec![DigestItem::RuntimeEnvironmentUpdated]
 	);
+}
+
+#[substrate_test_utils::test]
+async fn pallet_executor_unsigned_extrinsics_should_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// start alice
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+
+	alice_network_starter.start_network();
+
+	// run cirrus alice (a secondary chain authority node)
+	let alice_executor = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_relay_chain_node(&alice)
+		.build(Role::Authority)
+		.await;
+
+	alice_executor.wait_for_blocks(3).await;
+
+	let alice_best_hash = alice.client.info().best_hash;
+
+	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
+		let pool = alice.transaction_pool.pool();
+
+		async move {
+			let execution_receipt = ExecutionReceipt {
+				primary_number,
+				primary_hash: Hash::random(),
+				secondary_hash: Hash::random(),
+				trace: vec![Hash::random(), Hash::random()],
+				trace_root: Default::default(),
+			};
+
+			let pair = ExecutorPair::from_string("//Alice", None).unwrap();
+			let signer = pair.public();
+			let signature = pair.sign(execution_receipt.hash().as_ref());
+
+			let signed_execution_receipt =
+				SignedExecutionReceipt { execution_receipt, signature, signer };
+
+			let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+				pallet_executor::Call::submit_execution_receipt { signed_execution_receipt }.into(),
+			);
+
+			pool.submit_one(&BlockId::Hash(alice_best_hash), TransactionSource::External, tx.into())
+				.await
+		}
+	};
+
+	// best execution chain number is 2
+	// best consensus chain number is 3, the next consensus block is 4, reject as same with the
+	// current building block.
+	assert!(create_and_send_submit_execution_receipt(4).await.is_err());
+
+	// TODO: assert the specific error type once `sc_transaction_pool::error::Error` supports `==`.
+	// Should submit a PR to Substrate.
+	// assert_eq!(
+	// create_and_send_submit_execution_receipt(4).await.unwrap_err(),
+	// sc_transaction_pool::error::Error::Pool(
+	// sc_transaction_pool_api::error::Error::InvalidTransaction(
+	// pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()
+	// )
+	// )
+	// );
+
+	create_and_send_submit_execution_receipt(5)
+		.await
+		.expect("Submit a future receipt successfully");
+	create_and_send_submit_execution_receipt(6)
+		.await
+		.expect("Submit a future receipt successfully");
+	// max drift is 4, hence the max allowed receipt number is 2 + 4, 7 will be rejected as being
+	// too far.
+	assert!(create_and_send_submit_execution_receipt(7).await.is_err());
 }

@@ -314,7 +314,11 @@ where
 /// Full node along with some other components.
 pub struct NewFull<C>
 where
-    C: ProvideRuntimeApi<Block> + BlockBackend<Block> + BlockIdTo<Block> + HeaderBackend<Block> + 'static,
+    C: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + 'static,
     C::Api: TaggedTransactionQueue<Block>,
 {
     /// Task manager.

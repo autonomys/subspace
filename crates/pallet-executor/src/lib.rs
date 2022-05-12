@@ -327,12 +327,18 @@ mod pallet {
     }
 
     #[repr(u8)]
-    enum InvalidTransactionCode {
+    pub enum InvalidTransactionCode {
         BundleEquivicationProof = 101,
         TrasactionProof = 102,
         ExecutionReceipt = 103,
         Bundle = 104,
         FraudProof = 105,
+    }
+
+    impl From<InvalidTransactionCode> for InvalidTransaction {
+        fn from(invalid_code: InvalidTransactionCode) -> Self {
+            InvalidTransaction::Custom(invalid_code as u8)
+        }
     }
 
     impl From<InvalidTransactionCode> for TransactionValidity {
