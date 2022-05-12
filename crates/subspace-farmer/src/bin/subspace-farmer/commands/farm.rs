@@ -15,7 +15,9 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
+use tempfile::TempDir;
 
+use crate::commands::wipe;
 use crate::FarmingArgs;
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
@@ -192,6 +194,7 @@ pub(crate) async fn bench(
     }
 
     let base_directory = crate::utils::get_path(custom_path);
+    let base_directory = TempDir::new_in(base_directory)?;
 
     let metadata = client
         .farmer_metadata()
@@ -209,14 +212,14 @@ pub(crate) async fn bench(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let base_directory = base_directory.clone();
+        let base_directory = base_directory.as_ref().to_owned();
         move || ObjectMappings::open_or_create(&base_directory)
     })
     .await??;
 
     let multi_farming = MultiFarming::benchmarking(
         multi_farming::Options {
-            base_directory,
+            base_directory: base_directory.as_ref().to_owned(),
             client: client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
@@ -234,7 +237,11 @@ pub(crate) async fn bench(
 
     client.stop().await;
 
-    multi_farming.wait().await
+    multi_farming.wait().await?;
+
+    wipe(base_directory)?;
+
+    Ok(())
 }
 
 fn networking_getter(plots: &[Plot], key: &Multihash) -> Option<Vec<u8>> {
