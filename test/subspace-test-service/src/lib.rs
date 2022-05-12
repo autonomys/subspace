@@ -29,11 +29,13 @@ use sc_service::{
     config::{DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod},
     BasePath, Configuration, KeepBlocks, NetworkStarter, Role, RpcHandlers, TaskManager,
 };
+use sc_transaction_pool::FullPool;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::IdentifyAccount, MultiSigner};
 use std::sync::Arc;
+use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
 use subspace_service::{NewFull, SubspaceConfiguration};
 use subspace_test_client::{chain_spec, start_farmer, Backend, Client, TestExecutorDispatch};
@@ -51,7 +53,7 @@ pub fn new_full(
     enable_rpc_extensions: bool,
     run_farmer: bool,
 ) -> (
-    NewFull<Arc<Client>>,
+    NewFull<Client>,
     NativeElseWasmExecutor<TestExecutorDispatch>,
 ) {
     let config = SubspaceConfiguration {
@@ -186,6 +188,7 @@ pub fn run_validator_node(
             network,
             rpc_handlers,
             network_starter,
+            transaction_pool,
             ..
         },
         executor,
@@ -202,6 +205,7 @@ pub fn run_validator_node(
             executor,
             addr,
             rpc_handlers,
+            transaction_pool,
         },
         network_starter,
     )
@@ -221,6 +225,8 @@ pub struct SubspaceTestNode {
     pub addr: MultiaddrWithPeerId,
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
+    /// Transaction pool.
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
 }
 
 impl SubspaceTestNode {
