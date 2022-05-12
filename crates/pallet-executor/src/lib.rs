@@ -329,6 +329,7 @@ mod pallet {
         TrasactionProof = 102,
         ExecutionReceipt = 103,
         Bundle = 104,
+        FraudProof = 105,
     }
 
     impl From<InvalidTransactionCode> for TransactionValidity {
@@ -418,12 +419,15 @@ mod pallet {
                     )
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: prevent the spamming of fraud proof transaction.
-                    // TODO: verify the fraud proof on the client side.
-                    // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
-                    // log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
-                    // return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
-                    // }
+                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid fraud proof: {:?}",
+                            e
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
+
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
                 }
@@ -537,6 +541,17 @@ impl<T: Config> Pallet<T> {
         if *signer != expected_executor {
             return Err(Error::<T>::UnexpectedBundleSigner);
         }
+
+        Ok(())
+    }
+
+    fn validate_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+        // TODO: prevent the spamming of fraud proof transaction.
+        // TODO: verify the fraud proof on the client side.
+        // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
+        // log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
+        // return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
+        // }
 
         Ok(())
     }
