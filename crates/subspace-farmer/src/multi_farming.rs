@@ -1,5 +1,6 @@
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
+    plot::BenchPlotMock, plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot,
+    PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -76,23 +77,41 @@ impl MultiFarming {
         options: Options<impl RpcClient>,
         total_plot_size: u64,
         max_plot_size: u64,
+        mock_plot: bool,
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
         let base_directory = options.base_directory.clone();
 
-        Self::new_inner(
-            options,
-            plot_sizes,
-            move |plot_index, address, max_piece_count| {
-                Plot::open_or_create(
-                    base_directory.join(format!("plot{plot_index}")),
-                    address,
-                    max_piece_count,
-                )
-            },
-            false,
-        )
-        .await
+        if mock_plot {
+            Self::new_inner(
+                options,
+                plot_sizes,
+                move |plot_index, address, max_piece_count| {
+                    Plot::with_plot_file(
+                        BenchPlotMock::new(max_piece_count),
+                        base_directory.join(format!("plot{plot_index}")),
+                        address,
+                        max_piece_count,
+                    )
+                },
+                false,
+            )
+            .await
+        } else {
+            Self::new_inner(
+                options,
+                plot_sizes,
+                move |plot_index, address, max_piece_count| {
+                    Plot::open_or_create(
+                        base_directory.join(format!("plot{plot_index}")),
+                        address,
+                        max_piece_count,
+                    )
+                },
+                false,
+            )
+            .await
+        }
     }
 
     async fn new_inner(

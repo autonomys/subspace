@@ -80,6 +80,9 @@ enum Command {
         /// Only a developer testing flag, as it might be needed for testing.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         max_plot_size: Option<u64>,
+        /// Actually write pieces to disk while benchmarking (might be more accurate)
+        #[clap(long)]
+        plot: bool,
     },
 }
 
@@ -120,12 +123,14 @@ async fn main() -> Result<()> {
             custom_path,
             plot_size,
             max_plot_size,
+            plot,
         } => {
             commands::bench(
                 custom_path,
                 plot_size,
                 max_plot_size,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
+                !plot,
             )
             .await?
         }

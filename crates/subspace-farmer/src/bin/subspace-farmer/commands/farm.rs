@@ -171,6 +171,7 @@ pub(crate) async fn bench(
     plot_size: u64,
     max_plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
+    mock_plot: bool,
 ) -> anyhow::Result<()> {
     let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
 
@@ -222,6 +223,7 @@ pub(crate) async fn bench(
         },
         plot_size,
         max_plot_size,
+        mock_plot,
     )
     .await?;
 

@@ -644,6 +644,43 @@ impl PlotFile for File {
     }
 }
 
+pub struct BenchPlotMock {
+    piece_count: u64,
+    max_piece_count: u64,
+}
+
+impl BenchPlotMock {
+    pub fn new(max_piece_count: u64) -> Self {
+        Self {
+            max_piece_count,
+            piece_count: 0,
+        }
+    }
+}
+
+impl PlotFile for BenchPlotMock {
+    fn piece_count(&mut self) -> io::Result<u64> {
+        Ok(self.piece_count)
+    }
+
+    fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
+        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
+            .max(self.max_piece_count);
+        Ok(())
+    }
+
+    fn read(&mut self, _offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
+        use rand::Rng;
+
+        rand::thread_rng().fill(buf.as_mut());
+        Ok(())
+    }
+
+    fn sync_all(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 struct PlotWorker<T> {
     plot: T,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
