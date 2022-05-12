@@ -20,6 +20,7 @@
 #[cfg(test)]
 mod tests;
 
+use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -98,6 +99,8 @@ mod pallet {
         ExecutionReceiptStale,
         /// The execution receipt is too far in the future.
         ExecutionReceiptTooFarInFuture,
+        /// Fraud proof is invalid as the execution receipt has been pruned or from the future.
+        ExecutionReceiptPrunedOrFuture,
     }
 
     #[pallet::event]
@@ -545,7 +548,14 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+    fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+        let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
+        ensure!(
+            to_prove >= OldestReceiptNumber::<T>::get()
+                && to_prove <= ExecutionChainBestNumber::<T>::get(),
+            Error::<T>::ExecutionReceiptPrunedOrFuture
+        );
+
         // TODO: prevent the spamming of fraud proof transaction.
         // TODO: verify the fraud proof on the client side.
         // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
