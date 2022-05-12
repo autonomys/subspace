@@ -62,13 +62,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
-      - name: Add MSVC compiler
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          toolset: 14.29
-        if: matrix.os == 'windows-2022'
-
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -84,7 +77,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.5
+        uses: Jimver/cuda-toolkit@v0.2.6
         if: runner.os != 'macOS'
 
       - name: Configure cache
@@ -149,13 +142,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-
-      # Workaround as the newest version of MSVC does not support this latest version of CUDA, workaround for Windows 11/Windows Server 2022.
-      - name: Add MSVC compiler
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          toolset: 14.29
-        if: matrix.os == 'windows-2022'
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
