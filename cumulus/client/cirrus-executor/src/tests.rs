@@ -7,6 +7,7 @@ use cirrus_test_service::{
 };
 use codec::Encode;
 use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
+use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_executor::{ExecutionPhase, FraudProof};
@@ -32,14 +33,14 @@ async fn test_executor_full_node_catching_up() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -78,14 +79,14 @@ async fn execution_proof_creation_and_verification_should_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -339,14 +340,14 @@ async fn invalid_execution_proof_should_not_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -507,7 +508,7 @@ async fn set_new_code_should_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	charlie.wait_for_blocks(3).await;

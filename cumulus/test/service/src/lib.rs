@@ -395,12 +395,13 @@ impl TestNodeBuilder {
 	}
 
 	/// Build the [`TestNode`].
-	pub async fn build(self) -> TestNode {
+	pub async fn build(self, role: Role) -> TestNode {
 		let parachain_config = node_config(
 			self.tokio_handle.clone(),
 			self.key,
 			self.parachain_nodes,
 			self.parachain_nodes_exclusive,
+			role,
 		)
 		.expect("could not generate Configuration");
 
@@ -447,10 +448,10 @@ pub fn node_config(
 	key: Sr25519Keyring,
 	nodes: Vec<MultiaddrWithPeerId>,
 	nodes_exlusive: bool,
+	role: Role,
 ) -> Result<Configuration, ServiceError> {
 	let base_path = BasePath::new_temp_dir()?;
 	let root = base_path.path().to_path_buf();
-	let role = Role::Full;
 	let key_seed = key.to_seed();
 
 	let mut spec = Box::new(chain_spec::get_chain_spec());
