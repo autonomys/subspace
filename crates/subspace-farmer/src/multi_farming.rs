@@ -67,6 +67,7 @@ impl MultiFarming {
                     max_piece_count,
                 )
             },
+            true,
         )
         .await
     }
@@ -79,6 +80,7 @@ impl MultiFarming {
         best_block_number_check_interval: Duration,
         plot_sizes: Vec<u64>,
         new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        start_farmings: bool,
     ) -> anyhow::Result<Self> {
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
@@ -111,13 +113,15 @@ impl MultiFarming {
                     let subspace_codec = SubspaceCodec::new(identity.public_key());
 
                     // Start the farming task
-                    let farming = Farming::start(
-                        plot.clone(),
-                        plot_commitments.clone(),
-                        client.clone(),
-                        identity,
-                        reward_address,
-                    );
+                    let farming = start_farmings.then(|| {
+                        Farming::start(
+                            plot.clone(),
+                            plot_commitments.clone(),
+                            client.clone(),
+                            identity,
+                            reward_address,
+                        )
+                    });
 
                     Ok::<_, anyhow::Error>((plot, subspace_codec, plot_commitments, farming))
                 })
@@ -129,7 +133,9 @@ impl MultiFarming {
             plots.push(plot);
             subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
-            farmings.push(farming);
+            if let Some(farming) = farming {
+                farmings.push(farming);
+            }
         }
 
         let farmer_metadata = client
