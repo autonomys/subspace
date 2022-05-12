@@ -153,6 +153,9 @@ mod pallet {
                     Receipts::<T>::get(primary_number - 1u32.into()).is_some(),
                     Error::<T>::MissingParentReceipt
                 );
+            } else {
+                // Initialize the oldest receipt with block #1.
+                OldestReceiptNumber::<T>::put(primary_number);
             }
 
             // Apply the execution receipt.
@@ -162,6 +165,7 @@ mod pallet {
             // Remove the oldest once the receipts cache is full.
             if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
                 Receipts::<T>::remove(to_prune);
+                OldestReceiptNumber::<T>::put(to_prune + 1u32.into());
             }
 
             Self::deposit_event(Event::NewExecutionReceipt {
@@ -204,7 +208,12 @@ mod pallet {
                 fraud_proof
             );
 
-            // TODO: revert the execution chain.
+            // Revert the execution chain.
+            let new_best: T::BlockNumber = fraud_proof.parent_number.into();
+            <ExecutionChainBestNumber<T>>::put(new_best);
+            Receipts::<T>::iter_keys()
+                .filter(|b| b > &new_best)
+                .for_each(Receipts::<T>::remove);
 
             // TODO: slash the executor accordingly.
 
@@ -275,6 +284,10 @@ mod pallet {
     #[pallet::storage]
     pub(super) type ExecutionChainBestNumber<T: Config> =
         StorageValue<_, T::BlockNumber, ValueQuery>;
+
+    /// Number of the block that the oldest execution receipt points to.
+    #[pallet::storage]
+    pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {

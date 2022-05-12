@@ -1,14 +1,19 @@
-use crate::{self as pallet_executor, Error, Receipts};
+use crate::{
+    self as pallet_executor, Error, ExecutionChainBestNumber, OldestReceiptNumber, Receipts,
+};
 use frame_support::{
     assert_noop, assert_ok, parameter_types,
     traits::{ConstU16, ConstU32, ConstU64, GenesisBuild},
 };
 use sp_core::{crypto::Pair, H256, U256};
-use sp_executor::{ExecutionReceipt, ExecutorPair, SignedExecutionReceipt};
+use sp_executor::{
+    ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
+};
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
 };
+use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -118,6 +123,7 @@ fn submit_execution_receipt_should_work() {
                 Origin::none(),
                 dummy_receipts[index].clone(),
             ));
+            assert_eq!(OldestReceiptNumber::<Test>::get(), 1);
         });
 
         assert!(Receipts::<Test>::get(257).is_none());
@@ -127,6 +133,7 @@ fn submit_execution_receipt_should_work() {
         ));
         // The oldest ER should be deleted.
         assert!(Receipts::<Test>::get(1).is_none());
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 2);
         assert!(Receipts::<Test>::get(257).is_some());
 
         assert!(Receipts::<Test>::get(2).is_some());
@@ -140,6 +147,40 @@ fn submit_execution_receipt_should_work() {
             dummy_receipts[257].clone(),
         ));
         assert!(Receipts::<Test>::get(2).is_none());
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
         assert!(Receipts::<Test>::get(258).is_some());
+    });
+}
+
+#[test]
+fn submit_fraud_proof_should_work() {
+    let dummy_receipts = (1u64..=256u64)
+        .map(create_dummy_receipt)
+        .collect::<Vec<_>>();
+
+    let dummy_proof = FraudProof {
+        parent_number: 99,
+        parent_hash: H256::random(),
+        pre_state_root: H256::random(),
+        post_state_root: H256::random(),
+        proof: StorageProof::empty(),
+        execution_phase: ExecutionPhase::FinalizeBlock,
+    };
+
+    new_test_ext().execute_with(|| {
+        (0u64..256u64).for_each(|index| {
+            assert_ok!(Executor::submit_execution_receipt(
+                Origin::none(),
+                dummy_receipts[index as usize].clone(),
+            ));
+            assert!(Receipts::<Test>::get(index + 1).is_some());
+        });
+
+        assert_ok!(Executor::submit_fraud_proof(Origin::none(), dummy_proof));
+        assert_eq!(<ExecutionChainBestNumber<Test>>::get(), 99);
+        // Receipts for block [100, 256] should be removed as being invalid.
+        (100..=256).for_each(|block_number| {
+            assert!(Receipts::<Test>::get(block_number).is_none());
+        });
     });
 }

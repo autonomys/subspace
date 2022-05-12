@@ -28,7 +28,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{Randomness, Sha256Hash, BlockNumber};
+use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
