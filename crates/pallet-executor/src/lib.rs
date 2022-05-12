@@ -513,13 +513,15 @@ impl<T: Config> Pallet<T> {
         // Ensure the receipt is neither old nor too new.
         let primary_number = execution_receipt.primary_number;
 
-        if primary_number <= ExecutionChainBestNumber::<T>::get() {
+        let best_number = ExecutionChainBestNumber::<T>::get();
+        if primary_number <= best_number {
             return Err(Error::<T>::ExecutionReceiptStale);
         }
 
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
-        let max_drift = T::MaximumReceiptDrift::get();
-        if primary_number > current_block_number + max_drift {
+        if primary_number == current_block_number
+            || primary_number > best_number + T::MaximumReceiptDrift::get()
+        {
             return Err(Error::<T>::ExecutionReceiptTooFarInFuture);
         }
 
