@@ -5,7 +5,7 @@ use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PIECE_SIZE;
-use subspace_farmer::multi_farming::MultiFarming;
+use subspace_farmer::multi_farming::{self, MultiFarming};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -80,11 +80,13 @@ pub(crate) async fn farm(
     .await??;
 
     let multi_farming = MultiFarming::new(
-        base_directory,
-        client,
-        object_mappings.clone(),
-        reward_address,
-        best_block_number_check_interval,
+        multi_farming::Options {
+            base_directory,
+            client,
+            object_mappings: object_mappings.clone(),
+            reward_address,
+            best_block_number_check_interval,
+        },
         plot_size,
         max_plot_size,
     )

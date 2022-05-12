@@ -5,11 +5,7 @@ use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::info;
 use rayon::prelude::*;
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 
@@ -41,24 +37,26 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     }
 }
 
+/// Options for `MultiFarming` creation
+pub struct Options<C: RpcClient> {
+    pub base_directory: PathBuf,
+    pub client: C,
+    pub object_mappings: ObjectMappings,
+    pub reward_address: PublicKey,
+    pub best_block_number_check_interval: Duration,
+}
+
 impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new(
-        base_directory: PathBuf,
-        client: impl RpcClient,
-        object_mappings: ObjectMappings,
-        reward_address: PublicKey,
-        best_block_number_check_interval: Duration,
+        options: Options<impl RpcClient>,
         total_plot_size: u64,
         max_plot_size: u64,
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
+        let base_directory = options.base_directory.clone();
         Self::new_inner(
-            base_directory.clone(),
-            client,
-            object_mappings,
-            reward_address,
-            best_block_number_check_interval,
+            options,
             plot_sizes,
             move |plot_index, address, max_piece_count| {
                 Plot::open_or_create(
@@ -73,11 +71,13 @@ impl MultiFarming {
     }
 
     async fn new_inner(
-        base_directory: impl AsRef<Path>,
-        client: impl RpcClient,
-        object_mappings: ObjectMappings,
-        reward_address: PublicKey,
-        best_block_number_check_interval: Duration,
+        Options {
+            base_directory,
+            client,
+            object_mappings,
+            reward_address,
+            best_block_number_check_interval,
+        }: Options<impl RpcClient>,
         plot_sizes: Vec<u64>,
         new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
         start_farmings: bool,
@@ -91,7 +91,7 @@ impl MultiFarming {
             .into_iter()
             .enumerate()
             .map(|(plot_index, max_plot_pieces)| {
-                let base_directory = base_directory.as_ref().to_owned();
+                let base_directory = base_directory.to_owned();
                 let client = client.clone();
                 let new_plot = new_plot.clone();
 
