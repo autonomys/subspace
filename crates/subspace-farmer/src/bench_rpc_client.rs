@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,6 +32,7 @@ pub struct Inner {
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     slot_info_handler: Mutex<JoinHandle<()>>,
     segment_producer_handle: Mutex<JoinHandle<()>>,
+    writen_piece_count: Arc<AtomicU64>,
 }
 
 impl BenchRpcClient {
@@ -40,6 +42,7 @@ impl BenchRpcClient {
         let (archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
         let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
             mpsc::channel(1);
+        let writen_piece_count = Arc::new(AtomicU64::new(0));
 
         let slot_info_handler = tokio::spawn(async move {
             let mut slot_number = 0;
@@ -67,54 +70,58 @@ impl BenchRpcClient {
             }
         });
 
-        let segment_producer_handle = tokio::spawn(async move {
-            let mut segment_index = 0;
-            let mut last_archived_block = LastArchivedBlock {
-                number: 0,
-                archived_progress: ArchivedBlockProgress::Partial(0),
-            };
-            loop {
-                last_archived_block
-                    .archived_progress
-                    .set_partial(segment_index as u32);
+        let segment_producer_handle = tokio::spawn({
+            let writen_piece_count = Arc::clone(&writen_piece_count);
+            async move {
+                let mut segment_index = 0;
+                let mut last_archived_block = LastArchivedBlock {
+                    number: 0,
+                    archived_progress: ArchivedBlockProgress::Partial(0),
+                };
+                loop {
+                    last_archived_block
+                        .archived_progress
+                        .set_partial(segment_index as u32);
 
-                let archived_segment = {
-                    let root_block = RootBlock::V0 {
-                        segment_index,
-                        records_root: Sha256Hash::default(),
-                        prev_root_block_hash: Sha256Hash::default(),
-                        last_archived_block,
+                    let archived_segment = {
+                        let root_block = RootBlock::V0 {
+                            segment_index,
+                            records_root: Sha256Hash::default(),
+                            prev_root_block_hash: Sha256Hash::default(),
+                            last_archived_block,
+                        };
+
+                        let mut pieces = FlatPieces::new(100);
+                        rand::thread_rng().fill(pieces.as_mut());
+
+                        let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                            hash: rand::random(),
+                            offset: rand::random(),
+                        })
+                        .take(100)
+                        .collect();
+
+                        ArchivedSegment {
+                            root_block,
+                            pieces,
+                            object_mapping: vec![PieceObjectMapping { objects }],
+                        }
                     };
 
-                    let mut pieces = FlatPieces::new(100);
-                    rand::thread_rng().fill(pieces.as_mut());
-
-                    let objects = std::iter::repeat_with(|| PieceObject::V0 {
-                        hash: rand::random(),
-                        offset: rand::random(),
-                    })
-                    .take(100)
-                    .collect();
-
-                    ArchivedSegment {
-                        root_block,
-                        pieces,
-                        object_mapping: vec![PieceObjectMapping { objects }],
+                    if archived_segments_sender
+                        .send(archived_segment)
+                        .await
+                        .is_err()
+                    {
+                        break;
                     }
-                };
+                    if acknowledge_archived_segment_receiver.recv().await.is_none() {
+                        break;
+                    }
 
-                if archived_segments_sender
-                    .send(archived_segment)
-                    .await
-                    .is_err()
-                {
-                    break;
+                    segment_index += 1;
+                    writen_piece_count.fetch_add(100, Ordering::AcqRel);
                 }
-                if acknowledge_archived_segment_receiver.recv().await.is_none() {
-                    break;
-                }
-
-                segment_index += 1;
             }
         });
 
@@ -126,8 +133,13 @@ impl BenchRpcClient {
                 acknowledge_archived_segment_sender,
                 slot_info_handler: Mutex::new(slot_info_handler),
                 segment_producer_handle: Mutex::new(segment_producer_handle),
+                writen_piece_count,
             }),
         }
+    }
+
+    pub fn writen_piece_count(&self) -> u64 {
+        self.inner.writen_piece_count.load(Ordering::Relaxed)
     }
 
     pub async fn stop(self) {
@@ -152,7 +164,9 @@ impl RpcClient for BenchRpcClient {
         let slot_receiver = self.inner.slot_info_receiver.clone();
         tokio::spawn(async move {
             while let Some(slot_info) = slot_receiver.lock().await.recv().await {
-                sender.send(slot_info).await.unwrap();
+                if sender.send(slot_info).await.is_err() {
+                    break;
+                }
             }
         });
 
@@ -183,7 +197,9 @@ impl RpcClient for BenchRpcClient {
         tokio::spawn(async move {
             while let Some(archived_segment) = archived_segments_receiver.lock().await.recv().await
             {
-                sender.send(archived_segment).await.unwrap();
+                if sender.send(archived_segment).await.is_err() {
+                    break;
+                }
             }
         });
 
@@ -194,8 +210,7 @@ impl RpcClient for BenchRpcClient {
         self.inner
             .acknowledge_archived_segment_sender
             .send(segment_index)
-            .await
-            .unwrap();
+            .await?;
         Ok(())
     }
 }

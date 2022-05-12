@@ -172,6 +172,7 @@ pub(crate) async fn bench(
     max_plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
     mock_plot: bool,
+    write_pieces_size: u64,
 ) -> anyhow::Result<()> {
     let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
 
@@ -216,7 +217,7 @@ pub(crate) async fn bench(
     let multi_farming = MultiFarming::benchmarking(
         multi_farming::Options {
             base_directory,
-            client,
+            client: client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             best_block_number_check_interval,
@@ -226,6 +227,12 @@ pub(crate) async fn bench(
         mock_plot,
     )
     .await?;
+
+    while client.writen_piece_count() < write_pieces_size / PIECE_SIZE as u64 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    client.stop().await;
 
     multi_farming.wait().await
 }

@@ -68,8 +68,6 @@ enum Command {
         custom_path: Option<PathBuf>,
         /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
         ///
-        /// Not all disk space will be used, but please give some precise numbers for your setup.
-        ///
         /// Only `G` and `T` endings are supported.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         plot_size: u64,
@@ -80,9 +78,15 @@ enum Command {
         /// Only a developer testing flag, as it might be needed for testing.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         max_plot_size: Option<u64>,
-        /// Actually write pieces to disk while benchmarking (might be more accurate)
+        /// Actually write pieces to disk while benchmarking (might be more accurate, but uses more
+        /// space)
         #[clap(long)]
         plot: bool,
+        /// Amount of data to plot for benchmarking.
+        ///
+        /// Only `G` and `T` endings are supported.
+        #[clap(long, parse(try_from_str = parse_human_readable_size))]
+        write_pieces_size: u64,
     },
 }
 
@@ -124,6 +128,7 @@ async fn main() -> Result<()> {
             plot_size,
             max_plot_size,
             plot,
+            write_pieces_size,
         } => {
             commands::bench(
                 custom_path,
@@ -131,6 +136,7 @@ async fn main() -> Result<()> {
                 max_plot_size,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
                 !plot,
+                write_pieces_size,
             )
             .await?
         }
