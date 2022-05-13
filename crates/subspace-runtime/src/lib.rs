@@ -1093,6 +1093,14 @@ impl_runtime_apis! {
                 .map(|(_account_id, executor_id)| executor_id)
                 .expect("Executor must be provided; qed")
         }
+
+        fn best_execution_chain_number() -> NumberFor<Block> {
+            Executor::best_execution_chain_number()
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
+        }
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {

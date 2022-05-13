@@ -333,6 +333,7 @@ mod pallet {
 
     /// Latest execution chain block number.
     #[pallet::storage]
+    #[pallet::getter(fn best_execution_chain_number)]
     pub(super) type ExecutionChainBestNumber<T: Config> =
         StorageValue<_, T::BlockNumber, ValueQuery>;
 
