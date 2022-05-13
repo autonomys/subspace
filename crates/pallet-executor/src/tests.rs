@@ -178,6 +178,7 @@ fn submit_fraud_proof_should_work() {
 
         assert_ok!(Executor::submit_fraud_proof(Origin::none(), dummy_proof));
         assert_eq!(<ExecutionChainBestNumber<Test>>::get(), 99);
+        assert!(Receipts::<Test>::get(99).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
             assert!(Receipts::<Test>::get(block_number).is_none());

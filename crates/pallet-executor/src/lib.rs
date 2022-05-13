@@ -217,10 +217,14 @@ mod pallet {
 
             // Revert the execution chain.
             let new_best: T::BlockNumber = fraud_proof.parent_number.into();
-            <ExecutionChainBestNumber<T>>::put(new_best);
-            Receipts::<T>::iter_keys()
-                .filter(|b| b > &new_best)
-                .for_each(Receipts::<T>::remove);
+            <ExecutionChainBestNumber<T>>::mutate(|current_best| {
+                let mut to_remove = new_best + One::one();
+                while to_remove <= *current_best {
+                    Receipts::<T>::remove(to_remove);
+                    to_remove += One::one();
+                }
+                *current_best = new_best;
+            });
 
             // TODO: slash the executor accordingly.
 
