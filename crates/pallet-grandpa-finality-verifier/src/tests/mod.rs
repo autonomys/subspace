@@ -6,8 +6,8 @@ use crate::chain::OpaqueExtrinsic;
 use crate::{
     chain::Chain,
     grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification},
-    initialize, validate_finalized_block, CurrentAuthoritySet, Error as ErrorP, InitializationData,
-    LatestDescendant, OldestKnownParent, ValidationCheckPoint,
+    initialize, validate_finalized_block, ChainTip, CurrentAuthoritySet, Error as ErrorP,
+    InitializationData, OldestKnownParent, ValidationCheckPoint,
 };
 use codec::{Decode, Encode};
 use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
@@ -327,14 +327,14 @@ fn successfully_imports_header_with_valid_finality() {
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
         let header = test_header::<TestHeader>(1);
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (1, header.hash().0)
         );
 
         assert_ok!(submit_valid_finality_proof(chain_id, 2));
         let header = test_header::<TestHeader>(2);
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (2, header.hash().0)
         );
     })
@@ -353,7 +353,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
         assert_ok!(submit_valid_finality_proof(chain_id, 1));
         let header = test_header::<TestHeader>(1);
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (1, header.hash().0)
         );
 
@@ -365,7 +365,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
             Some(make_default_justification(&header))
         ));
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (2, header.hash().0)
         );
 
@@ -379,7 +379,7 @@ fn successfully_imports_parent_headers_to_best_known_finalized_header() {
             Some(make_default_justification(&header))
         ));
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (3, header.hash().0)
         );
     })
@@ -412,7 +412,7 @@ fn successfully_imports_in_reverse_order_with_oldest_parent_as_validation_point(
             OldestKnownParent::<TestRuntime>::get(chain_id),
             (4, header.parent_hash.into())
         );
-        assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
+        assert!(<ChainTip<TestRuntime>>::get(chain_id).is_none());
 
         // import block 3 should not work
         let header = test_header::<TestHeader>(3);
@@ -437,7 +437,7 @@ fn successfully_imports_in_reverse_order_with_oldest_parent_as_validation_point(
                 );
             }
 
-            assert!(<LatestDescendant<TestRuntime>>::get(chain_id).is_none());
+            assert!(<ChainTip<TestRuntime>>::get(chain_id).is_none());
         }
 
         // cannot import 0 block again
@@ -480,7 +480,7 @@ fn successfully_imports_in_reverse_order_with_validation_point_as_descendant() {
         let header = test_header::<TestHeader>(4);
         assert_ok!(submit_finality_proof(chain_id, header.clone(), None),);
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (4, header.hash().into())
         );
 
@@ -502,7 +502,7 @@ fn successfully_imports_in_reverse_order_with_validation_point_as_descendant() {
 
             assert_ok!(submit_valid_finality_proof(chain_id, n));
             assert_eq!(
-                LatestDescendant::<TestRuntime>::get(chain_id).unwrap(),
+                ChainTip::<TestRuntime>::get(chain_id).unwrap(),
                 (n as u64, test_header::<TestHeader>(n as u32).hash().into())
             )
         }
@@ -671,7 +671,7 @@ fn importing_header_enacts_new_authority_set() {
 
         // Make sure that our header is the best finalized
         assert_eq!(
-            <LatestDescendant<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
             (1, header.hash().into())
         );
 

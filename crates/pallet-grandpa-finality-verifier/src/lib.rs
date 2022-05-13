@@ -101,9 +101,9 @@ pub mod pallet {
     pub(super) type OldestKnownParent<T: Config> =
         StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), ValueQuery>;
 
-    /// Latest known descendant
+    /// Known tip of the chain
     #[pallet::storage]
-    pub(super) type LatestDescendant<T: Config> =
+    pub(super) type ChainTip<T: Config> =
         StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), OptionQuery>;
 
     /// The current GRANDPA Authority set for a given Chain
@@ -223,14 +223,10 @@ pub mod pallet {
         }
 
         // get last imported block height and hash
-        let (parent_number, parent_hash) = match LatestDescendant::<T>::get(chain_id) {
-            Some((parent_number, parent_hash)) => (parent_number, parent_hash),
-            None => {
-                // this is only None for the first block that is a descendant to known parent
-                // so we return the parent hash and height so that we can process this
-                (oldest_known_parent_height, oldest_known_parent_hash)
-            }
-        };
+        // if it was the first block that is a descendant to known parent
+        // so we return the parent hash and height so that we can process this
+        let (parent_number, parent_hash) = ChainTip::<T>::get(chain_id)
+            .unwrap_or((oldest_known_parent_height, oldest_known_parent_hash));
 
         // block height must be always increasing
         ensure!(number.into() == parent_number + 1, Error::<T>::InvalidBlock);
@@ -280,7 +276,7 @@ pub mod pallet {
         }
 
         // update the latest descendant
-        LatestDescendant::<T>::insert(chain_id, (number.into(), hash.into()));
+        ChainTip::<T>::insert(chain_id, (number.into(), hash.into()));
         Ok((hash, number))
     }
 
@@ -354,7 +350,7 @@ pub mod pallet {
     pub fn purge<T: Config>(chain_id: T::ChainId) -> DispatchResult {
         ValidationCheckPoint::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
-        LatestDescendant::<T>::remove(chain_id);
+        ChainTip::<T>::remove(chain_id);
         Ok(())
     }
 }
