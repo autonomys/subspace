@@ -1,4 +1,4 @@
-use crate::SignedExecutionReceiptFor;
+use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -285,62 +285,7 @@ where
 			return Ok(None)
 		}
 
-		let executor_id = self
-			.primary_chain_client
-			.runtime_api()
-			.executor_id(&BlockId::Hash(primary_hash))?;
-
-		if self.is_authority &&
-			SyncCryptoStore::has_keys(
-				&*self.keystore,
-				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
-			) {
-			let to_sign = execution_receipt.hash();
-			match SyncCryptoStore::sign_with(
-				&*self.keystore,
-				ExecutorId::ID,
-				&executor_id.clone().into(),
-				to_sign.as_ref(),
-			) {
-				Ok(Some(signature)) => {
-					tracing::debug!(
-						target: LOG_TARGET,
-						"Generating the signed execution receipt for #{}",
-						header_hash
-					);
-
-					let signed_execution_receipt = SignedExecutionReceipt {
-						execution_receipt,
-						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
-							|err| {
-								sp_blockchain::Error::Application(Box::from(format!(
-									"Failed to decode the signature of execution receipt: {err}"
-								)))
-							},
-						)?,
-						signer: executor_id,
-					};
-
-					if let Err(e) = self
-						.execution_receipt_sender
-						.unbounded_send(signed_execution_receipt.clone())
-					{
-						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
-					}
-
-					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-					Ok(Some(signed_execution_receipt))
-				},
-				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
-					"This should not happen as the existence of key was just checked",
-				))),
-				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
-					"Error occurred when signing the execution receipt: {error}"
-				)))),
-			}
-		} else {
-			Ok(None)
-		}
+		self.try_sign_and_send_receipt(primary_hash, execution_receipt)
 	}
 
 	fn bundles_to_extrinsics(
@@ -407,6 +352,63 @@ where
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
 		Ok(extrinsics)
+	}
+
+	fn try_sign_and_send_receipt(
+		&self,
+		primary_hash: PBlock::Hash,
+		execution_receipt: ExecutionReceiptFor<PBlock, Block::Hash>,
+	) -> Result<Option<SignedExecutionReceiptFor<PBlock, Block::Hash>>, sp_blockchain::Error> {
+		let executor_id = self
+			.primary_chain_client
+			.runtime_api()
+			.executor_id(&BlockId::Hash(primary_hash))?;
+
+		if self.is_authority &&
+			SyncCryptoStore::has_keys(
+				&*self.keystore,
+				&[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
+			) {
+			let to_sign = execution_receipt.hash();
+			match SyncCryptoStore::sign_with(
+				&*self.keystore,
+				ExecutorId::ID,
+				&executor_id.clone().into(),
+				to_sign.as_ref(),
+			) {
+				Ok(Some(signature)) => {
+					let signed_execution_receipt = SignedExecutionReceipt {
+						execution_receipt,
+						signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
+							|err| {
+								sp_blockchain::Error::Application(Box::from(format!(
+									"Failed to decode the signature of execution receipt: {err}"
+								)))
+							},
+						)?,
+						signer: executor_id,
+					};
+
+					if let Err(e) = self
+						.execution_receipt_sender
+						.unbounded_send(signed_execution_receipt.clone())
+					{
+						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
+					}
+
+					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
+					Ok(Some(signed_execution_receipt))
+				},
+				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
+					"This should not happen as the existence of key was just checked",
+				))),
+				Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
+					"Error occurred when signing the execution receipt: {error}"
+				)))),
+			}
+		} else {
+			Ok(None)
+		}
 	}
 }
 
