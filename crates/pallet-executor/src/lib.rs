@@ -41,7 +41,7 @@ mod pallet {
         SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
-        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps,
+        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps,
     };
     use sp_std::fmt::Debug;
 
@@ -71,6 +71,10 @@ mod pallet {
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
 
         /// Maximum execution receipt drift.
+        ///
+        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
+        /// best execution chain number, this receipt will be rejected as being too far in the
+        /// future.
         type MaximumReceiptDrift: Get<Self::BlockNumber>;
     }
 
@@ -151,9 +155,9 @@ mod pallet {
             let primary_number = execution_receipt.primary_number;
 
             // Execution receipt starts from the primary block #1.
-            if primary_number > 1u32.into() {
+            if primary_number > One::one() {
                 ensure!(
-                    Receipts::<T>::get(primary_number - 1u32.into()).is_some(),
+                    Receipts::<T>::get(primary_number - One::one()).is_some(),
                     Error::<T>::MissingParentReceipt
                 );
             } else {
@@ -168,7 +172,7 @@ mod pallet {
             // Remove the oldest once the receipts cache is full.
             if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
                 Receipts::<T>::remove(to_prune);
-                OldestReceiptNumber::<T>::put(to_prune + 1u32.into());
+                OldestReceiptNumber::<T>::put(to_prune + One::one());
             }
 
             Self::deposit_event(Event::NewExecutionReceipt {
@@ -274,6 +278,9 @@ mod pallet {
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
 
     /// Mapping from the primary block number to the corresponding verified execution receipt.
+    ///
+    /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
+    /// ones will be pruned once the size of receipts exceeds this number.
     #[pallet::storage]
     pub(super) type Receipts<T: Config> = StorageMap<
         _,
@@ -363,7 +370,7 @@ mod pallet {
                     let best_number = ExecutionChainBestNumber::<T>::get();
 
                     // Ensure the block number of next execution receipt is `best_number + 1`.
-                    if primary_number != best_number + 1u32.into() {
+                    if primary_number != best_number + One::one() {
                         if primary_number <= best_number {
                             return Err(InvalidTransaction::Stale.into());
                         } else {
@@ -405,8 +412,8 @@ mod pallet {
                             .propagate(true);
 
                     // The receipt for Block #1 does not require a parent.
-                    if primary_number > 1u32.into() {
-                        builder.and_requires(primary_number - 1u32.into()).build()
+                    if primary_number > One::one() {
+                        builder.and_requires(primary_number - One::one()).build()
                     } else {
                         builder.build()
                     }
