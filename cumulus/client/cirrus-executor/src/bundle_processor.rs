@@ -164,10 +164,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<
-		Option<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-		sp_blockchain::Error,
-	> {
+	) -> Result<Option<SignedExecutionReceiptFor<PBlock, Block::Hash>>, sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -288,10 +285,10 @@ where
 			return Ok(None)
 		}
 
-		let executor_id = self.primary_chain_client.runtime_api().executor_id(&BlockId::Hash(
-			PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
-				.expect("Primary block hash must be the correct type; qed"),
-		))?;
+		let executor_id = self
+			.primary_chain_client
+			.runtime_api()
+			.executor_id(&BlockId::Hash(primary_hash))?;
 
 		if self.is_authority &&
 			SyncCryptoStore::has_keys(
