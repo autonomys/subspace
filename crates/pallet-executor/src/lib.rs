@@ -93,8 +93,8 @@ mod pallet {
         UnexpectedExecutionReceiptSigner,
         /// The parent execution receipt is unknown.
         MissingParentReceipt,
-        ///
-        InvalidExecutionReceipt,
+        /// The execution receipt points to a block unknown to the history.
+        UnknownBlock,
         /// The execution receipt is stale.
         ExecutionReceiptStale,
         /// The execution receipt is too far in the future.
@@ -497,16 +497,11 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::BadExecutionReceiptSignature);
         }
 
-        // TODO: activate it once we want to test the executor feature.
-        //
-        // Disable this check as it will break the current testnet runtime
-        // upgrade(https://github.com/subspace/subspace/pull/353).
-        //
-        // if let Err(error) =
-        // sp_executor::executor_ext::executor::check_execution_receipt(execution_receipt.encode())
-        // {
-        // return Err(Error::<T>::InvalidExecutionReceipt);
-        // }
+        if frame_system::Pallet::<T>::block_hash(execution_receipt.primary_number)
+            != execution_receipt.primary_hash
+        {
+            return Err(Error::<T>::UnknownBlock);
+        }
 
         // TODO: upgrade once the trusted executor system is upgraded.
         let expected_executor = Self::executor()

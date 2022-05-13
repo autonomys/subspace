@@ -43,10 +43,7 @@ pub struct TestExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
     /// Otherwise we only use the default Substrate host functions.
-    type ExtendHostFunctions = (
-        sp_executor::fraud_proof_ext::fraud_proof::HostFunctions,
-        sp_executor::executor_ext::executor::HostFunctions,
-    );
+    type ExtendHostFunctions = sp_executor::fraud_proof_ext::fraud_proof::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_test_runtime::api::dispatch(method, data)

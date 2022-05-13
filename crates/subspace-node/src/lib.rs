@@ -41,15 +41,11 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     #[cfg(feature = "runtime-benchmarks")]
     type ExtendHostFunctions = (
         sp_executor::fraud_proof_ext::fraud_proof::HostFunctions,
-        sp_executor::executor_ext::executor::HostFunctions,
         frame_benchmarking::benchmarking::HostFunctions,
     );
     /// Otherwise we only use the default Substrate host functions.
     #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = (
-        sp_executor::fraud_proof_ext::fraud_proof::HostFunctions,
-        sp_executor::executor_ext::executor::HostFunctions,
-    );
+    type ExtendHostFunctions = sp_executor::fraud_proof_ext::fraud_proof::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_runtime::api::dispatch(method, data)
