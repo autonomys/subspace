@@ -140,14 +140,14 @@ impl MultiFarming {
                     })
                     .collect::<Vec<_>>();
 
-                move |pieces_to_plot| {
+                move |pieces_to_plot, segment_pipeline_event_sender| {
                     on_pieces_to_plots
                         .par_iter_mut()
                         .map(|on_pieces_to_plot| {
                             // TODO: It might be desirable to not clone it and instead pick just
                             //  unnecessary pieces and copy pieces once since different plots will
                             //  care about different pieces
-                            on_pieces_to_plot(pieces_to_plot.clone())
+                            on_pieces_to_plot(pieces_to_plot.clone(), segment_pipeline_event_sender)
                         })
                         .reduce(|| true, |result, should_continue| result && should_continue)
                 }

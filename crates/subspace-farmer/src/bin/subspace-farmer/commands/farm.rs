@@ -16,7 +16,7 @@ use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOption
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
     retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, PieceOffset, Plot, PlotFile,
-    RpcClient,
+    RpcClient, SegmentPipelineEvent,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
@@ -234,7 +234,13 @@ pub(crate) async fn bench(
     raise_fd_limit();
 
     let (archived_segments_sender, archived_segments_receiver) = tokio::sync::mpsc::channel(10);
-    let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
+    let (segment_pipeline_event_sender, mut segment_pipeline_event_receiver) =
+        tokio::sync::mpsc::unbounded_channel();
+    let client = BenchRpcClient::new(
+        BENCH_FARMER_METADATA,
+        archived_segments_receiver,
+        segment_pipeline_event_sender,
+    );
 
     let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
@@ -289,13 +295,15 @@ pub(crate) async fn bench(
     )
     .await?;
 
+    let amount_of_pieces_to_write = write_pieces_size / PIECE_SIZE as u64;
+
     tokio::spawn(async move {
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
 
-        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 1000 {
+        for segment_index in 0..amount_of_pieces_to_write / 256 {
             last_archived_block
                 .archived_progress
                 .set_partial(segment_index as u32 * 1000 * PIECE_SIZE as u32);
@@ -308,7 +316,7 @@ pub(crate) async fn bench(
                     last_archived_block,
                 };
 
-                let mut pieces = FlatPieces::new(1000);
+                let mut pieces = FlatPieces::new(256);
                 rand::thread_rng().fill(pieces.as_mut());
 
                 let objects = std::iter::repeat_with(|| PieceObject::V0 {
@@ -333,12 +341,22 @@ pub(crate) async fn bench(
                 break;
             }
         }
-    })
-    .await?;
+    });
 
-    client.stop().await;
+    while let Some(event) = segment_pipeline_event_receiver.recv().await {
+        match event {
+            SegmentPipelineEvent::Done {
+                pieces_start_index,
+                pieces_amount,
+                ..
+            } if pieces_start_index + pieces_amount >= amount_of_pieces_to_write => break,
+            _ => (),
+        }
+    }
 
     multi_farming.wait().await?;
+
+    client.stop().await;
 
     Ok(())
 }

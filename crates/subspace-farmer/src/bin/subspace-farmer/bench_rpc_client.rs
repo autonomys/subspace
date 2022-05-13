@@ -10,7 +10,9 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use subspace_farmer::{RpcClient, RpcClientError as MockError};
+use subspace_farmer::{
+    RpcClient, RpcClientError as MockError, SegmentPipelineEvent, SegmentPipelineEventSender,
+};
 
 /// Client mock for benching purpose
 #[derive(Clone, Debug)]
@@ -23,6 +25,7 @@ pub struct Inner {
     metadata: FarmerMetadata,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
+    segment_pipeline_event_sender: mpsc::UnboundedSender<SegmentPipelineEvent>,
     segment_producer_handle: Mutex<JoinHandle<()>>,
 }
 
@@ -31,6 +34,7 @@ impl BenchRpcClient {
     pub fn new(
         metadata: FarmerMetadata,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
+        segment_pipeline_event_sender: mpsc::UnboundedSender<SegmentPipelineEvent>,
     ) -> Self {
         let (inner_archived_segments_sender, inner_archived_segments_receiver) = mpsc::channel(10);
         let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
@@ -53,6 +57,7 @@ impl BenchRpcClient {
             inner: Arc::new(Inner {
                 metadata,
                 archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
+                segment_pipeline_event_sender,
                 acknowledge_archived_segment_sender,
                 segment_producer_handle: Mutex::new(segment_producer_handle),
             }),
@@ -118,5 +123,9 @@ impl RpcClient for BenchRpcClient {
             .send(segment_index)
             .await?;
         Ok(())
+    }
+
+    fn segment_pipeline_event_sender(&self) -> SegmentPipelineEventSender {
+        SegmentPipelineEventSender::Some(self.inner.segment_pipeline_event_sender.clone())
     }
 }

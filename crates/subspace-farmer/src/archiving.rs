@@ -1,11 +1,11 @@
 use crate::object_mappings::ObjectMappings;
-use crate::rpc_client::RpcClient;
+use crate::rpc_client::{RpcClient, SegmentPipelineEvent, SegmentPipelineEventSender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{FlatPieces, Sha256Hash};
+use subspace_core_primitives::{FlatPieces, Sha256Hash, PIECE_SIZE};
 use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -57,7 +57,7 @@ impl Archiving {
     ) -> Result<Archiving, ArchivingError>
     where
         Client: RpcClient + Clone + Send + Sync + 'static,
-        OPTP: FnMut(PiecesToPlot) -> bool + Send + 'static,
+        OPTP: FnMut(PiecesToPlot, &'_ SegmentPipelineEventSender) -> bool + Send + 'static,
     {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, mut stop_receiver) = oneshot::channel();
@@ -73,6 +73,7 @@ impl Archiving {
 
         let (archived_segments_sync_sender, archived_segments_sync_receiver) =
             std::sync::mpsc::channel::<(ArchivedSegment, oneshot::Sender<()>)>();
+        let segment_pipeline_event_sender = client.segment_pipeline_event_sender();
 
         // Erasure coding in archiver and piece encoding are CPU-intensive operations.
         tokio::task::spawn_blocking({
@@ -91,15 +92,22 @@ impl Archiving {
                     if last_archived_segment_index == Some(segment_index) {
                         continue;
                     }
-                    last_archived_segment_index.replace(segment_index);
 
                     let piece_index_offset = merkle_num_leaves * segment_index;
+                    let pieces_amount = pieces.len() as u64 / PIECE_SIZE as u64;
+
+                    segment_pipeline_event_sender.send(SegmentPipelineEvent::received(
+                        piece_index_offset,
+                        pieces_amount,
+                    ));
+
+                    last_archived_segment_index.replace(segment_index);
 
                     let pieces_to_plot = PiecesToPlot {
                         piece_index_offset,
                         pieces,
                     };
-                    if !on_pieces_to_plot(pieces_to_plot) {
+                    if !on_pieces_to_plot(pieces_to_plot, &segment_pipeline_event_sender) {
                         // No need to continue
                         break;
                     }
@@ -112,6 +120,11 @@ impl Archiving {
                     }
 
                     info!("Plotted segment {}", segment_index);
+
+                    segment_pipeline_event_sender.send(SegmentPipelineEvent::done(
+                        piece_index_offset,
+                        pieces_amount,
+                    ));
 
                     if let Err(()) = acknowledgement_sender.send(()) {
                         error!("Failed to send archived segment acknowledgement");
