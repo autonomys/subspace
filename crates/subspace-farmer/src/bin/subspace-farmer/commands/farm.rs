@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::{info, warn};
 use rand::prelude::*;
+use stats::OnlineStats;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +25,7 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
+use tokio::time::Instant;
 
 use crate::bench_rpc_client::BenchRpcClient;
 use crate::{FarmingArgs, WriteToDisk};
@@ -343,20 +345,77 @@ pub(crate) async fn bench(
         }
     });
 
+    let mut last_stage_time = Instant::now();
+
+    let mut encode_stats = OnlineStats::new();
+    let mut write_to_plot_stats = OnlineStats::new();
+    let mut evicted_piece_stats = OnlineStats::new();
+    let mut created_commitments_stats = OnlineStats::new();
+    let mut write_commitments_stats = OnlineStats::new();
+
     while let Some(event) = segment_pipeline_event_receiver.recv().await {
+        use SegmentPipelineEvent::*;
+
         match event {
-            SegmentPipelineEvent::Done {
+            Done {
                 pieces_start_index,
                 pieces_amount,
                 ..
             } if pieces_start_index + pieces_amount >= amount_of_pieces_to_write => break,
-            _ => (),
+
+            Received { at, .. } => {
+                last_stage_time = at;
+            }
+            Encoded { at, .. } => {
+                encode_stats.add(at.duration_since(last_stage_time).as_secs_f64());
+                last_stage_time = at;
+            }
+            WritenToPlot { at, .. } => {
+                write_to_plot_stats.add(at.duration_since(last_stage_time).as_secs_f64());
+                last_stage_time = at;
+            }
+            EvictedPieces { at, .. } => {
+                evicted_piece_stats.add(at.duration_since(last_stage_time).as_secs_f64());
+                last_stage_time = at;
+            }
+            CreatedCommitments { at, .. } => {
+                created_commitments_stats.add(at.duration_since(last_stage_time).as_secs_f64());
+                last_stage_time = at;
+            }
+            Done { at, .. } => {
+                write_commitments_stats.add(at.duration_since(last_stage_time).as_secs_f64());
+                last_stage_time = at;
+            }
         }
     }
 
     multi_farming.wait().await?;
 
     client.stop().await;
+
+    let total_time = encode_stats.mean()
+        + write_to_plot_stats.mean()
+        + evicted_piece_stats.mean()
+        + created_commitments_stats.mean()
+        + write_commitments_stats.mean();
+
+    println!();
+    println!("Benchmark ended.");
+
+    for (name, stats) in [
+        ("Pieces encoding", encode_stats),
+        ("Writing to plot", write_to_plot_stats),
+        ("Pieces eviction", evicted_piece_stats),
+        ("Creation of commitments", created_commitments_stats),
+        ("Writing commitments to db", write_commitments_stats),
+    ] {
+        println!(
+            "{name}: {:?} ± {:?} ({:.2}%)",
+            Duration::from_secs_f64(stats.mean()),
+            Duration::from_secs_f64(stats.stddev()),
+            stats.mean() / total_time * 100.
+        );
+    }
 
     Ok(())
 }
