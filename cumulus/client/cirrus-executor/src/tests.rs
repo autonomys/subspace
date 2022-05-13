@@ -11,13 +11,12 @@ use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::{traits::FetchRuntimeCode, Pair};
-use sp_executor::{
-	ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
-};
+use sp_executor::{ExecutionPhase, ExecutorPair, FraudProof, SignedExecutionReceipt};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
 };
+use std::collections::HashSet;
 
 #[substrate_test_utils::test]
 async fn test_executor_full_node_catching_up() {
@@ -555,27 +554,27 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
 	alice_network_starter.start_network();
 
-	// run cirrus alice (a secondary chain authority node)
+	// run cirrus alice (a secondary chain full node)
+	// Run a full node deliberately in order to control the executoin chain by
+	// submitting the receipts manually later.
 	let alice_executor = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
 		.connect_to_relay_chain_node(&alice)
-		.build(Role::Authority)
+		.build(Role::Full)
 		.await;
 
 	alice_executor.wait_for_blocks(3).await;
 
-	let alice_best_hash = alice.client.info().best_hash;
-
 	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
 		let pool = alice.transaction_pool.pool();
+		let backend = alice_executor.backend.clone();
+		let alice_best_hash = alice.client.info().best_hash;
 
+		let block_hash = alice_executor.client.hash(primary_number).unwrap().unwrap();
 		async move {
-			let execution_receipt = ExecutionReceipt {
-				primary_number,
-				primary_hash: Hash::random(),
-				secondary_hash: Hash::random(),
-				trace: vec![Hash::random(), Hash::random()],
-				trace_root: Default::default(),
-			};
+			let execution_receipt =
+				crate::aux_schema::load_execution_receipt(&*backend, block_hash)
+					.unwrap()
+					.unwrap();
 
 			let pair = ExecutorPair::from_string("//Alice", None).unwrap();
 			let signer = pair.public();
@@ -593,13 +592,62 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		}
 	};
 
-	// best execution chain number is 2
-	// best consensus chain number is 3, the next consensus block is 4, reject as same with the
-	// current building block.
-	assert!(create_and_send_submit_execution_receipt(4).await.is_err());
+	let tx1 = create_and_send_submit_execution_receipt(1)
+		.await
+		.expect("Submit receipt successfully");
+	let tx2 = create_and_send_submit_execution_receipt(2)
+		.await
+		.expect("Submit receipt successfully");
+	let tx3 = create_and_send_submit_execution_receipt(3)
+		.await
+		.expect("Submit receipt successfully");
 
-	// TODO: assert the specific error type once `sc_transaction_pool::error::Error` supports `==`.
-	// Should submit a PR to Substrate.
+	let ready_txs = || {
+		alice
+			.transaction_pool
+			.pool()
+			.validated_pool()
+			.ready()
+			.map(|tx| tx.hash)
+			.collect::<Vec<_>>()
+	};
+
+	assert_eq!(vec![tx1, tx2, tx3], ready_txs());
+	alice_executor.wait_for_blocks(1).await;
+	// The ready txs will be consumed and included in the next block.
+	assert!(ready_txs().is_empty());
+
+	alice_executor.wait_for_blocks(4).await;
+
+	let future_txs = || {
+		alice
+			.transaction_pool
+			.pool()
+			.validated_pool()
+			.futures()
+			.into_iter()
+			.map(|(tx_hash, _)| tx_hash)
+			.collect::<HashSet<_>>()
+	};
+	// best execution chain number is 3, receipt for #5 will be put into the futures queue.
+	let tx5 = create_and_send_submit_execution_receipt(5)
+		.await
+		.expect("Submit a future receipt successfully");
+	assert_eq!(HashSet::from([tx5]), future_txs());
+
+	let tx6 = create_and_send_submit_execution_receipt(6)
+		.await
+		.expect("Submit a future receipt successfully");
+	let tx7 = create_and_send_submit_execution_receipt(7)
+		.await
+		.expect("Submit a future receipt successfully");
+	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
+
+	// max drift is 4, hence the max allowed receipt number is 3 + 4, 8 will be rejected as being
+	// too far.
+	assert!(create_and_send_submit_execution_receipt(8).await.is_err());
+	// TODO: improve the pallet-executor error code to assert the specific error type.
+	// This also requires `sc_transaction_pool::error::Error` supports `==`. Should submit a PR to Substrate.
 	// assert_eq!(
 	// create_and_send_submit_execution_receipt(4).await.unwrap_err(),
 	// sc_transaction_pool::error::Error::Pool(
@@ -609,13 +657,16 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	// )
 	// );
 
-	create_and_send_submit_execution_receipt(5)
+	alice_executor.wait_for_blocks(1).await;
+	assert!(ready_txs().is_empty());
+	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
+	let tx4 = create_and_send_submit_execution_receipt(4)
 		.await
-		.expect("Submit a future receipt successfully");
-	create_and_send_submit_execution_receipt(6)
-		.await
-		.expect("Submit a future receipt successfully");
-	// max drift is 4, hence the max allowed receipt number is 2 + 4, 7 will be rejected as being
-	// too far.
-	assert!(create_and_send_submit_execution_receipt(7).await.is_err());
+		.expect("Submit receipt successfully");
+	// All future txs become ready once the required tx is ready.
+	assert_eq!(vec![tx4, tx5, tx6, tx7], ready_txs());
+	assert!(future_txs().is_empty());
+	alice_executor.wait_for_blocks(1).await;
+	// The ready txs will be consumed and included in the next block.
+	assert!(ready_txs().is_empty());
 }

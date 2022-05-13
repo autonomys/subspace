@@ -411,11 +411,14 @@ mod pallet {
                             .longevity(TransactionLongevity::MAX)
                             .propagate(true);
 
-                    // The receipt for Block #1 does not require a parent.
-                    if primary_number > One::one() {
-                        builder.and_requires(primary_number - One::one()).build()
-                    } else {
+                    // primary_number is ensured to be larger than the best execution chain chain
+                    // number above.
+                    //
+                    // No requires if it's the next expected execution chain number.
+                    if primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
                         builder.build()
+                    } else {
+                        builder.and_requires(primary_number - One::one()).build()
                     }
                 }
                 Call::submit_transaction_bundle {
