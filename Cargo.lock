@@ -850,6 +850,7 @@ dependencies = [
  "futures-timer",
  "merkletree",
  "pallet-balances",
+ "pallet-executor",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.8.5",
@@ -858,6 +859,8 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-network",
+ "sc-service",
+ "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
  "sha2 0.10.2",
@@ -877,6 +880,7 @@ dependencies = [
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
+ "subspace-test-service",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "thiserror",
@@ -5004,6 +5008,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
@@ -8806,6 +8811,7 @@ dependencies = [
  "sc-network",
  "sc-service",
  "sc-tracing",
+ "sc-transaction-pool",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-keyring",

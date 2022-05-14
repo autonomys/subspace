@@ -95,7 +95,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::{Randomness, Tag};
+use subspace_core_primitives::{BlockNumber, Randomness, Tag};
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -766,6 +766,9 @@ where
 				self.spawner.clone() as Box<dyn SpawnNamed>,
 			);
 
+			let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
+				.unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
+
 			// TODO: abstract the execution proof impl to be reusable in the test.
 			let fraud_proof = if local_trace_idx == 0 {
 				// `initialize_block` execution proof.
@@ -789,6 +792,7 @@ where
 				)?;
 
 				FraudProof {
+					parent_number,
 					parent_hash: as_h256(&parent_header.hash())?,
 					pre_state_root,
 					post_state_root,
@@ -823,6 +827,7 @@ where
 				)?;
 
 				FraudProof {
+					parent_number,
 					parent_hash: as_h256(&parent_header.hash())?,
 					pre_state_root,
 					post_state_root,
@@ -843,6 +848,7 @@ where
 
 				// TODO: proof should be a CompactProof.
 				FraudProof {
+					parent_number,
 					parent_hash: as_h256(&parent_header.hash())?,
 					pre_state_root,
 					post_state_root,

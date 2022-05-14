@@ -24,6 +24,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 
 [dev-dependencies]
 sp-io = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sp-trie = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 
 [features]
 default = ["std"]

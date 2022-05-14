@@ -24,7 +24,7 @@ use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::mpsc;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{ExecutorProvider, StateBackendFor};
+use sc_client_api::{BlockBackend, ExecutorProvider, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::{
@@ -36,6 +36,7 @@ use sc_service::{error::Error as ServiceError, Configuration, PartialComponents,
 use sc_service::{NetworkStarter, SpawnTasksParams};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool::FullPool;
+use sp_api::ProvideRuntimeApi;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
@@ -45,7 +46,7 @@ use sp_executor::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
@@ -272,11 +273,19 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<C> {
+pub struct NewFull<C>
+where
+    C: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + 'static,
+    C::Api: TaggedTransactionQueue<Block>,
+{
     /// Task manager.
     pub task_manager: TaskManager,
     /// Full client.
-    pub client: C,
+    pub client: Arc<C>,
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
     /// Network.
@@ -297,13 +306,15 @@ pub struct NewFull<C> {
         SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Network starter.
     pub network_starter: NetworkStarter,
+    /// Transaction pool.
+    pub transaction_pool: Arc<FullPool<Block, C>>,
 }
 
 /// Builds a new service for a full client.
 pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
-) -> Result<NewFull<Arc<FullClient<RuntimeApi, ExecutorDispatch>>>, Error>
+) -> Result<NewFull<FullClient<RuntimeApi, ExecutorDispatch>>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -437,6 +448,7 @@ where
             let new_slot_notification_stream = new_slot_notification_stream.clone();
             let block_signing_notification_stream = block_signing_notification_stream.clone();
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
+            let transaction_pool = transaction_pool.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
@@ -473,5 +485,6 @@ where
         imported_block_notification_stream,
         archived_segment_notification_stream,
         network_starter,
+        transaction_pool,
     })
 }

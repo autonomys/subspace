@@ -55,9 +55,13 @@ version = "0.10.2"
 [dev-dependencies]
 cirrus-test-service = { path = "../../test/service" }
 pallet-balances = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+pallet-executor = { path = "../../../crates/pallet-executor" }
 sc-cli = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sc-service = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
+sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 sp-state-machine = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }
 subspace-test-runtime = { path = "../../../test/subspace-test-runtime" }
+subspace-test-service = { path = "../../../test/subspace-test-service" }
 substrate-test-runtime-client = { path = "../../../substrate/substrate-test-runtime-client" }
 substrate-test-utils = { git = "https://github.com/paritytech/substrate", rev = "c4f3d028621edb293d2c423516221aa396f76a2d" }

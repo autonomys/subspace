@@ -1,5 +1,5 @@
 use cirrus_block_builder::{BlockBuilder, RecordProof};
-use cirrus_primitives::{Hash, SecondaryApi};
+use cirrus_primitives::{BlockNumber, Hash, SecondaryApi};
 use cirrus_test_service::{
 	run_primary_chain_validator_node,
 	runtime::Header,
@@ -7,13 +7,16 @@ use cirrus_test_service::{
 };
 use codec::Encode;
 use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
+use sc_service::Role;
+use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::FetchRuntimeCode;
-use sp_executor::{ExecutionPhase, FraudProof};
+use sp_core::{traits::FetchRuntimeCode, Pair};
+use sp_executor::{ExecutionPhase, ExecutorPair, FraudProof, SignedExecutionReceipt};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
 };
+use std::collections::HashSet;
 
 #[substrate_test_utils::test]
 async fn test_executor_full_node_catching_up() {
@@ -32,14 +35,14 @@ async fn test_executor_full_node_catching_up() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -78,14 +81,14 @@ async fn execution_proof_creation_and_verification_should_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -218,8 +221,10 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// Incorrect but it's fine for the test purpose.
 	let parent_hash_alice = alice.client.info().best_hash;
+	let parent_number_alice = alice.client.info().best_number;
 
 	let fraud_proof = FraudProof {
+		parent_number: parent_number_alice,
 		parent_hash: parent_hash_alice,
 		pre_state_root: *parent_header.state_root(),
 		post_state_root: intermediate_roots[0].into(),
@@ -266,6 +271,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		assert_eq!(post_execution_root, intermediate_roots[target_extrinsic_index + 1].into());
 
 		let fraud_proof = FraudProof {
+			parent_number: parent_number_alice,
 			parent_hash: parent_hash_alice,
 			pre_state_root: intermediate_roots[target_extrinsic_index].into(),
 			post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
@@ -309,6 +315,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	assert_eq!(post_execution_root, *header.state_root());
 
 	let fraud_proof = FraudProof {
+		parent_number: parent_number_alice,
 		parent_hash: parent_hash_alice,
 		pre_state_root: intermediate_roots.last().unwrap().into(),
 		post_state_root: post_execution_root,
@@ -335,14 +342,14 @@ async fn invalid_execution_proof_should_not_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
 		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Full)
 		.await;
 
 	// dave is able to sync blocks.
@@ -453,8 +460,10 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// Incorrect but it's fine for the test purpose.
 	let parent_hash_alice = alice.client.info().best_hash;
+	let parent_number_alice = alice.client.info().best_number;
 
 	let fraud_proof = FraudProof {
+		parent_number: parent_number_alice,
 		parent_hash: parent_hash_alice,
 		pre_state_root: post_delta_root0,
 		post_state_root: post_delta_root1,
@@ -464,6 +473,7 @@ async fn invalid_execution_proof_should_not_work() {
 	assert!(proof_verifier.verify(&fraud_proof).is_err());
 
 	let fraud_proof = FraudProof {
+		parent_number: parent_number_alice,
 		parent_hash: parent_hash_alice,
 		pre_state_root: post_delta_root0,
 		post_state_root: post_delta_root1,
@@ -473,6 +483,7 @@ async fn invalid_execution_proof_should_not_work() {
 	assert!(proof_verifier.verify(&fraud_proof).is_err());
 
 	let fraud_proof = FraudProof {
+		parent_number: parent_number_alice,
 		parent_hash: parent_hash_alice,
 		pre_state_root: post_delta_root0,
 		post_state_root: post_delta_root1,
@@ -499,7 +510,7 @@ async fn set_new_code_should_work() {
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
 		.connect_to_relay_chain_node(&alice)
-		.build()
+		.build(Role::Authority)
 		.await;
 
 	charlie.wait_for_blocks(3).await;
@@ -527,4 +538,135 @@ async fn set_new_code_should_work() {
 		charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
 		vec![DigestItem::RuntimeEnvironmentUpdated]
 	);
+}
+
+#[substrate_test_utils::test]
+async fn pallet_executor_unsigned_extrinsics_should_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// start alice
+	let (alice, alice_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+
+	alice_network_starter.start_network();
+
+	// run cirrus alice (a secondary chain full node)
+	// Run a full node deliberately in order to control the executoin chain by
+	// submitting the receipts manually later.
+	let alice_executor = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_relay_chain_node(&alice)
+		.build(Role::Full)
+		.await;
+
+	alice_executor.wait_for_blocks(3).await;
+
+	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
+		let pool = alice.transaction_pool.pool();
+		let backend = alice_executor.backend.clone();
+		let alice_best_hash = alice.client.info().best_hash;
+
+		let block_hash = alice_executor.client.hash(primary_number).unwrap().unwrap();
+		async move {
+			let execution_receipt =
+				crate::aux_schema::load_execution_receipt(&*backend, block_hash)
+					.unwrap()
+					.unwrap();
+
+			let pair = ExecutorPair::from_string("//Alice", None).unwrap();
+			let signer = pair.public();
+			let signature = pair.sign(execution_receipt.hash().as_ref());
+
+			let signed_execution_receipt =
+				SignedExecutionReceipt { execution_receipt, signature, signer };
+
+			let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+				pallet_executor::Call::submit_execution_receipt { signed_execution_receipt }.into(),
+			);
+
+			pool.submit_one(&BlockId::Hash(alice_best_hash), TransactionSource::External, tx.into())
+				.await
+		}
+	};
+
+	let tx1 = create_and_send_submit_execution_receipt(1)
+		.await
+		.expect("Submit receipt successfully");
+	let tx2 = create_and_send_submit_execution_receipt(2)
+		.await
+		.expect("Submit receipt successfully");
+	let tx3 = create_and_send_submit_execution_receipt(3)
+		.await
+		.expect("Submit receipt successfully");
+
+	let ready_txs = || {
+		alice
+			.transaction_pool
+			.pool()
+			.validated_pool()
+			.ready()
+			.map(|tx| tx.hash)
+			.collect::<Vec<_>>()
+	};
+
+	assert_eq!(vec![tx1, tx2, tx3], ready_txs());
+	alice_executor.wait_for_blocks(1).await;
+	// The ready txs will be consumed and included in the next block.
+	assert!(ready_txs().is_empty());
+
+	alice_executor.wait_for_blocks(4).await;
+
+	let future_txs = || {
+		alice
+			.transaction_pool
+			.pool()
+			.validated_pool()
+			.futures()
+			.into_iter()
+			.map(|(tx_hash, _)| tx_hash)
+			.collect::<HashSet<_>>()
+	};
+	// best execution chain number is 3, receipt for #5 will be put into the futures queue.
+	let tx5 = create_and_send_submit_execution_receipt(5)
+		.await
+		.expect("Submit a future receipt successfully");
+	assert_eq!(HashSet::from([tx5]), future_txs());
+
+	let tx6 = create_and_send_submit_execution_receipt(6)
+		.await
+		.expect("Submit a future receipt successfully");
+	let tx7 = create_and_send_submit_execution_receipt(7)
+		.await
+		.expect("Submit a future receipt successfully");
+	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
+
+	// max drift is 4, hence the max allowed receipt number is 3 + 4, 8 will be rejected as being
+	// too far.
+	assert!(create_and_send_submit_execution_receipt(8).await.is_err());
+	// TODO: improve the pallet-executor error code to assert the specific error type.
+	// This also requires `sc_transaction_pool::error::Error` supports `==`. Should submit a PR to Substrate.
+	// assert_eq!(
+	// create_and_send_submit_execution_receipt(4).await.unwrap_err(),
+	// sc_transaction_pool::error::Error::Pool(
+	// sc_transaction_pool_api::error::Error::InvalidTransaction(
+	// pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()
+	// )
+	// )
+	// );
+
+	alice_executor.wait_for_blocks(1).await;
+	assert!(ready_txs().is_empty());
+	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
+	let tx4 = create_and_send_submit_execution_receipt(4)
+		.await
+		.expect("Submit receipt successfully");
+	// All future txs become ready once the required tx is ready.
+	assert_eq!(vec![tx4, tx5, tx6, tx7], ready_txs());
+	assert!(future_txs().is_empty());
+	alice_executor.wait_for_blocks(1).await;
+	// The ready txs will be consumed and included in the next block.
+	assert!(ready_txs().is_empty());
 }

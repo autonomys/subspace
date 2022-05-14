@@ -254,6 +254,7 @@ where
             post_state_root,
             proof,
             execution_phase,
+            ..
         } = proof;
 
         let code_fetcher = RuntimCodeFetcher {

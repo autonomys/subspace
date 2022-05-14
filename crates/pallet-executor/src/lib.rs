@@ -20,17 +20,21 @@
 #[cfg(test)]
 mod tests;
 
+use frame_support::ensure;
+use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
     BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
     SignedOpaqueBundle,
 };
+use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::RuntimeAppPublic;
 
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
@@ -38,7 +42,7 @@ mod pallet {
         SignedExecutionReceipt, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
-        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, SimpleBitOps,
+        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps,
     };
     use sp_std::fmt::Debug;
 
@@ -66,6 +70,13 @@ mod pallet {
         /// Number of execution receipts kept in the state.
         #[pallet::constant]
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
+
+        /// Maximum execution receipt drift.
+        ///
+        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
+        /// best execution chain number, this receipt will be rejected as being too far in the
+        /// future.
+        type MaximumReceiptDrift: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -73,20 +84,64 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum BundleError {
+        /// The signer of transaction bundle is unexpected.
+        UnexpectedSigner,
+        /// Invalid transaction bundle signature.
+        BadSignature,
+    }
+
+    impl<T> From<BundleError> for Error<T> {
+        fn from(e: BundleError) -> Self {
+            Self::Bundle(e)
+        }
+    }
+
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum ExecutionReceiptError {
+        /// The signer of execution receipt is unexpected.
+        UnexpectedSigner,
+        /// The parent execution receipt is unknown.
+        MissingParent,
+        /// Invalid execution receipt signature.
+        BadSignature,
+        /// The execution receipt is stale.
+        Stale,
+        /// The execution receipt points to a block unknown to the history.
+        UnknownBlock,
+        /// The execution receipt is too far in the future.
+        TooFarInFuture,
+    }
+
+    impl<T> From<ExecutionReceiptError> for Error<T> {
+        fn from(e: ExecutionReceiptError) -> Self {
+            Self::ExecutionReceipt(e)
+        }
+    }
+
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum FraudProofError {
+        /// Fraud proof is expired as the execution receipt has been pruned.
+        ExecutionReceiptPruned,
+        /// Trying to prove an receipt from the future.
+        ExecutionReceiptInFuture,
+    }
+
+    impl<T> From<FraudProofError> for Error<T> {
+        fn from(e: FraudProofError) -> Self {
+            Self::FraudProof(e)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
-        /// The head number was wrong against the latest head.
-        UnexpectedHeadNumber,
-        /// Invalid bundle signature.
-        BadBundleSignature,
-        /// The signer of bundle is unexpected.
-        UnexpectedBundleSigner,
-        /// Invalid execution receipt signature.
-        BadExecutionReceiptSignature,
-        /// The signer of execution receipt is unexpected.
-        UnexpectedExecutionReceiptSigner,
-        /// The parent execution receipt is unknown.
-        MissingParentReceipt,
+        /// Invalid bundle.
+        Bundle(BundleError),
+        /// Invalid execution receipt.
+        ExecutionReceipt(ExecutionReceiptError),
+        /// Invalid fraud proof.
+        FraudProof(FraudProofError),
     }
 
     #[pallet::event]
@@ -137,19 +192,24 @@ mod pallet {
             let primary_number = execution_receipt.primary_number;
 
             // Execution receipt starts from the primary block #1.
-            if primary_number > 1u32.into() {
+            if primary_number > One::one() {
                 ensure!(
-                    Receipts::<T>::get(primary_number - 1u32.into()).is_some(),
-                    Error::<T>::MissingParentReceipt
+                    Receipts::<T>::get(primary_number - One::one()).is_some(),
+                    Error::<T>::ExecutionReceipt(ExecutionReceiptError::MissingParent)
                 );
+            } else {
+                // Initialize the oldest receipt with block #1.
+                OldestReceiptNumber::<T>::put(primary_number);
             }
 
             // Apply the execution receipt.
             <Receipts<T>>::insert(primary_number, execution_receipt);
+            <ExecutionChainBestNumber<T>>::put(primary_number);
 
             // Remove the oldest once the receipts cache is full.
             if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
                 Receipts::<T>::remove(to_prune);
+                OldestReceiptNumber::<T>::put(to_prune + One::one());
             }
 
             Self::deposit_event(Event::NewExecutionReceipt {
@@ -192,7 +252,16 @@ mod pallet {
                 fraud_proof
             );
 
-            // TODO: revert the execution chain.
+            // Revert the execution chain.
+            let new_best: T::BlockNumber = fraud_proof.parent_number.into();
+            <ExecutionChainBestNumber<T>>::mutate(|current_best| {
+                let mut to_remove = new_best + One::one();
+                while to_remove <= *current_best {
+                    Receipts::<T>::remove(to_remove);
+                    to_remove += One::one();
+                }
+                *current_best = new_best;
+            });
 
             // TODO: slash the executor accordingly.
 
@@ -250,6 +319,9 @@ mod pallet {
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
 
     /// Mapping from the primary block number to the corresponding verified execution receipt.
+    ///
+    /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
+    /// ones will be pruned once the size of receipts exceeds this number.
     #[pallet::storage]
     pub(super) type Receipts<T: Config> = StorageMap<
         _,
@@ -258,6 +330,15 @@ mod pallet {
         ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
         OptionQuery,
     >;
+
+    /// Latest execution chain block number.
+    #[pallet::storage]
+    pub(super) type ExecutionChainBestNumber<T: Config> =
+        StorageValue<_, T::BlockNumber, ValueQuery>;
+
+    /// Number of the block that the oldest execution receipt points to.
+    #[pallet::storage]
+    pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -294,11 +375,18 @@ mod pallet {
     }
 
     #[repr(u8)]
-    enum InvalidTransactionCode {
+    pub enum InvalidTransactionCode {
         BundleEquivicationProof = 101,
         TrasactionProof = 102,
         ExecutionReceipt = 103,
         Bundle = 104,
+        FraudProof = 105,
+    }
+
+    impl From<InvalidTransactionCode> for InvalidTransaction {
+        fn from(invalid_code: InvalidTransactionCode) -> Self {
+            InvalidTransaction::Custom(invalid_code as u8)
+        }
     }
 
     impl From<InvalidTransactionCode> for TransactionValidity {
@@ -312,7 +400,27 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_execution_receipt { .. } => Ok(()),
+                Call::submit_execution_receipt {
+                    signed_execution_receipt,
+                } => {
+                    let SignedExecutionReceipt {
+                        execution_receipt, ..
+                    } = signed_execution_receipt;
+
+                    let primary_number = execution_receipt.primary_number;
+                    let best_number = ExecutionChainBestNumber::<T>::get();
+
+                    // Ensure the block number of next execution receipt is `best_number + 1`.
+                    if primary_number != best_number + One::one() {
+                        if primary_number <= best_number {
+                            return Err(InvalidTransaction::Stale.into());
+                        } else {
+                            return Err(InvalidTransaction::Future.into());
+                        }
+                    }
+
+                    Ok(())
+                }
                 Call::submit_transaction_bundle { .. } => Ok(()),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
@@ -334,10 +442,25 @@ mod pallet {
                         );
                         return InvalidTransactionCode::ExecutionReceipt.into();
                     }
-                    unsigned_validity(
-                        "SubspaceSubmitExecutionReceipt",
-                        signed_execution_receipt.hash(),
-                    )
+
+                    let primary_number = signed_execution_receipt.execution_receipt.primary_number;
+
+                    let builder =
+                        ValidTransaction::with_tag_prefix("SubspaceSubmitExecutionReceipt")
+                            .priority(TransactionPriority::MAX)
+                            .and_provides(primary_number)
+                            .longevity(TransactionLongevity::MAX)
+                            .propagate(true);
+
+                    // primary_number is ensured to be larger than the best execution chain chain
+                    // number above.
+                    //
+                    // No requires if it's the next expected execution chain number.
+                    if primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
+                        builder.build()
+                    } else {
+                        builder.and_requires(primary_number - One::one()).build()
+                    }
                 }
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
@@ -356,12 +479,15 @@ mod pallet {
                     )
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: prevent the spamming of fraud proof transaction.
-                    // TODO: verify the fraud proof on the client side.
-                    // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
-                    // log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
-                    // return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
-                    // }
+                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                        log::error!(
+                            target: "runtime::subspace::executor",
+                            "Invalid fraud proof: {:?}",
+                            e
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
+
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
                 }
@@ -419,7 +545,13 @@ impl<T: Config> Pallet<T> {
         }: &SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
         if !signer.verify(&execution_receipt.hash(), signature) {
-            return Err(Error::<T>::BadExecutionReceiptSignature);
+            return Err(ExecutionReceiptError::BadSignature.into());
+        }
+
+        if frame_system::Pallet::<T>::block_hash(execution_receipt.primary_number)
+            != execution_receipt.primary_hash
+        {
+            return Err(ExecutionReceiptError::UnknownBlock.into());
         }
 
         // TODO: upgrade once the trusted executor system is upgraded.
@@ -427,7 +559,22 @@ impl<T: Config> Pallet<T> {
             .map(|(_, authority_id)| authority_id)
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
-            return Err(Error::<T>::UnexpectedExecutionReceiptSigner);
+            return Err(ExecutionReceiptError::UnexpectedSigner.into());
+        }
+
+        // Ensure the receipt is neither old nor too new.
+        let primary_number = execution_receipt.primary_number;
+
+        let best_number = ExecutionChainBestNumber::<T>::get();
+        if primary_number <= best_number {
+            return Err(ExecutionReceiptError::Stale.into());
+        }
+
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+        if primary_number == current_block_number
+            || primary_number > best_number + T::MaximumReceiptDrift::get()
+        {
+            return Err(ExecutionReceiptError::TooFarInFuture.into());
         }
 
         Ok(())
@@ -441,7 +588,7 @@ impl<T: Config> Pallet<T> {
         }: &SignedOpaqueBundle,
     ) -> Result<(), Error<T>> {
         if !signer.verify(&opaque_bundle.hash(), signature) {
-            return Err(Error::<T>::BadBundleSignature);
+            return Err(BundleError::BadSignature.into());
         }
 
         // TODO: upgrade once the trusted executor system is upgraded.
@@ -449,8 +596,29 @@ impl<T: Config> Pallet<T> {
             .map(|(_, authority_id)| authority_id)
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
-            return Err(Error::<T>::UnexpectedBundleSigner);
+            return Err(BundleError::UnexpectedSigner.into());
         }
+
+        Ok(())
+    }
+
+    fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error<T>> {
+        let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
+        ensure!(
+            to_prove >= OldestReceiptNumber::<T>::get(),
+            Error::<T>::FraudProof(FraudProofError::ExecutionReceiptPruned)
+        );
+        ensure!(
+            to_prove <= ExecutionChainBestNumber::<T>::get(),
+            Error::<T>::FraudProof(FraudProofError::ExecutionReceiptInFuture)
+        );
+
+        // TODO: prevent the spamming of fraud proof transaction.
+        // TODO: verify the fraud proof on the client side.
+        // if !sp_executor::fraud_proof_ext::fraud_proof::verify(fraud_proof) {
+        // log::error!(target: "runtime::subspace::executor", "Invalid fraud proof: {:?}", fraud_proof);
+        // return InvalidTransaction::Custom(INVALID_FRAUD_PROOF).into();
+        // }
 
         Ok(())
     }
