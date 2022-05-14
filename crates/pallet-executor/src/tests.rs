@@ -1,5 +1,6 @@
 use crate::{
-    self as pallet_executor, Error, ExecutionChainBestNumber, OldestReceiptNumber, Receipts,
+    self as pallet_executor, Error, ExecutionChainBestNumber, ExecutionReceiptError,
+    OldestReceiptNumber, Receipts,
 };
 use frame_support::{
     assert_noop, assert_ok, parameter_types,
@@ -140,7 +141,7 @@ fn submit_execution_receipt_should_work() {
         assert!(Receipts::<Test>::get(258).is_none());
         assert_noop!(
             Executor::submit_execution_receipt(Origin::none(), dummy_receipts[258].clone(),),
-            Error::<Test>::MissingParentReceipt
+            Error::<Test>::ExecutionReceipt(ExecutionReceiptError::MissingParent)
         );
         assert_ok!(Executor::submit_execution_receipt(
             Origin::none(),
