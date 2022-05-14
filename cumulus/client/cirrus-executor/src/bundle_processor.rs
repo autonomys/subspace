@@ -21,7 +21,7 @@ use sp_executor::{
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT},
+	traits::{Block as BlockT, Header as HeaderT, One},
 	RuntimeAppPublic,
 };
 use std::{
@@ -283,6 +283,57 @@ where
 				"Skip generating signed execution receipt as the primary node is still major syncing..."
 			);
 			return Ok(None)
+		}
+
+		let best_execution_chain_number = self
+			.primary_chain_client
+			.runtime_api()
+			.best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+
+		let best_execution_chain_number =
+			<NumberFor<Block>>::decode(&mut best_execution_chain_number.encode().as_slice())
+				.expect("Primary number and secondary number must use the same type; qed");
+
+		assert!(
+			header_number > best_execution_chain_number,
+			"Consensus chain number must larger than execution chain number by at least 1"
+		);
+
+		// Ideally, the receipt of current block will be included in the next block, i.e., no
+		// missing receipts.
+		if header_number == best_execution_chain_number + One::one() {
+			return self.try_sign_and_send_receipt(primary_hash, execution_receipt)
+		} else {
+			// Receipts for some previous blocks are missing.
+			let max_drift = self
+				.primary_chain_client
+				.runtime_api()
+				.maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
+
+			let max_drift = <NumberFor<Block>>::decode(&mut max_drift.encode().as_slice())
+				.expect("Primary number and secondary number must use the same type; qed");
+
+			let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
+
+			let mut to_send = best_execution_chain_number;
+			while to_send <= max_allowed {
+				let block_hash = self.client.hash(to_send)?.ok_or_else(|| {
+					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
+				})?;
+				let maybe_receipt =
+					crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?;
+
+				match maybe_receipt {
+					Some(receipt) => {
+						self.try_sign_and_send_receipt(primary_hash, receipt)?;
+					},
+					None => {
+						// Re-generate the receipt if it has been pruned?
+					},
+				}
+
+				to_send += One::one();
+			}
 		}
 
 		self.try_sign_and_send_receipt(primary_hash, execution_receipt)
