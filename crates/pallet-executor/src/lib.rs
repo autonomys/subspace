@@ -34,6 +34,7 @@ use sp_runtime::RuntimeAppPublic;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
@@ -83,28 +84,64 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    #[pallet::error]
-    pub enum Error<T> {
-        /// The head number was wrong against the latest head.
-        UnexpectedHeadNumber,
-        /// Invalid bundle signature.
-        BadBundleSignature,
-        /// The signer of bundle is unexpected.
-        UnexpectedBundleSigner,
-        /// Invalid execution receipt signature.
-        BadExecutionReceiptSignature,
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum BundleError {
+        /// The signer of transaction bundle is unexpected.
+        UnexpectedSigner,
+        /// Invalid transaction bundle signature.
+        BadSignature,
+    }
+
+    impl<T> From<BundleError> for Error<T> {
+        fn from(e: BundleError) -> Self {
+            Self::Bundle(e)
+        }
+    }
+
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum ExecutionReceiptError {
         /// The signer of execution receipt is unexpected.
-        UnexpectedExecutionReceiptSigner,
+        UnexpectedSigner,
         /// The parent execution receipt is unknown.
-        MissingParentReceipt,
+        MissingParent,
+        /// Invalid execution receipt signature.
+        BadSignature,
+        /// The execution receipt is stale.
+        Stale,
         /// The execution receipt points to a block unknown to the history.
         UnknownBlock,
-        /// The execution receipt is stale.
-        ExecutionReceiptStale,
         /// The execution receipt is too far in the future.
-        ExecutionReceiptTooFarInFuture,
-        /// Fraud proof is invalid as the execution receipt has been pruned or from the future.
-        ExecutionReceiptPrunedOrFuture,
+        TooFarInFuture,
+    }
+
+    impl<T> From<ExecutionReceiptError> for Error<T> {
+        fn from(e: ExecutionReceiptError) -> Self {
+            Self::ExecutionReceipt(e)
+        }
+    }
+
+    #[derive(TypeInfo, Encode, Decode, PalletError)]
+    pub enum FraudProofError {
+        /// Fraud proof is expired as the execution receipt has been pruned.
+        ExecutionReceiptPruned,
+        /// Trying to prove an receipt from the future.
+        ExecutionReceiptInFuture,
+    }
+
+    impl<T> From<FraudProofError> for Error<T> {
+        fn from(e: FraudProofError) -> Self {
+            Self::FraudProof(e)
+        }
+    }
+
+    #[pallet::error]
+    pub enum Error<T> {
+        /// Invalid bundle.
+        Bundle(BundleError),
+        /// Invalid execution receipt.
+        ExecutionReceipt(ExecutionReceiptError),
+        /// Invalid fraud proof.
+        FraudProof(FraudProofError),
     }
 
     #[pallet::event]
@@ -158,7 +195,7 @@ mod pallet {
             if primary_number > One::one() {
                 ensure!(
                     Receipts::<T>::get(primary_number - One::one()).is_some(),
-                    Error::<T>::MissingParentReceipt
+                    Error::<T>::ExecutionReceipt(ExecutionReceiptError::MissingParent)
                 );
             } else {
                 // Initialize the oldest receipt with block #1.
@@ -508,13 +545,13 @@ impl<T: Config> Pallet<T> {
         }: &SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), Error<T>> {
         if !signer.verify(&execution_receipt.hash(), signature) {
-            return Err(Error::<T>::BadExecutionReceiptSignature);
+            return Err(ExecutionReceiptError::BadSignature.into());
         }
 
         if frame_system::Pallet::<T>::block_hash(execution_receipt.primary_number)
             != execution_receipt.primary_hash
         {
-            return Err(Error::<T>::UnknownBlock);
+            return Err(ExecutionReceiptError::UnknownBlock.into());
         }
 
         // TODO: upgrade once the trusted executor system is upgraded.
@@ -522,7 +559,7 @@ impl<T: Config> Pallet<T> {
             .map(|(_, authority_id)| authority_id)
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
-            return Err(Error::<T>::UnexpectedExecutionReceiptSigner);
+            return Err(ExecutionReceiptError::UnexpectedSigner.into());
         }
 
         // Ensure the receipt is neither old nor too new.
@@ -530,14 +567,14 @@ impl<T: Config> Pallet<T> {
 
         let best_number = ExecutionChainBestNumber::<T>::get();
         if primary_number <= best_number {
-            return Err(Error::<T>::ExecutionReceiptStale);
+            return Err(ExecutionReceiptError::Stale.into());
         }
 
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
         if primary_number == current_block_number
             || primary_number > best_number + T::MaximumReceiptDrift::get()
         {
-            return Err(Error::<T>::ExecutionReceiptTooFarInFuture);
+            return Err(ExecutionReceiptError::TooFarInFuture.into());
         }
 
         Ok(())
@@ -551,7 +588,7 @@ impl<T: Config> Pallet<T> {
         }: &SignedOpaqueBundle,
     ) -> Result<(), Error<T>> {
         if !signer.verify(&opaque_bundle.hash(), signature) {
-            return Err(Error::<T>::BadBundleSignature);
+            return Err(BundleError::BadSignature.into());
         }
 
         // TODO: upgrade once the trusted executor system is upgraded.
@@ -559,7 +596,7 @@ impl<T: Config> Pallet<T> {
             .map(|(_, authority_id)| authority_id)
             .expect("Executor must be initialized before launching the executor chain; qed");
         if *signer != expected_executor {
-            return Err(Error::<T>::UnexpectedBundleSigner);
+            return Err(BundleError::UnexpectedSigner.into());
         }
 
         Ok(())
@@ -568,9 +605,12 @@ impl<T: Config> Pallet<T> {
     fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error<T>> {
         let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
         ensure!(
-            to_prove >= OldestReceiptNumber::<T>::get()
-                && to_prove <= ExecutionChainBestNumber::<T>::get(),
-            Error::<T>::ExecutionReceiptPrunedOrFuture
+            to_prove >= OldestReceiptNumber::<T>::get(),
+            Error::<T>::FraudProof(FraudProofError::ExecutionReceiptPruned)
+        );
+        ensure!(
+            to_prove <= ExecutionChainBestNumber::<T>::get(),
+            Error::<T>::FraudProof(FraudProofError::ExecutionReceiptInFuture)
         );
 
         // TODO: prevent the spamming of fraud proof transaction.
