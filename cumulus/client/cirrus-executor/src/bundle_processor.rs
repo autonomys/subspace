@@ -302,7 +302,7 @@ where
 		// Ideally, the receipt of current block will be included in the next block, i.e., no
 		// missing receipts.
 		if header_number == best_execution_chain_number + One::one() {
-			return self.try_sign_and_send_receipt(primary_hash, execution_receipt)
+			self.try_sign_and_send_receipt(primary_hash, execution_receipt)
 		} else {
 			// Receipts for some previous blocks are missing.
 			let max_drift = self
@@ -315,28 +315,36 @@ where
 
 			let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
 
+			// TODO: parallelize and avoid spamming the missing receipts?
 			let mut to_send = best_execution_chain_number;
 			while to_send <= max_allowed {
 				let block_hash = self.client.hash(to_send)?.ok_or_else(|| {
 					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
 				})?;
-				let maybe_receipt =
-					crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?;
 
-				match maybe_receipt {
+				match crate::aux_schema::load_execution_receipt(&*self.client, block_hash)? {
 					Some(receipt) => {
 						self.try_sign_and_send_receipt(primary_hash, receipt)?;
 					},
 					None => {
-						// Re-generate the receipt if it has been pruned?
+						// TODO: In order to solve the problem that the receipt can be pruned by
+						// executor, we need to check if every ER in the primary chain is valid beforehand:
+						// - If ER is invalid, cache it and expect FraudProof within next X blocks.
+						//    - If FraudProof found, remove it from the cache.
+						//    - If FraudProof not found and major sync is done:
+						//        - Generate a FraudProof for the first incorrect ER.
+						//            - FraudProof might need to access the block body, hence all
+						//            the blocks have to be kept in the database. TODO: double check.
+						//        - Start publishing the correct ERs after the above corrected one.
+						todo!("Cache the invalid receipts without fraud proof");
 					},
 				}
 
 				to_send += One::one();
 			}
-		}
 
-		Ok(())
+			Ok(())
+		}
 	}
 
 	fn bundles_to_extrinsics(
