@@ -1,4 +1,4 @@
-use crate::{grandpa::GrandpaJustification, Config, Error};
+use crate::{grandpa::GrandpaJustification, Config, EncodedBlockHash, EncodedBlockNumber, Error};
 use codec::Decode;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
@@ -35,10 +35,7 @@ pub trait Chain {
         + MaybeMallocSizeOf
         + AsPrimitive<usize>
         + Default
-        + Saturating
-        // original `sp_runtime::traits::Header::BlockNumber` doesn't have this trait, but
-        // `sp_runtime::generic::Era` requires block number -> `u64` conversion.
-        + Into<u64>;
+        + Saturating;
 
     /// A type that fulfills the abstract idea of what a Substrate hash is.
     // Constraints come from the associated Hash type of `sp_runtime::traits::Header`
@@ -55,10 +52,7 @@ pub trait Chain {
         + SimpleBitOps
         + AsRef<[u8]>
         + AsMut<[u8]>
-        + MaybeMallocSizeOf
-        // since we want to use the hash as a key in DSN,
-        // we need the target chain to use Hash out length to be 32
-        + Into<[u8; 32]>;
+        + MaybeMallocSizeOf;
 
     /// A type that fulfills the abstract idea of what a Substrate header is.
     // See here for more info:
@@ -94,6 +88,28 @@ pub trait Chain {
         GrandpaJustification::<Self::Header>::decode(&mut &*justifications).map_err(|error| {
             log::error!("Cannot decode justifications, error: {:?}", error);
             Error::<T>::FailedDecodingJustifications
+        })
+    }
+
+    fn decode_block_number_and_hash<T: Config>(
+        pair: (EncodedBlockNumber, EncodedBlockHash),
+    ) -> Result<(Self::BlockNumber, Self::Hash), Error<T>> {
+        let number = Self::decode_block_number::<T>(pair.0.as_slice())?;
+        let hash = Self::decode_block_hash::<T>(pair.1.as_slice())?;
+        Ok((number, hash))
+    }
+
+    fn decode_block_number<T: Config>(number: &[u8]) -> Result<Self::BlockNumber, Error<T>> {
+        Self::BlockNumber::decode(&mut &*number).map_err(|error| {
+            log::error!("Cannot decode block number, error: {:?}", error);
+            Error::<T>::FailedDecodingBlockNumber
+        })
+    }
+
+    fn decode_block_hash<T: Config>(hash: &[u8]) -> Result<Self::Hash, Error<T>> {
+        Self::Hash::decode(&mut &*hash).map_err(|error| {
+            log::error!("Cannot decode block hash, error: {:?}", error);
+            Error::<T>::FailedDecodingBlockHash
         })
     }
 }

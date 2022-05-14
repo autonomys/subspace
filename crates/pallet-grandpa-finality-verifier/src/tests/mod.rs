@@ -288,15 +288,15 @@ fn test_init_storage_entries_are_correctly_initialized_with_genesis() {
         );
         assert_eq!(
             <ValidationCheckPoint<TestRuntime>>::get(chain_id),
-            (0, validation_header.encode())
+            (0u32.encode(), validation_header.encode())
         );
         assert_eq!(
             <OldestKnownParent<TestRuntime>>::get(chain_id),
-            (0, validation_header.hash().0)
+            (0u32.encode(), validation_header.hash().encode())
         );
         assert_eq!(
             <ChainTip<TestRuntime>>::get(chain_id),
-            (0, validation_header.hash().0)
+            (0u32.encode(), validation_header.hash().encode())
         );
     })
 }
@@ -312,15 +312,15 @@ fn test_init_storage_entries_are_correctly_initialized() {
         );
         assert_eq!(
             <ValidationCheckPoint<TestRuntime>>::get(chain_id),
-            (10, validation_header.encode())
+            (10u32.encode(), validation_header.encode())
         );
         assert_eq!(
             <OldestKnownParent<TestRuntime>>::get(chain_id),
-            (9, test_header::<TestHeader>(9).hash().0)
+            (9u32.encode(), test_header::<TestHeader>(9).hash().encode())
         );
         assert_eq!(
             <ChainTip<TestRuntime>>::get(chain_id),
-            (10, validation_header.hash().0)
+            (10u32.encode(), validation_header.hash().encode())
         );
     })
 }
@@ -352,7 +352,7 @@ fn successfully_imports_header_in_forward_direction() {
             ));
             assert_eq!(
                 <ChainTip<TestRuntime>>::get(chain_id),
-                (tip as u64, header.hash().0)
+                ((tip as u32).encode(), header.hash().encode())
             );
             parent_header = header;
         }
@@ -370,13 +370,15 @@ fn successfully_imports_parent_headers_in_reverse_and_forward() {
             assert_eq!(
                 <OldestKnownParent<TestRuntime>>::get(chain_id),
                 (
-                    (parent - 1) as u64,
-                    test_header::<TestHeader>((parent - 1) as u32).hash().0
+                    ((parent - 1) as u32).encode(),
+                    test_header::<TestHeader>((parent - 1) as u32)
+                        .hash()
+                        .encode()
                 )
             );
             assert_eq!(
                 <ChainTip<TestRuntime>>::get(chain_id),
-                (5, validation_header.hash().0)
+                (5u32.encode(), validation_header.hash().encode())
             );
         }
 
@@ -400,7 +402,7 @@ fn successfully_imports_parent_headers_in_reverse_and_forward() {
             ));
             assert_eq!(
                 <ChainTip<TestRuntime>>::get(chain_id),
-                (tip as u64, header.hash().0)
+                ((tip as u32).encode(), header.hash().encode())
             );
             parent_header = header;
         }
@@ -558,7 +560,7 @@ fn importing_header_enacts_new_authority_set() {
         // Make sure that our header is the best finalized
         assert_eq!(
             <ChainTip<TestRuntime>>::get(chain_id),
-            (1, header.hash().into())
+            (1u32.encode(), header.hash().encode())
         );
 
         // Make sure that the authority set actually changed upon importing our header
