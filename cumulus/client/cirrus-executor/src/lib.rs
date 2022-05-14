@@ -498,22 +498,18 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<SignedExecutionReceiptFor<PBlock, Block::Hash>> {
-		match self
+	) {
+		if let Err(err) = self
 			.bundle_processor
 			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
-			Ok(res) => res,
-			Err(err) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					?primary_info,
-					error = ?err,
-					"Error at processing bundles.",
-				);
-				None
-			},
+			tracing::error!(
+				target: LOG_TARGET,
+				?primary_info,
+				error = ?err,
+				"Error at processing bundles.",
+			);
 		}
 	}
 }

@@ -131,7 +131,7 @@ where
 		Transaction = TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
-	PClient: ProvideRuntimeApi<PBlock>,
+	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 {
@@ -164,7 +164,7 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Result<Option<SignedExecutionReceiptFor<PBlock, Block::Hash>>, sp_blockchain::Error> {
+	) -> Result<(), sp_blockchain::Error> {
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
@@ -282,7 +282,7 @@ where
 				target: LOG_TARGET,
 				"Skip generating signed execution receipt as the primary node is still major syncing..."
 			);
-			return Ok(None)
+			return Ok(())
 		}
 
 		let best_execution_chain_number = self
@@ -336,7 +336,7 @@ where
 			}
 		}
 
-		self.try_sign_and_send_receipt(primary_hash, execution_receipt)
+		Ok(())
 	}
 
 	fn bundles_to_extrinsics(
@@ -409,7 +409,7 @@ where
 		&self,
 		primary_hash: PBlock::Hash,
 		execution_receipt: ExecutionReceiptFor<PBlock, Block::Hash>,
-	) -> Result<Option<SignedExecutionReceiptFor<PBlock, Block::Hash>>, sp_blockchain::Error> {
+	) -> Result<(), sp_blockchain::Error> {
 		let executor_id = self
 			.primary_chain_client
 			.runtime_api()
@@ -447,8 +447,15 @@ where
 						tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
 					}
 
-					// Return `Some(_)` to broadcast ER to all farmers via unsigned extrinsic.
-					Ok(Some(signed_execution_receipt))
+					let best_hash = self.primary_chain_client.info().best_hash;
+
+					// Broadcast ER to all farmers via unsigned extrinsic.
+					self.primary_chain_client.runtime_api().submit_execution_receipt_unsigned(
+						&BlockId::Hash(best_hash),
+						signed_execution_receipt,
+					)?;
+
+					Ok(())
 				},
 				Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
 					"This should not happen as the existence of key was just checked",
@@ -458,7 +465,7 @@ where
 				)))),
 			}
 		} else {
-			Ok(None)
+			Ok(())
 		}
 	}
 }
