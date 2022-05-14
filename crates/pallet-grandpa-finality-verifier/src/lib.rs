@@ -49,10 +49,6 @@ pub use pallet::*;
 #[derive(Default, Debug, Encode, Decode, Clone, PartialEq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct InitializationData {
-    /// Oldest known parent height
-    pub oldest_parent_height: BlockHeight,
-    /// Genesis hash of the chain
-    pub oldest_parent_hash: BlockHash,
     /// Scale encoded best finalized header we know.
     pub best_known_finalized_header: Vec<u8>,
     /// The ID of the current authority set
@@ -73,7 +69,7 @@ pub mod pallet {
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;
-    use sp_runtime::traits::{Hash, Header, Zero};
+    use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
     use sp_std::{fmt::Debug, vec::Vec};
 
     #[pallet::config]
@@ -104,7 +100,7 @@ pub mod pallet {
     /// Known tip of the chain
     #[pallet::storage]
     pub(super) type ChainTip<T: Config> =
-        StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), OptionQuery>;
+        StorageMap<_, Identity, T::ChainId, (BlockHeight, BlockHash), ValueQuery>;
 
     /// The current GRANDPA Authority set for a given Chain
     #[pallet::storage]
@@ -131,33 +127,33 @@ pub mod pallet {
         FailedDecodingJustifications,
         /// The header is already finalized
         InvalidHeader,
-        /// The validation checkpoint is invalid
-        InvalidValidationCheckPoint,
         /// The scheduled authority set change found in the header is unsupported by the pallet.
         ///
         /// This is the case for non-standard (e.g forced) authority set changes.
         UnsupportedScheduledChange,
     }
 
+    /// Initializes the chain by extracting the Authority set and best known parent of the chain.
+    /// After the initialization the import of blocks can happen in forward and reverse direction based on the parent stored
+    /// If Genesis is the validation point, then parent is set to Genesis.
+    /// Else parent is set to the parent of the best finalized header
     pub(crate) fn initialize_chain<T: Config, C: Chain>(
         chain_id: T::ChainId,
         init_params: InitializationData,
     ) -> DispatchResult {
         let InitializationData {
-            oldest_parent_height,
-            oldest_parent_hash,
             best_known_finalized_header,
             set_id,
         } = init_params;
         let header_decoded = C::decode_header::<T>(best_known_finalized_header.as_slice())?;
         let block_height = (*header_decoded.number()).into();
-        ensure!(
-            block_height >= oldest_parent_height,
-            Error::<T>::InvalidValidationCheckPoint
-        );
-
         let change =
             find_scheduled_change(&header_decoded).ok_or(Error::<T>::UnsupportedScheduledChange)?;
+        let (parent_height, parent_hash) = header_decoded
+            .number()
+            .checked_sub(&One::one())
+            .map(|number| (number.into(), (*header_decoded.parent_hash()).into()))
+            .unwrap_or((block_height, header_decoded.hash().into()));
 
         // Set the validation point
         ValidationCheckPoint::<T>::insert(chain_id, (block_height, best_known_finalized_header));
@@ -168,7 +164,9 @@ pub mod pallet {
         };
         CurrentAuthoritySet::<T>::insert(chain_id, authority_set);
         // set the oldest known parent
-        OldestKnownParent::<T>::insert(chain_id, (oldest_parent_height, oldest_parent_hash));
+        OldestKnownParent::<T>::insert(chain_id, (parent_height, parent_hash));
+        // we also set the chain tip to parent so that we sequentially import blocks from parent + 1
+        ChainTip::<T>::insert(chain_id, (parent_height, parent_hash));
         Ok(())
     }
 
@@ -190,43 +188,41 @@ pub mod pallet {
             Error::<T>::InvalidBlock
         );
 
-        // if the block is the parent of the oldest known parent
-        // we update our state with its parent and import it
         let (oldest_known_parent_height, oldest_known_parent_hash) =
             OldestKnownParent::<T>::get(chain_id);
+
+        // if the block belongs to know parent, we import the block and progress backward
         if oldest_known_parent_height == number.into() {
             ensure!(
                 oldest_known_parent_hash == hash.into(),
                 Error::<T>::InvalidBlock
             );
 
-            // update our oldest known parent if we have not reached block 0 already
-            if oldest_known_parent_height > 0 {
-                OldestKnownParent::<T>::insert(
+            match number.checked_sub(&One::one()) {
+                // update state with new parent data
+                Some(parent_number) => OldestKnownParent::<T>::insert(
                     chain_id,
                     (
-                        oldest_known_parent_height - 1,
+                        parent_number.into(),
                         (*block.block.header.parent_hash()).into(),
                     ),
-                )
-            } else {
-                // chain has reached genesis.
-                // import this block and update the state so that further genesis block will fail when tried to import again
-                ensure!(
-                    !GenesisImported::<T>::get(chain_id),
-                    Error::<T>::InvalidBlock
-                );
-                GenesisImported::<T>::insert(chain_id, true);
+                ),
+                None => {
+                    // chain has reached genesis.
+                    // import genesis block once and update the state so that further genesis block imports will fail.
+                    ensure!(
+                        !GenesisImported::<T>::get(chain_id),
+                        Error::<T>::InvalidBlock
+                    );
+                    GenesisImported::<T>::insert(chain_id, true);
+                }
             }
 
             return Ok((hash, number));
         }
 
         // get last imported block height and hash
-        // if it was the first block that is a descendant to known parent
-        // so we return the parent hash and height so that we can process this
-        let (parent_number, parent_hash) = ChainTip::<T>::get(chain_id)
-            .unwrap_or((oldest_known_parent_height, oldest_known_parent_hash));
+        let (parent_number, parent_hash) = ChainTip::<T>::get(chain_id);
 
         // block height must be always increasing
         ensure!(number.into() == parent_number + 1, Error::<T>::InvalidBlock);
@@ -351,6 +347,8 @@ pub mod pallet {
         ValidationCheckPoint::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
         ChainTip::<T>::remove(chain_id);
+        GenesisImported::<T>::remove(chain_id);
+        OldestKnownParent::<T>::remove(chain_id);
         Ok(())
     }
 }

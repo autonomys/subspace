@@ -9,7 +9,7 @@ use crate::{
     initialize, validate_finalized_block, ChainTip, CurrentAuthoritySet, Error as ErrorP,
     InitializationData, OldestKnownParent, ValidationCheckPoint,
 };
-use codec::{Decode, Encode};
+use codec::Encode;
 use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
 use justification::*;
 use keyring::*;
@@ -216,22 +216,24 @@ fn valid_digests() -> Vec<DigestItem> {
     )]
 }
 
-fn init_with_origin(chain_id: ChainId, number: u32) -> Result<InitializationData, DispatchError> {
+fn init_with_origin(chain_id: ChainId, number: u32) -> Result<TestHeader, DispatchError> {
     let mut best_finalized = test_header::<TestHeader>(number);
-    if number != 0 {
-        valid_digests()
-            .into_iter()
-            .for_each(|digest| best_finalized.digest.push(digest));
-    }
+    valid_digests()
+        .into_iter()
+        .for_each(|digest| best_finalized.digest_mut().push(digest));
     let init_data = InitializationData {
-        oldest_parent_height: 0,
-        oldest_parent_hash: test_header::<TestHeader>(0).hash().into(),
         best_known_finalized_header: best_finalized.encode(),
         set_id: 1,
     };
 
     initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice())?;
-    Ok(init_data)
+    // import block
+    assert_ok!(submit_finality_proof(
+        chain_id,
+        best_finalized.clone(),
+        Some(make_default_justification(&best_finalized))
+    ));
+    Ok(best_finalized)
 }
 
 fn valid_extrinsics() -> Vec<OpaqueExtrinsic> {
@@ -276,235 +278,131 @@ fn submit_finality_proof(
 }
 
 #[test]
-fn init_storage_entries_are_correctly_initialized() {
+fn test_init_storage_entries_are_correctly_initialized_with_genesis() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let InitializationData {
-            oldest_parent_height,
-            oldest_parent_hash: genesis_hash,
-            best_known_finalized_header,
-            ..
-        } = init_with_origin(chain_id, 0).unwrap();
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
         assert_eq!(
             CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
             authority_list()
         );
         assert_eq!(
             <ValidationCheckPoint<TestRuntime>>::get(chain_id),
-            (0, best_known_finalized_header)
+            (0, validation_header.encode())
         );
         assert_eq!(
             <OldestKnownParent<TestRuntime>>::get(chain_id),
-            (oldest_parent_height, genesis_hash)
+            (0, validation_header.hash().0)
+        );
+        assert_eq!(
+            <ChainTip<TestRuntime>>::get(chain_id),
+            (0, validation_header.hash().0)
         );
     })
 }
 
 #[test]
-fn init_validation_check_point_is_invalid() {
+fn test_init_storage_entries_are_correctly_initialized() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let best_finalized = test_header::<TestHeader>(1);
-
-        let init_data = InitializationData {
-            oldest_parent_height: 2,
-            oldest_parent_hash: test_header::<TestHeader>(2).hash().into(),
-            best_known_finalized_header: best_finalized.encode(),
-            set_id: 1,
-        };
-
-        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
-        assert_err!(res, ErrorP::<TestRuntime>::InvalidValidationCheckPoint)
-    })
-}
-
-#[test]
-fn successfully_imports_header_with_valid_finality() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
-
-        assert_ok!(submit_valid_finality_proof(chain_id, 1));
-        let header = test_header::<TestHeader>(1);
+        let validation_header = init_with_origin(chain_id, 10).unwrap();
         assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (1, header.hash().0)
+            CurrentAuthoritySet::<TestRuntime>::get(chain_id).authorities,
+            authority_list()
         );
-
-        assert_ok!(submit_valid_finality_proof(chain_id, 2));
-        let header = test_header::<TestHeader>(2);
         assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (2, header.hash().0)
+            <ValidationCheckPoint<TestRuntime>>::get(chain_id),
+            (10, validation_header.encode())
+        );
+        assert_eq!(
+            <OldestKnownParent<TestRuntime>>::get(chain_id),
+            (9, test_header::<TestHeader>(9).hash().0)
+        );
+        assert_eq!(
+            <ChainTip<TestRuntime>>::get(chain_id),
+            (10, validation_header.hash().0)
         );
     })
 }
 
 #[test]
-fn successfully_imports_parent_headers_to_best_known_finalized_header() {
+fn successfully_imports_header_in_forward_direction() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        let InitializationData {
-            best_known_finalized_header,
-            ..
-        } = init_with_origin(chain_id, 2).unwrap();
+        let validation_header = init_with_origin(chain_id, 0).expect("must not fail to init chain");
 
-        // import block 1
-        assert_ok!(submit_valid_finality_proof(chain_id, 1));
-        let header = test_header::<TestHeader>(1);
-        assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (1, header.hash().0)
-        );
-
-        // import block 2
-        let header = TestHeader::decode(&mut best_known_finalized_header.as_slice()).unwrap();
-        assert_ok!(submit_finality_proof(
-            chain_id,
-            header.clone(),
-            Some(make_default_justification(&header))
-        ));
-        assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (2, header.hash().0)
-        );
-
-        // import block 3
-        let parent_hash = header.hash();
-        let mut header = test_header::<TestHeader>(3);
-        header.set_parent_hash(parent_hash);
-        assert_ok!(submit_finality_proof(
-            chain_id,
-            header.clone(),
-            Some(make_default_justification(&header))
-        ));
-        assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (3, header.hash().0)
-        );
-    })
-}
-
-#[test]
-fn successfully_imports_in_reverse_order_with_oldest_parent_as_validation_point() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        let mut header = test_header::<TestHeader>(5);
-        valid_digests()
-            .into_iter()
-            .for_each(|digest| header.digest.push(digest));
-        let init_data = InitializationData {
-            oldest_parent_height: 5,
-            oldest_parent_hash: header.hash().into(),
-            best_known_finalized_header: header.encode(),
-            set_id: 1,
-        };
-        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
-        assert_ok!(res);
-        assert_eq!(
-            OldestKnownParent::<TestRuntime>::get(chain_id),
-            (5, header.hash().0)
-        );
-
-        // import block 5
-        assert_ok!(submit_finality_proof(chain_id, header.clone(), None,));
-        assert_eq!(
-            OldestKnownParent::<TestRuntime>::get(chain_id),
-            (4, header.parent_hash.into())
-        );
-        assert!(<ChainTip<TestRuntime>>::get(chain_id).is_none());
-
-        // import block 3 should not work
-        let header = test_header::<TestHeader>(3);
+        // cannot import block 0 twice
         assert_err!(
-            submit_finality_proof(chain_id, header, None),
+            submit_finality_proof(
+                chain_id,
+                validation_header.clone(),
+                Some(make_default_justification(&validation_header))
+            ),
             ErrorP::<TestRuntime>::InvalidBlock
         );
 
-        // import block 4, 3, 2, 1, 0
-        for h in (0..=4).rev() {
-            let header = test_header::<TestHeader>(h);
-            assert_ok!(submit_finality_proof(chain_id, header.clone(), None));
-            if h == 0 {
-                assert_eq!(
-                    OldestKnownParent::<TestRuntime>::get(chain_id),
-                    (0_u64, header.hash().into())
-                );
-            } else {
-                assert_eq!(
-                    OldestKnownParent::<TestRuntime>::get(chain_id),
-                    ((h - 1) as u64, header.parent_hash.into())
-                );
-            }
+        let mut parent_header = validation_header;
+        for tip in 1..10 {
+            let mut header = test_header::<TestHeader>(tip);
+            header.set_parent_hash(parent_header.hash());
+            assert_ok!(submit_finality_proof(
+                chain_id,
+                header.clone(),
+                Some(make_default_justification(&header))
+            ));
+            assert_eq!(
+                <ChainTip<TestRuntime>>::get(chain_id),
+                (tip as u64, header.hash().0)
+            );
+            parent_header = header;
+        }
+    })
+}
 
-            assert!(<ChainTip<TestRuntime>>::get(chain_id).is_none());
+#[test]
+fn successfully_imports_parent_headers_in_reverse_and_forward() {
+    run_test(|| {
+        let chain_id: ChainId = 1;
+        let validation_header = init_with_origin(chain_id, 5).expect("must not fail to init chain");
+
+        for parent in (1..=4).rev() {
+            assert_ok!(submit_valid_finality_proof(chain_id, parent));
+            assert_eq!(
+                <OldestKnownParent<TestRuntime>>::get(chain_id),
+                (
+                    (parent - 1) as u64,
+                    test_header::<TestHeader>((parent - 1) as u32).hash().0
+                )
+            );
+            assert_eq!(
+                <ChainTip<TestRuntime>>::get(chain_id),
+                (5, validation_header.hash().0)
+            );
         }
 
-        // cannot import 0 block again
-        let header = test_header::<TestHeader>(0);
-        assert_err!(
-            submit_finality_proof(chain_id, header, None),
-            ErrorP::<TestRuntime>::InvalidBlock
-        );
-    })
-}
+        // import block 0
+        assert_ok!(submit_valid_finality_proof(chain_id, 0));
 
-#[test]
-fn successfully_imports_in_reverse_order_with_validation_point_as_descendant() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        let mut header = test_header::<TestHeader>(10);
-        valid_digests()
-            .into_iter()
-            .for_each(|digest| header.digest.push(digest));
-        let init_data = InitializationData {
-            oldest_parent_height: 3,
-            oldest_parent_hash: test_header::<TestHeader>(3).hash().into(),
-            best_known_finalized_header: header.encode(),
-            set_id: 1,
-        };
-        let res = initialize::<TestRuntime, TestFeedChain>(chain_id, init_data.encode().as_slice());
-        assert_ok!(res);
-        assert_eq!(
-            OldestKnownParent::<TestRuntime>::get(chain_id),
-            (3, test_header::<TestHeader>(3).hash().into())
-        );
-
-        // you can only import 3 or 4
+        // cannot import block 0 twice
         assert_err!(
-            submit_finality_proof(chain_id, header, None,),
+            submit_valid_finality_proof(chain_id, 0),
             ErrorP::<TestRuntime>::InvalidBlock
         );
 
-        // import block 4 should work
-        let header = test_header::<TestHeader>(4);
-        assert_ok!(submit_finality_proof(chain_id, header.clone(), None),);
-        assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
-            (4, header.hash().into())
-        );
-
-        // import block 3, 2, 1, 0 and 5, 6, 7, 8, 9
-        for (p, n) in (0..=3).rev().zip(5..=9) {
-            let header = test_header::<TestHeader>(p);
-            assert_ok!(submit_finality_proof(chain_id, header.clone(), None));
-            if p == 0 {
-                assert_eq!(
-                    OldestKnownParent::<TestRuntime>::get(chain_id),
-                    (0_u64, header.hash().into())
-                );
-            } else {
-                assert_eq!(
-                    OldestKnownParent::<TestRuntime>::get(chain_id),
-                    ((p - 1) as u64, header.parent_hash.into())
-                );
-            }
-
-            assert_ok!(submit_valid_finality_proof(chain_id, n));
+        let mut parent_header = validation_header;
+        for tip in 6..10 {
+            let mut header = test_header::<TestHeader>(tip);
+            header.set_parent_hash(parent_header.hash());
+            assert_ok!(submit_finality_proof(
+                chain_id,
+                header.clone(),
+                Some(make_default_justification(&header))
+            ));
             assert_eq!(
-                ChainTip::<TestRuntime>::get(chain_id).unwrap(),
-                (n as u64, test_header::<TestHeader>(n as u32).hash().into())
-            )
+                <ChainTip<TestRuntime>>::get(chain_id),
+                (tip as u64, header.hash().0)
+            );
+            parent_header = header;
         }
     })
 }
@@ -513,8 +411,10 @@ fn successfully_imports_in_reverse_order_with_validation_point_as_descendant() {
 fn rejects_justification_that_skips_authority_set_transition() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
-        let header = test_header::<TestHeader>(1);
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
+
+        let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
 
         let params = JustificationGeneratorParams::<TestHeader> {
             set_id: 2,
@@ -533,9 +433,10 @@ fn rejects_justification_that_skips_authority_set_transition() {
 fn does_not_import_header_with_invalid_finality_proof() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
 
-        let header = test_header(1);
+        let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
         let mut justification = make_default_justification(&header);
         justification.round = 42;
 
@@ -550,9 +451,10 @@ fn does_not_import_header_with_invalid_finality_proof() {
 fn does_not_import_header_with_invalid_extrinsics() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
 
-        let header = test_header::<TestHeader>(1);
+        let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
         let block = SignedBlock {
             block: generic::Block::<TestHeader, OpaqueExtrinsic> {
                 header: header.clone(),
@@ -594,8 +496,6 @@ fn disallows_invalid_authority_set() {
         ));
         genesis.digest = digest;
         let init_data = InitializationData {
-            oldest_parent_height: 0,
-            oldest_parent_hash: genesis.hash().into(),
             best_known_finalized_header: genesis.encode(),
             set_id: 1,
         };
@@ -613,21 +513,6 @@ fn disallows_invalid_authority_set() {
             submit_finality_proof(chain_id, header, Some(justification)),
             <ErrorP<TestRuntime>>::InvalidAuthoritySet
         );
-    })
-}
-
-#[test]
-fn importing_header_ensures_that_chain_is_extended() {
-    run_test(|| {
-        let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
-        assert_ok!(submit_valid_finality_proof(chain_id, 1));
-        assert_ok!(submit_valid_finality_proof(chain_id, 2));
-        assert_err!(
-            submit_valid_finality_proof(chain_id, 4),
-            ErrorP::<TestRuntime>::InvalidBlock
-        );
-        assert_ok!(submit_valid_finality_proof(chain_id, 3));
     })
 }
 
@@ -649,7 +534,7 @@ fn change_log(delay: u32) -> Digest {
 fn importing_header_enacts_new_authority_set() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
 
         let next_set_id = 2;
         let next_authorities = vec![(ALICE.into(), 1), (BOB.into(), 1)];
@@ -657,6 +542,7 @@ fn importing_header_enacts_new_authority_set() {
         // Need to update the header digest to indicate that our header signals an authority set
         // change. The change will be enacted when we import our header.
         let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
         header.digest = change_log(0);
 
         // Create a valid justification for the header
@@ -671,7 +557,7 @@ fn importing_header_enacts_new_authority_set() {
 
         // Make sure that our header is the best finalized
         assert_eq!(
-            <ChainTip<TestRuntime>>::get(chain_id).unwrap(),
+            <ChainTip<TestRuntime>>::get(chain_id),
             (1, header.hash().into())
         );
 
@@ -690,11 +576,12 @@ fn importing_header_enacts_new_authority_set() {
 fn importing_header_rejects_header_with_scheduled_change_delay() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
 
         // Need to update the header digest to indicate that our header signals an authority set
         // change. However, the change doesn't happen until the next block.
         let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
         header.digest = change_log(1);
 
         // Create a valid justification for the header
@@ -729,11 +616,12 @@ fn forced_change_log(delay: u32) -> Digest {
 fn importing_header_rejects_header_with_forced_changes() {
     run_test(|| {
         let chain_id: ChainId = 1;
-        assert_ok!(init_with_origin(chain_id, 0));
+        let validation_header = init_with_origin(chain_id, 0).unwrap();
 
         // Need to update the header digest to indicate that it signals a forced authority set
         // change.
         let mut header = test_header::<TestHeader>(1);
+        header.set_parent_hash(validation_header.hash());
         header.digest = forced_change_log(0);
 
         // Create a valid justification for the header
