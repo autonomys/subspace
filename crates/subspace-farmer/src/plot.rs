@@ -20,7 +20,7 @@ use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
 
 /// Index of piece on disk
-pub(crate) type PieceOffset = u64;
+pub type PieceOffset = u64;
 
 #[derive(Debug, Error)]
 pub enum PlotError {

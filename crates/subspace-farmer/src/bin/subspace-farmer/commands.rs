@@ -1,6 +1,6 @@
 mod farm;
 
-pub(crate) use farm::farm;
+pub(crate) use farm::{bench, farm};
 use log::info;
 use std::path::Path;
 use std::{fs, io};

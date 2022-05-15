@@ -42,6 +42,6 @@ pub use identity::Identity;
 pub use jsonrpsee;
 pub use node_rpc_client::NodeRpcClient;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
-pub use plot::{retrieve_piece_from_plots, Plot, PlotError};
+pub use plot::{retrieve_piece_from_plots, PieceOffset, Plot, PlotError, PlotFile};
 pub use plotting::plot_pieces;
-pub use rpc_client::RpcClient;
+pub use rpc_client::{Error as RpcClientError, RpcClient};

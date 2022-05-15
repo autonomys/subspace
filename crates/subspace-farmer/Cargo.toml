@@ -42,6 +42,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+tempfile = "3.3.0"
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["macros", "parking_lot", "rt-multi-thread"] }
 zeroize = "1.5.4"
@@ -57,9 +58,6 @@ version = "0.18.0"
 default-features = false
 features = ["snappy", "jemalloc"]
 version = "0.18.0"
-
-[dev-dependencies]
-tempfile = "3.3.0"
 
 [features]
 default = []
