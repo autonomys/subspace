@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io, mem};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
-use subspace_farmer::bench_rpc_client::BenchRpcClient;
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
@@ -20,6 +19,7 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 
+use crate::bench_rpc_client::BenchRpcClient;
 use crate::{FarmingArgs, WriteToDisk};
 
 pub struct BenchPlotMock {

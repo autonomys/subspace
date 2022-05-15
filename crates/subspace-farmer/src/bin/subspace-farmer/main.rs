@@ -1,3 +1,4 @@
+mod bench_rpc_client;
 mod commands;
 mod utils;
 

@@ -16,7 +16,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::rpc_client::{Error as MockError, RpcClient};
+use subspace_farmer::{RpcClient, RpcClientError as MockError};
 
 /// Client mock for benching purpose
 #[derive(Clone, Debug)]

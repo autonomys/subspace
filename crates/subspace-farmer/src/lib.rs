@@ -22,7 +22,6 @@
 //! 64-bit unsigned integers.
 
 pub(crate) mod archiving;
-pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod farming;
 pub(crate) mod identity;
@@ -45,4 +44,4 @@ pub use node_rpc_client::NodeRpcClient;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{retrieve_piece_from_plots, PieceOffset, Plot, PlotError, PlotFile};
 pub use plotting::plot_pieces;
-pub use rpc_client::RpcClient;
+pub use rpc_client::{Error as RpcClientError, RpcClient};
