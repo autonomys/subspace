@@ -233,7 +233,8 @@ pub(crate) async fn bench(
 ) -> anyhow::Result<()> {
     raise_fd_limit();
 
-    let (client, archived_segments_sender) = BenchRpcClient::new(BENCH_FARMER_METADATA);
+    let (archived_segments_sender, archived_segments_receiver) = tokio::sync::mpsc::channel(10);
+    let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
 
     let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
@@ -289,16 +290,15 @@ pub(crate) async fn bench(
     .await?;
 
     tokio::spawn(async move {
-        let mut segment_index = 0;
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
 
-        for _ in (0..write_pieces_size / PIECE_SIZE as u64).step_by(1000) {
+        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 1000 {
             last_archived_block
                 .archived_progress
-                .set_partial(segment_index as u32);
+                .set_partial(segment_index as u32 * 1000 * PIECE_SIZE as u32);
 
             let archived_segment = {
                 let root_block = RootBlock::V0 {
@@ -332,8 +332,6 @@ pub(crate) async fn bench(
             {
                 break;
             }
-
-            segment_index += 1;
         }
     })
     .await?;

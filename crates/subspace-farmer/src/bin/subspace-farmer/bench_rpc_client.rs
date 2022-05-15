@@ -28,17 +28,18 @@ pub struct Inner {
 
 impl BenchRpcClient {
     /// Create a new instance of [`BenchRpcClient`].
-    pub fn new(metadata: FarmerMetadata) -> (Self, mpsc::Sender<ArchivedSegment>) {
-        let (archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
+    pub fn new(
+        metadata: FarmerMetadata,
+        mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
+    ) -> Self {
+        let (inner_archived_segments_sender, inner_archived_segments_receiver) = mpsc::channel(10);
         let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
             mpsc::channel(1);
-        let (outer_archived_segments_sender, mut outer_archived_segments_receiver) =
-            mpsc::channel(10);
 
         let segment_producer_handle = tokio::spawn({
             async move {
-                while let Some(segment) = outer_archived_segments_receiver.recv().await {
-                    if archived_segments_sender.send(segment).await.is_err() {
+                while let Some(segment) = archived_segments_receiver.recv().await {
+                    if inner_archived_segments_sender.send(segment).await.is_err() {
                         break;
                     }
                     if acknowledge_archived_segment_receiver.recv().await.is_none() {
@@ -48,15 +49,14 @@ impl BenchRpcClient {
             }
         });
 
-        let me = Self {
+        Self {
             inner: Arc::new(Inner {
                 metadata,
-                archived_segments_receiver: Arc::new(Mutex::new(archived_segments_receiver)),
+                archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
                 acknowledge_archived_segment_sender,
                 segment_producer_handle: Mutex::new(segment_producer_handle),
             }),
-        };
-        (me, outer_archived_segments_sender)
+        }
     }
 
     pub async fn stop(self) {

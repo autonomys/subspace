@@ -59,7 +59,7 @@ enum WriteToDisk {
 
 impl Default for WriteToDisk {
     fn default() -> Self {
-        Self::Nothing
+        Self::Everything
     }
 }
 
