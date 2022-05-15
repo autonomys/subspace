@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{BundleProcessor, BundleProducer, SignedExecutionReceiptFor};
+use crate::{BundleProcessor, BundleProducer};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
@@ -130,7 +130,6 @@ pub(super) async fn start_worker<
 							error = ?error,
 							"Error at processing bundles.",
 						);
-						None
 					})
 					.boxed()
 			}
@@ -214,12 +213,8 @@ async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, Seconda
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<
-			Box<
-				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
-					+ Send,
-			>,
-		> + Send
+		) -> Pin<Box<dyn Future<Output = ()> + Send>>
+		+ Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
@@ -311,12 +306,8 @@ where
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<
-			Box<
-				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
-					+ Send,
-			>,
-		> + Send
+		) -> Pin<Box<dyn Future<Output = ()> + Send>>
+		+ Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
@@ -360,12 +351,8 @@ where
 			Vec<OpaqueBundle>,
 			Randomness,
 			Option<Cow<'static, [u8]>>,
-		) -> Pin<
-			Box<
-				dyn Future<Output = Option<SignedExecutionReceiptFor<PBlock, SecondaryHash>>>
-					+ Send,
-			>,
-		> + Send
+		) -> Pin<Box<dyn Future<Output = ()> + Send>>
+		+ Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
 {
@@ -423,25 +410,7 @@ where
 		.runtime_api()
 		.extrinsics_shuffling_seed(&block_id, header)?;
 
-	let execution_receipt =
-		match processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime)
-			.await
-		{
-			Some(execution_receipt) => execution_receipt,
-			None => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Skip sending the execution receipt because executor is not elected",
-				);
-				return Ok(())
-			},
-		};
-
-	let best_hash = primary_chain_client.info().best_hash;
-
-	primary_chain_client
-		.runtime_api()
-		.submit_execution_receipt_unsigned(&BlockId::Hash(best_hash), execution_receipt)?;
+	processor((block_hash, block_number), bundles, shuffling_seed, maybe_new_runtime).await;
 
 	Ok(())
 }

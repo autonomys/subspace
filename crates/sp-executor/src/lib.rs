@@ -400,6 +400,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the authority id of current executor.
         fn executor_id() -> ExecutorId;
+
+        /// Returns the best execution chain number.
+        fn best_execution_chain_number() -> NumberFor<Block>;
+
+        /// Returns the maximum receipt drift.
+        fn maximum_receipt_drift() -> NumberFor<Block>;
     }
 }
 

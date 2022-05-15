@@ -498,22 +498,18 @@ where
 		bundles: Vec<OpaqueBundle>,
 		shuffling_seed: Randomness,
 		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) -> Option<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>> {
-		match self
+	) {
+		if let Err(err) = self
 			.bundle_processor
 			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
 			.await
 		{
-			Ok(res) => res,
-			Err(err) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					?primary_info,
-					error = ?err,
-					"Error at processing bundles.",
-				);
-				None
-			},
+			tracing::error!(
+				target: LOG_TARGET,
+				?primary_info,
+				error = ?err,
+				"Error at processing bundles.",
+			);
 		}
 	}
 }
@@ -659,19 +655,10 @@ where
 	/// Checks the execution receipt from the executor peers.
 	fn on_execution_receipt(
 		&self,
-		signed_execution_receipt: &SignedExecutionReceipt<
-			NumberFor<PBlock>,
-			PBlock::Hash,
-			Block::Hash,
-		>,
+		signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
 	) -> Result<Action, Self::Error> {
 		let SignedExecutionReceipt { execution_receipt, signature, signer } =
 			signed_execution_receipt;
-
-		let block_hash = execution_receipt.secondary_hash;
-		let primary_hash =
-			PBlock::Hash::decode(&mut execution_receipt.primary_hash.encode().as_slice())
-				.expect("Hash type must be correct");
 
 		if !signer.verify(&execution_receipt.hash(), signature) {
 			return Err(Self::Error::BadExecutionReceiptSignature)
@@ -680,7 +667,7 @@ where
 		let expected_executor_id = self
 			.primary_chain_client
 			.runtime_api()
-			.executor_id(&BlockId::Hash(primary_hash))?;
+			.executor_id(&BlockId::Hash(execution_receipt.primary_hash))?;
 		if *signer != expected_executor_id {
 			// TODO: handle the misbehavior.
 
@@ -701,6 +688,7 @@ where
 			return Ok(Action::Empty)
 		}
 
+		let block_hash = execution_receipt.secondary_hash;
 		let block_number = <NumberFor<Block>>::decode(&mut primary_number.encode().as_slice())
 			.expect("Primary number and secondary number must use the same type; qed");
 
@@ -712,9 +700,7 @@ where
 		} else {
 			// Wait for the local execution receipt until it's ready.
 			let (tx, rx) = crossbeam::channel::bounded::<
-				sp_blockchain::Result<
-					ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-				>,
+				sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
 			>(1);
 			let executor = self.clone();
 			self.spawner.spawn(
