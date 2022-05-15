@@ -1,11 +1,17 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::{info, warn};
+use rand::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, mem};
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
+use subspace_core_primitives::{
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
+    PIECE_SIZE,
+};
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{
@@ -16,7 +22,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::{FarmerMetadata, SlotInfo};
 use tempfile::TempDir;
 
 use crate::bench_rpc_client::BenchRpcClient;
@@ -48,8 +54,6 @@ impl PlotFile for BenchPlotMock {
     }
 
     fn read(&mut self, _offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
-        use rand::Rng;
-
         rand::thread_rng().fill(buf.as_mut());
         Ok(())
     }
@@ -229,7 +233,8 @@ pub(crate) async fn bench(
 ) -> anyhow::Result<()> {
     raise_fd_limit();
 
-    let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
+    let (client, archived_segments_sender, slot_info_sender) =
+        BenchRpcClient::new(BENCH_FARMER_METADATA);
 
     let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
@@ -284,9 +289,82 @@ pub(crate) async fn bench(
     )
     .await?;
 
-    while client.writen_piece_count() < write_pieces_size / PIECE_SIZE as u64 {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
+    let segment_producer_handle = tokio::spawn(async move {
+        let mut segment_index = 0;
+        let mut last_archived_block = LastArchivedBlock {
+            number: 0,
+            archived_progress: ArchivedBlockProgress::Partial(0),
+        };
+
+        for _ in (0..write_pieces_size / PIECE_SIZE as u64).step_by(100) {
+            last_archived_block
+                .archived_progress
+                .set_partial(segment_index as u32);
+
+            let archived_segment = {
+                let root_block = RootBlock::V0 {
+                    segment_index,
+                    records_root: Sha256Hash::default(),
+                    prev_root_block_hash: Sha256Hash::default(),
+                    last_archived_block,
+                };
+
+                let mut pieces = FlatPieces::new(100);
+                rand::thread_rng().fill(pieces.as_mut());
+
+                let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                    hash: rand::random(),
+                    offset: rand::random(),
+                })
+                .take(100)
+                .collect();
+
+                ArchivedSegment {
+                    root_block,
+                    pieces,
+                    object_mapping: vec![PieceObjectMapping { objects }],
+                }
+            };
+
+            if archived_segments_sender
+                .send(archived_segment)
+                .await
+                .is_err()
+            {
+                break;
+            }
+
+            segment_index += 1;
+        }
+    });
+
+    tokio::spawn(async move {
+        let mut slot_number = 0;
+        let mut next_salt = rand::random();
+        loop {
+            let global_challenge = rand::random();
+            next_salt = {
+                let (salt, next_salt) = (next_salt, rand::random());
+                let slot_info = SlotInfo {
+                    slot_number,
+                    global_challenge,
+                    salt: next_salt,
+                    next_salt: salt,
+                    solution_range: rand::random(),
+                };
+                if slot_info_sender.send(slot_info).await.is_err() {
+                    break;
+                };
+                Some(next_salt)
+            };
+
+            tokio::time::sleep(Duration::from_secs(2 * 60)).await;
+
+            slot_number += 1;
+        }
+    });
+
+    segment_producer_handle.await?;
 
     client.stop().await;
 
