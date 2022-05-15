@@ -2,7 +2,7 @@ mod commands;
 mod utils;
 
 use anyhow::Result;
-use clap::{Parser, ValueHint};
+use clap::{ArgEnum, Parser, ValueHint};
 use env_logger::Env;
 use log::info;
 use sp_core::crypto::PublicError;
@@ -50,6 +50,13 @@ struct FarmingArgs {
     max_plot_size: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, ArgEnum)]
+#[clap(default_value = "nothing")]
+enum WriteToDisk {
+    Nothing,
+    Everything,
+}
+
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {
@@ -78,10 +85,10 @@ enum Command {
         /// Only a developer testing flag, as it might be needed for testing.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         max_plot_size: Option<u64>,
-        /// Actually write pieces to disk while benchmarking (might be more accurate, but uses more
-        /// space)
-        #[clap(long)]
-        plot: bool,
+        /// How much things to write on disk (the more we write during benchmark, the more accurate
+        /// it is)
+        #[clap(arg_enum, long)]
+        write_to_disk: WriteToDisk,
         /// Amount of data to plot for benchmarking.
         ///
         /// Only `G` and `T` endings are supported.
@@ -127,7 +134,7 @@ async fn main() -> Result<()> {
             custom_path,
             plot_size,
             max_plot_size,
-            plot,
+            write_to_disk,
             write_pieces_size,
         } => {
             commands::bench(
@@ -135,7 +142,7 @@ async fn main() -> Result<()> {
                 plot_size,
                 max_plot_size,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-                !plot,
+                write_to_disk,
                 write_pieces_size,
             )
             .await?

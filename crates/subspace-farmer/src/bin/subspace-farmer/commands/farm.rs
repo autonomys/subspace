@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_farmer::bench_rpc_client::BenchRpcClient;
-use subspace_farmer::multi_farming::{self, MultiFarming};
+use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -17,7 +17,7 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 
-use crate::FarmingArgs;
+use crate::{FarmingArgs, WriteToDisk};
 
 fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
@@ -87,7 +87,7 @@ pub(crate) async fn farm(
     .await??;
 
     let multi_farming = MultiFarming::new(
-        multi_farming::Options {
+        MultiFarmingOptions {
             base_directory,
             client,
             object_mappings: object_mappings.clone(),
@@ -176,7 +176,7 @@ pub(crate) async fn bench(
     plot_size: u64,
     max_plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
-    mock_plot: bool,
+    write_to_disk: WriteToDisk,
     write_pieces_size: u64,
 ) -> anyhow::Result<()> {
     raise_fd_limit();
@@ -208,7 +208,7 @@ pub(crate) async fn bench(
     .await??;
 
     let multi_farming = MultiFarming::benchmarking(
-        multi_farming::Options {
+        MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
             client: client.clone(),
             object_mappings: object_mappings.clone(),
@@ -217,7 +217,7 @@ pub(crate) async fn bench(
         },
         plot_size,
         max_plot_size,
-        mock_plot,
+        matches!(write_to_disk, WriteToDisk::Nothing),
     )
     .await?;
 
