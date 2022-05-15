@@ -52,10 +52,15 @@ struct FarmingArgs {
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
-#[clap(default_value = "nothing")]
 enum WriteToDisk {
     Nothing,
     Everything,
+}
+
+impl Default for WriteToDisk {
+    fn default() -> Self {
+        Self::Nothing
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -88,7 +93,7 @@ enum Command {
         max_plot_size: Option<u64>,
         /// How much things to write on disk (the more we write during benchmark, the more accurate
         /// it is)
-        #[clap(arg_enum, long)]
+        #[clap(arg_enum, long, default_value_t)]
         write_to_disk: WriteToDisk,
         /// Amount of data to plot for benchmarking.
         ///
