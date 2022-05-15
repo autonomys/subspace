@@ -61,7 +61,7 @@ enum Command {
     },
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
-    /// Benchmark disk in order to see a throughput of the disk for farming
+    /// Benchmark disk in order to see a throughput of the disk for plotting
     Bench {
         /// Custom path for data storage instead of platform-specific default
         #[clap(long, value_hint = ValueHint::FilePath)]

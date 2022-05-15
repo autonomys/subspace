@@ -49,8 +49,8 @@ pub struct Options<C: RpcClient> {
 
 impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
-    pub async fn new(
-        options: Options<impl RpcClient>,
+    pub async fn new<C: RpcClient>(
+        options: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
     ) -> anyhow::Result<Self> {
@@ -73,8 +73,8 @@ impl MultiFarming {
 
     /// Starts multiple farmers for benchmarking (basically disables farming, just plots pieces
     /// from the archiver)
-    pub async fn benchmarking(
-        options: Options<impl RpcClient>,
+    pub async fn benchmarking<C: RpcClient>(
+        options: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
         mock_plot: bool,
@@ -114,14 +114,14 @@ impl MultiFarming {
         }
     }
 
-    async fn new_inner(
+    async fn new_inner<C: RpcClient>(
         Options {
             base_directory,
             client,
             object_mappings,
             reward_address,
             best_block_number_check_interval,
-        }: Options<impl RpcClient>,
+        }: Options<C>,
         plot_sizes: Vec<u64>,
         new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
         start_farmings: bool,

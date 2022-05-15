@@ -17,8 +17,24 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 
-use crate::commands::wipe;
 use crate::FarmingArgs;
+
+fn raise_fd_limit() {
+    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
+        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
+        Ok(None) => log::debug!("Failed to increase file limit"),
+        Err(err) => {
+            let err = if let Some(err) = err.downcast_ref::<&str>() {
+                *err
+            } else if let Some(err) = err.downcast_ref::<String>() {
+                err
+            } else {
+                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
+            };
+            log::warn!("Failed to increase file limit: {err}")
+        }
+    }
+}
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -35,20 +51,7 @@ pub(crate) async fn farm(
     }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
-    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
-        Ok(None) => log::debug!("Failed to increase file limit"),
-        Err(err) => {
-            let err = if let Some(err) = err.downcast_ref::<&str>() {
-                *err
-            } else if let Some(err) = err.downcast_ref::<String>() {
-                err
-            } else {
-                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
-            };
-            log::warn!("Failed to increase file limit: {err}")
-        }
-    }
+    raise_fd_limit();
 
     let base_directory = crate::utils::get_path(custom_path);
 
@@ -176,22 +179,9 @@ pub(crate) async fn bench(
     mock_plot: bool,
     write_pieces_size: u64,
 ) -> anyhow::Result<()> {
-    let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
+    raise_fd_limit();
 
-    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
-        Ok(None) => log::debug!("Failed to increase file limit"),
-        Err(err) => {
-            let err = if let Some(err) = err.downcast_ref::<&str>() {
-                *err
-            } else if let Some(err) = err.downcast_ref::<String>() {
-                err
-            } else {
-                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
-            };
-            log::warn!("Failed to increase file limit: {err}")
-        }
-    }
+    let client = BenchRpcClient::new(BENCH_FARMER_METADATA);
 
     let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
@@ -238,8 +228,6 @@ pub(crate) async fn bench(
     client.stop().await;
 
     multi_farming.wait().await?;
-
-    wipe(base_directory)?;
 
     Ok(())
 }
