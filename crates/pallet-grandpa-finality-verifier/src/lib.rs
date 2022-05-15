@@ -89,11 +89,6 @@ pub mod pallet {
     pub(super) type ValidationCheckPoint<T: Config> =
         StorageMap<_, Identity, T::ChainId, (EncodedBlockNumber, EncodedHeader), ValueQuery>;
 
-    /// Signals if a given chain has imported genesis block
-    #[pallet::storage]
-    pub(super) type GenesisImported<T: Config> =
-        StorageMap<_, Identity, T::ChainId, bool, ValueQuery>;
-
     /// Oldest known parent
     #[pallet::storage]
     pub(super) type OldestKnownParent<T: Config> =
@@ -204,25 +199,13 @@ pub mod pallet {
         if oldest_known_parent_height == number {
             ensure!(oldest_known_parent_hash == hash, Error::<T>::InvalidBlock);
 
-            match number.checked_sub(&One::one()) {
-                // update state with new parent data
-                Some(parent_number) => OldestKnownParent::<T>::insert(
-                    chain_id,
-                    (
-                        parent_number.encode(),
-                        block.block.header.parent_hash().encode(),
-                    ),
+            OldestKnownParent::<T>::insert(
+                chain_id,
+                (
+                    number.checked_sub(&One::one()).unwrap_or(number).encode(),
+                    block.block.header.parent_hash().encode(),
                 ),
-                None => {
-                    // chain has reached genesis.
-                    // import genesis block once and update the state so that further genesis block imports will fail.
-                    ensure!(
-                        !GenesisImported::<T>::get(chain_id),
-                        Error::<T>::InvalidBlock
-                    );
-                    GenesisImported::<T>::insert(chain_id, true);
-                }
-            }
+            );
 
             return Ok((hash, number));
         }
@@ -361,7 +344,6 @@ pub mod pallet {
         ValidationCheckPoint::<T>::remove(chain_id);
         CurrentAuthoritySet::<T>::remove(chain_id);
         ChainTip::<T>::remove(chain_id);
-        GenesisImported::<T>::remove(chain_id);
         OldestKnownParent::<T>::remove(chain_id);
         Ok(())
     }

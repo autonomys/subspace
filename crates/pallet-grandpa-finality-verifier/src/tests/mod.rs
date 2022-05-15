@@ -291,12 +291,15 @@ fn test_init_storage_entries_are_correctly_initialized_with_genesis() {
             (0u32.encode(), validation_header.encode())
         );
         assert_eq!(
-            <OldestKnownParent<TestRuntime>>::get(chain_id),
-            (0u32.encode(), validation_header.hash().encode())
-        );
-        assert_eq!(
             <ChainTip<TestRuntime>>::get(chain_id),
             (0u32.encode(), validation_header.hash().encode())
+        );
+
+        // since the block 0 is imported already
+        // the oldest know parent will be 00000.... with so that block 0 is not imported again
+        assert_eq!(
+            <OldestKnownParent<TestRuntime>>::get(chain_id),
+            (0u32.encode(), [0u8; 32].encode())
         );
     })
 }
