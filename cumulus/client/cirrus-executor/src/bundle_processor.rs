@@ -316,7 +316,7 @@ where
 			let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
 
 			// TODO: parallelize and avoid spamming the missing receipts?
-			let mut to_send = best_execution_chain_number;
+			let mut to_send = best_execution_chain_number + One::one();
 			while to_send <= max_allowed {
 				let block_hash = self.client.hash(to_send)?.ok_or_else(|| {
 					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
@@ -336,7 +336,7 @@ where
 						//            - FraudProof might need to access the block body, hence all
 						//            the blocks have to be kept in the database. TODO: double check.
 						//        - Start publishing the correct ERs after the above corrected one.
-						todo!("Cache the invalid receipts without fraud proof");
+						println!("TODO: Cache the invalid receipts without fraud proof");
 					},
 				}
 
