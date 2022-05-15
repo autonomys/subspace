@@ -20,7 +20,7 @@ use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
 
 /// Index of piece on disk
-pub(crate) type PieceOffset = u64;
+pub type PieceOffset = u64;
 
 #[derive(Debug, Error)]
 pub enum PlotError {
@@ -641,43 +641,6 @@ impl PlotFile for File {
 
     fn sync_all(&mut self) -> io::Result<()> {
         File::sync_all(&*self)
-    }
-}
-
-pub struct BenchPlotMock {
-    piece_count: u64,
-    max_piece_count: u64,
-}
-
-impl BenchPlotMock {
-    pub fn new(max_piece_count: u64) -> Self {
-        Self {
-            max_piece_count,
-            piece_count: 0,
-        }
-    }
-}
-
-impl PlotFile for BenchPlotMock {
-    fn piece_count(&mut self) -> io::Result<u64> {
-        Ok(self.piece_count)
-    }
-
-    fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
-        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
-            .max(self.max_piece_count);
-        Ok(())
-    }
-
-    fn read(&mut self, _offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
-        use rand::Rng;
-
-        rand::thread_rng().fill(buf.as_mut());
-        Ok(())
-    }
-
-    fn sync_all(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 

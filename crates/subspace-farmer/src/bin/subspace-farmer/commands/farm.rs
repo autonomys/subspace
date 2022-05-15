@@ -1,15 +1,18 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use log::{info, warn};
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{io, mem};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_farmer::bench_rpc_client::BenchRpcClient;
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_farmer::{
+    retrieve_piece_from_plots, NodeRpcClient, ObjectMappings, PieceOffset, Plot, PlotFile,
+    RpcClient,
+};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
@@ -18,6 +21,43 @@ use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 
 use crate::{FarmingArgs, WriteToDisk};
+
+pub struct BenchPlotMock {
+    piece_count: u64,
+    max_piece_count: u64,
+}
+
+impl BenchPlotMock {
+    pub fn new(max_piece_count: u64) -> Self {
+        Self {
+            max_piece_count,
+            piece_count: 0,
+        }
+    }
+}
+
+impl PlotFile for BenchPlotMock {
+    fn piece_count(&mut self) -> io::Result<u64> {
+        Ok(self.piece_count)
+    }
+
+    fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
+        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
+            .max(self.max_piece_count);
+        Ok(())
+    }
+
+    fn read(&mut self, _offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
+        use rand::Rng;
+
+        rand::thread_rng().fill(buf.as_mut());
+        Ok(())
+    }
+
+    fn sync_all(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
@@ -88,7 +128,7 @@ pub(crate) async fn farm(
 
     let multi_farming = MultiFarming::new(
         MultiFarmingOptions {
-            base_directory,
+            base_directory: base_directory.clone(),
             client,
             object_mappings: object_mappings.clone(),
             reward_address,
@@ -96,6 +136,14 @@ pub(crate) async fn farm(
         },
         plot_size,
         max_plot_size,
+        move |plot_index, address, max_piece_count| {
+            Plot::open_or_create(
+                base_directory.join(format!("plot{plot_index}")),
+                address,
+                max_piece_count,
+            )
+        },
+        true,
     )
     .await?;
 
@@ -207,7 +255,21 @@ pub(crate) async fn bench(
     })
     .await??;
 
-    let multi_farming = MultiFarming::benchmarking(
+    let base_path = base_directory.as_ref().to_owned();
+    let plot_factory = move |plot_index, address, max_piece_count| {
+        let base_path = base_path.join(format!("plot{plot_index}"));
+        match write_to_disk {
+            WriteToDisk::Nothing => Plot::with_plot_file(
+                BenchPlotMock::new(max_piece_count),
+                base_path,
+                address,
+                max_piece_count,
+            ),
+            WriteToDisk::Everything => Plot::open_or_create(base_path, address, max_piece_count),
+        }
+    };
+
+    let multi_farming = MultiFarming::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
             client: client.clone(),
@@ -217,7 +279,8 @@ pub(crate) async fn bench(
         },
         plot_size,
         max_plot_size,
-        matches!(write_to_disk, WriteToDisk::Nothing),
+        plot_factory,
+        false,
     )
     .await?;
 

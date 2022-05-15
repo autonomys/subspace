@@ -1,6 +1,5 @@
 use crate::{
-    plot::BenchPlotMock, plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot,
-    PlotError, RpcClient,
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -50,71 +49,6 @@ pub struct Options<C: RpcClient> {
 impl MultiFarming {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new<C: RpcClient>(
-        options: Options<C>,
-        total_plot_size: u64,
-        max_plot_size: u64,
-    ) -> anyhow::Result<Self> {
-        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
-        let base_directory = options.base_directory.clone();
-        Self::new_inner(
-            options,
-            plot_sizes,
-            move |plot_index, address, max_piece_count| {
-                Plot::open_or_create(
-                    base_directory.join(format!("plot{plot_index}")),
-                    address,
-                    max_piece_count,
-                )
-            },
-            true,
-        )
-        .await
-    }
-
-    /// Starts multiple farmers for benchmarking (basically disables farming, just plots pieces
-    /// from the archiver)
-    pub async fn benchmarking<C: RpcClient>(
-        options: Options<C>,
-        total_plot_size: u64,
-        max_plot_size: u64,
-        mock_plot: bool,
-    ) -> anyhow::Result<Self> {
-        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
-        let base_directory = options.base_directory.clone();
-
-        if mock_plot {
-            Self::new_inner(
-                options,
-                plot_sizes,
-                move |plot_index, address, max_piece_count| {
-                    Plot::with_plot_file(
-                        BenchPlotMock::new(max_piece_count),
-                        base_directory.join(format!("plot{plot_index}")),
-                        address,
-                        max_piece_count,
-                    )
-                },
-                false,
-            )
-            .await
-        } else {
-            Self::new_inner(
-                options,
-                plot_sizes,
-                move |plot_index, address, max_piece_count| {
-                    Plot::open_or_create(
-                        base_directory.join(format!("plot{plot_index}")),
-                        address,
-                        max_piece_count,
-                    )
-                },
-                false,
-            )
-            .await
-        }
-    }
-
-    async fn new_inner<C: RpcClient>(
         Options {
             base_directory,
             client,
@@ -122,10 +56,13 @@ impl MultiFarming {
             reward_address,
             best_block_number_check_interval,
         }: Options<C>,
-        plot_sizes: Vec<u64>,
+        total_plot_size: u64,
+        max_plot_size: u64,
         new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
         start_farmings: bool,
     ) -> anyhow::Result<Self> {
+        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
+
         let mut plots = Vec::with_capacity(plot_sizes.len());
         let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
         let mut commitments = Vec::with_capacity(plot_sizes.len());
