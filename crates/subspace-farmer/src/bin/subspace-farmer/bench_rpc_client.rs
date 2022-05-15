@@ -21,33 +21,19 @@ pub struct BenchRpcClient {
 #[derive(Debug)]
 pub struct Inner {
     metadata: FarmerMetadata,
-    slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
-    slot_info_handler: Mutex<JoinHandle<()>>,
     segment_producer_handle: Mutex<JoinHandle<()>>,
 }
 
 impl BenchRpcClient {
     /// Create a new instance of [`BenchRpcClient`].
-    pub fn new(
-        metadata: FarmerMetadata,
-    ) -> (Self, mpsc::Sender<ArchivedSegment>, mpsc::Sender<SlotInfo>) {
-        let (slot_info_sender, slot_info_receiver) = mpsc::channel(10);
+    pub fn new(metadata: FarmerMetadata) -> (Self, mpsc::Sender<ArchivedSegment>) {
         let (archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
         let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
             mpsc::channel(1);
         let (outer_archived_segments_sender, mut outer_archived_segments_receiver) =
             mpsc::channel(10);
-        let (outer_slot_info_sender, mut outer_slot_info_receiver) = mpsc::channel(10);
-
-        let slot_info_handler = tokio::spawn(async move {
-            while let Some(slot_info) = outer_slot_info_receiver.recv().await {
-                if slot_info_sender.send(slot_info).await.is_err() {
-                    break;
-                };
-            }
-        });
 
         let segment_producer_handle = tokio::spawn({
             async move {
@@ -65,18 +51,15 @@ impl BenchRpcClient {
         let me = Self {
             inner: Arc::new(Inner {
                 metadata,
-                slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 archived_segments_receiver: Arc::new(Mutex::new(archived_segments_receiver)),
                 acknowledge_archived_segment_sender,
-                slot_info_handler: Mutex::new(slot_info_handler),
                 segment_producer_handle: Mutex::new(segment_producer_handle),
             }),
         };
-        (me, outer_archived_segments_sender, outer_slot_info_sender)
+        (me, outer_archived_segments_sender)
     }
 
     pub async fn stop(self) {
-        self.inner.slot_info_handler.lock().await.abort();
         self.inner.segment_producer_handle.lock().await.abort();
     }
 }
@@ -93,17 +76,7 @@ impl RpcClient for BenchRpcClient {
     }
 
     async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
-        let (sender, receiver) = mpsc::channel(10);
-        let slot_receiver = self.inner.slot_info_receiver.clone();
-        tokio::spawn(async move {
-            while let Some(slot_info) = slot_receiver.lock().await.recv().await {
-                if sender.send(slot_info).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Ok(receiver)
+        unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
     async fn submit_solution_response(

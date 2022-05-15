@@ -22,7 +22,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
-use subspace_rpc_primitives::{FarmerMetadata, SlotInfo};
+use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 
 use crate::bench_rpc_client::BenchRpcClient;
@@ -233,8 +233,7 @@ pub(crate) async fn bench(
 ) -> anyhow::Result<()> {
     raise_fd_limit();
 
-    let (client, archived_segments_sender, slot_info_sender) =
-        BenchRpcClient::new(BENCH_FARMER_METADATA);
+    let (client, archived_segments_sender) = BenchRpcClient::new(BENCH_FARMER_METADATA);
 
     let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
@@ -289,14 +288,14 @@ pub(crate) async fn bench(
     )
     .await?;
 
-    let segment_producer_handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         let mut segment_index = 0;
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
 
-        for _ in (0..write_pieces_size / PIECE_SIZE as u64).step_by(100) {
+        for _ in (0..write_pieces_size / PIECE_SIZE as u64).step_by(1000) {
             last_archived_block
                 .archived_progress
                 .set_partial(segment_index as u32);
@@ -309,7 +308,7 @@ pub(crate) async fn bench(
                     last_archived_block,
                 };
 
-                let mut pieces = FlatPieces::new(100);
+                let mut pieces = FlatPieces::new(1000);
                 rand::thread_rng().fill(pieces.as_mut());
 
                 let objects = std::iter::repeat_with(|| PieceObject::V0 {
@@ -336,35 +335,8 @@ pub(crate) async fn bench(
 
             segment_index += 1;
         }
-    });
-
-    tokio::spawn(async move {
-        let mut slot_number = 0;
-        let mut next_salt = rand::random();
-        loop {
-            let global_challenge = rand::random();
-            next_salt = {
-                let (salt, next_salt) = (next_salt, rand::random());
-                let slot_info = SlotInfo {
-                    slot_number,
-                    global_challenge,
-                    salt: next_salt,
-                    next_salt: salt,
-                    solution_range: rand::random(),
-                };
-                if slot_info_sender.send(slot_info).await.is_err() {
-                    break;
-                };
-                Some(next_salt)
-            };
-
-            tokio::time::sleep(Duration::from_secs(2 * 60)).await;
-
-            slot_number += 1;
-        }
-    });
-
-    segment_producer_handle.await?;
+    })
+    .await?;
 
     client.stop().await;
 
