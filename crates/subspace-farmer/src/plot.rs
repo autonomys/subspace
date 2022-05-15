@@ -480,7 +480,11 @@ struct IndexHashToOffsetDB {
 }
 
 impl IndexHashToOffsetDB {
-    const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 100;
+    /// Max distance cache size.
+    ///
+    /// You can find discussion of derivation of this number here:
+    /// https://github.com/subspace/subspace/pull/449
+    const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
 
     fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
