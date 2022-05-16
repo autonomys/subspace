@@ -739,7 +739,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     let mut proposer = futures::executor::block_on(proposer_factory.init(parent)).unwrap();
 
     let slot = slot.unwrap_or_else(|| {
-        let parent_pre_digest = find_pre_digest::<TestBlock>(parent).unwrap();
+        let parent_pre_digest = find_pre_digest::<TestHeader>(parent).unwrap();
         parent_pre_digest.slot + 1
     });
 

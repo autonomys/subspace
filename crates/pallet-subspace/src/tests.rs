@@ -32,8 +32,7 @@ use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, Salts, Solution
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Header;
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
-    ValidTransaction,
+    InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
 
 #[test]
@@ -408,8 +407,8 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
                 TransactionSource::Local,
                 &inner,
             ),
-            TransactionValidity::Ok(ValidTransaction {
-                priority: TransactionPriority::MAX - 1,
+            Ok(ValidTransaction {
+                priority: TransactionPriority::MAX,
                 requires: vec![],
                 provides: vec![("SubspaceEquivocation", tx_tag).encode()],
                 longevity: ReportLongevity::get(),
@@ -546,7 +545,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
                 TransactionSource::Local,
                 &inner,
             ),
-            TransactionValidity::Ok(ValidTransaction {
+            Ok(ValidTransaction {
                 priority: TransactionPriority::MAX,
                 requires: vec![],
                 provides: vec![],

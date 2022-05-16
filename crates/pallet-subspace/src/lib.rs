@@ -131,7 +131,7 @@ mod pallet {
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
     use sp_std::prelude::*;
-    use subspace_core_primitives::{RootBlock, Sha256Hash};
+    use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,
@@ -319,7 +319,7 @@ mod pallet {
 
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
-    pub(super) type PorRandomness<T> = StorageValue<_, subspace_core_primitives::Randomness>;
+    pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
@@ -433,18 +433,24 @@ mod pallet {
         type Call = Call<T>;
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::report_equivocation { .. } => {
-                    Self::validate_equivocation_report(source, call)
+                Call::report_equivocation { equivocation_proof } => {
+                    Self::validate_equivocation_report(source, equivocation_proof)
                 }
-                Call::store_root_blocks { .. } => Self::validate_root_block(source, call),
+                Call::store_root_blocks { root_blocks } => {
+                    Self::validate_root_block(source, root_blocks)
+                }
                 _ => InvalidTransaction::Call.into(),
             }
         }
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::report_equivocation { .. } => Self::pre_dispatch_equivocation_report(call),
-                Call::store_root_blocks { .. } => Self::pre_dispatch_root_block(call),
+                Call::report_equivocation { equivocation_proof } => {
+                    Self::pre_dispatch_equivocation_report(equivocation_proof)
+                }
+                Call::store_root_blocks { root_blocks } => {
+                    Self::pre_dispatch_root_block(root_blocks)
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -693,7 +699,7 @@ impl<T: Config> Pallet<T> {
         let slot = equivocation_proof.slot;
 
         // validate the equivocation proof
-        if !sp_consensus_subspace::check_equivocation_proof(equivocation_proof) {
+        if !sp_consensus_subspace::is_equivocation_proof_valid(equivocation_proof) {
             return Err(Error::<T>::InvalidEquivocationProof.into());
         }
 
@@ -716,7 +722,7 @@ impl<T: Config> Pallet<T> {
 
     fn derive_next_salt_from_randomness(
         eon_index: u64,
-        randomness: &subspace_core_primitives::Randomness,
+        randomness: &Randomness,
     ) -> subspace_core_primitives::Salt {
         crypto::sha256_hash({
             let mut input =
@@ -772,44 +778,37 @@ impl<T: Config> Pallet<T> {
 /// node) or that already in a block. This guarantees that only block authors can include root
 /// blocks.
 impl<T: Config> Pallet<T> {
-    pub fn validate_root_block(source: TransactionSource, call: &Call<T>) -> TransactionValidity {
-        if let Call::store_root_blocks { root_blocks } = call {
-            // Discard root block not coming from the local node
-            if !matches!(
-                source,
-                TransactionSource::Local | TransactionSource::InBlock,
-            ) {
-                log::warn!(
-                    target: "runtime::subspace",
-                    "Rejecting root block extrinsic because it is not local/in-block.",
-                );
+    fn validate_root_block(
+        source: TransactionSource,
+        root_blocks: &[RootBlock],
+    ) -> TransactionValidity {
+        // Discard root block not coming from the local node
+        if !matches!(
+            source,
+            TransactionSource::Local | TransactionSource::InBlock,
+        ) {
+            log::warn!(
+                target: "runtime::subspace",
+                "Rejecting root block extrinsic because it is not local/in-block.",
+            );
 
-                return InvalidTransaction::Call.into();
-            }
-
-            check_root_blocks::<T>(root_blocks)?;
-
-            ValidTransaction::with_tag_prefix("SubspaceRootBlock")
-                // We assign the maximum priority for any equivocation report.
-                .priority(TransactionPriority::MAX)
-                // Should be included immediately into the upcoming block with no exceptions.
-                .longevity(0)
-                // We don't propagate this. This can never be included on a remote node.
-                .propagate(false)
-                .build()
-        } else {
-            InvalidTransaction::Call.into()
+            return InvalidTransaction::Call.into();
         }
+
+        check_root_blocks::<T>(root_blocks)?;
+
+        ValidTransaction::with_tag_prefix("SubspaceRootBlock")
+            // We assign the maximum priority for any root block.
+            .priority(TransactionPriority::MAX)
+            // Should be included immediately into the upcoming block with no exceptions.
+            .longevity(0)
+            // We don't propagate this. This can never be included on a remote node.
+            .propagate(false)
+            .build()
     }
 
-    pub fn pre_dispatch_root_block(call: &Call<T>) -> Result<(), TransactionValidityError> {
-        if let Call::store_root_blocks { root_blocks } = call {
-            check_root_blocks::<T>(root_blocks)?;
-
-            Ok(())
-        } else {
-            Err(InvalidTransaction::Call.into())
-        }
+    fn pre_dispatch_root_block(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
+        check_root_blocks::<T>(root_blocks)
     }
 }
 

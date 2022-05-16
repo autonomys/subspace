@@ -19,8 +19,8 @@
 //!
 //! ## Comparison with [sp_staking::offence]
 //!
-//! Unlike [sp_staking::offence] handles both the offline and equivocation offences, there is only
-//! equivocation attack in subspace as it's a permissionless consensus based on PoC holding to
+//! Unlike [sp_staking::offence] that handles both the offline and equivocation offences, there is
+//! only equivocation attack in subspace as it's a permissionless consensus based on PoC holding to
 //! Nakamoto's vision and does not have a known validator set for the block production.
 //!
 //! [sp_staking::offence]: https://docs.substrate.io/rustdocs/latest/sp_staking/offence/index.html
@@ -67,24 +67,11 @@ pub trait Offence<Offender> {
 /// Errors that may happen on offence reports.
 #[derive(PartialEq, sp_runtime::RuntimeDebug)]
 pub enum OffenceError {
-    /// The report has already been submmitted.
+    /// The report has already been submitted.
     DuplicateReport,
 
     /// Other error has happened.
     Other(u8),
-}
-
-impl sp_runtime::traits::Printable for OffenceError {
-    fn print(&self) {
-        "OffenceError".print();
-        match self {
-            Self::DuplicateReport => "DuplicateReport".print(),
-            Self::Other(e) => {
-                "Other".print();
-                e.print();
-            }
-        }
-    }
 }
 
 /// A trait for decoupling offence reporters from the actual handling of offence reports.

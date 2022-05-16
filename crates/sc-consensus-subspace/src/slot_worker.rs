@@ -205,12 +205,12 @@ where
                 }
             };
 
-            match verification::verify_solution::<B>(
+            match verification::verify_solution::<B::Header>(
                 &solution,
+                slot,
                 verification::VerifySolutionParams {
                     global_randomness: &global_randomness,
                     solution_range,
-                    slot,
                     salt,
                     piece_check_params: Some(PieceCheckParams {
                         records_root,
@@ -293,7 +293,7 @@ where
 
     fn should_backoff(&self, slot: Slot, chain_head: &B::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = find_pre_digest::<B>(chain_head)
+            if let Ok(chain_head_slot) = find_pre_digest(chain_head)
                 .map(|digest| digest.slot)
                 .map_err(subspace_err)
             {
@@ -330,7 +330,7 @@ where
     }
 
     fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> std::time::Duration {
-        let parent_slot = find_pre_digest::<B>(&slot_info.chain_head)
+        let parent_slot = find_pre_digest(&slot_info.chain_head)
             .map_err(subspace_err)
             .ok()
             .map(|d| d.slot);

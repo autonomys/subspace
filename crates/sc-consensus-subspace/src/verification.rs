@@ -16,15 +16,16 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification for Subspace headers.
-use super::{subspace_err, BlockT, Error};
+use super::Error;
+use crate::find_pre_digest;
 use log::{debug, trace};
 use sc_consensus_slots::CheckedHeader;
 use schnorrkel::context::SigningContext;
+use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::ByteArray;
-use sp_runtime::traits::Header;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
 use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution};
@@ -33,11 +34,12 @@ use subspace_solving::{
 };
 
 /// Subspace verification parameters
-pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
+pub(super) struct VerificationParams<'a, Header>
+where
+    Header: HeaderT + 'a,
+{
     /// The header being verified.
-    pub(super) header: B::Header,
-    /// The pre-digest of the header being verified to avoid duplicated work.
-    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
+    pub(super) header: Header,
     /// The slot number of the current time.
     pub(super) slot_now: Slot,
     /// Parameters for solution verification
@@ -52,25 +54,30 @@ pub(super) struct VerificationParams<'a, B: 'a + BlockT> {
 /// required for security and must not be changed.
 ///
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-pub(super) fn check_header<B: BlockT + Sized>(
-    params: VerificationParams<B>,
-) -> Result<CheckedHeader<B::Header, VerifiedHeaderInfo>, Error<B>> {
+pub(super) fn check_header<Header>(
+    params: VerificationParams<Header>,
+) -> Result<CheckedHeader<Header, VerifiedHeaderInfo>, Error<Header>>
+where
+    Header: HeaderT,
+{
     let VerificationParams {
         mut header,
-        pre_digest,
         slot_now,
         verify_solution_params,
     } = params;
+
+    let pre_digest = find_pre_digest::<Header>(&header)?;
+    let slot = pre_digest.slot;
 
     trace!(target: "subspace", "Checking header");
     let seal = header
         .digest_mut()
         .pop()
-        .ok_or_else(|| subspace_err(Error::HeaderUnsealed(header.hash())))?;
+        .ok_or_else(|| Error::HeaderUnsealed(header.hash()))?;
 
     let sig = seal
         .as_subspace_seal()
-        .ok_or_else(|| subspace_err(Error::HeaderBadSeal(header.hash())))?;
+        .ok_or_else(|| Error::HeaderBadSeal(header.hash()))?;
 
     // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
@@ -89,11 +96,11 @@ pub(super) fn check_header<B: BlockT + Sized>(
 
     // Verify that block is signed properly
     if !pre_digest.solution.public_key.verify(&pre_hash, &sig) {
-        return Err(subspace_err(Error::BadSignature(pre_hash)));
+        return Err(Error::BadSignature(pre_hash));
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, verify_solution_params)?;
+    verify_solution(&pre_digest.solution, slot, verify_solution_params)?;
 
     Ok(CheckedHeader::Checked(
         header,
@@ -117,11 +124,14 @@ fn check_signature(
 }
 
 /// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<B: BlockT>(
+fn check_piece_tag<Header>(
     slot: Slot,
     salt: Salt,
     solution: &Solution<FarmerPublicKey>,
-) -> Result<(), Error<B>> {
+) -> Result<(), Error<Header>>
+where
+    Header: HeaderT,
+{
     if !subspace_solving::is_tag_valid(&solution.encoding, salt, solution.tag) {
         return Err(Error::InvalidTag(slot));
     }
@@ -132,13 +142,16 @@ fn check_piece_tag<B: BlockT>(
 /// Check piece validity.
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
-pub(crate) fn check_piece<B: BlockT>(
+pub(crate) fn check_piece<Header>(
     slot: Slot,
     records_root: Sha256Hash,
     position: u64,
     record_size: u32,
     solution: &Solution<FarmerPublicKey>,
-) -> Result<(), Error<B>> {
+) -> Result<(), Error<Header>>
+where
+    Header: HeaderT,
+{
     let mut piece = solution.encoding;
 
     // Ensure piece is decodable.
@@ -200,20 +213,22 @@ pub(crate) struct PieceCheckParams {
 pub(crate) struct VerifySolutionParams<'a> {
     pub(crate) global_randomness: &'a Randomness,
     pub(crate) solution_range: u64,
-    pub(crate) slot: Slot,
     pub(crate) salt: Salt,
     pub(crate) piece_check_params: Option<PieceCheckParams>,
     pub(crate) signing_context: &'a SigningContext,
 }
 
-pub(crate) fn verify_solution<B: BlockT>(
+pub(crate) fn verify_solution<Header>(
     solution: &Solution<FarmerPublicKey>,
+    slot: Slot,
     params: VerifySolutionParams,
-) -> Result<(), Error<B>> {
+) -> Result<(), Error<Header>>
+where
+    Header: HeaderT,
+{
     let VerifySolutionParams {
         global_randomness,
         solution_range,
-        slot,
         salt,
         piece_check_params,
         signing_context,

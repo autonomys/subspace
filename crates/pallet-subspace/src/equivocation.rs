@@ -33,6 +33,7 @@
 //!
 
 use frame_support::traits::Get;
+use frame_system::offchain::SubmitTransaction;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::offence::{Kind, Offence, OffenceError, ReportOffence};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
@@ -129,8 +130,6 @@ where
     fn submit_equivocation_report(
         equivocation_proof: EquivocationProof<T::Header>,
     ) -> DispatchResult {
-        use frame_system::offchain::SubmitTransaction;
-
         let call = Call::report_equivocation {
             equivocation_proof: Box::new(equivocation_proof),
         };
@@ -140,10 +139,9 @@ where
                 target: "runtime::subspace",
                 "Submitted Subspace equivocation report.",
             ),
-            Err(e) => log::error!(
+            Err(()) => log::error!(
                 target: "runtime::subspace",
-                "Error submitting Subspace equivocation report: {:?}",
-                e,
+                "Error submitting Subspace equivocation report.",
             ),
         }
 
@@ -158,55 +156,44 @@ where
 impl<T: Config> Pallet<T> {
     pub fn validate_equivocation_report(
         source: TransactionSource,
-        call: &Call<T>,
+        equivocation_proof: &EquivocationProof<T::Header>,
     ) -> TransactionValidity {
-        if let Call::report_equivocation { equivocation_proof } = call {
-            // Discard equivocation report not coming from the local node
-            if !matches!(
-                source,
-                TransactionSource::Local | TransactionSource::InBlock
-            ) {
-                log::warn!(
-                    target: "runtime::subspace",
-                    "Rejecting report equivocation extrinsic because it is not local/in-block.",
-                );
+        // Discard equivocation report not coming from the local node
+        if !matches!(
+            source,
+            TransactionSource::Local | TransactionSource::InBlock
+        ) {
+            log::warn!(
+                target: "runtime::subspace",
+                "Rejecting report equivocation extrinsic because it is not local/in-block.",
+            );
 
-                return InvalidTransaction::Call.into();
-            }
-
-            // check report staleness
-            is_known_offence::<T>(equivocation_proof)?;
-
-            let longevity =
-                <T::HandleEquivocation as HandleEquivocation<T>>::ReportLongevity::get();
-
-            ValidTransaction::with_tag_prefix("SubspaceEquivocation")
-                // We assign the `(maximum - 1)` priority for any equivocation report (`-1` is
-                // to make sure potential root block transactions are always included no matter
-                // what).
-                .priority(TransactionPriority::MAX - 1)
-                // Only one equivocation report for the same offender at the same slot.
-                .and_provides((
-                    equivocation_proof.offender.clone(),
-                    *equivocation_proof.slot,
-                ))
-                .longevity(longevity)
-                // We don't propagate this. This can never be included on a remote node.
-                .propagate(false)
-                .build()
-        } else {
-            InvalidTransaction::Call.into()
+            return InvalidTransaction::Call.into();
         }
+
+        // check report staleness
+        is_known_offence::<T>(equivocation_proof)?;
+
+        let longevity = <T::HandleEquivocation as HandleEquivocation<T>>::ReportLongevity::get();
+
+        ValidTransaction::with_tag_prefix("SubspaceEquivocation")
+            // We assign the maximum priority for any equivocation report.
+            .priority(TransactionPriority::MAX)
+            // Only one equivocation report for the same offender at the same slot.
+            .and_provides((
+                equivocation_proof.offender.clone(),
+                *equivocation_proof.slot,
+            ))
+            .longevity(longevity)
+            // We don't propagate this. This can never be included on a remote node.
+            .propagate(false)
+            .build()
     }
 
     pub fn pre_dispatch_equivocation_report(
-        call: &Call<T>,
+        equivocation_proof: &EquivocationProof<T::Header>,
     ) -> Result<(), TransactionValidityError> {
-        if let Call::report_equivocation { equivocation_proof } = call {
-            is_known_offence::<T>(equivocation_proof)
-        } else {
-            Err(InvalidTransaction::Call.into())
-        }
+        is_known_offence::<T>(equivocation_proof)
     }
 }
 
