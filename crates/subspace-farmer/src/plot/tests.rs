@@ -6,7 +6,7 @@ use subspace_solving::PieceDistance;
 use tempfile::TempDir;
 
 fn init() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 fn generate_random_piece() -> Piece {

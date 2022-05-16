@@ -4,7 +4,6 @@ mod utils;
 
 use anyhow::Result;
 use clap::{ArgEnum, Parser, ValueHint};
-use env_logger::Env;
 use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -12,6 +11,12 @@ use std::time::Duration;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use tracing::info;
+use tracing_subscriber::{
+    filter::LevelFilter,
+    fmt::{self, format::FmtSpan},
+    prelude::*,
+    EnvFilter,
+};
 
 const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -125,7 +130,18 @@ fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_span_events(FmtSpan::CLOSE)
+                .with_thread_ids(true)
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(LevelFilter::INFO.into())
+                        .from_env_lossy(),
+                ),
+        )
+        .init();
 
     match Command::parse() {
         Command::Wipe { custom_path } => {

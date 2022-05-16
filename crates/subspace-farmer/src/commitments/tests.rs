@@ -7,7 +7,7 @@ use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use tempfile::TempDir;
 
 fn init() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 #[tokio::test(flavor = "multi_thread")]

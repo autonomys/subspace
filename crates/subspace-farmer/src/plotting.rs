@@ -9,10 +9,10 @@ mod tests;
 use crate::commitments::Commitments;
 use crate::plot::Plot;
 use crate::PiecesToPlot;
-use tracing::error;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndex};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
+use tracing::error;
 
 /// Generates a function that will plot pieces.
 pub fn plot_pieces(
