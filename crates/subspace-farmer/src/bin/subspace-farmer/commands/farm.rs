@@ -23,10 +23,10 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::bench_rpc_client::BenchRpcClient;
-use crate::{FarmingArgs, WriteToDisk};
+use crate::{utils, FarmingArgs, WriteToDisk};
 
 pub struct BenchPlotMock {
     piece_count: u64,
@@ -63,23 +63,6 @@ impl PlotFile for BenchPlotMock {
     }
 }
 
-fn raise_fd_limit() {
-    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(new_limit)) => info!(new_limit, "Increase file limit from soft to hard"),
-        Ok(None) => debug!("Failed to increase file limit"),
-        Err(err) => {
-            let err = if let Some(err) = err.downcast_ref::<&str>() {
-                *err
-            } else if let Some(err) = err.downcast_ref::<String>() {
-                err
-            } else {
-                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
-            };
-            warn!(err, "Failed to increase file limit")
-        }
-    }
-}
-
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm(
@@ -95,9 +78,9 @@ pub(crate) async fn farm(
     }: FarmingArgs,
     best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
-    raise_fd_limit();
+    utils::raise_fd_limit();
 
-    let base_directory = crate::utils::get_path(custom_path);
+    let base_directory = utils::get_path(custom_path);
 
     info!("Connecting to node at {}", node_rpc_url);
     let client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -232,7 +215,7 @@ pub(crate) async fn bench(
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
 ) -> anyhow::Result<()> {
-    raise_fd_limit();
+    utils::raise_fd_limit();
 
     let (archived_segments_sender, archived_segments_receiver) = tokio::sync::mpsc::channel(10);
     let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
