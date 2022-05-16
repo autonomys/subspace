@@ -23,9 +23,8 @@ use core::iter;
 use core::ops::Deref;
 use sha2::{Digest, Sha256};
 use subspace_core_primitives::{crypto, Sha256Hash, SHA256_HASH_SIZE};
-use typenum::{U0, U2};
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 struct Sha256Algorithm(Sha256);
 
 impl Hasher for Sha256Algorithm {
@@ -40,7 +39,7 @@ impl Hasher for Sha256Algorithm {
     }
 }
 
-impl merkletree::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
+impl merkle_light::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
     #[inline]
     fn hash(&mut self) -> Sha256Hash {
         self.0
@@ -57,11 +56,7 @@ impl merkletree::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
     }
 }
 
-type InternalMerkleTree = merkletree::merkle::MerkleTree<
-    Sha256Hash,
-    Sha256Algorithm,
-    merkletree::store::VecStore<Sha256Hash>,
->;
+type InternalMerkleTree = merkle_light::merkle::MerkleTree<Sha256Hash, Sha256Algorithm>;
 
 /// Merkle Proof-based witness
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -117,17 +112,16 @@ impl<'a> Witness<'a> {
             let mut local_position = position;
 
             for _ in 0..self.merkle_num_leaves.log2() {
-                path.push(if local_position % 2 == 0 { 0 } else { 1 });
+                path.push(local_position % 2 == 0);
                 local_position /= 2;
             }
 
             path
         };
 
-        let proof = merkletree::proof::Proof::<Sha256Hash, U2>::new::<U0, U0>(None, lemma, path)
-            .expect("Prepared data above are always correct; qed");
+        let proof = merkle_light::proof::Proof::<Sha256Hash>::new(lemma, path);
 
-        proof.validate::<Sha256Algorithm>().unwrap_or_default()
+        proof.validate::<Sha256Algorithm>()
     }
 }
 
@@ -170,8 +164,7 @@ impl MerkleTree {
         I: IntoIterator<Item = Sha256Hash>,
     {
         Self {
-            merkle_tree: InternalMerkleTree::new(hashes.into_iter())
-                .expect("This version of the tree from the library never returns error; qed"),
+            merkle_tree: InternalMerkleTree::new(hashes.into_iter()),
         }
     }
 
@@ -198,10 +191,7 @@ impl MerkleTree {
             ));
         }
 
-        let proof = self
-            .merkle_tree
-            .gen_proof(position)
-            .expect("This version of the tree from the library never returns error; qed");
+        let proof = self.merkle_tree.gen_proof(position);
 
         // The first lemma element is root and the last is the item itself, we skip both here
         let lemma = proof.lemma().iter().skip(1).rev().skip(1).rev();
