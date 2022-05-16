@@ -328,6 +328,11 @@ impl<
 			}
 		});
 
+		// Note the storage root before finalizing the block so that the block imported during the
+		// syncing processs produces the same storage root with the one processed based on
+		// the primary block.
+		Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
+
 		// post-extrinsics book-keeping
 		<frame_system::Pallet<System>>::note_finished_extrinsics();
 

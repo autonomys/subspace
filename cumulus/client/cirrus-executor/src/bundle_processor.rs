@@ -213,9 +213,7 @@ where
 		// TODO: handle the import result properly.
 		match import_result {
 			ImportResult::Imported(..) => {},
-			ImportResult::AlreadyInChain => {
-				panic!("Block already in chain {}: {:?}", header_number, header_hash);
-			},
+			ImportResult::AlreadyInChain => {},
 			ImportResult::KnownBad => {
 				panic!("Bad block {}: {:?}", header_number, header_hash);
 			},

@@ -40,7 +40,6 @@ async fn test_executor_full_node_catching_up() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
@@ -86,7 +85,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
@@ -347,7 +345,6 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
@@ -613,8 +610,9 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	};
 
 	assert_eq!(vec![tx1, tx2, tx3], ready_txs());
-	alice_executor.wait_for_blocks(1).await;
-	// The ready txs will be consumed and included in the next block.
+
+	// Wait for a few more blocks to ensure the ready txs can be consumed.
+	alice_executor.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 
 	alice_executor.wait_for_blocks(4).await;
@@ -657,16 +655,19 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	// )
 	// );
 
-	alice_executor.wait_for_blocks(1).await;
+	// Wait for a few more blocks to ensure the ready txs can be consumed.
+	alice_executor.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
+
 	let tx4 = create_and_send_submit_execution_receipt(4)
 		.await
 		.expect("Submit receipt successfully");
 	// All future txs become ready once the required tx is ready.
 	assert_eq!(vec![tx4, tx5, tx6, tx7], ready_txs());
 	assert!(future_txs().is_empty());
-	alice_executor.wait_for_blocks(1).await;
-	// The ready txs will be consumed and included in the next block.
+
+	// Wait for a few more blocks to ensure the ready txs can be consumed.
+	alice_executor.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 }
