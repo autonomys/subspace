@@ -89,6 +89,7 @@ enum Request {
         piece_indexes: Vec<PieceIndex>,
         /// Returns offsets of all new pieces and pieces which were replaced
         result_sender: mpsc::Sender<io::Result<WriteResult>>,
+        span: tracing::span::Span,
     },
     Exit {
         result_sender: mpsc::Sender<()>,
@@ -277,6 +278,7 @@ impl Plot {
     }
 
     /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
+    #[tracing::instrument(target = "bench::plot", level = "trace", skip_all)]
     pub fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
@@ -294,6 +296,7 @@ impl Plot {
 
         let (result_sender, result_receiver) = mpsc::channel();
 
+        let span = tracing::trace_span!(target: "bench::plot", "write_many_separate");
         self.inner
             .requests_sender
             .send(RequestWithPriority {
@@ -301,6 +304,7 @@ impl Plot {
                     encodings,
                     piece_indexes,
                     result_sender,
+                    span,
                 },
                 priority: RequestPriority::Low,
             })
@@ -738,6 +742,7 @@ impl<T: PlotFile> PlotWorker<T> {
     }
 
     // TODO: Add error recovery
+    #[tracing::instrument(target = "bench::plot", level = "trace", skip_all)]
     fn write_encodings(
         &mut self,
         pieces: Arc<FlatPieces>,
@@ -760,19 +765,37 @@ impl<T: PlotFile> PlotWorker<T> {
             piece_indexes.split_at(pieces_left_until_full_plot as usize);
 
         // Process sequential pieces
-        {
-            self.plot.write(sequential_pieces, current_piece_count)?;
+        if !sequential_pieces.is_empty() {
+            tracing::trace_span!(
+                target: "bench::plot",
+                "sequential_pieces_write",
+            )
+            .in_scope(|| self.plot.write(sequential_pieces, current_piece_count))?;
 
-            for (piece_offset, &piece_index) in
-                (current_piece_count..).zip(sequential_piece_indexes)
-            {
-                self.piece_index_hash_to_offset_db
-                    .put(&piece_index.into(), piece_offset)?;
-                self.put_piece_index(piece_offset, piece_index)?;
-            }
+            tracing::trace_span!(target: "bench::plot", "sequential_pieces_write_to_db").in_scope(
+                || {
+                    for (piece_offset, &piece_index) in
+                        (current_piece_count..).zip(sequential_piece_indexes)
+                    {
+                        self.piece_index_hash_to_offset_db
+                            .put(&piece_index.into(), piece_offset)?;
+                        self.put_piece_index(piece_offset, piece_index)?;
+                    }
+                    Ok::<_, io::Error>(())
+                },
+            )?;
 
             self.piece_count
                 .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
+        }
+
+        if random_piece_indexes.is_empty() {
+            drop(random_pieces);
+            return Ok(WriteResult {
+                pieces,
+                piece_offsets: vec![],
+                evicted_pieces: vec![],
+            });
         }
 
         let mut piece_offsets = Vec::<Option<PieceOffset>>::with_capacity(pieces.count());
@@ -786,40 +809,44 @@ impl<T: PlotFile> PlotWorker<T> {
             Vec::with_capacity(pieces.count() - pieces_left_until_full_plot as usize);
 
         // Process random pieces
-        for ((piece, &piece_index), maybe_piece_offset) in
-            random_pieces.zip(random_piece_indexes).zip(
-                piece_offsets
-                    .iter_mut()
-                    .skip(pieces_left_until_full_plot as usize),
-            )
-        {
-            // Check if piece is out of plot range or if it is in the plot
-            if !self
-                .piece_index_hash_to_offset_db
-                .should_store(&piece_index.into())
+        tracing::trace_span!(target: "bench::plot", "random_pieces_write").in_scope(|| {
+            for ((piece, &piece_index), maybe_piece_offset) in
+                random_pieces.zip(random_piece_indexes).zip(
+                    piece_offsets
+                        .iter_mut()
+                        .skip(pieces_left_until_full_plot as usize),
+                )
             {
-                continue;
+                // Check if piece is out of plot range or if it is in the plot
+                if !self
+                    .piece_index_hash_to_offset_db
+                    .should_store(&piece_index.into())
+                {
+                    continue;
+                }
+
+                let piece_offset = self
+                    .piece_index_hash_to_offset_db
+                    .remove_furthest()?
+                    .expect("Must be always present as plot is non-empty; qed");
+
+                let mut old_piece = Piece::default();
+                self.plot.read(piece_offset, &mut old_piece)?;
+
+                self.plot.write(piece, piece_offset)?;
+
+                self.piece_index_hash_to_offset_db
+                    .put(&piece_index.into(), piece_offset)?;
+                self.put_piece_index(piece_offset, piece_index)?;
+
+                // TODO: This is a bit inefficient when pieces from previous iterations of this loop are
+                //  evicted, causing extra tags overrides during recommitment
+                maybe_piece_offset.replace(piece_offset);
+                evicted_pieces.push(old_piece);
             }
 
-            let piece_offset = self
-                .piece_index_hash_to_offset_db
-                .remove_furthest()?
-                .expect("Must be always present as plot is non-empty; qed");
-
-            let mut old_piece = Piece::default();
-            self.plot.read(piece_offset, &mut old_piece)?;
-
-            self.plot.write(piece, piece_offset)?;
-
-            self.piece_index_hash_to_offset_db
-                .put(&piece_index.into(), piece_offset)?;
-            self.put_piece_index(piece_offset, piece_index)?;
-
-            // TODO: This is a bit inefficient when pieces from previous iterations of this loop are
-            //  evicted, causing extra tags overrides during recommitment
-            maybe_piece_offset.replace(piece_offset);
-            evicted_pieces.push(old_piece);
-        }
+            Ok::<_, io::Error>(())
+        })?;
 
         Ok(WriteResult {
             pieces,
@@ -879,9 +906,11 @@ impl<T: PlotFile> PlotWorker<T> {
                             encodings,
                             piece_indexes,
                             result_sender,
+                            span,
                         } => {
-                            let _ =
-                                result_sender.send(self.write_encodings(encodings, piece_indexes));
+                            let _ = span.in_scope(|| {
+                                result_sender.send(self.write_encodings(encodings, piece_indexes))
+                            });
                         }
                         Request::Exit { result_sender } => {
                             exit_result_sender.replace(result_sender);

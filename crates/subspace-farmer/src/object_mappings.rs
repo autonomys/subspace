@@ -43,6 +43,7 @@ impl ObjectMappings {
     }
 
     /// Store object mappings in database
+    #[tracing::instrument(target = "bench::plot", level = "trace", skip_all)]
     pub fn store(
         &self,
         object_mapping: &[(Sha256Hash, GlobalObject)],

@@ -43,6 +43,7 @@ pub fn plot_pieces(
 }
 
 /// Plot a set of pieces into a particular plot and commitment database.
+#[tracing::instrument(target = "bench::plotting", level = "trace", skip_all)]
 fn plot_pieces_internal(
     subspace_codec: &mut SubspaceCodec,
     plot: &Plot,
@@ -54,7 +55,8 @@ fn plot_pieces_internal(
         .take(pieces.count())
         .collect::<Vec<PieceIndex>>();
 
-    subspace_codec.batch_encode(&mut pieces, &piece_indexes)?;
+    tracing::trace_span!(target: "bench::solving", "batch_encode")
+        .in_scope(|| subspace_codec.batch_encode(&mut pieces, &piece_indexes))?;
 
     let pieces = Arc::new(pieces);
 

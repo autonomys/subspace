@@ -44,6 +44,7 @@ pub struct Archiving {
     archiving_handle: Option<JoinHandle<()>>,
 }
 
+#[tracing::instrument(target = "bench::archiving", level = "trace", skip_all)]
 fn archive_segment<OPTP>(
     ArchivedSegment {
         root_block,
@@ -262,6 +263,7 @@ impl Drop for Archiving {
     }
 }
 
+#[tracing::instrument(target = "bench::archiving", level = "trace", skip_all)]
 fn create_global_object_mapping(
     piece_index_offset: u64,
     object_mapping: Vec<PieceObjectMapping>,

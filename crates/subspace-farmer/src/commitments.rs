@@ -177,6 +177,7 @@ impl Commitments {
         Ok(())
     }
 
+    #[tracing::instrument(target = "bench::commitments", level = "trace", skip_all)]
     pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
         let salts = self.inner.commitment_databases.lock().get_salts();
 
@@ -208,6 +209,7 @@ impl Commitments {
     }
 
     /// Create commitments for all salts for specified pieces
+    #[tracing::instrument(target = "bench::commitments", level = "trace", skip_all)]
     pub(crate) fn create_for_pieces<'a, 'iter, F, Iter>(
         &'a self,
         pieces_with_offsets: F,
