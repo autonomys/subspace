@@ -17,7 +17,7 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
-use log::info;
+use tracing::info;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};

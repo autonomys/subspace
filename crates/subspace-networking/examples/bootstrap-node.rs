@@ -4,7 +4,7 @@ use clap::Parser;
 use env_logger::Env;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
-use log::info;
+use tracing::info;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::Config;

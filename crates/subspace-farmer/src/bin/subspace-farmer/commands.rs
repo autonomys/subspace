@@ -1,9 +1,9 @@
 mod farm;
 
 pub(crate) use farm::{bench, farm};
-use log::info;
 use std::path::Path;
 use std::{fs, io};
+use tracing::info;
 
 pub(crate) fn wipe<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let _ = std::fs::remove_dir_all(path.as_ref().join("object-mappings"));

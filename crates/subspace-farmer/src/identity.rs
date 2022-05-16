@@ -1,11 +1,11 @@
 use anyhow::Error;
-use log::debug;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{context::SigningContext, Keypair, PublicKey, SecretKey, Signature};
 use sp_core::sr25519::Pair;
 use std::fs;
 use std::path::Path;
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
+use tracing::debug;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Signing context hardcoded in Substrate implementation and used for signing blocks.

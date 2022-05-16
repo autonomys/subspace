@@ -1,7 +1,6 @@
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use futures::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
@@ -10,6 +9,7 @@ use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 

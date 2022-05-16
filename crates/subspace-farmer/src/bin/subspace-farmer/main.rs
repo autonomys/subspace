@@ -5,13 +5,13 @@ mod utils;
 use anyhow::Result;
 use clap::{ArgEnum, Parser, ValueHint};
 use env_logger::Env;
-use log::info;
 use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+use tracing::info;
 
 const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 

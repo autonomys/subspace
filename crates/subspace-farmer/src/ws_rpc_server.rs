@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
-use log::{debug, error};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -13,6 +12,7 @@ use std::{
 };
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
+use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;

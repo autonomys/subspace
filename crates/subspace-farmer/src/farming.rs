@@ -8,13 +8,13 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use futures::{future, future::Either};
-use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {

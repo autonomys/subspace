@@ -1,5 +1,4 @@
 use super::CommitmentError;
-use log::error;
 use lru::LruCache;
 use parking_lot::Mutex;
 use rocksdb::{Options, DB};
@@ -10,6 +9,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::Salt;
+use tracing::error;
 
 // Cache size is just enough for last 2 salts to be stored
 const COMMITMENTS_CACHE_SIZE: usize = 2;

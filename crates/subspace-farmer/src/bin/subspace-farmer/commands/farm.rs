@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
-use log::{info, warn};
 use rand::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,6 +23,7 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
+use tracing::{debug, info, warn};
 
 use crate::bench_rpc_client::BenchRpcClient;
 use crate::{FarmingArgs, WriteToDisk};
@@ -65,8 +65,8 @@ impl PlotFile for BenchPlotMock {
 
 fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(limit)) => log::info!("Increase file limit from soft to hard (limit is {limit})"),
-        Ok(None) => log::debug!("Failed to increase file limit"),
+        Ok(Some(limit)) => info!("Increase file limit from soft to hard (limit is {limit})"),
+        Ok(None) => debug!("Failed to increase file limit"),
         Err(err) => {
             let err = if let Some(err) = err.downcast_ref::<&str>() {
                 *err
@@ -75,7 +75,7 @@ fn raise_fd_limit() {
             } else {
                 unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
             };
-            log::warn!("Failed to increase file limit: {err}")
+            warn!("Failed to increase file limit: {err}")
         }
     }
 }
@@ -109,7 +109,7 @@ pub(crate) async fn farm(
 
     let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
         Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
-            log::warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+            warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
             metadata.max_plot_size
         }
         Some(max_plot_size) => max_plot_size,
@@ -246,7 +246,7 @@ pub(crate) async fn bench(
 
     let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
         Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
-            log::warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+            warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
             metadata.max_plot_size
         }
         Some(max_plot_size) => max_plot_size,

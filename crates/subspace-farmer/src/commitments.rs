@@ -6,7 +6,6 @@ use crate::plot::{PieceOffset, Plot};
 use arc_swap::ArcSwapOption;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
-use log::{error, trace};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::DB;
@@ -15,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
+use tracing::{error, trace};
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 

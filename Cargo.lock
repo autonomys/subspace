@@ -8483,7 +8483,6 @@ dependencies = [
  "hex",
  "hex-buffer-serde",
  "jsonrpsee",
- "log",
  "lru 0.7.5",
  "num-traits",
  "parity-scale-codec",
@@ -8504,6 +8503,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
  "zeroize",
 ]
 
@@ -8537,12 +8537,12 @@ dependencies = [
  "futures 0.3.21",
  "hex",
  "libp2p 0.44.0",
- "log",
  "nohash-hasher",
  "parking_lot 0.12.0",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8709,7 +8709,6 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "log",
  "num-traits",
  "num_cpus",
  "rand 0.8.5",
@@ -8719,6 +8718,7 @@ dependencies = [
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
+ "tracing",
  "uint",
 ]
 
