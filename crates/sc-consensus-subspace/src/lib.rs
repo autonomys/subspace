@@ -27,7 +27,6 @@ pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
-mod verification;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
@@ -48,8 +47,7 @@ use sc_consensus::import_queue::{
 };
 use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
-    check_equivocation, BackoffAuthoringBlocksStrategy, CheckedHeader, InherentDataProviderExt,
-    SlotProportion,
+    check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -66,7 +64,8 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::verification::{CheckedHeader, VerificationError};
+use sp_consensus_subspace::{verification, FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
@@ -226,6 +225,30 @@ pub enum Error<Header: HeaderT> {
     /// Runtime Api error.
     #[error(transparent)]
     RuntimeApi(#[from] ApiError),
+}
+
+impl<Header> From<VerificationError<Header>> for Error<Header>
+where
+    Header: HeaderT,
+{
+    fn from(error: VerificationError<Header>) -> Self {
+        match error {
+            VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
+            VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
+            VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
+            VerificationError::BadSignature(block_hash) => Error::BadSignature(block_hash),
+            VerificationError::BadSolutionSignature(slot, signature_error) => {
+                Error::BadSolutionSignature(slot, signature_error)
+            }
+            VerificationError::BadLocalChallenge(slot, signature_error) => {
+                Error::BadLocalChallenge(slot, signature_error)
+            }
+            VerificationError::OutsideOfSolutionRange(slot) => Error::OutsideOfSolutionRange(slot),
+            VerificationError::OutsideOfMaxPlot(slot) => Error::OutsideOfMaxPlot(slot),
+            VerificationError::InvalidEncoding(slot) => Error::InvalidEncoding(slot),
+            VerificationError::InvalidTag(slot) => Error::InvalidTag(slot),
+        }
+    }
 }
 
 impl<Header> From<Error<Header>> for String
@@ -729,7 +752,7 @@ where
                     signing_context: &self.signing_context,
                 },
             })
-            .map_err(subspace_err)?
+            .map_err(|error| subspace_err(error.into()))?
         };
 
         match checked_header {

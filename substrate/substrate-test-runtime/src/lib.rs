@@ -180,7 +180,7 @@ parity_util_mem::malloc_size_of_is_0!(Extrinsic); // non-opaque extrinsic does n
 impl serde::Serialize for Extrinsic {
     fn serialize<S>(&self, seq: S) -> Result<S::Ok, S::Error>
     where
-        S: ::serde::Serializer,
+        S: serde::Serializer,
     {
         self.using_encoded(|bytes| seq.serialize_bytes(bytes))
     }

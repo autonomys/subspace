@@ -16,13 +16,12 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
-use thiserror::Error;
-use tracing::error;
 
 /// Number of pieces for GPU should be multiples of 1024
 #[cfg(feature = "cuda")]
@@ -30,17 +29,21 @@ const GPU_PIECE_BLOCK: usize = 1024;
 const ENCODE_ROUNDS: usize = 1;
 
 /// CPU encoding errors
-#[derive(Debug, Error)]
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum BatchEncodeError {
     /// Pieces argument is not multiple of piece size
-    #[error("Pieces argument is not multiple of piece size")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Pieces argument is not multiple of piece size")
+    )]
     NotMultipleOfPieceSize,
     /// CPU encoding error
-    #[error("CPU encoding error: {0}")]
+    #[cfg_attr(feature = "thiserror", error("CPU encoding error: {0}"))]
     CpuEncodeError(cpu::EncodeError),
     /// CUDA encoding error
     #[cfg(feature = "cuda")]
-    #[error("CUDA encoding error: {0}")]
+    #[cfg_attr(feature = "thiserror", error("CUDA encoding error: {0}"))]
     CudaEncodeError(cuda::EncodeError),
 }
 
@@ -90,7 +93,10 @@ impl SubspaceCodec {
             farmer_public_key_hash,
             #[cfg(feature = "cuda")]
             cuda_available,
+            #[cfg(feature = "std")]
             cpu_cores: num_cpus::get(),
+            #[cfg(not(feature = "std"))]
+            cpu_cores: 1,
         }
     }
 }
@@ -145,7 +151,7 @@ impl SubspaceCodec {
                 );
 
                 if let Err(e) = cuda_result {
-                    error!("An error happened on the GPU: '{}'", e);
+                    tracing::error!("An error happened on the GPU: '{}'", e);
                     self.cuda_available = false;
                     // TODO: maybe also return from the GPU last successful encoding,
                     // so that CPU can continue from there
@@ -177,6 +183,7 @@ impl SubspaceCodec {
         expanded_iv
     }
 
+    #[cfg(feature = "std")]
     fn batch_encode_cpu(
         &self,
         pieces: &mut [u8],
@@ -185,6 +192,18 @@ impl SubspaceCodec {
         pieces
             .par_chunks_exact_mut(PIECE_SIZE)
             .zip_eq(piece_indexes)
+            .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn batch_encode_cpu(
+        &self,
+        pieces: &mut [u8],
+        piece_indexes: &[u64],
+    ) -> Result<(), cpu::EncodeError> {
+        pieces
+            .chunks_exact_mut(PIECE_SIZE)
+            .zip(piece_indexes)
             .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
     }
 

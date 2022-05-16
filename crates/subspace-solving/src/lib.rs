@@ -18,6 +18,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 mod codec;
 

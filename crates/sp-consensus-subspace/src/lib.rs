@@ -16,12 +16,13 @@
 
 //! Primitives for Subspace consensus.
 
-#![forbid(unsafe_code, missing_docs, unused_variables, unused_imports)]
+#![forbid(unsafe_code, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod digests;
 pub mod inherents;
 pub mod offence;
+pub mod verification;
 
 use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
