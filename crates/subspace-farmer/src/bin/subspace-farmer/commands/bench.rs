@@ -135,10 +135,10 @@ pub(crate) async fn bench(
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
 
-        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 1000 {
+        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
             last_archived_block
                 .archived_progress
-                .set_partial(segment_index as u32 * 1000 * PIECE_SIZE as u32);
+                .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
 
             let archived_segment = {
                 let root_block = RootBlock::V0 {
@@ -148,7 +148,7 @@ pub(crate) async fn bench(
                     last_archived_block,
                 };
 
-                let mut pieces = FlatPieces::new(1000);
+                let mut pieces = FlatPieces::new(256);
                 rand::thread_rng().fill(pieces.as_mut());
 
                 let objects = std::iter::repeat_with(|| PieceObject::V0 {
