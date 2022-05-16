@@ -1,6 +1,6 @@
-use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{fmt, io};
 
 use anyhow::anyhow;
 use rand::prelude::*;
@@ -16,6 +16,7 @@ use subspace_core_primitives::{
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
+use tokio::time::Instant;
 
 use crate::bench_rpc_client::BenchRpcClient;
 use crate::{utils, WriteToDisk};
@@ -52,6 +53,26 @@ impl PlotFile for BenchPlotMock {
 
     fn sync_all(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+struct HumanReadable(pub u64);
+
+impl fmt::Display for HumanReadable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let suffixes = [
+            ("M", 1024 * 1024),
+            ("G", 1024 * 1024 * 1024),
+            ("T", 1024 * 1024 * 1024 * 1024),
+        ];
+
+        let (suffix, divisor) = suffixes
+            .iter()
+            .copied()
+            .find(|(_, divisor)| *divisor * 1024 > self.0)
+            .unwrap_or(*suffixes.last().unwrap());
+
+        write!(f, "{:.2}{suffix}", self.0 as f64 / divisor as f64)
     }
 }
 
@@ -129,6 +150,8 @@ pub(crate) async fn bench(
     )
     .await?;
 
+    let start = Instant::now();
+
     tokio::spawn(async move {
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
@@ -178,7 +201,48 @@ pub(crate) async fn bench(
 
     client.stop().await;
 
+    let took = start.elapsed();
+
+    let space_allocated = get_size(base_directory)?;
+    let actual_space_pledged = multi_farming
+        .plots
+        .iter()
+        .map(Plot::piece_count)
+        .sum::<u64>()
+        * PIECE_SIZE as u64;
+    let overhead = space_allocated - actual_space_pledged;
+
+    println!("Finished benchmarking.");
+    println!("");
+    println!("{} allocated for farming", HumanReadable(space_allocated));
+    println!(
+        "{} actual space pledged (which is {:.2}%)",
+        HumanReadable(actual_space_pledged),
+        (actual_space_pledged * 100) as f64 / space_allocated as f64
+    );
+    println!(
+        "{} of overhead (which is {:.2}%)",
+        HumanReadable(overhead),
+        (overhead * 100) as f64 / space_allocated as f64
+    );
+    println!("{:.2?} plotting time", took);
+    println!(
+        "{:.2}M/s average plotting throughput",
+        write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
+    );
+
     multi_farming.wait().await?;
 
     Ok(())
+}
+
+fn get_size(path: impl AsRef<Path>) -> std::io::Result<u64> {
+    let metadata = std::fs::metadata(&path)?;
+    let mut size = metadata.len();
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(&path)? {
+            size += get_size(entry?.path())?;
+        }
+    }
+    Ok(size)
 }

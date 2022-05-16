@@ -1,3 +1,5 @@
+#![feature(bool_to_option)]
+
 mod bench_rpc_client;
 mod commands;
 mod utils;
