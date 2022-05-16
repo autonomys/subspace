@@ -188,7 +188,9 @@ async fn start_node_impl(
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
 		>(primary_chain_config.into(), false)
-		.map_err(|_| sc_service::Error::Other("Failed to build a full subspace node".into()))?
+		.map_err(|e| {
+			sc_service::Error::Other(format!("Failed to build a full subspace node: {e}"))
+		})?
 	};
 
 	let client = params.client.clone();
