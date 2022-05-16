@@ -40,7 +40,6 @@ async fn test_executor_full_node_catching_up() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
@@ -86,7 +85,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
@@ -347,7 +345,6 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_parachain_node(&charlie)
 		.connect_to_relay_chain_node(&alice)
 		.build(Role::Full)
 		.await;
