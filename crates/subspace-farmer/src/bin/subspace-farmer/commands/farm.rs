@@ -65,7 +65,7 @@ impl PlotFile for BenchPlotMock {
 
 fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(limit)) => info!("Increase file limit from soft to hard (limit is {limit})"),
+        Ok(Some(new_limit)) => info!(new_limit, "Increase file limit from soft to hard"),
         Ok(None) => debug!("Failed to increase file limit"),
         Err(err) => {
             let err = if let Some(err) = err.downcast_ref::<&str>() {
@@ -75,7 +75,7 @@ fn raise_fd_limit() {
             } else {
                 unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
             };
-            warn!("Failed to increase file limit: {err}")
+            warn!(err, "Failed to increase file limit")
         }
     }
 }
@@ -157,10 +157,11 @@ pub(crate) async fn farm(
         .await
     {
         Ok(ws_server) => ws_server,
-        Err(jsonrpsee::core::Error::Transport(error)) => {
+        Err(jsonrpsee::core::Error::Transport(ref error)) => {
             warn!(
-                "Failed to start WebSocket RPC server on {ws_server_listen_addr} ({error}),\
-                trying random port"
+                address = %ws_server_listen_addr,
+                error = %error,
+                "Failed to start WebSocket RPC server on, trying random port"
             );
             ws_server_listen_addr.set_port(0);
             WsServerBuilder::default()
@@ -180,7 +181,7 @@ pub(crate) async fn farm(
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
-    info!("WS RPC server listening on {}", ws_server_addr);
+    info!("WS RPC server listening on {ws_server_addr}");
 
     let (node, mut node_runner) = subspace_networking::create(Config {
         bootstrap_nodes,

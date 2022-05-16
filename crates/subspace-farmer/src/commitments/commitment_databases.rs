@@ -92,9 +92,9 @@ impl CommitmentDatabases {
                         std::fs::remove_dir_all(base_directory.join(hex::encode(salt)))
                     {
                         error!(
-                            "Failed to remove old in progress commitment {}: {}",
-                            hex::encode(salt),
-                            error
+                            salt = %hex::encode(salt),
+                            %error,
+                            "Failed to remove old in progress commitment",
                         );
                     }
                     true

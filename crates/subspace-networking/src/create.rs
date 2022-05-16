@@ -17,12 +17,12 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
-use tracing::info;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
+use tracing::info;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";

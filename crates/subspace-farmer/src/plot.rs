@@ -914,14 +914,11 @@ impl<T: PlotFile> PlotWorker<T> {
         }
 
         if let Err(error) = self.plot.sync_all() {
-            error!("Failed to sync plot file before exit: {}", error);
+            error!(%error, "Failed to sync plot file before exit");
         }
 
         if let Err(error) = self.piece_offset_to_index.sync_all() {
-            error!(
-                "Failed to sync piece offset to index file before exit: {}",
-                error
-            );
+            error!(%error, "Failed to sync piece offset to index file before exit");
         }
 
         // Close the rest of databases

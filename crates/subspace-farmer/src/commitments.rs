@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, trace};
+use tracing::trace;
 
 const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 
@@ -327,9 +327,11 @@ impl<'a> SolutionIterator<'a> {
         let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
 
         trace!(
-            "{} Lower overflow: {is_lower_overflowed} -- Upper overflow: {is_upper_overflowed}",
-            u64::from_be_bytes(target),
+            target = u64::from_be_bytes(target),
+            is_lower_overflowed,
+            is_upper_overflowed
         );
+
         let state = if is_lower_overflowed || is_upper_overflowed {
             iter.seek_to_first();
             SolutionIteratorState::OverflowStart
