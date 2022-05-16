@@ -79,64 +79,78 @@ enum ConsensusLog {
     Salt(SaltDescriptor),
 }
 
+fn find_pre_digest<Header>(header: &Header) -> Option<PreDigest<FarmerPublicKey>>
+where
+    Header: HeaderT,
+{
+    header
+        .digest()
+        .logs()
+        .iter()
+        .find_map(|log| log.as_subspace_pre_digest())
+}
+
+fn is_seal_signature_valid<Header>(mut header: Header, offender: &FarmerPublicKey) -> bool
+where
+    Header: HeaderT,
+{
+    let seal = match header.digest_mut().pop() {
+        Some(seal) => seal,
+        None => {
+            return false;
+        }
+    };
+    let seal = match seal.as_subspace_seal() {
+        Some(seal) => seal,
+        None => {
+            return false;
+        }
+    };
+    let pre_hash = header.hash();
+
+    offender.verify(&pre_hash, &seal)
+}
+
 /// Verifies the equivocation proof by making sure that: both headers have
 /// different hashes, are targeting the same slot, and have valid signatures by
 /// the same authority.
-pub fn check_equivocation_proof<H>(proof: EquivocationProof<H>) -> bool
+pub fn is_equivocation_proof_valid<Header>(proof: EquivocationProof<Header>) -> bool
 where
-    H: HeaderT,
+    Header: HeaderT,
 {
-    let find_pre_digest = |header: &H| -> Option<PreDigest<FarmerPublicKey>> {
-        header
-            .digest()
-            .logs()
-            .iter()
-            .find_map(|log| log.as_subspace_pre_digest())
+    // we must have different headers for the equivocation to be valid
+    if proof.first_header.hash() == proof.second_header.hash() {
+        return false;
+    }
+
+    let first_pre_digest = match find_pre_digest(&proof.first_header) {
+        Some(pre_digest) => pre_digest,
+        None => {
+            return false;
+        }
+    };
+    let second_pre_digest = match find_pre_digest(&proof.second_header) {
+        Some(pre_digest) => pre_digest,
+        None => {
+            return false;
+        }
     };
 
-    let verify_seal_signature = |mut header: H, offender: &FarmerPublicKey| {
-        let seal = CompatibleDigestItem::as_subspace_seal(&header.digest_mut().pop()?)?;
-        let pre_hash = header.hash();
+    // both headers must be targeting the same slot and it must
+    // be the same as the one in the proof.
+    if !(proof.slot == first_pre_digest.slot && proof.slot == second_pre_digest.slot) {
+        return false;
+    }
 
-        if !offender.verify(&pre_hash.as_ref(), &seal) {
-            return None;
-        }
+    // both headers must have been authored by the same farmer
+    if first_pre_digest.solution.public_key != second_pre_digest.solution.public_key {
+        return false;
+    }
 
-        Some(())
-    };
-
-    let verify_proof = || {
-        // we must have different headers for the equivocation to be valid
-        if proof.first_header.hash() == proof.second_header.hash() {
-            return None;
-        }
-
-        let first_pre_digest = find_pre_digest(&proof.first_header)?;
-        let second_pre_digest = find_pre_digest(&proof.second_header)?;
-
-        // both headers must be targeting the same slot and it must
-        // be the same as the one in the proof.
-        if proof.slot != first_pre_digest.slot || first_pre_digest.slot != second_pre_digest.slot {
-            return None;
-        }
-
-        // both headers must have been authored by the same farmer
-        if first_pre_digest.solution.public_key != second_pre_digest.solution.public_key {
-            return None;
-        }
-
-        // we finally verify that the expected farmer has signed both headers and
-        // that the signature is valid.
-        verify_seal_signature(proof.first_header, &proof.offender)?;
-        verify_seal_signature(proof.second_header, &proof.offender)?;
-
-        Some(())
-    };
-
-    // NOTE: we isolate the verification code into an helper function that
-    // returns `Option<()>` so that we can use `?` to deal with any intermediate
-    // errors and discard the proof as invalid.
-    verify_proof().is_some()
+    // we finally verify that the expected farmer has signed both headers and
+    // that the signature is valid.
+    is_seal_signature_valid(proof.first_header, &proof.offender)
+        && is_seal_signature_valid(proof.second_header, &proof.offender)
 }
 
 /// Subspace global randomnesses used for deriving global challenges.

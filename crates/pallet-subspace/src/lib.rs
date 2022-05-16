@@ -699,7 +699,7 @@ impl<T: Config> Pallet<T> {
         let slot = equivocation_proof.slot;
 
         // validate the equivocation proof
-        if !sp_consensus_subspace::check_equivocation_proof(equivocation_proof) {
+        if !sp_consensus_subspace::is_equivocation_proof_valid(equivocation_proof) {
             return Err(Error::<T>::InvalidEquivocationProof.into());
         }
 
