@@ -44,6 +44,45 @@ pub struct Archiving {
     archiving_handle: Option<JoinHandle<()>>,
 }
 
+fn archive_segment<OPTP>(
+    ArchivedSegment {
+        root_block,
+        pieces,
+        object_mapping,
+    }: ArchivedSegment,
+    acknowledgement_sender: oneshot::Sender<()>,
+    on_pieces_to_plot: &mut OPTP,
+    merkle_num_leaves: u64,
+    object_mappings: &ObjectMappings,
+) where
+    OPTP: FnMut(PiecesToPlot) -> bool + Send + 'static,
+{
+    let segment_index = root_block.segment_index();
+    let piece_index_offset = merkle_num_leaves * segment_index;
+
+    let pieces_to_plot = PiecesToPlot {
+        piece_index_offset,
+        pieces,
+    };
+
+    if !on_pieces_to_plot(pieces_to_plot) {
+        // No need to continue
+        return;
+    }
+
+    let object_mapping = create_global_object_mapping(piece_index_offset, object_mapping);
+
+    if let Err(error) = object_mappings.store(&object_mapping) {
+        error!(%error, "Failed to store object mappings for pieces");
+    }
+
+    info!(segment_index, "Plotted segment");
+
+    if let Err(()) = acknowledgement_sender.send(()) {
+        error!("Failed to send archived segment acknowledgement");
+    }
+}
+
 impl Archiving {
     // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
     //  don't want eventually
@@ -81,41 +120,19 @@ impl Archiving {
                 while let Ok((archived_segment, acknowledgement_sender)) =
                     archived_segments_sync_receiver.recv()
                 {
-                    let ArchivedSegment {
-                        root_block,
-                        pieces,
-                        object_mapping,
-                    } = archived_segment;
-
-                    let segment_index = root_block.segment_index();
+                    let segment_index = archived_segment.root_block.segment_index();
                     if last_archived_segment_index == Some(segment_index) {
                         continue;
                     }
                     last_archived_segment_index.replace(segment_index);
 
-                    let piece_index_offset = merkle_num_leaves * segment_index;
-
-                    let pieces_to_plot = PiecesToPlot {
-                        piece_index_offset,
-                        pieces,
-                    };
-                    if !on_pieces_to_plot(pieces_to_plot) {
-                        // No need to continue
-                        break;
-                    }
-
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
-
-                    if let Err(error) = object_mappings.store(&object_mapping) {
-                        error!(%error, "Failed to store object mappings for pieces");
-                    }
-
-                    info!(segment_index, "Plotted segment");
-
-                    if let Err(()) = acknowledgement_sender.send(()) {
-                        error!("Failed to send archived segment acknowledgement");
-                    }
+                    archive_segment(
+                        archived_segment,
+                        acknowledgement_sender,
+                        &mut on_pieces_to_plot,
+                        merkle_num_leaves,
+                        &object_mappings,
+                    )
                 }
             }
         });
