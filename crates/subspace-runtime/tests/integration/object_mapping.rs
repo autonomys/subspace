@@ -40,13 +40,13 @@ fn object_mapping() {
                 }),
             },
             // assuming this call fails, we will remove the 3rd hash from calls
-            UncheckedExtrinsic {
-                signature: None,
-                function: Call::Feeds(pallet_feeds::Call::put {
-                    feed_id: 0,
-                    object: data0.clone(),
-                }),
-            },
+            // UncheckedExtrinsic {
+            //     signature: None,
+            //     function: Call::Feeds(pallet_feeds::Call::put {
+            //         feed_id: 0,
+            //         object: data0.clone(),
+            //     }),
+            // },
             UncheckedExtrinsic {
                 signature: None,
                 function: Call::Utility(pallet_utility::Call::batch {
@@ -90,10 +90,12 @@ fn object_mapping() {
         ],
     };
 
-    let mut successful_calls = get_successful_calls(block.clone());
-    assert_eq!(successful_calls.len(), 8);
+    let successful_calls = get_successful_calls(block.clone());
+    assert_eq!(successful_calls.len(), 7);
     // remove third call signifying that it failed
-    successful_calls.remove(2);
+    // TODO: remove when subspace_api `extract_object_mappings` is removed
+    // successful_calls.remove(2);
+
     let encoded_block = block.encode();
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed

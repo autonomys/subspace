@@ -914,8 +914,8 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, Some(successful_calls))
+        fn extract_block_object_mapping(block: Block, _successful_calls: Vec<Hash>) -> BlockObjectMapping {
+            extract_block_object_mapping(block, None)
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {

@@ -988,8 +988,12 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, Some(successful_calls))
+        fn extract_block_object_mapping(block: Block, _successful_calls: Vec<Hash>) -> BlockObjectMapping {
+            // TODO: this is breaking change and cannot be updated without a fork in one step
+            // We first fallback to subspace API
+            // Once client upgrades node, the new node will use the object API with same logic path
+            // Then we do another runtime upgrade that removes SubspaceApi and accepts successful puts instead of None
+            extract_block_object_mapping(block, None)
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {
