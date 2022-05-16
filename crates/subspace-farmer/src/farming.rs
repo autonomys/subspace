@@ -8,13 +8,13 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use futures::{future, future::Either};
-use log::{debug, error, info, trace, warn};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -124,7 +124,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     let mut salts = Salts::default();
 
     while let Some(slot_info) = slot_info_notifications.recv().await {
-        debug!("New slot: {:?}", slot_info);
+        debug!(?slot_info, "New slot");
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
 
@@ -154,7 +154,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             tag,
                         };
                         debug!("Solution found");
-                        trace!("Solution found: {:?}", solution);
+                        trace!(?solution, "Solution found");
 
                         Ok(Some(solution))
                     }
@@ -201,9 +201,9 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             }
                             Err(error) => {
                                 warn!(
-                                    "Failed to send signature for block 0x{}: {}",
+                                    %error,
+                                    "Failed to send signature for block 0x{}",
                                     hex::encode(header_hash),
-                                    error
                                 );
                             }
                         }
@@ -251,21 +251,17 @@ fn update_commitments(
                 move || {
                     let started = Instant::now();
                     info!(
-                        "Salt updated to {}, recommitting in background",
-                        hex::encode(salt)
+                        new_salt = %hex::encode(salt),
+                        "Salt updated, recommitting in background",
                     );
 
                     if let Err(error) = commitments.create(salt, plot) {
-                        error!(
-                            "Failed to create commitment for {}: {}",
-                            hex::encode(salt),
-                            error
-                        );
+                        error!(salt = %hex::encode(salt), %error, "Failed to create commitment");
                     } else {
                         info!(
-                            "Finished recommitment for {} in {} seconds",
-                            hex::encode(salt),
-                            started.elapsed().as_secs_f32()
+                            salt = %hex::encode(salt),
+                            took_seconds = started.elapsed().as_secs_f32(),
+                            "Finished recommitment",
                         );
                     }
 
@@ -293,21 +289,21 @@ fn update_commitments(
 
                     let started = Instant::now();
                     info!(
-                        "Salt will update to {} soon, recommitting in background",
-                        hex::encode(new_next_salt)
+                        next_salt = %hex::encode(new_next_salt),
+                        "Salt will be updated, recommitting in background",
                     );
                     if let Err(error) = commitments.create(new_next_salt, plot) {
                         error!(
-                            "Recommitting salt in background failed for {}: {}",
-                            hex::encode(new_next_salt),
-                            error
+                            next_salt = %hex::encode(new_next_salt),
+                            %error,
+                            "Recommitting salt in background failed",
                         );
                         return;
                     }
                     info!(
-                        "Finished recommitment in background for {} in {} seconds",
-                        hex::encode(new_next_salt),
-                        started.elapsed().as_secs_f32()
+                        next_salt = %hex::encode(new_next_salt),
+                        took_seconds = started.elapsed().as_secs_f32(),
+                        "Finished recommitment in background",
                     );
                 }
             });

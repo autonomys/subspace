@@ -16,13 +16,13 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
-use log::error;
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "cuda")]
 use sloth256_189::cuda;
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
 use thiserror::Error;
+use tracing::error;
 
 /// Number of pieces for GPU should be multiples of 1024
 #[cfg(feature = "cuda")]

@@ -1,7 +1,6 @@
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use futures::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
@@ -10,6 +9,7 @@ use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -108,10 +108,10 @@ impl Archiving {
                         create_global_object_mapping(piece_index_offset, object_mapping);
 
                     if let Err(error) = object_mappings.store(&object_mapping) {
-                        error!("Failed to store object mappings for pieces: {}", error);
+                        error!(%error, "Failed to store object mappings for pieces");
                     }
 
-                    info!("Plotted segment {}", segment_index);
+                    info!(segment_index, "Plotted segment");
 
                     if let Err(()) = acknowledgement_sender.send(()) {
                         error!("Failed to send archived segment acknowledgement");
@@ -176,10 +176,10 @@ impl Archiving {
                                 // meantime. Ideally we'd acknowledge after, but it makes node wait
                                 // for it and the whole process very sequential.
                                 if let Err(error) = client.acknowledge_archived_segment(segment_index).await {
-                                    error!("Failed to send archived segment acknowledgement: {error}");
+                                    error!(%error, "Failed to send archived segment acknowledgement");
                                 }
                                 if let Err(error) = archived_segments_sync_sender.send((archived_segment, acknowledge_sender)) {
-                                    error!("Failed to send archived segment for plotting: {error}");
+                                    error!(%error, "Failed to send archived segment for plotting");
                                 }
                                 let _ = acknowledge_receiver.await;
                             },
@@ -192,15 +192,15 @@ impl Archiving {
                     maybe_result = best_block_number_receiver.next() => {
                         match maybe_result {
                             Some(Ok(Ok(best_block_number))) => {
-                                debug!("Best block number: {:#?}", best_block_number);
+                                debug!(best_block_number);
                                 last_best_block_number_error = false;
                             }
                             Some(Ok(Err(error))) => {
                                 if last_best_block_number_error {
-                                    error!("Request to get new best block failed second time: {error}");
+                                    error!(%error, "Request to get new best block failed second time");
                                     break;
                                 } else {
-                                    warn!("Request to get new best block failed: {error}");
+                                    warn!(%error, "Request to get new best block failed");
                                     last_best_block_number_error = true;
                                 }
                             }

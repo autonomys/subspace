@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
-use log::{debug, error};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -13,6 +12,7 @@ use std::{
 };
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
+use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
@@ -251,7 +251,7 @@ impl RpcServerImpl {
                     "Invalid data length prefix found: 0x{:02x}",
                     read_records_data[offset as usize]
                 );
-                error!("{}", error_string);
+                error!(error = %error_string);
 
                 return Err(Error::Custom(error_string));
             }
@@ -282,7 +282,7 @@ impl RpcServerImpl {
 
         let Compact(data_length) = data_length_result.map_err(|error| {
             let error_string = format!("Failed to read object data length: {}", error);
-            error!("{}", error_string);
+            error!(error = %error_string);
 
             Error::Custom(error_string)
         })?;
@@ -341,7 +341,7 @@ impl RpcServerImpl {
                         "Failed to find item at offset {} in segment {} for object {}",
                         offset_in_segment, segment_index, object_id
                     );
-                    error!("{}", error_string);
+                    error!(error = %error_string);
 
                     Error::Custom(error_string)
                 })?;
@@ -357,8 +357,8 @@ impl RpcServerImpl {
                 }
                 segment_item => {
                     error!(
-                        "Unexpected segment item {:?} at offset {} in segment {} for object {}",
-                        segment_item, offset_in_segment, segment_index, object_id
+                        ?segment_item,
+                        offset_in_segment, segment_index, object_id, "Unexpected segment item",
                     );
 
                     return Err(Error::Custom(format!(
@@ -390,10 +390,7 @@ impl RpcServerImpl {
             }
         }
 
-        error!(
-            "Read max object size for object {} without success",
-            object_id
-        );
+        error!(object_id, "Read max object size for object without success",);
 
         Err(Error::Custom(
             "Read max object size for object without success".to_string(),
@@ -413,8 +410,9 @@ impl RpcServerImpl {
 
         let segment = Segment::decode(&mut segment_bytes.as_slice()).map_err(|error| {
             error!(
-                "Failed to decode segment {} of archival history on retrieval: {}",
-                segment_index, error,
+                index = segment_index,
+                %error,
+                "Failed to decode segment of archival history on retrieval",
             );
 
             Error::Custom(format!(
@@ -466,16 +464,18 @@ impl RpcServer for RpcServerImpl {
             .await
             .map_err(|error| {
                 error!(
-                    "Object mapping retrieving panicked for {}: {}",
-                    object_id_string, error
+                    object_id = %object_id_string,
+                    %error,
+                    "Object mapping retrieving panicked",
                 );
 
                 Error::Custom("Failed to find an object due to internal error".to_string())
             })?
             .map_err(|error| {
                 error!(
-                    "Object mapping retrieving failed for {}: {}",
-                    object_id_string, error
+                    object_id = %object_id_string,
+                    %error,
+                    "Object mapping retrieving failed",
                 );
 
                 Error::Custom("Failed to find an object due to internal error".to_string())
@@ -484,7 +484,7 @@ impl RpcServer for RpcServerImpl {
         let global_object = match global_object {
             Some(global_object) => global_object,
             None => {
-                debug!("Object {} not found", object_id_string);
+                debug!(object_id = %object_id_string, "Object not found");
 
                 return Ok(None);
             }

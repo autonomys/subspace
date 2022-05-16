@@ -9,10 +9,10 @@ mod tests;
 use crate::commitments::Commitments;
 use crate::plot::Plot;
 use crate::PiecesToPlot;
-use log::error;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndex};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
+use tracing::error;
 
 /// Generates a function that will plot pieces.
 pub fn plot_pieces(
@@ -31,7 +31,7 @@ pub fn plot_pieces(
                 pieces_to_plot.piece_index_offset,
                 pieces_to_plot.pieces,
             ) {
-                error!("Failed to encode a piece: error: {}", error);
+                error!(%error, "Failed to encode a piece");
                 return false;
             }
         } else {
@@ -61,16 +61,16 @@ fn plot_pieces_internal(
     match plot.write_many(Arc::clone(&pieces), piece_indexes) {
         Ok(write_result) => {
             if let Err(error) = commitments.remove_pieces(write_result.evicted_pieces()) {
-                error!("Failed to remove old commitments for pieces: {}", error);
+                error!(%error, "Failed to remove old commitments for pieces");
             }
 
             if let Err(error) =
                 commitments.create_for_pieces(|| write_result.to_recommitment_iterator())
             {
-                error!("Failed to create commitments for pieces: {}", error);
+                error!(%error, "Failed to create commitments for pieces");
             }
         }
-        Err(error) => error!("Failed to write encoded pieces: {}", error),
+        Err(error) => error!(%error, "Failed to write encoded pieces"),
     }
 
     Ok(())

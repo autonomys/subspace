@@ -3,11 +3,11 @@ use crate::{
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
-use log::info;
 use rayon::prelude::*;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
+use tracing::info;
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///

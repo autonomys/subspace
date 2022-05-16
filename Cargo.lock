@@ -4326,6 +4326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchers"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7108,7 +7117,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-log",
- "tracing-subscriber",
+ "tracing-subscriber 0.2.25",
 ]
 
 [[package]]
@@ -8272,7 +8281,7 @@ dependencies = [
  "sp-std",
  "tracing",
  "tracing-core",
- "tracing-subscriber",
+ "tracing-subscriber 0.2.25",
 ]
 
 [[package]]
@@ -8476,14 +8485,12 @@ dependencies = [
  "async-trait",
  "clap 3.1.8",
  "dirs",
- "env_logger",
  "event-listener-primitives",
  "fdlimit",
  "futures 0.3.21",
  "hex",
  "hex-buffer-serde",
  "jsonrpsee",
- "log",
  "lru 0.7.5",
  "num-traits",
  "parity-scale-codec",
@@ -8504,6 +8511,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.11",
  "zeroize",
 ]
 
@@ -8537,12 +8546,12 @@ dependencies = [
  "futures 0.3.21",
  "hex",
  "libp2p 0.44.0",
- "log",
  "nohash-hasher",
  "parking_lot 0.12.0",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8709,7 +8718,6 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "log",
  "num-traits",
  "num_cpus",
  "rand 0.8.5",
@@ -8719,6 +8727,7 @@ dependencies = [
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
+ "tracing",
  "uint",
 ]
 
@@ -9411,7 +9420,7 @@ dependencies = [
  "ansi_term",
  "chrono",
  "lazy_static",
- "matchers",
+ "matchers 0.0.1",
  "parking_lot 0.11.2",
  "regex",
  "serde",
@@ -9423,6 +9432,24 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bc28f93baff38037f64e6f43d34cfa1605f27a49c34e8a04c5e78b0babf2596"
+dependencies = [
+ "ansi_term",
+ "lazy_static",
+ "matchers 0.1.0",
+ "regex",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]

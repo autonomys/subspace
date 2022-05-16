@@ -12,13 +12,13 @@ use libp2p::kad::{
 };
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, PeerId, Swarm};
-use log::{debug, error, trace, warn};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, error, trace, warn};
 
 enum QueryResultSender {
     GetValue {

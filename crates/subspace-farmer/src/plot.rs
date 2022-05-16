@@ -2,7 +2,6 @@
 mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
-use log::{error, info};
 use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
 use std::collections::{BTreeSet, VecDeque};
@@ -18,6 +17,7 @@ use subspace_core_primitives::{
 };
 use subspace_solving::{PieceDistance, SubspaceCodec};
 use thiserror::Error;
+use tracing::{error, info};
 
 /// Index of piece on disk
 pub type PieceOffset = u64;
@@ -914,14 +914,11 @@ impl<T: PlotFile> PlotWorker<T> {
         }
 
         if let Err(error) = self.plot.sync_all() {
-            error!("Failed to sync plot file before exit: {}", error);
+            error!(%error, "Failed to sync plot file before exit");
         }
 
         if let Err(error) = self.piece_offset_to_index.sync_all() {
-            error!(
-                "Failed to sync piece offset to index file before exit: {}",
-                error
-            );
+            error!(%error, "Failed to sync piece offset to index file before exit");
         }
 
         // Close the rest of databases
