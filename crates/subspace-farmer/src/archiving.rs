@@ -111,7 +111,7 @@ impl Archiving {
                         error!(%error, "Failed to store object mappings for pieces");
                     }
 
-                    info!(index = segment_index, "Plotted segment");
+                    info!(segment_index, "Plotted segment");
 
                     if let Err(()) = acknowledgement_sender.send(()) {
                         error!("Failed to send archived segment acknowledgement");

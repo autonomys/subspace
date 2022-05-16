@@ -157,10 +157,10 @@ pub(crate) async fn farm(
         .await
     {
         Ok(ws_server) => ws_server,
-        Err(jsonrpsee::core::Error::Transport(ref error)) => {
+        Err(jsonrpsee::core::Error::Transport(error)) => {
             warn!(
                 address = %ws_server_listen_addr,
-                error = %error,
+                %error,
                 "Failed to start WebSocket RPC server on, trying random port"
             );
             ws_server_listen_addr.set_port(0);
