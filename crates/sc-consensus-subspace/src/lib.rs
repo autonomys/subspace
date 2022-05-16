@@ -54,7 +54,7 @@ use sc_consensus_slots::{
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiError, ApiExt, NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
@@ -71,7 +71,7 @@ use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
+use sp_runtime::traits::{One, Zero};
 use std::cmp::Ordering;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -126,7 +126,7 @@ pub struct ArchivedSegmentNotification {
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
-pub enum Error<B: BlockT> {
+pub enum Error<Header: HeaderT> {
     /// Multiple Subspace pre-runtime digests
     #[error("Multiple Subspace pre-runtime digests, rejecting!")]
     MultiplePreRuntimeDigests,
@@ -144,22 +144,22 @@ pub enum Error<B: BlockT> {
     MultipleSaltDigests,
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
-    TooFarInFuture(B::Hash),
+    TooFarInFuture(Header::Hash),
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]
-    ParentUnavailable(B::Hash, B::Hash),
+    ParentUnavailable(Header::Hash, Header::Hash),
     /// Slot number must increase
     #[error("Slot number must increase: parent slot: {0}, this slot: {1}")]
     SlotMustIncrease(Slot, Slot),
     /// Header has a bad seal
     #[error("Header {0:?} has a bad seal")]
-    HeaderBadSeal(B::Hash),
+    HeaderBadSeal(Header::Hash),
     /// Header is unsealed
     #[error("Header {0:?} is unsealed")]
-    HeaderUnsealed(B::Hash),
+    HeaderUnsealed(Header::Hash),
     /// Bad signature
     #[error("Bad signature on {0:?}")]
-    BadSignature(B::Hash),
+    BadSignature(Header::Hash),
     /// Bad solution signature
     #[error("Bad solution signature on slot {0:?}: {1:?}")]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
@@ -180,25 +180,25 @@ pub enum Error<B: BlockT> {
     InvalidTag(Slot),
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
-    ParentBlockNoAssociatedWeight(B::Hash),
+    ParentBlockNoAssociatedWeight(Header::Hash),
     /// Block has no associated global randomness
     #[error("Missing global randomness for block {0}")]
-    MissingGlobalRandomness(B::Hash),
+    MissingGlobalRandomness(Header::Hash),
     /// Block has invalid associated global randomness
     #[error("Invalid global randomness for block {0}")]
-    InvalidGlobalRandomness(B::Hash),
+    InvalidGlobalRandomness(Header::Hash),
     /// Block has no associated solution range
     #[error("Missing solution range for block {0}")]
-    MissingSolutionRange(B::Hash),
+    MissingSolutionRange(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
-    InvalidSolutionRange(B::Hash),
+    InvalidSolutionRange(Header::Hash),
     /// Block has no associated salt
     #[error("Missing salt for block {0}")]
-    MissingSalt(B::Hash),
+    MissingSalt(Header::Hash),
     /// Block has invalid associated salt
     #[error("Invalid salt for block {0}")]
-    InvalidSalt(B::Hash),
+    InvalidSalt(Header::Hash),
     /// Invalid set of root blocks
     #[error("Invalid set of root blocks")]
     InvalidSetOfRootBlocks,
@@ -228,13 +228,19 @@ pub enum Error<B: BlockT> {
     RuntimeApi(#[from] ApiError),
 }
 
-impl<B: BlockT> std::convert::From<Error<B>> for String {
-    fn from(error: Error<B>) -> String {
+impl<Header> From<Error<Header>> for String
+where
+    Header: HeaderT,
+{
+    fn from(error: Error<Header>) -> String {
         error.to_string()
     }
 }
 
-fn subspace_err<B: BlockT>(error: Error<B>) -> Error<B> {
+fn subspace_err<Header>(error: Error<Header>) -> Error<Header>
+where
+    Header: HeaderT,
+{
     debug!(target: "subspace", "{}", error);
     error
 }
@@ -425,9 +431,10 @@ impl Future for SubspaceWorker {
 
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
 /// function will return `Err` if none is found.
-pub fn find_pre_digest<B: BlockT>(
-    header: &B::Header,
-) -> Result<PreDigest<FarmerPublicKey>, Error<B>> {
+pub fn find_pre_digest<Header>(header: &Header) -> Result<PreDigest<FarmerPublicKey>, Error<Header>>
+where
+    Header: HeaderT,
+{
     // genesis block doesn't contain a pre digest so let's generate a
     // dummy one to not break any invariants in the rest of the code
     if header.number().is_zero() {
@@ -450,9 +457,12 @@ pub fn find_pre_digest<B: BlockT>(
 }
 
 /// Extract the Subspace global randomness descriptor from the given header.
-fn find_global_randomness_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<GlobalRandomnessDescriptor>, Error<B>> {
+fn find_global_randomness_descriptor<Header>(
+    header: &Header,
+) -> Result<Option<GlobalRandomnessDescriptor>, Error<Header>>
+where
+    Header: HeaderT,
+{
     let mut global_randomness_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
@@ -472,9 +482,12 @@ fn find_global_randomness_descriptor<B: BlockT>(
 }
 
 /// Extract the Subspace solution range descriptor from the given header.
-fn find_solution_range_descriptor<B: BlockT>(
-    header: &B::Header,
-) -> Result<Option<SolutionRangeDescriptor>, Error<B>> {
+fn find_solution_range_descriptor<Header>(
+    header: &Header,
+) -> Result<Option<SolutionRangeDescriptor>, Error<Header>>
+where
+    Header: HeaderT,
+{
     let mut solution_range_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
@@ -492,7 +505,10 @@ fn find_solution_range_descriptor<B: BlockT>(
 }
 
 /// Extract the Subspace salt descriptor from the given header.
-fn find_salt_descriptor<B: BlockT>(header: &B::Header) -> Result<Option<SaltDescriptor>, Error<B>> {
+fn find_salt_descriptor<Header>(header: &Header) -> Result<Option<SaltDescriptor>, Error<Header>>
+where
+    Header: HeaderT,
+{
     let mut salt_descriptor = None;
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
@@ -590,7 +606,7 @@ where
         header: &Block::Header,
         author: &FarmerPublicKey,
         origin: &BlockOrigin,
-    ) -> Result<(), Error<Block>> {
+    ) -> Result<(), Error<Block::Header>> {
         // don't report any equivocations during initial sync
         // as they are most likely stale.
         if *origin == BlockOrigin::NetworkInitialSync {
@@ -684,41 +700,36 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let pre_digest = find_pre_digest::<Block>(&block.header).map_err(subspace_err)?;
-
-            let global_randomness = find_global_randomness_descriptor::<Block>(&block.header)
+            let global_randomness = find_global_randomness_descriptor(&block.header)
                 .map_err(subspace_err)?
-                .ok_or(Error::<Block>::MissingGlobalRandomness(hash))?
+                .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?
                 .global_randomness;
 
-            let solution_range = find_solution_range_descriptor::<Block>(&block.header)
+            let solution_range = find_solution_range_descriptor(&block.header)
                 .map_err(subspace_err)?
-                .ok_or(Error::<Block>::MissingSolutionRange(hash))?
+                .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?
                 .solution_range;
 
-            let salt = find_salt_descriptor::<Block>(&block.header)
+            let salt = find_salt_descriptor(&block.header)
                 .map_err(subspace_err)?
-                .ok_or(Error::<Block>::MissingSalt(hash))?
+                .ok_or(Error::<Block::Header>::MissingSalt(hash))?
                 .salt;
-
-            let slot = pre_digest.slot;
 
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header::<Block>(VerificationParams {
+            verification::check_header(VerificationParams {
                 header: block.header.clone(),
-                pre_digest,
                 slot_now: slot_now + 1,
                 verify_solution_params: VerifySolutionParams {
                     global_randomness: &global_randomness,
                     solution_range,
-                    slot,
                     salt,
                     piece_check_params: None,
                     signing_context: &self.signing_context,
                 },
-            })?
+            })
+            .map_err(subspace_err)?
         };
 
         match checked_header {
@@ -767,7 +778,7 @@ where
                     "subspace.header_too_far_in_future";
                     "hash" => ?hash, "a" => ?a, "b" => ?b
                 );
-                Err(Error::<Block>::TooFarInFuture(hash).into())
+                Err(Error::<Block::Header>::TooFarInFuture(hash).into())
             }
         }
     }
@@ -846,7 +857,7 @@ where
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
         pre_digest: &PreDigest<FarmerPublicKey>,
-    ) -> Result<(), Error<Block>> {
+    ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
@@ -1045,7 +1056,7 @@ where
             Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
         }
 
-        let pre_digest = find_pre_digest::<Block>(&block.header)
+        let pre_digest = find_pre_digest::<Block::Header>(&block.header)
             .map_err(subspace_err)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
@@ -1067,8 +1078,10 @@ where
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
-                        subspace_err(Error::<Block>::ParentBlockNoAssociatedWeight(block_hash))
-                            .into(),
+                        subspace_err(Error::<Block::Header>::ParentBlockNoAssociatedWeight(
+                            block_hash,
+                        ))
+                        .into(),
                     )
                 })?
         };
