@@ -105,6 +105,11 @@ enum Command {
         /// Only `G` and `T` endings are supported.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         write_pieces_size: u64,
+        /// File for tracing
+        ///
+        /// Only `G` and `T` endings are supported.
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        tracing_file: Option<PathBuf>,
     },
 }
 
@@ -130,26 +135,26 @@ fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .with_span_events(FmtSpan::CLOSE)
-                .with_thread_ids(true)
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(LevelFilter::INFO.into())
-                        .from_env_lossy(),
-                ),
-        )
-        .init();
+    let subscriber = tracing_subscriber::registry().with(
+        fmt::layer()
+            .with_span_events(FmtSpan::CLOSE)
+            .with_thread_ids(true)
+            .with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            ),
+    );
 
     match Command::parse() {
         Command::Wipe { custom_path } => {
+            subscriber.init();
             let path = utils::get_path(custom_path);
             commands::wipe(&path)?;
             info!("Done");
         }
         Command::Farm(args) => {
+            subscriber.init();
             commands::farm(args, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?;
         }
         Command::Bench {
@@ -158,14 +163,17 @@ async fn main() -> Result<()> {
             max_plot_size,
             write_to_disk,
             write_pieces_size,
+            tracing_file,
         } => {
             commands::bench(
+                subscriber,
                 custom_path,
                 plot_size,
                 max_plot_size,
                 BEST_BLOCK_NUMBER_CHECK_INTERVAL,
                 write_to_disk,
                 write_pieces_size,
+                tracing_file,
             )
             .await?
         }

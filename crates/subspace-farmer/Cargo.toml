@@ -26,6 +26,7 @@ hex-buffer-serde = "0.3.0"
 jsonrpsee = { version = "0.10.1", features = ["client", "macros", "server"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-flame = "0.2"
 lru = "0.7.5"
 num-traits = "0.2"
 parity-scale-codec = "3.1.2"

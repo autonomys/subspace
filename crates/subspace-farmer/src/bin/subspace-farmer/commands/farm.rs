@@ -23,7 +23,9 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, Subscriber};
+use tracing_subscriber::layer::Layer;
+use tracing_subscriber::{filter, prelude::*};
 
 use crate::bench_rpc_client::BenchRpcClient;
 use crate::{FarmingArgs, WriteToDisk};
@@ -224,14 +226,37 @@ const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
     max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
 };
 
-pub(crate) async fn bench(
+pub(crate) async fn bench<S>(
+    subscriber: S,
     custom_path: Option<PathBuf>,
     plot_size: u64,
     max_plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
-) -> anyhow::Result<()> {
+    tracing_file: Option<PathBuf>,
+) -> anyhow::Result<()>
+where
+    S: Subscriber
+        + for<'span> tracing_subscriber::registry::LookupSpan<'span>
+        + Send
+        + Sync
+        + 'static,
+{
+    let _guard = if let Some(tracing_file) = tracing_file {
+        let (flame, guard) = tracing_flame::FlameLayer::with_file(tracing_file).unwrap();
+        let flame = flame
+            .with_module_path(true)
+            .with_threads_collapsed(true)
+            .with_file_and_line(false);
+        tracing::subscriber::set_global_default(subscriber.with(flame.with_filter(
+            filter::filter_fn(|event| event.target().starts_with("bench::")),
+        )))?;
+        Some(guard)
+    } else {
+        tracing::subscriber::set_global_default(subscriber)?;
+        None
+    };
     raise_fd_limit();
 
     let (archived_segments_sender, archived_segments_receiver) = tokio::sync::mpsc::channel(10);
