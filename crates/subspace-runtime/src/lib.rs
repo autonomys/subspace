@@ -64,7 +64,6 @@ use sp_runtime::{
     ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
 };
 use sp_std::iter::Peekable;
-use sp_std::vec;
 use sp_std::{borrow::Cow, prelude::*};
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -735,6 +734,7 @@ fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
         }
         None => return,
     }
+
     call.extract_call_objects()
         .into_iter()
         .for_each(|object_map| {
@@ -1050,7 +1050,7 @@ impl_runtime_apis! {
             extract_root_blocks(ext)
         }
 
-        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
             BlockObjectMapping::default()
         }
     }
