@@ -22,6 +22,7 @@ use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::mpsc;
+use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::{BlockBackend, ExecutorProvider, HeaderBackend, StateBackendFor};
@@ -443,7 +444,7 @@ where
         keystore: keystore_container.sync_keystore(),
         task_manager: &mut task_manager,
         transaction_pool: transaction_pool.clone(),
-        rpc_extensions_builder: if enable_rpc_extensions {
+        rpc_builder: if enable_rpc_extensions {
             let client = client.clone();
             let new_slot_notification_stream = new_slot_notification_stream.clone();
             let block_signing_notification_stream = block_signing_notification_stream.clone();
@@ -462,10 +463,10 @@ where
                         .clone(),
                 };
 
-                Ok(rpc::create_full(deps))
+                rpc::create_full(deps).map_err(Into::into)
             })
         } else {
-            Box::new(|_, _| Ok(Default::default()))
+            Box::new(|_, _| Ok(RpcModule::new(())))
         },
         backend: backend.clone(),
         system_rpc_tx,

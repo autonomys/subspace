@@ -773,7 +773,9 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     base_offset += 1;
 
     match call {
-        pallet_utility::Call::batch { calls } | pallet_utility::Call::batch_all { calls } => {
+        pallet_utility::Call::batch { calls }
+        | pallet_utility::Call::batch_all { calls }
+        | pallet_utility::Call::force_batch { calls } => {
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {

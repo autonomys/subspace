@@ -19,11 +19,12 @@
 
 #![feature(try_blocks)]
 
-use futures::task::SpawnExt;
-use futures::{future, task::Spawn, FutureExt, SinkExt, StreamExt};
-use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
-use jsonrpc_derive::rpc;
-use jsonrpc_pubsub::{manager::SubscriptionManager, typed::Subscriber, SubscriptionId};
+use futures::{future, FutureExt, SinkExt, StreamExt};
+use jsonrpsee::{
+    core::{async_trait, Error as JsonRpseeError, RpcResult},
+    proc_macros::rpc,
+    PendingSubscription,
+};
 use log::{error, warn};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -32,6 +33,7 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
 };
+use sc_rpc::SubscriptionTaskExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -52,98 +54,49 @@ use subspace_rpc_primitives::{
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
-type FutureResult<T> = jsonrpc_core::BoxFuture<Result<T, RpcError>>;
-
 /// Provides rpc methods for interacting with Subspace.
-#[rpc]
+#[rpc(client, server)]
 pub trait SubspaceRpcApi {
-    /// RPC metadata
-    type Metadata;
-
     /// Ger metadata necessary for farmer operation
-    #[rpc(name = "subspace_getFarmerMetadata")]
-    fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata>;
+    #[method(name = "subspace_getFarmerMetadata")]
+    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata>;
 
     /// Get best block number
-    #[rpc(name = "subspace_getBestBlockNumber")]
-    fn get_best_block_number(&self) -> FutureResult<BlockNumber>;
+    #[method(name = "subspace_getBestBlockNumber")]
+    fn get_best_block_number(&self) -> RpcResult<BlockNumber>;
 
-    #[rpc(name = "subspace_submitSolutionResponse")]
-    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()>;
+    #[method(name = "subspace_submitSolutionResponse")]
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
 
     /// Slot info subscription
-    #[pubsub(
-        subscription = "subspace_slot_info",
-        subscribe,
-        name = "subspace_subscribeSlotInfo"
+    #[subscription(
+        name = "subspace_subscribeSlotInfo" => "subspace_slot_info",
+        unsubscribe = "subspace_unsubscribeSlotInfo",
+        item = SlotInfo,
     )]
-    fn subscribe_slot_info(&self, metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>);
-
-    /// Unsubscribe from slot info subscription.
-    #[pubsub(
-        subscription = "subspace_slot_info",
-        unsubscribe,
-        name = "subspace_unsubscribeSlotInfo"
-    )]
-    fn unsubscribe_slot_info(
-        &self,
-        metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool>;
+    fn subscribe_slot_info(&self);
 
     /// Sign block subscription
-    #[pubsub(
-        subscription = "subspace_block_signing",
-        subscribe,
-        name = "subspace_subscribeBlockSigning"
+    #[subscription(
+        name = "subspace_subscribeBlockSigning" => "subspace_block_signing",
+        unsubscribe = "subspace_unsubscribeBlockSigning",
+        item = BlockSigningInfo,
     )]
-    fn subscribe_block_signing(
-        &self,
-        metadata: Self::Metadata,
-        subscriber: Subscriber<BlockSigningInfo>,
-    );
+    fn subscribe_block_signing(&self);
 
-    /// Unsubscribe from sign block subscription.
-    #[pubsub(
-        subscription = "subspace_block_signing",
-        unsubscribe,
-        name = "subspace_unsubscribeBlockSigning"
-    )]
-    fn unsubscribe_block_signing(
-        &self,
-        metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool>;
-
-    #[rpc(name = "subspace_submitBlockSignature")]
-    fn submit_block_signature(&self, block_signature: BlockSignature) -> FutureResult<()>;
+    #[method(name = "subspace_submitBlockSignature")]
+    fn submit_block_signature(&self, block_signature: BlockSignature) -> RpcResult<()>;
 
     /// Archived segment subscription
-    #[pubsub(
-        subscription = "subspace_archived_segment",
-        subscribe,
-        name = "subspace_subscribeArchivedSegment"
+    #[subscription(
+        name = "subspace_subscribeArchivedSegment" => "subspace_archived_segment",
+        unsubscribe = "subspace_unsubscribeArchivedSegment",
+        item = ArchivedSegment,
     )]
-    fn subscribe_archived_segment(
-        &self,
-        metadata: Self::Metadata,
-        subscriber: Subscriber<ArchivedSegment>,
-    );
+    fn subscribe_archived_segment(&self);
 
-    /// Unsubscribe from archived segment subscription.
-    #[pubsub(
-        subscription = "subspace_archived_segment",
-        unsubscribe,
-        name = "subspace_unsubscribeArchivedSegment"
-    )]
-    fn unsubscribe_archived_segment(
-        &self,
-        metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool>;
-
-    #[rpc(name = "subspace_acknowledgeArchivedSegment")]
-    fn acknowledge_archived_segment(&self, segment_index: u64) -> FutureResult<()>;
+    #[method(name = "subspace_acknowledgeArchivedSegment")]
+    async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()>;
 }
 
 #[derive(Default)]
@@ -164,10 +117,10 @@ struct ArchivedSegmentAcknowledgementSenders {
     senders: Vec<TracingUnboundedSender<()>>,
 }
 
-/// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
-pub struct SubspaceRpcHandler<Block, Client> {
+/// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
+pub struct SubspaceRpc<Block, Client> {
     client: Arc<Client>,
-    subscription_manager: SubscriptionManager,
+    executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -177,14 +130,14 @@ pub struct SubspaceRpcHandler<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-/// [`SubspaceRpcHandler`] is used for notifying subscribers about arrival of new slots and for
+/// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
 /// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client> SubspaceRpcHandler<Block, Client>
+impl<Block, Client> SubspaceRpc<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -196,21 +149,18 @@ where
     Client::Api: SubspaceRuntimeApi<Block>,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
-    pub fn new<E>(
+    pub fn new(
         client: Arc<Client>,
-        executor: E,
+        executor: SubscriptionTaskExecutor,
         new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
         block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
         archived_segment_notification_stream: SubspaceNotificationStream<
             ArchivedSegmentNotification,
         >,
-    ) -> Self
-    where
-        E: Spawn + Send + Sync + 'static,
-    {
+    ) -> Self {
         Self {
             client,
-            subscription_manager: SubscriptionManager::new(Arc::new(executor)),
+            executor,
             new_slot_notification_stream,
             block_signing_notification_stream,
             archived_segment_notification_stream,
@@ -222,7 +172,8 @@ where
     }
 }
 
-impl<Block, Client> SubspaceRpcApi for SubspaceRpcHandler<Block, Client>
+#[async_trait]
+impl<Block, Client> SubspaceRpcApiServer for SubspaceRpc<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -233,68 +184,62 @@ where
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block>,
 {
-    type Metadata = sc_rpc_api::Metadata;
+    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata> {
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        let runtime_api = self.client.runtime_api();
 
-    fn get_farmer_metadata(&self) -> FutureResult<FarmerMetadata> {
-        let client = Arc::clone(&self.client);
-        Box::pin(async move {
-            let best_block_id = BlockId::Hash(client.info().best_hash);
-            let runtime_api = client.runtime_api();
+        let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
+            FarmerMetadata {
+                record_size: runtime_api.record_size(&best_block_id)?,
+                recorded_history_segment_size: runtime_api
+                    .recorded_history_segment_size(&best_block_id)?,
+                max_plot_size: runtime_api
+                    .max_plot_size(&best_block_id)
+                    // TODO: Remove once we switch genesis runtime from `snapshot-2022-mar-09`
+                    //  to newer
+                    .unwrap_or(
+                        100 * 1024 * 1024 * 1024 / subspace_core_primitives::PIECE_SIZE as u64,
+                    ),
+            }
+        };
 
-            let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
-                FarmerMetadata {
-                    record_size: runtime_api.record_size(&best_block_id)?,
-                    recorded_history_segment_size: runtime_api
-                        .recorded_history_segment_size(&best_block_id)?,
-                    max_plot_size: runtime_api
-                        .max_plot_size(&best_block_id)
-                        // TODO: Remove once we switch genesis runtime from `snapshot-2022-mar-09`
-                        //  to newer
-                        .unwrap_or(
-                            100 * 1024 * 1024 * 1024 / subspace_core_primitives::PIECE_SIZE as u64,
-                        ),
-                }
-            };
-
-            farmer_metadata.map_err(|error| {
-                error!("Failed to get data from runtime API: {}", error);
-                RpcError::new(ErrorCode::InternalError)
-            })
+        farmer_metadata.map_err(|error| {
+            error!("Failed to get data from runtime API: {}", error);
+            JsonRpseeError::Custom("Internal error".to_string())
         })
     }
 
-    fn get_best_block_number(&self) -> FutureResult<BlockNumber> {
+    fn get_best_block_number(&self) -> RpcResult<BlockNumber> {
         let best_number = TryInto::<BlockNumber>::try_into(self.client.info().best_number)
             .unwrap_or_else(|_| {
                 panic!("Block number can't be converted into BlockNumber");
             });
 
-        Box::pin(async move { Ok(best_number) })
+        Ok(best_number)
     }
 
-    fn submit_solution_response(&self, solution_response: SolutionResponse) -> FutureResult<()> {
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()> {
         let solution_response_senders = self.solution_response_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
-        Box::pin(async move {
-            let mut solution_response_senders = solution_response_senders.lock();
 
-            if *solution_response_senders.current_slot == solution_response.slot_number {
-                if let Some(mut sender) = solution_response_senders.senders.pop() {
-                    let _ = sender.send(solution_response);
-                }
+        let mut solution_response_senders = solution_response_senders.lock();
+
+        if *solution_response_senders.current_slot == solution_response.slot_number {
+            if let Some(mut sender) = solution_response_senders.senders.pop() {
+                let _ = sender.send(solution_response);
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 
-    fn subscribe_slot_info(&self, _metadata: Self::Metadata, subscriber: Subscriber<SlotInfo>) {
-        self.subscription_manager.add(subscriber, |sink| {
-            let executor = self.subscription_manager.executor().clone();
-            let solution_response_senders = self.solution_response_senders.clone();
+    fn subscribe_slot_info(&self, pending: PendingSubscription) {
+        let executor = self.executor.clone();
+        let solution_response_senders = self.solution_response_senders.clone();
 
+        let stream =
             self.new_slot_notification_stream
                 .subscribe()
                 .map(move |new_slot_notification| {
@@ -363,207 +308,199 @@ where
 
                     // Run above future with timeout
                     let _ = executor.spawn(
+                        "subspace-slot-info-forward",
+                        Some("rpc"),
                         future::select(
                             futures_timer::Delay::new(SOLUTION_TIMEOUT),
                             Box::pin(forward_solution_fut),
                         )
-                        .map(|_| ()),
+                        .map(|_| ())
+                        .boxed(),
                     );
 
                     // This will be sent to the farmer
-                    Ok(Ok(SlotInfo {
+                    SlotInfo {
                         slot_number: new_slot_info.slot.into(),
                         global_challenge: new_slot_info.global_challenge,
                         salt: new_slot_info.salt,
                         next_salt: new_slot_info.next_salt,
                         solution_range: new_slot_info.solution_range,
-                    }))
-                })
-                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
-                .map(|_| ())
-        });
+                    }
+                });
+
+        let fut = async move {
+            if let Some(mut sink) = pending.accept() {
+                sink.pipe_from_stream(stream).await;
+            }
+        };
+
+        self.executor
+            .spawn("subspace-slot-info-subscription", Some("rpc"), fut.boxed());
     }
 
-    fn unsubscribe_slot_info(
-        &self,
-        _metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool> {
-        Ok(self.subscription_manager.cancel(id))
-    }
+    fn subscribe_block_signing(&self, pending: PendingSubscription) {
+        let executor = self.executor.clone();
+        let block_signature_senders = self.block_signature_senders.clone();
 
-    fn subscribe_block_signing(
-        &self,
-        _metadata: Self::Metadata,
-        subscriber: Subscriber<BlockSigningInfo>,
-    ) {
-        self.subscription_manager.add(subscriber, |sink| {
-            let executor = self.subscription_manager.executor().clone();
-            let block_signature_senders = self.block_signature_senders.clone();
+        let stream = self.block_signing_notification_stream.subscribe().map(
+            move |block_signing_notification| {
+                let BlockSigningNotification {
+                    header_hash,
+                    mut signature_sender,
+                } = block_signing_notification;
 
-            self.block_signing_notification_stream
-                .subscribe()
-                .map(move |block_signing_notification| {
-                    let BlockSigningNotification {
-                        header_hash,
-                        mut signature_sender,
-                    } = block_signing_notification;
+                let (response_sender, response_receiver) = async_oneshot::oneshot();
 
-                    let (response_sender, response_receiver) = async_oneshot::oneshot();
+                // Store signature sender so that we can retrieve it when solution comes from
+                // the farmer
+                {
+                    let mut block_signature_senders = block_signature_senders.lock();
 
-                    // Store signature sender so that we can retrieve it when solution comes from
-                    // the farmer
-                    {
-                        let mut block_signature_senders = block_signature_senders.lock();
-
-                        if block_signature_senders.current_header_hash != header_hash {
-                            block_signature_senders.current_header_hash = header_hash;
-                            block_signature_senders.senders.clear();
-                        }
-
-                        block_signature_senders.senders.push(response_sender);
+                    if block_signature_senders.current_header_hash != header_hash {
+                        block_signature_senders.current_header_hash = header_hash;
+                        block_signature_senders.senders.clear();
                     }
 
-                    // Wait for solutions and transform proposed proof of space solutions into
-                    // data structure `sc-consensus-subspace` expects
-                    let forward_signature_fut = async move {
-                        if let Ok(block_signature) = response_receiver.await {
-                            if let Some(signature) = block_signature.signature {
-                                match FarmerSignature::decode(&mut signature.encode().as_ref()) {
-                                    Ok(signature) => {
-                                        let _ = signature_sender.send(signature).await;
-                                    }
-                                    Err(error) => {
-                                        warn!(
-                                            "Failed to convert signature of length {}: {}",
-                                            signature.len(),
-                                            error
-                                        );
-                                    }
+                    block_signature_senders.senders.push(response_sender);
+                }
+
+                // Wait for solutions and transform proposed proof of space solutions into
+                // data structure `sc-consensus-subspace` expects
+                let forward_signature_fut = async move {
+                    if let Ok(block_signature) = response_receiver.await {
+                        if let Some(signature) = block_signature.signature {
+                            match FarmerSignature::decode(&mut signature.encode().as_ref()) {
+                                Ok(signature) => {
+                                    let _ = signature_sender.send(signature).await;
+                                }
+                                Err(error) => {
+                                    warn!(
+                                        "Failed to convert signature of length {}: {}",
+                                        signature.len(),
+                                        error
+                                    );
                                 }
                             }
                         }
-                    };
+                    }
+                };
 
-                    // Run above future with timeout
-                    let _ = executor.spawn(
-                        future::select(
-                            futures_timer::Delay::new(SOLUTION_TIMEOUT),
-                            Box::pin(forward_signature_fut),
-                        )
-                        .map(|_| ()),
-                    );
+                // Run above future with timeout
+                let _ = executor.spawn(
+                    "subspace-block-signing-forward",
+                    Some("rpc"),
+                    future::select(
+                        futures_timer::Delay::new(SOLUTION_TIMEOUT),
+                        Box::pin(forward_signature_fut),
+                    )
+                    .map(|_| ())
+                    .boxed(),
+                );
 
-                    // This will be sent to the farmer
-                    Ok(Ok(BlockSigningInfo {
-                        header_hash: header_hash.into(),
-                    }))
-                })
-                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
-                .map(|_| ())
-        });
+                // This will be sent to the farmer
+                BlockSigningInfo {
+                    header_hash: header_hash.into(),
+                }
+            },
+        );
+
+        let fut = async move {
+            if let Some(mut sink) = pending.accept() {
+                sink.pipe_from_stream(stream).await;
+            }
+        };
+
+        self.executor.spawn(
+            "subspace-block-signing-subscription",
+            Some("rpc"),
+            fut.boxed(),
+        );
     }
 
-    fn unsubscribe_block_signing(
-        &self,
-        _metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool> {
-        Ok(self.subscription_manager.cancel(id))
-    }
-
-    fn submit_block_signature(&self, block_signature: BlockSignature) -> FutureResult<()> {
+    fn submit_block_signature(&self, block_signature: BlockSignature) -> RpcResult<()> {
         let block_signature_senders = self.block_signature_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
-        Box::pin(async move {
-            let mut block_signature_senders = block_signature_senders.lock();
+        let mut block_signature_senders = block_signature_senders.lock();
 
-            if block_signature_senders.current_header_hash == block_signature.header_hash.into() {
-                if let Some(mut sender) = block_signature_senders.senders.pop() {
-                    let _ = sender.send(block_signature);
-                }
+        if block_signature_senders.current_header_hash == block_signature.header_hash.into() {
+            if let Some(mut sender) = block_signature_senders.senders.pop() {
+                let _ = sender.send(block_signature);
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 
-    fn subscribe_archived_segment(
-        &self,
-        _metadata: Self::Metadata,
-        subscriber: Subscriber<ArchivedSegment>,
-    ) {
-        self.subscription_manager.add(subscriber, |sink| {
-            let archived_segment_acknowledgement_senders =
-                self.archived_segment_acknowledgement_senders.clone();
-
-            self.archived_segment_notification_stream
-                .subscribe()
-                .map(move |archived_segment_notification| {
-                    let ArchivedSegmentNotification {
-                        archived_segment,
-                        acknowledgement_sender,
-                    } = archived_segment_notification;
-
-                    let segment_index = archived_segment.root_block.segment_index();
-
-                    // Store acknowledgment sender so that we can retrieve it when acknowledgement
-                    // comes from the farmer
-                    {
-                        let mut archived_segment_acknowledgement_senders =
-                            archived_segment_acknowledgement_senders.lock();
-
-                        if archived_segment_acknowledgement_senders.segment_index != segment_index {
-                            archived_segment_acknowledgement_senders.segment_index = segment_index;
-                            archived_segment_acknowledgement_senders.senders.clear();
-                        }
-
-                        archived_segment_acknowledgement_senders
-                            .senders
-                            .push(acknowledgement_sender);
-                    }
-
-                    // This will be sent to the farmer
-                    Ok(Ok(archived_segment.as_ref().clone()))
-                })
-                .forward(sink.sink_map_err(|e| warn!("Error sending notifications: {:?}", e)))
-                .map(|_| ())
-        });
-    }
-
-    fn unsubscribe_archived_segment(
-        &self,
-        _metadata: Option<Self::Metadata>,
-        id: SubscriptionId,
-    ) -> RpcResult<bool> {
-        Ok(self.subscription_manager.cancel(id))
-    }
-
-    fn acknowledge_archived_segment(&self, segment_index: u64) -> FutureResult<()> {
+    fn subscribe_archived_segment(&self, pending: PendingSubscription) {
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
-        Box::pin(async move {
-            let maybe_sender = {
-                let mut archived_segment_acknowledgement_senders_guard =
-                    archived_segment_acknowledgement_senders.lock();
+        let stream = self.archived_segment_notification_stream.subscribe().map(
+            move |archived_segment_notification| {
+                let ArchivedSegmentNotification {
+                    archived_segment,
+                    acknowledgement_sender,
+                } = archived_segment_notification;
 
-                (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
-                    .then(|| archived_segment_acknowledgement_senders_guard.senders.pop())
-                    .flatten()
-            };
+                let segment_index = archived_segment.root_block.segment_index();
 
-            if let Some(mut sender) = maybe_sender {
-                if let Err(error) = sender.send(()).await {
-                    if !error.is_disconnected() {
-                        warn!("Failed to acknowledge archived segment: {error}");
+                // Store acknowledgment sender so that we can retrieve it when acknowledgement
+                // comes from the farmer
+                {
+                    let mut archived_segment_acknowledgement_senders =
+                        archived_segment_acknowledgement_senders.lock();
+
+                    if archived_segment_acknowledgement_senders.segment_index != segment_index {
+                        archived_segment_acknowledgement_senders.segment_index = segment_index;
+                        archived_segment_acknowledgement_senders.senders.clear();
                     }
+
+                    archived_segment_acknowledgement_senders
+                        .senders
+                        .push(acknowledgement_sender);
+                }
+
+                // This will be sent to the farmer
+                archived_segment.as_ref().clone()
+            },
+        );
+
+        let fut = async move {
+            if let Some(mut sink) = pending.accept() {
+                sink.pipe_from_stream(stream).await;
+            }
+        };
+
+        self.executor.spawn(
+            "subspace-archived-segment-subscription",
+            Some("rpc"),
+            fut.boxed(),
+        );
+    }
+
+    async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()> {
+        let archived_segment_acknowledgement_senders =
+            self.archived_segment_acknowledgement_senders.clone();
+
+        let maybe_sender = {
+            let mut archived_segment_acknowledgement_senders_guard =
+                archived_segment_acknowledgement_senders.lock();
+
+            (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
+                .then(|| archived_segment_acknowledgement_senders_guard.senders.pop())
+                .flatten()
+        };
+
+        if let Some(mut sender) = maybe_sender {
+            if let Err(error) = sender.send(()).await {
+                if !error.is_disconnected() {
+                    warn!("Failed to acknowledge archived segment: {error}");
                 }
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }

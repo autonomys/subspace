@@ -16,9 +16,9 @@ include = [
 merkle_light = { version = "0.4.0", default-features = false }
 parity-scale-codec = { version = "3.1.2", default-features = false, features = ["derive"] }
 reed-solomon-erasure = { version = "5.0.2", default-features = true }
-serde = { version = "1.0.136", optional = true, features = ["derive"] }
+serde = { version = "1.0.137", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.30", optional = true }
+thiserror = { version = "1.0.31", optional = true }
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
 [target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]

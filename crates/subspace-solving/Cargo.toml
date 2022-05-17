@@ -14,12 +14,12 @@ include = [
 [dependencies]
 tracing = "0.1"
 num_cpus = "1.13.0"
-num-traits = "0.2"
-rayon = "1.5.2"
+num-traits = "0.2.15"
+rayon = "1.5.3"
 schnorrkel = "0.9.1"
-sloth256-189 = "0.2.2"
+sloth256-189 = "0.3.1"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-thiserror = "1.0.30"
+thiserror = "1.0.31"
 uint = "0.9"
 
 # Ugly workaround for https://github.com/rust-lang/cargo/issues/1197

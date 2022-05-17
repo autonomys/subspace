@@ -232,14 +232,14 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
+        Some(Subcommand::ChainInfo(cmd)) => {
+            let runner = cli.create_runner(cmd)?;
+            runner.sync_run(|config| cmd.run::<Block>(&config))?;
+        }
         Some(Subcommand::Benchmark(cmd)) => {
             let runner = cli.create_runner(cmd)?;
 
             runner.sync_run(|config| {
-                let PartialComponents {
-                    client, backend, ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
-
                 // This switch needs to be in the client, since the client decides
                 // which sub-commands it wants to support.
                 match cmd {
@@ -254,8 +254,16 @@ fn main() -> Result<(), Error> {
 
                         cmd.run::<Block, ExecutorDispatch>(config)
                     }
-                    BenchmarkCmd::Block(cmd) => cmd.run(client),
+                    BenchmarkCmd::Block(cmd) => {
+                        let PartialComponents { client, .. } =
+                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+
+                        cmd.run(client)
+                    }
                     BenchmarkCmd::Storage(cmd) => {
+                        let PartialComponents {
+                            client, backend, ..
+                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
@@ -272,6 +280,10 @@ fn main() -> Result<(), Error> {
                         //     Arc::new(ext_builder),
                         // )
                     }
+                    BenchmarkCmd::Machine(cmd) => cmd.run(
+                        &config,
+                        frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.clone(),
+                    ),
                 }
             })?;
         }

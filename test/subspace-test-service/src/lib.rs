@@ -147,6 +147,9 @@ pub fn node_config(
         rpc_ws: None,
         rpc_ipc: None,
         rpc_max_payload: None,
+        rpc_max_request_size: None,
+        rpc_max_response_size: None,
+        rpc_id_provider: None,
         rpc_ws_max_connections: None,
         rpc_cors: None,
         rpc_methods: Default::default(),
@@ -165,6 +168,7 @@ pub fn node_config(
         base_path: Some(base_path),
         informant_output_format: Default::default(),
         runtime_cache_size: 2,
+        rpc_max_subs_per_conn: None,
     }
 }
 
