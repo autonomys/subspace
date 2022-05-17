@@ -4410,6 +4410,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71d96e3f3c0b6325d8ccd83c33b28acb183edcb6c67938ba104ec546854b0882"
 
 [[package]]
+name = "merkle_light"
+version = "0.4.0"
+source = "git+https://github.com/subspace/merkle_light?rev=63e341d388209e1cb7f5c2f8880a36235905d1e6#63e341d388209e1cb7f5c2f8880a36235905d1e6"
+
+[[package]]
 name = "merkletree"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8451,7 +8456,7 @@ name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "merkletree",
+ "merkle_light",
  "parity-scale-codec",
  "rand 0.8.5",
  "reed-solomon-erasure",
@@ -8459,7 +8464,6 @@ dependencies = [
  "sha2 0.10.2",
  "subspace-core-primitives",
  "thiserror",
- "typenum",
 ]
 
 [[package]]

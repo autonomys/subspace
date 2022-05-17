@@ -85,3 +85,5 @@ codegen-units = 1
 [patch.crates-io]
 # TODO: Remove once chacha20poly1305 0.10 appears in libp2p's dependencies
 chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
+# TODO: Remove once https://github.com/sitano/merkle_light/pull/8 is released
+merkle_light = { git = "https://github.com/subspace/merkle_light", rev = "63e341d388209e1cb7f5c2f8880a36235905d1e6" }
