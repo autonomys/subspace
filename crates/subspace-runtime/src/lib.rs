@@ -1051,7 +1051,7 @@ impl_runtime_apis! {
         }
 
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
-            extract_block_object_mapping(block, vec![])
+            BlockObjectMapping::default()
         }
     }
 
