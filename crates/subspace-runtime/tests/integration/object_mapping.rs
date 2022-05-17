@@ -93,7 +93,6 @@ fn object_mapping() {
     let mut successful_calls = get_successful_calls(block.clone());
     assert_eq!(successful_calls.len(), 8);
     // remove third call signifying that it failed
-    // TODO: remove when subspace_api `extract_object_mappings` is removed
     successful_calls.remove(2);
 
     let encoded_block = block.encode();
