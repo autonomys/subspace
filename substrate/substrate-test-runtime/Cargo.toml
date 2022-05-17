@@ -52,7 +52,7 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 # 3rd party
 cfg-if = "1.0"
 log = { version = "0.4.17", default-features = false }
-serde = { version = "1.0.136", optional = true, features = ["derive"] }
+serde = { version = "1.0.137", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }

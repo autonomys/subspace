@@ -56,7 +56,7 @@ subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
-thiserror = "1.0.30"
+thiserror = "1.0.31"
 
 sp-session = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }

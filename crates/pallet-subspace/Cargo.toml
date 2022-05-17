@@ -17,7 +17,7 @@ codec = { package = "parity-scale-codec", version = "3.1.2", default-features = 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 log = { version = "0.4.17", default-features = false }
-num-traits = { version = "0.2.14", default-features = false }
+num-traits = { version = "0.2.15", default-features = false }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }

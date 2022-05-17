@@ -20,4 +20,4 @@ sp-runtime = { version = "6.0.0", git = "https://github.com/paritytech/substrate
 sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 futures = "0.3.21"
-thiserror = "1.0.30"
+thiserror = "1.0.31"

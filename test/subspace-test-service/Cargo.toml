@@ -35,7 +35,7 @@ subspace-service = { path = "../../crates/subspace-service" }
 subspace-test-client = { path = "../subspace-test-client" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
 substrate-test-client = { git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
-tokio = "1.17.0"
+tokio = "1.18.2"
 
 [dev-dependencies]
 sc-cli = { git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
