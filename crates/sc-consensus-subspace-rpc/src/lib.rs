@@ -117,7 +117,7 @@ struct ArchivedSegmentAcknowledgementSenders {
     senders: Vec<TracingUnboundedSender<()>>,
 }
 
-/// Implements the [`SubspaceRpcApi`] trait for interacting with Subspace.
+/// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
 pub struct SubspaceRpc<Block, Client> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
@@ -130,7 +130,7 @@ pub struct SubspaceRpc<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-/// [`SubspaceRpcHandler`] is used for notifying subscribers about arrival of new slots and for
+/// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
 /// submission of solutions (or lack thereof).
 ///
 /// Internally every time slot notifier emits information about new slot, notification is sent to
