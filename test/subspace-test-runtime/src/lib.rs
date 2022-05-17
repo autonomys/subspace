@@ -659,7 +659,6 @@ fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
         }
         None => return,
     }
-
     call.extract_call_objects()
         .into_iter()
         .for_each(|object_map| {
@@ -975,6 +974,10 @@ impl_runtime_apis! {
 
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
+        }
+
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+            extract_block_object_mapping(block, vec![])
         }
     }
 
