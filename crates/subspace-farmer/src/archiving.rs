@@ -1,7 +1,5 @@
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
-use futures::{SinkExt, StreamExt};
-use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{FlatPieces, Sha256Hash};
@@ -9,9 +7,7 @@ use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
-
-const BEST_BLOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+use tracing::{debug, error, info};
 
 #[derive(Debug, Error)]
 pub enum ArchivingError {
@@ -52,7 +48,6 @@ impl Archiving {
         farmer_metadata: FarmerMetadata,
         object_mappings: ObjectMappings,
         client: Client,
-        best_block_number_check_interval: Duration,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>
     where
@@ -126,38 +121,6 @@ impl Archiving {
             .await
             .map_err(ArchivingError::RpcError)?;
 
-        let (mut best_block_number_sender, mut best_block_number_receiver) =
-            futures::channel::mpsc::channel(1);
-
-        tokio::spawn({
-            let client = client.clone();
-
-            async move {
-                loop {
-                    tokio::time::sleep(best_block_number_check_interval).await;
-
-                    // In case connection dies, we need to disconnect from the node
-                    let best_block_number_result = tokio::time::timeout(
-                        BEST_BLOCK_REQUEST_TIMEOUT,
-                        client.best_block_number(),
-                    )
-                    .await;
-
-                    let is_error = !matches!(best_block_number_result, Ok(Ok(_)));
-                    // Result doesn't matter here
-                    let _ = best_block_number_sender
-                        .send(best_block_number_result)
-                        .await;
-
-                    if is_error {
-                        break;
-                    }
-                }
-            }
-        });
-
-        let mut last_best_block_number_error = false;
-
         let archiving_handle = tokio::spawn(async move {
             // Listen for new blocks produced on the network
             loop {
@@ -185,36 +148,6 @@ impl Archiving {
                             },
                             None => {
                                 debug!("Subscription has forcefully closed from node side!");
-                                break;
-                            }
-                        }
-                    }
-                    maybe_result = best_block_number_receiver.next() => {
-                        match maybe_result {
-                            Some(Ok(Ok(best_block_number))) => {
-                                debug!(best_block_number);
-                                last_best_block_number_error = false;
-                            }
-                            Some(Ok(Err(error))) => {
-                                if last_best_block_number_error {
-                                    error!(%error, "Request to get new best block failed second time");
-                                    break;
-                                } else {
-                                    warn!(%error, "Request to get new best block failed");
-                                    last_best_block_number_error = true;
-                                }
-                            }
-                            Some(Err(_error)) => {
-                                if last_best_block_number_error {
-                                    error!("Request to get new best block timed out second time");
-                                    break;
-                                } else {
-                                    warn!("Request to get new best block timed out");
-                                    last_best_block_number_error = true;
-                                }
-                            }
-                            None => {
-                                debug!("Best block number channel closed!");
                                 break;
                             }
                         }

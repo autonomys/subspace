@@ -7,7 +7,6 @@ use crate::rpc_client::RpcClient;
 use crate::{plotting, Archiving};
 use rand::prelude::*;
 use rand::Rng;
-use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
@@ -19,7 +18,6 @@ const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
-const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 fn init() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -73,7 +71,6 @@ async fn plotting_happy_path() {
         farmer_metadata,
         object_mappings,
         client.clone(),
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
         plotting::plot_pieces(subspace_codec, &plot, commitments),
     )
     .await
@@ -158,7 +155,6 @@ async fn plotting_piece_eviction() {
         farmer_metadata,
         object_mappings,
         client.clone(),
-        BEST_BLOCK_NUMBER_CHECK_INTERVAL,
         plotting::plot_pieces(subspace_codec, &plot, commitments.clone()),
     )
     .await

@@ -2,11 +2,9 @@ use crate::rpc_client::{Error as MockError, RpcClient};
 use async_trait::async_trait;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::BlockNumber;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, Mutex};
 
 /// `MockRpc` wrapper.
@@ -135,11 +133,6 @@ impl RpcClient for MockRpcClient {
         Ok(self.inner.metadata_receiver.lock().await.try_recv()?)
     }
 
-    async fn best_block_number(&self) -> Result<BlockNumber, MockError> {
-        // Doesn't matter for tests (at least yet)
-        Ok(0)
-    }
-
     async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
         let slot_receiver = self.inner.slot_info_receiver.clone();
@@ -164,7 +157,7 @@ impl RpcClient for MockRpcClient {
         Ok(())
     }
 
-    async fn subscribe_block_signing(&self) -> Result<Receiver<BlockSigningInfo>, MockError> {
+    async fn subscribe_block_signing(&self) -> Result<mpsc::Receiver<BlockSigningInfo>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
         let block_signing_receiver = self.inner.block_signing_info_receiver.clone();
         tokio::spawn(async move {
@@ -188,7 +181,9 @@ impl RpcClient for MockRpcClient {
         Ok(())
     }
 
-    async fn subscribe_archived_segments(&self) -> Result<Receiver<ArchivedSegment>, MockError> {
+    async fn subscribe_archived_segments(
+        &self,
+    ) -> Result<mpsc::Receiver<ArchivedSegment>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {

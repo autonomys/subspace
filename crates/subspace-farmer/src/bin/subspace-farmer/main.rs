@@ -7,7 +7,6 @@ use clap::{ArgEnum, Parser, ValueHint};
 use sp_core::crypto::PublicError;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::time::Duration;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use tracing::info;
@@ -17,8 +16,6 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
-
-const BEST_BLOCK_NUMBER_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]
@@ -150,7 +147,7 @@ async fn main() -> Result<()> {
             info!("Done");
         }
         Command::Farm(args) => {
-            commands::farm(args, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?;
+            commands::farm(args).await?;
         }
         Command::Bench {
             custom_path,
@@ -163,7 +160,6 @@ async fn main() -> Result<()> {
                 custom_path,
                 plot_size,
                 max_plot_size,
-                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
                 write_to_disk,
                 write_pieces_size,
             )

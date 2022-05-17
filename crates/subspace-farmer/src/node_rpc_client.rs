@@ -6,12 +6,10 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::BlockNumber;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Receiver;
 
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
@@ -33,13 +31,6 @@ impl RpcClient for NodeRpcClient {
         Ok(self
             .client
             .request("subspace_getFarmerMetadata", rpc_params![])
-            .await?)
-    }
-
-    async fn best_block_number(&self) -> Result<BlockNumber, RpcError> {
-        Ok(self
-            .client
-            .request("subspace_getBestBlockNumber", rpc_params![])
             .await?)
     }
 
@@ -112,7 +103,9 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
-    async fn subscribe_archived_segments(&self) -> Result<Receiver<ArchivedSegment>, RpcError> {
+    async fn subscribe_archived_segments(
+        &self,
+    ) -> Result<mpsc::Receiver<ArchivedSegment>, RpcError> {
         let mut subscription = self
             .client
             .subscribe(

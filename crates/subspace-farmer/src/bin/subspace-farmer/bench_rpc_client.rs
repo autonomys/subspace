@@ -1,16 +1,12 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
+use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::BlockNumber;
+use subspace_farmer::{RpcClient, RpcClientError as MockError};
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-
-use subspace_farmer::{RpcClient, RpcClientError as MockError};
 
 /// Client mock for benching purpose
 #[derive(Clone, Debug)]
@@ -70,11 +66,6 @@ impl RpcClient for BenchRpcClient {
         Ok(self.inner.metadata.clone())
     }
 
-    async fn best_block_number(&self) -> Result<BlockNumber, MockError> {
-        // Doesn't matter for tests (at least yet)
-        Ok(BlockNumber::MAX)
-    }
-
     async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
@@ -86,7 +77,7 @@ impl RpcClient for BenchRpcClient {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
-    async fn subscribe_block_signing(&self) -> Result<Receiver<BlockSigningInfo>, MockError> {
+    async fn subscribe_block_signing(&self) -> Result<mpsc::Receiver<BlockSigningInfo>, MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
@@ -97,7 +88,9 @@ impl RpcClient for BenchRpcClient {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
-    async fn subscribe_archived_segments(&self) -> Result<Receiver<ArchivedSegment>, MockError> {
+    async fn subscribe_archived_segments(
+        &self,
+    ) -> Result<mpsc::Receiver<ArchivedSegment>, MockError> {
         let (sender, receiver) = mpsc::channel(10);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {
