@@ -132,14 +132,11 @@ fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(
-            fmt::layer()
-                .with_span_events(FmtSpan::CLOSE)
-                .with_thread_ids(true)
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(LevelFilter::INFO.into())
-                        .from_env_lossy(),
-                ),
+            fmt::layer().with_span_events(FmtSpan::CLOSE).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            ),
         )
         .init();
 
