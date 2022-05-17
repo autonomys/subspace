@@ -83,9 +83,10 @@ struct BenchingArgs {
     /// Only `G` and `T` endings are supported.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     write_pieces_size: u64,
-    /// File for tracing
+    /// File for tracing benchmarks.
     ///
-    /// Only `G` and `T` endings are supported.
+    /// Only a developer testing flag, as it might be needed for testing. Decreases the
+    /// performance.
     #[clap(long, value_hint = ValueHint::FilePath)]
     tracing_file: Option<PathBuf>,
 }
