@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use rand::prelude::*;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, mem};
@@ -28,7 +27,7 @@ use tracing_subscriber::layer::Layer;
 use tracing_subscriber::{filter, prelude::*};
 
 use crate::bench_rpc_client::BenchRpcClient;
-use crate::{FarmingArgs, WriteToDisk};
+use crate::{BenchingArgs, FarmingArgs, WriteToDisk};
 
 pub struct BenchPlotMock {
     piece_count: u64,
@@ -227,14 +226,16 @@ const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
 };
 
 pub(crate) async fn bench<S>(
+    BenchingArgs {
+        custom_path,
+        plot_size,
+        max_plot_size,
+        write_to_disk,
+        write_pieces_size,
+        tracing_file,
+    }: BenchingArgs,
     subscriber: S,
-    custom_path: Option<PathBuf>,
-    plot_size: u64,
-    max_plot_size: Option<u64>,
     best_block_number_check_interval: Duration,
-    write_to_disk: WriteToDisk,
-    write_pieces_size: u64,
-    tracing_file: Option<PathBuf>,
 ) -> anyhow::Result<()>
 where
     S: Subscriber

@@ -56,6 +56,40 @@ struct FarmingArgs {
     max_plot_size: Option<u64>,
 }
 
+/// Arguments for benching farmer
+#[derive(Debug, Parser)]
+struct BenchingArgs {
+    /// Custom path for data storage instead of platform-specific default
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    custom_path: Option<PathBuf>,
+    /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    ///
+    /// Only `G` and `T` endings are supported.
+    #[clap(long, parse(try_from_str = parse_human_readable_size))]
+    plot_size: u64,
+    /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    ///
+    /// Only `G` and `T` endings are supported.
+    ///
+    /// Only a developer testing flag, as it might be needed for testing.
+    #[clap(long, parse(try_from_str = parse_human_readable_size))]
+    max_plot_size: Option<u64>,
+    /// How much things to write on disk (the more we write during benchmark, the more accurate
+    /// it is)
+    #[clap(arg_enum, long, default_value_t)]
+    write_to_disk: WriteToDisk,
+    /// Amount of data to plot for benchmarking.
+    ///
+    /// Only `G` and `T` endings are supported.
+    #[clap(long, parse(try_from_str = parse_human_readable_size))]
+    write_pieces_size: u64,
+    /// File for tracing
+    ///
+    /// Only `G` and `T` endings are supported.
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    tracing_file: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum WriteToDisk {
     Nothing,
@@ -80,37 +114,7 @@ enum Command {
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
     /// Benchmark disk in order to see a throughput of the disk for plotting
-    Bench {
-        /// Custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
-        custom_path: Option<PathBuf>,
-        /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-        ///
-        /// Only `G` and `T` endings are supported.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        plot_size: u64,
-        /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-        ///
-        /// Only `G` and `T` endings are supported.
-        ///
-        /// Only a developer testing flag, as it might be needed for testing.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        max_plot_size: Option<u64>,
-        /// How much things to write on disk (the more we write during benchmark, the more accurate
-        /// it is)
-        #[clap(arg_enum, long, default_value_t)]
-        write_to_disk: WriteToDisk,
-        /// Amount of data to plot for benchmarking.
-        ///
-        /// Only `G` and `T` endings are supported.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        write_pieces_size: u64,
-        /// File for tracing
-        ///
-        /// Only `G` and `T` endings are supported.
-        #[clap(long, value_hint = ValueHint::FilePath)]
-        tracing_file: Option<PathBuf>,
-    },
+    Bench(BenchingArgs),
 }
 
 fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
@@ -157,25 +161,8 @@ async fn main() -> Result<()> {
             subscriber.init();
             commands::farm(args, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?;
         }
-        Command::Bench {
-            custom_path,
-            plot_size,
-            max_plot_size,
-            write_to_disk,
-            write_pieces_size,
-            tracing_file,
-        } => {
-            commands::bench(
-                subscriber,
-                custom_path,
-                plot_size,
-                max_plot_size,
-                BEST_BLOCK_NUMBER_CHECK_INTERVAL,
-                write_to_disk,
-                write_pieces_size,
-                tracing_file,
-            )
-            .await?
+        Command::Bench(args) => {
+            commands::bench(args, subscriber, BEST_BLOCK_NUMBER_CHECK_INTERVAL).await?
         }
     }
     Ok(())
