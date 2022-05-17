@@ -643,17 +643,13 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
 	// max drift is 4, hence the max allowed receipt number is 3 + 4, 8 will be rejected as being
 	// too far.
-	assert!(create_and_send_submit_execution_receipt(8).await.is_err());
-	// TODO: improve the pallet-executor error code to assert the specific error type.
-	// This also requires `sc_transaction_pool::error::Error` supports `==`. Should submit a PR to Substrate.
-	// assert_eq!(
-	// create_and_send_submit_execution_receipt(4).await.unwrap_err(),
-	// sc_transaction_pool::error::Error::Pool(
-	// sc_transaction_pool_api::error::Error::InvalidTransaction(
-	// pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()
-	// )
-	// )
-	// );
+	match create_and_send_submit_execution_receipt(8).await.unwrap_err() {
+		sc_transaction_pool::error::Error::Pool(
+			sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
+		) =>
+			assert_eq!(invalid_tx, pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()),
+		e => panic!("Unexpected error while submitting execution receipt: {e}"),
+	}
 
 	// Wait for a few more blocks to ensure the ready txs can be consumed.
 	alice_executor.wait_for_blocks(5).await;
