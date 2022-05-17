@@ -23,6 +23,7 @@ pub mod chain_spec;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 use futures::StreamExt;
+use jsonrpsee::RpcModule;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -207,11 +208,8 @@ async fn start_node_impl(
 			warp_sync: None,
 		})?;
 
-	let rpc_extensions_builder =
-		Box::new(move |_, _| Ok(jsonrpc_core::IoHandler::<sc_rpc::Metadata>::default()));
-
 	let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-		rpc_extensions_builder,
+		rpc_builder: Box::new(|_, _| Ok(RpcModule::new(()))),
 		client: client.clone(),
 		transaction_pool: transaction_pool.clone(),
 		task_manager: &mut task_manager,
@@ -497,7 +495,7 @@ pub fn node_config(
 		database: DatabaseSource::RocksDb { path: root.join("db"), cache_size: 128 },
 		state_cache_size: 67108864,
 		state_cache_child_ratio: None,
-		state_pruning: PruningMode::ArchiveAll,
+		state_pruning: Some(PruningMode::ArchiveAll),
 		keep_blocks: KeepBlocks::All,
 		chain_spec: spec,
 		wasm_method: WasmExecutionMethod::Interpreted,
@@ -516,6 +514,10 @@ pub fn node_config(
 		rpc_cors: None,
 		rpc_methods: Default::default(),
 		rpc_max_payload: None,
+		rpc_max_request_size: None,
+		rpc_max_response_size: None,
+		rpc_id_provider: None,
+		rpc_max_subs_per_conn: None,
 		ws_max_out_buffer_capacity: None,
 		prometheus_config: None,
 		telemetry_endpoints: None,

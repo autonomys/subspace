@@ -41,5 +41,5 @@ features = [
 
 [dev-dependencies]
 anyhow = "1.0.56"
-clap = { version = "3.1.8", features = ["color", "derive"] }
+clap = { version = "3.1.18", features = ["color", "derive"] }
 env_logger = "0.9.0"
