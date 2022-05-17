@@ -18,7 +18,7 @@ use sp_runtime::{
 };
 use std::collections::HashSet;
 
-#[substrate_test_utils::test]
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn test_executor_full_node_catching_up() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
@@ -63,7 +63,7 @@ async fn test_executor_full_node_catching_up() {
 	);
 }
 
-#[substrate_test_utils::test]
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn execution_proof_creation_and_verification_should_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
@@ -323,7 +323,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
-#[substrate_test_utils::test]
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn invalid_execution_proof_should_not_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
@@ -490,7 +490,7 @@ async fn invalid_execution_proof_should_not_work() {
 	assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
-#[substrate_test_utils::test]
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn set_new_code_should_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
@@ -537,7 +537,7 @@ async fn set_new_code_should_work() {
 	);
 }
 
-#[substrate_test_utils::test]
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn pallet_executor_unsigned_extrinsics_should_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
