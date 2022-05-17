@@ -212,8 +212,7 @@ pub(crate) async fn bench(
         * PIECE_SIZE as u64;
     let overhead = space_allocated - actual_space_pledged;
 
-    println!("Finished benchmarking.");
-    println!("");
+    println!("Finished benchmarking.\n");
     println!("{} allocated for farming", HumanReadable(space_allocated));
     println!(
         "{} actual space pledged (which is {:.2}%)",
