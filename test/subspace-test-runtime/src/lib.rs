@@ -645,23 +645,20 @@ fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
     base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_feeds::Call<Runtime>,
-    maybe_successful_puts: &mut Option<Peekable<I>>,
+    successful_calls: &mut Peekable<I>,
 ) {
-    if let Some(successful_calls) = maybe_successful_puts {
-        let call_hash = successful_calls.peek();
-        match call_hash {
-            Some(hash) => {
-                if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
-                    return;
-                }
-
-                // remove the hash and fetch the object mapping for this call
-                successful_calls.next();
+    let call_hash = successful_calls.peek();
+    match call_hash {
+        Some(hash) => {
+            if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
+                return;
             }
-            None => return,
-        }
-    }
 
+            // remove the hash and fetch the object mapping for this call
+            successful_calls.next();
+        }
+        None => return,
+    }
     call.extract_call_objects()
         .into_iter()
         .for_each(|object_map| {
@@ -690,7 +687,7 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut Option<Peekable<I>>,
+    successful_calls: &mut Peekable<I>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -750,7 +747,7 @@ fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     objects: &mut Vec<BlockObject>,
     call: &Call,
     recursion_depth_left: u16,
-    successful_calls: &mut Option<Peekable<I>>,
+    successful_calls: &mut Peekable<I>,
 ) {
     // Add enum variant to the base offset.
     base_offset += 1;
@@ -775,12 +772,9 @@ fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     }
 }
 
-fn extract_block_object_mapping(
-    block: Block,
-    successful_calls: Option<Vec<Hash>>,
-) -> BlockObjectMapping {
+fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = successful_calls.map(|calls| calls.into_iter().peekable());
+    let mut successful_calls = successful_calls.into_iter().peekable();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
@@ -914,8 +908,8 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, _successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, None)
+        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
+            extract_block_object_mapping(block, successful_calls)
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {
@@ -981,7 +975,7 @@ impl_runtime_apis! {
         }
 
         fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
-            extract_block_object_mapping(block, None)
+            extract_block_object_mapping(block, vec![])
         }
     }
 
