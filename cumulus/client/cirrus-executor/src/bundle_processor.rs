@@ -320,6 +320,8 @@ where
 					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
 				})?;
 
+				// TODO: will be removed once the TODO below is resolved.
+				#[allow(clippy::single_match)]
 				match crate::aux_schema::load_execution_receipt(&*self.client, block_hash)? {
 					Some(receipt) => {
 						self.try_sign_and_send_receipt(primary_hash, receipt)?;
@@ -334,7 +336,7 @@ where
 						//            - FraudProof might need to access the block body, hence all
 						//            the blocks have to be kept in the database. TODO: double check.
 						//        - Start publishing the correct ERs after the above corrected one.
-						println!("TODO: Cache the invalid receipts without fraud proof");
+						// println!("TODO: Cache the invalid receipts without fraud proof");
 					},
 				}
 
