@@ -67,6 +67,9 @@ pub struct BlockSigningInfo {
     /// Header hash of the block to be signed.
     #[serde(with = "HexForm")]
     pub header_hash: [u8; 32],
+    /// Public key of the plot identity that should create signature.
+    #[serde(with = "HexForm")]
+    pub public_key: [u8; 32],
 }
 
 /// Signature in response to block header hash signing request.

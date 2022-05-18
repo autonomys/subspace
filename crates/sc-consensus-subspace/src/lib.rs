@@ -108,6 +108,8 @@ pub struct NewSlotNotification {
 pub struct BlockSigningNotification {
     /// Header hash of the block to be signed.
     pub header_hash: H256,
+    /// Public key of the plot identity that should create signature.
+    pub public_key: FarmerPublicKey,
     /// Sender that can be used to send signature for the header.
     pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }

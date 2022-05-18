@@ -257,6 +257,7 @@ where
             .block_signing_notification_sender
             .notify(|| BlockSigningNotification {
                 header_hash: H256::from_slice(header_hash.as_ref()),
+                public_key: pre_digest.solution.public_key.clone(),
                 signature_sender,
             });
 

@@ -106,6 +106,7 @@ pub fn start_farmer(new_full: &NewFull<Client>) {
             while let Some(BlockSigningNotification {
                 header_hash,
                 mut signature_sender,
+                ..
             }) = block_signing_notification_stream.next().await
             {
                 let header_hash: [u8; 32] = header_hash.into();
