@@ -1,11 +1,11 @@
+use crate::bench_rpc_client::BenchRpcClient;
+use crate::{utils, WriteToDisk};
+use anyhow::anyhow;
+use futures::channel::mpsc;
+use futures::SinkExt;
+use rand::prelude::*;
 use std::path::{Path, PathBuf};
 use std::{fmt, io};
-
-use anyhow::anyhow;
-use rand::prelude::*;
-use tempfile::TempDir;
-use tracing::info;
-
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{
@@ -15,10 +15,9 @@ use subspace_core_primitives::{
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
+use tempfile::TempDir;
 use tokio::time::Instant;
-
-use crate::bench_rpc_client::BenchRpcClient;
-use crate::{utils, WriteToDisk};
+use tracing::info;
 
 pub struct BenchPlotMock {
     piece_count: u64,
@@ -90,7 +89,7 @@ pub(crate) async fn bench(
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
-    let (archived_segments_sender, archived_segments_receiver) = tokio::sync::mpsc::channel(10);
+    let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
     let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
 
     let base_directory = crate::utils::get_path(custom_path);

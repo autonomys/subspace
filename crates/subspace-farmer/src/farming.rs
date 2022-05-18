@@ -7,7 +7,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use futures::{future, future::Either};
+use futures::{future, future::Either, StreamExt};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
@@ -123,7 +123,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
     let mut salts = Salts::default();
 
-    while let Some(slot_info) = slot_info_notifications.recv().await {
+    while let Some(slot_info) = slot_info_notifications.next().await {
         debug!(?slot_info, "New slot");
 
         update_commitments(plot, commitments, &mut salts, &slot_info);
@@ -184,7 +184,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     if let Some(BlockSigningInfo {
                         header_hash,
                         public_key,
-                    }) = block_signing_info_notifications.recv().await
+                    }) = block_signing_info_notifications.next().await
                     {
                         // Multiple plots might have solved, only sign with correct one
                         if identity.public_key().to_bytes() != public_key {

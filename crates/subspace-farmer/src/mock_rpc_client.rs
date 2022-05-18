@@ -1,11 +1,14 @@
 use crate::rpc_client::{Error as MockError, RpcClient};
 use async_trait::async_trait;
+use futures::channel::mpsc;
+use futures::{SinkExt, Stream, StreamExt};
+use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 
 /// `MockRpc` wrapper.
 #[derive(Clone, Debug)]
@@ -71,7 +74,12 @@ impl MockRpcClient {
     }
 
     pub(crate) async fn send_metadata(&self, metadata: FarmerMetadata) {
-        self.inner.metadata_sender.send(metadata).await.unwrap();
+        self.inner
+            .metadata_sender
+            .clone()
+            .send(metadata)
+            .await
+            .unwrap();
     }
 
     pub(crate) async fn send_slot_info(&self, slot_info: SlotInfo) {
@@ -79,7 +87,7 @@ impl MockRpcClient {
             .slot_into_sender
             .lock()
             .await
-            .as_ref()
+            .as_mut()
             .unwrap()
             .send(slot_info)
             .await
@@ -87,7 +95,7 @@ impl MockRpcClient {
     }
 
     pub(crate) async fn receive_solution(&self) -> Option<SolutionResponse> {
-        self.inner.solution_receiver.lock().await.recv().await
+        self.inner.solution_receiver.lock().await.next().await
     }
 
     pub(crate) async fn drop_slot_sender(&self) {
@@ -99,7 +107,7 @@ impl MockRpcClient {
             .archived_segments_sender
             .lock()
             .await
-            .as_ref()
+            .as_mut()
             .unwrap()
             .send(archived_segment)
             .await
@@ -112,7 +120,7 @@ impl MockRpcClient {
             acknowledge_archived_segment_receiver
                 .lock()
                 .await
-                .recv()
+                .next()
                 .await;
         });
     }
@@ -130,19 +138,29 @@ impl MockRpcClient {
 #[async_trait]
 impl RpcClient for MockRpcClient {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, MockError> {
-        Ok(self.inner.metadata_receiver.lock().await.try_recv()?)
+        Ok(self
+            .inner
+            .metadata_receiver
+            .lock()
+            .await
+            .try_next()?
+            .unwrap())
     }
 
-    async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
-        let (sender, receiver) = mpsc::channel(10);
+    async fn subscribe_slot_info(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, MockError> {
+        let (mut sender, receiver) = mpsc::channel(10);
         let slot_receiver = self.inner.slot_info_receiver.clone();
         tokio::spawn(async move {
-            while let Some(slot_info) = slot_receiver.lock().await.recv().await {
-                sender.send(slot_info).await.unwrap();
+            while let Some(slot_info) = slot_receiver.lock().await.next().await {
+                if sender.send(slot_info).await.is_err() {
+                    break;
+                }
             }
         });
 
-        Ok(receiver)
+        Ok(Box::pin(receiver))
     }
 
     async fn submit_solution_response(
@@ -151,22 +169,27 @@ impl RpcClient for MockRpcClient {
     ) -> Result<(), MockError> {
         self.inner
             .solution_sender
+            .clone()
             .send(solution_response)
             .await
             .unwrap();
         Ok(())
     }
 
-    async fn subscribe_block_signing(&self) -> Result<mpsc::Receiver<BlockSigningInfo>, MockError> {
-        let (sender, receiver) = mpsc::channel(10);
+    async fn subscribe_block_signing(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, MockError> {
+        let (mut sender, receiver) = mpsc::channel(10);
         let block_signing_receiver = self.inner.block_signing_info_receiver.clone();
         tokio::spawn(async move {
-            while let Some(block_signing_info) = block_signing_receiver.lock().await.recv().await {
-                sender.send(block_signing_info).await.unwrap();
+            while let Some(block_signing_info) = block_signing_receiver.lock().await.next().await {
+                if sender.send(block_signing_info).await.is_err() {
+                    break;
+                }
             }
         });
 
-        Ok(receiver)
+        Ok(Box::pin(receiver))
     }
 
     async fn submit_block_signature(
@@ -175,6 +198,7 @@ impl RpcClient for MockRpcClient {
     ) -> Result<(), MockError> {
         self.inner
             .block_signature_sender
+            .clone()
             .send(block_signature)
             .await
             .unwrap();
@@ -183,22 +207,25 @@ impl RpcClient for MockRpcClient {
 
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<mpsc::Receiver<ArchivedSegment>, MockError> {
-        let (sender, receiver) = mpsc::channel(10);
+    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, MockError> {
+        let (mut sender, receiver) = mpsc::channel(10);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {
-            while let Some(archived_segment) = archived_segments_receiver.lock().await.recv().await
+            while let Some(archived_segment) = archived_segments_receiver.lock().await.next().await
             {
-                sender.send(archived_segment).await.unwrap();
+                if sender.send(archived_segment).await.is_err() {
+                    break;
+                }
             }
         });
 
-        Ok(receiver)
+        Ok(Box::pin(receiver))
     }
 
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), MockError> {
         self.inner
             .acknowledge_archived_segment_sender
+            .clone()
             .send(segment_index)
             .await
             .unwrap();

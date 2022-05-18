@@ -1,15 +1,16 @@
 use crate::rpc_client::{Error as RpcError, RpcClient};
 use async_trait::async_trait;
+use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
 use jsonrpsee::core::Error as JsonError;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
+use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
-use tokio::sync::mpsc;
 
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
@@ -34,8 +35,10 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
-    async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, RpcError> {
-        let mut subscription = self
+    async fn subscribe_slot_info(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, RpcError> {
+        let subscription = self
             .client
             .subscribe(
                 "subspace_subscribeSlotInfo",
@@ -44,15 +47,9 @@ impl RpcClient for NodeRpcClient {
             )
             .await?;
 
-        let (sender, receiver) = mpsc::channel(1);
-
-        tokio::spawn(async move {
-            while let Some(Ok(notification)) = subscription.next().await {
-                let _ = sender.send(notification).await;
-            }
-        });
-
-        Ok(receiver)
+        Ok(Box::pin(subscription.filter_map(
+            |slot_info_result| async move { slot_info_result.ok() },
+        )))
     }
 
     async fn submit_solution_response(
@@ -68,8 +65,10 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
-    async fn subscribe_block_signing(&self) -> Result<mpsc::Receiver<BlockSigningInfo>, RpcError> {
-        let mut subscription = self
+    async fn subscribe_block_signing(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, RpcError> {
+        let subscription = self
             .client
             .subscribe(
                 "subspace_subscribeBlockSigning",
@@ -78,15 +77,9 @@ impl RpcClient for NodeRpcClient {
             )
             .await?;
 
-        let (sender, receiver) = mpsc::channel(1);
-
-        tokio::spawn(async move {
-            while let Some(Ok(notification)) = subscription.next().await {
-                let _ = sender.send(notification).await;
-            }
-        });
-
-        Ok(receiver)
+        Ok(Box::pin(subscription.filter_map(
+            |block_signing_info_result| async move { block_signing_info_result.ok() },
+        )))
     }
 
     /// Submit a block signature
@@ -105,8 +98,8 @@ impl RpcClient for NodeRpcClient {
 
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<mpsc::Receiver<ArchivedSegment>, RpcError> {
-        let mut subscription = self
+    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, RpcError> {
+        let subscription = self
             .client
             .subscribe(
                 "subspace_subscribeArchivedSegment",
@@ -115,15 +108,9 @@ impl RpcClient for NodeRpcClient {
             )
             .await?;
 
-        let (sender, receiver) = mpsc::channel(1);
-
-        tokio::spawn(async move {
-            while let Some(Ok(notification)) = subscription.next().await {
-                let _ = sender.send(notification).await;
-            }
-        });
-
-        Ok(receiver)
+        Ok(Box::pin(subscription.filter_map(
+            |archived_segment_result| async move { archived_segment_result.ok() },
+        )))
     }
 
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), RpcError> {

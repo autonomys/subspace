@@ -1,11 +1,14 @@
 use async_trait::async_trait;
+use futures::channel::mpsc;
+use futures::{SinkExt, Stream, StreamExt};
+use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_farmer::{RpcClient, RpcClientError as MockError};
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 /// Client mock for benching purpose
@@ -28,17 +31,18 @@ impl BenchRpcClient {
         metadata: FarmerMetadata,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
     ) -> Self {
-        let (inner_archived_segments_sender, inner_archived_segments_receiver) = mpsc::channel(10);
+        let (mut inner_archived_segments_sender, inner_archived_segments_receiver) =
+            mpsc::channel(10);
         let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
             mpsc::channel(1);
 
         let segment_producer_handle = tokio::spawn({
             async move {
-                while let Some(segment) = archived_segments_receiver.recv().await {
+                while let Some(segment) = archived_segments_receiver.next().await {
                     if inner_archived_segments_sender.send(segment).await.is_err() {
                         break;
                     }
-                    if acknowledge_archived_segment_receiver.recv().await.is_none() {
+                    if acknowledge_archived_segment_receiver.next().await.is_none() {
                         break;
                     }
                 }
@@ -66,7 +70,9 @@ impl RpcClient for BenchRpcClient {
         Ok(self.inner.metadata.clone())
     }
 
-    async fn subscribe_slot_info(&self) -> Result<mpsc::Receiver<SlotInfo>, MockError> {
+    async fn subscribe_slot_info(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
@@ -77,7 +83,9 @@ impl RpcClient for BenchRpcClient {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
-    async fn subscribe_block_signing(&self) -> Result<mpsc::Receiver<BlockSigningInfo>, MockError> {
+    async fn subscribe_block_signing(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
@@ -90,11 +98,11 @@ impl RpcClient for BenchRpcClient {
 
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<mpsc::Receiver<ArchivedSegment>, MockError> {
-        let (sender, receiver) = mpsc::channel(10);
+    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, MockError> {
+        let (mut sender, receiver) = mpsc::channel(10);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {
-            while let Some(archived_segment) = archived_segments_receiver.lock().await.recv().await
+            while let Some(archived_segment) = archived_segments_receiver.lock().await.next().await
             {
                 if sender.send(archived_segment).await.is_err() {
                     break;
@@ -102,12 +110,13 @@ impl RpcClient for BenchRpcClient {
             }
         });
 
-        Ok(receiver)
+        Ok(Box::pin(receiver))
     }
 
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), MockError> {
         self.inner
             .acknowledge_archived_segment_sender
+            .clone()
             .send(segment_index)
             .await?;
         Ok(())
