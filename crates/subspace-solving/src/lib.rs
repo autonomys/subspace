@@ -25,8 +25,9 @@ mod codec;
 pub use codec::{BatchEncodeError, SubspaceCodec};
 pub use construct_uint::PieceDistance;
 use schnorrkel::SignatureResult;
-use sha2::{Digest, Sha256};
-use subspace_core_primitives::{crypto, LocalChallenge, Piece, Randomness, Salt, Tag, TAG_SIZE};
+use subspace_core_primitives::{
+    crypto, LocalChallenge, Piece, Randomness, Salt, Sha256Hash, Tag, TAG_SIZE,
+};
 
 /// Signing context used for creating solution signatures by farmer
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
@@ -92,18 +93,16 @@ pub fn create_tag(piece: impl AsRef<[u8]>, salt: Salt) -> Tag {
 }
 
 /// Derive global slot challenge from global randomness.
-pub fn derive_global_challenge<Slot: Into<u64>>(global_randomness: &Randomness, slot: Slot) -> Tag {
-    let mut hasher = Sha256::new();
-    hasher.update(global_randomness);
-    hasher.update(&Into::<u64>::into(slot).to_le_bytes());
-    hasher.finalize()[..TAG_SIZE]
-        .try_into()
-        .expect("Slice is always of correct size; qed")
+pub fn derive_global_challenge<Slot: Into<u64>>(
+    global_randomness: &Randomness,
+    slot: Slot,
+) -> Sha256Hash {
+    crypto::sha256_hash_pair(global_randomness, Into::<u64>::into(slot).to_le_bytes())
 }
 
 /// Verify local challenge for farmer's public key that was derived from the global challenge.
 pub fn is_local_challenge_valid<P: AsRef<[u8]>>(
-    global_challenge: Tag,
+    global_challenge: Sha256Hash,
     local_challenge: &LocalChallenge,
     public_key: P,
 ) -> SignatureResult<()> {

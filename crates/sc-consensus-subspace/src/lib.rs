@@ -76,7 +76,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Solution, Tag};
+use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::SOLUTION_SIGNING_CONTEXT;
 
 /// Information about new slot that just arrived
@@ -85,7 +85,7 @@ pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
     /// Global slot challenge
-    pub global_challenge: Tag,
+    pub global_challenge: Sha256Hash,
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon

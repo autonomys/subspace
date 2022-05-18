@@ -95,7 +95,7 @@ use sp_runtime::{
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
-use subspace_core_primitives::{BlockNumber, Randomness, Tag};
+use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -201,7 +201,7 @@ where
 		SE: SpawnEssentialNamed,
 		SC: SelectChain<PBlock>,
 		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-		NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
+		NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
 	{
 		let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 

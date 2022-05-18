@@ -21,7 +21,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_executor::ExecutorApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_core_primitives::Tag;
+use subspace_core_primitives::Sha256Hash;
 
 /// Native executor instance.
 pub struct CirrusRuntimeExecutor;
@@ -159,7 +159,7 @@ where
 	PClient::Api: ExecutorApi<PBlock, Hash>,
 	SC: SelectChain<PBlock>,
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-	NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
+	NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
 {
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())

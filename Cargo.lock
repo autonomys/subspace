@@ -8405,7 +8405,6 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "schnorrkel",
- "sha2 0.10.2",
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
