@@ -322,8 +322,8 @@ construct_runtime!(
 		ExecutivePallet: cirrus_pallet_executive = 1,
 
 		// Monetary stuff.
-		Balances: pallet_balances = 10,
-		TransactionPayment: pallet_transaction_payment = 11,
+		Balances: pallet_balances = 2,
+		TransactionPayment: pallet_transaction_payment = 3,
 	}
 );
 

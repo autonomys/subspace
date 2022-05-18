@@ -655,19 +655,19 @@ construct_runtime!(
 
         Subspace: pallet_subspace = 2,
         OffencesSubspace: pallet_offences_subspace = 3,
-        Rewards: pallet_rewards = 9,
+        Rewards: pallet_rewards = 4,
 
-        Balances: pallet_balances = 4,
-        TransactionFees: pallet_transaction_fees = 12,
-        TransactionPayment: pallet_transaction_payment = 5,
+        Balances: pallet_balances = 5,
+        TransactionFees: pallet_transaction_fees = 6,
+        TransactionPayment: pallet_transaction_payment = 7,
         Utility: pallet_utility = 8,
 
-        Feeds: pallet_feeds = 6,
-        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
-        ObjectStore: pallet_object_store = 10,
-        Executor: pallet_executor = 11,
+        Feeds: pallet_feeds = 9,
+        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
+        ObjectStore: pallet_object_store = 11,
+        Executor: pallet_executor = 12,
 
-        Vesting: orml_vesting = 7,
+        Vesting: orml_vesting = 13,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
