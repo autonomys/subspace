@@ -1,5 +1,6 @@
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
+use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{FlatPieces, Sha256Hash};
@@ -129,7 +130,7 @@ impl Archiving {
                         info!("Plotting stopped!");
                         break;
                     }
-                    result = archived_segments.recv() => {
+                    result = archived_segments.next() => {
                         match result {
                             Some(archived_segment) => {
                                 let segment_index = archived_segment.root_block.segment_index();
