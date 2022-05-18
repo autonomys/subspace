@@ -16,15 +16,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification for Subspace headers.
-use super::Error;
-use crate::find_pre_digest;
-use log::{debug, trace};
-use sc_consensus_slots::CheckedHeader;
+use crate::digests::{CompatibleDigestItem, PreDigest};
+use crate::{find_pre_digest, FarmerPublicKey};
 use schnorrkel::context::SigningContext;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::ByteArray;
 use sp_runtime::{DigestItem, RuntimeAppPublic};
 use subspace_archiving::archiver;
@@ -33,17 +29,85 @@ use subspace_solving::{
     derive_global_challenge, is_local_challenge_valid, PieceDistance, SubspaceCodec,
 };
 
+/// Errors encountered by the Subspace authorship task.
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum VerificationError<Header: HeaderT> {
+    /// No Subspace pre-runtime digest found
+    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
+    NoPreRuntimeDigest,
+    /// Header has a bad seal
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
+    HeaderBadSeal(Header::Hash),
+    /// Header is unsealed
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
+    HeaderUnsealed(Header::Hash),
+    /// Bad signature
+    #[cfg_attr(feature = "thiserror", error("Bad signature on {0:?}"))]
+    BadSignature(Header::Hash),
+    /// Bad solution signature
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Bad solution signature on slot {0:?}: {1:?}")
+    )]
+    BadSolutionSignature(Slot, schnorrkel::SignatureError),
+    /// Bad local challenge
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Local challenge is invalid for slot {0}: {1}")
+    )]
+    BadLocalChallenge(Slot, schnorrkel::SignatureError),
+    /// Solution is outside of solution range
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Solution is outside of solution range for slot {0}")
+    )]
+    OutsideOfSolutionRange(Slot),
+    /// Solution is outside of max plot size
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Solution is outside of max plot size {0}")
+    )]
+    OutsideOfMaxPlot(Slot),
+    /// Invalid encoding of a piece
+    #[cfg_attr(feature = "thiserror", error("Invalid encoding for slot {0}"))]
+    InvalidEncoding(Slot),
+    /// Invalid tag for salt
+    #[cfg_attr(feature = "thiserror", error("Invalid tag for salt for slot {0}"))]
+    InvalidTag(Slot),
+}
+
+/// A header which has been checked
+pub enum CheckedHeader<H, S> {
+    /// A header which has slot in the future. this is the full header (not stripped)
+    /// and the slot in which it should be processed.
+    Deferred(H, Slot),
+    /// A header which is fully checked, including signature. This is the pre-header
+    /// accompanied by the seal components.
+    ///
+    /// Includes the digest item that encoded the seal.
+    Checked(H, S),
+}
+
 /// Subspace verification parameters
-pub(super) struct VerificationParams<'a, Header>
+pub struct VerificationParams<'a, Header>
 where
     Header: HeaderT + 'a,
 {
     /// The header being verified.
-    pub(super) header: Header,
+    pub header: Header,
     /// The slot number of the current time.
-    pub(super) slot_now: Slot,
+    pub slot_now: Slot,
     /// Parameters for solution verification
-    pub(super) verify_solution_params: VerifySolutionParams<'a>,
+    pub verify_solution_params: VerifySolutionParams<'a>,
+}
+
+/// Information from verified header
+pub struct VerifiedHeaderInfo {
+    /// Pre-digest
+    pub pre_digest: PreDigest<FarmerPublicKey>,
+    /// Seal (signature)
+    pub seal: DigestItem,
 }
 
 /// Check a header has been signed by the right key. If the slot is too far in
@@ -54,9 +118,9 @@ where
 /// required for security and must not be changed.
 ///
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-pub(super) fn check_header<Header>(
+pub fn check_header<Header>(
     params: VerificationParams<Header>,
-) -> Result<CheckedHeader<Header, VerifiedHeaderInfo>, Error<Header>>
+) -> Result<CheckedHeader<Header, VerifiedHeaderInfo>, VerificationError<Header>>
 where
     Header: HeaderT,
 {
@@ -66,18 +130,18 @@ where
         verify_solution_params,
     } = params;
 
-    let pre_digest = find_pre_digest::<Header>(&header)?;
+    let pre_digest =
+        find_pre_digest::<Header>(&header).ok_or(VerificationError::NoPreRuntimeDigest)?;
     let slot = pre_digest.slot;
 
-    trace!(target: "subspace", "Checking header");
     let seal = header
         .digest_mut()
         .pop()
-        .ok_or_else(|| Error::HeaderUnsealed(header.hash()))?;
+        .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
 
     let sig = seal
         .as_subspace_seal()
-        .ok_or_else(|| Error::HeaderBadSeal(header.hash()))?;
+        .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
 
     // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
@@ -87,16 +151,9 @@ where
         return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
     }
 
-    debug!(
-        target: "subspace",
-        "Verifying primary block #{} at slot: {}",
-        header.number(),
-        pre_digest.slot,
-    );
-
     // Verify that block is signed properly
     if !pre_digest.solution.public_key.verify(&pre_hash, &sig) {
-        return Err(Error::BadSignature(pre_hash));
+        return Err(VerificationError::BadSignature(pre_hash));
     }
 
     // Verify that solution is valid
@@ -106,11 +163,6 @@ where
         header,
         VerifiedHeaderInfo { pre_digest, seal },
     ))
-}
-
-pub(super) struct VerifiedHeaderInfo {
-    pub(super) pre_digest: PreDigest<FarmerPublicKey>,
-    pub(super) seal: DigestItem,
 }
 
 /// Check the solution signature validity.
@@ -128,12 +180,12 @@ fn check_piece_tag<Header>(
     slot: Slot,
     salt: Salt,
     solution: &Solution<FarmerPublicKey>,
-) -> Result<(), Error<Header>>
+) -> Result<(), VerificationError<Header>>
 where
     Header: HeaderT,
 {
     if !subspace_solving::is_tag_valid(&solution.encoding, salt, solution.tag) {
-        return Err(Error::InvalidTag(slot));
+        return Err(VerificationError::InvalidTag(slot));
     }
 
     Ok(())
@@ -142,13 +194,13 @@ where
 /// Check piece validity.
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
-pub(crate) fn check_piece<Header>(
+pub fn check_piece<Header>(
     slot: Slot,
     records_root: Sha256Hash,
     position: u64,
     record_size: u32,
     solution: &Solution<FarmerPublicKey>,
-) -> Result<(), Error<Header>>
+) -> Result<(), VerificationError<Header>>
 where
     Header: HeaderT,
 {
@@ -158,7 +210,7 @@ where
     let subspace_codec = SubspaceCodec::new(&solution.public_key);
     subspace_codec
         .decode(&mut piece, solution.piece_index)
-        .map_err(|_| Error::InvalidEncoding(slot))?;
+        .map_err(|_| VerificationError::InvalidEncoding(slot))?;
 
     if !archiver::is_piece_valid(
         &piece,
@@ -166,7 +218,7 @@ where
         position as usize,
         record_size as usize,
     ) {
-        return Err(Error::InvalidEncoding(slot));
+        return Err(VerificationError::InvalidEncoding(slot));
     }
 
     Ok(())
@@ -201,28 +253,42 @@ fn is_within_max_plot(
     PieceDistance::distance(&piece_index.into(), key) <= max_distance_one_direction
 }
 
-pub(crate) struct PieceCheckParams {
-    pub(crate) records_root: Sha256Hash,
-    pub(crate) position: u64,
-    pub(crate) record_size: u32,
-    pub(super) max_plot_size: u64,
-    pub(super) total_pieces: u64,
+/// Parameters for checking piece validity
+pub struct PieceCheckParams {
+    /// Records root of segment to which piece belongs
+    pub records_root: Sha256Hash,
+    /// Position of the piece in the segment
+    pub position: u64,
+    /// Record size, system parameter
+    pub record_size: u32,
+    /// Max plot size in pieces, system parameter
+    pub max_plot_size: u64,
+    /// Total number of pieces in the whole archival history
+    pub total_pieces: u64,
 }
 
-/// If `piece_check_params` is `None`, piece validity check will be skipped.
-pub(crate) struct VerifySolutionParams<'a> {
-    pub(crate) global_randomness: &'a Randomness,
-    pub(crate) solution_range: u64,
-    pub(crate) salt: Salt,
-    pub(crate) piece_check_params: Option<PieceCheckParams>,
-    pub(crate) signing_context: &'a SigningContext,
+/// Parameters for solution verification
+pub struct VerifySolutionParams<'a> {
+    /// Global randomness
+    pub global_randomness: &'a Randomness,
+    /// Solution range
+    pub solution_range: u64,
+    /// Salt
+    pub salt: Salt,
+    /// Parameters for checking piece validity.
+    ///
+    /// If `None`, piece validity check will be skipped.
+    pub piece_check_params: Option<PieceCheckParams>,
+    /// Signing context for solution signature
+    pub signing_context: &'a SigningContext,
 }
 
-pub(crate) fn verify_solution<Header>(
+/// Solution verification
+pub fn verify_solution<Header>(
     solution: &Solution<FarmerPublicKey>,
     slot: Slot,
     params: VerifySolutionParams,
-) -> Result<(), Error<Header>>
+) -> Result<(), VerificationError<Header>>
 where
     Header: HeaderT,
 {
@@ -239,14 +305,15 @@ where
         &solution.local_challenge,
         &solution.public_key,
     ) {
-        return Err(Error::BadLocalChallenge(slot, error));
+        return Err(VerificationError::BadLocalChallenge(slot, error));
     }
 
     if !is_within_solution_range(solution, solution_range) {
-        return Err(Error::OutsideOfSolutionRange(slot));
+        return Err(VerificationError::OutsideOfSolutionRange(slot));
     }
 
-    check_signature(signing_context, solution).map_err(|e| Error::BadSolutionSignature(slot, e))?;
+    check_signature(signing_context, solution)
+        .map_err(|e| VerificationError::BadSolutionSignature(slot, e))?;
 
     check_piece_tag(slot, salt, solution)?;
 
@@ -264,7 +331,7 @@ where
             total_pieces,
             max_plot_size,
         ) {
-            return Err(Error::OutsideOfMaxPlot(slot));
+            return Err(VerificationError::OutsideOfMaxPlot(slot));
         }
 
         check_piece(slot, records_root, position, record_size, solution)?;

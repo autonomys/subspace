@@ -29,7 +29,7 @@ default = ["std"]
 std = [
 	"parity-scale-codec/std",
 	"parity-util-mem/std",
-	"serde/std",
+	"serde",
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",

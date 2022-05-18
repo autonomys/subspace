@@ -974,7 +974,6 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "scale-info",
- "serde",
  "smallvec",
  "sp-api",
  "sp-block-builder",
@@ -1009,7 +1008,6 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "scale-info",
- "serde",
  "smallvec",
  "sp-api",
  "sp-block-builder",
@@ -7260,9 +7258,9 @@ checksum = "eb703cfe953bccee95685111adeedb76fabe4e97549a58d16f03ea7b9367bb32"
 
 [[package]]
 name = "sloth256-189"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0965b23de228cef734baed2811ff783570d2cd5468b64268477e014b263ac72c"
+checksum = "e7b133a57a9d83343174c83a77be5dfbe5c7c4f2f49291967aee4cd53901e0bc"
 dependencies = [
  "cc",
  "glob",
@@ -7505,7 +7503,7 @@ dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
- "serde",
+ "schnorrkel",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus",
@@ -7515,7 +7513,10 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-timestamp",
+ "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-solving",
+ "thiserror",
 ]
 
 [[package]]
