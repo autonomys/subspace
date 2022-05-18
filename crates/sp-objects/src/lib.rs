@@ -28,6 +28,6 @@ sp_api::decl_runtime_apis! {
 
 
         /// Extract block object mapping for a given block
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping;
+        fn extract_block_object_mapping(block: Block, validated_object_calls: Vec<Hash>) -> BlockObjectMapping;
     }
 }

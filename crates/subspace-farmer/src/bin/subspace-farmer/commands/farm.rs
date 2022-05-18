@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::mem;
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
@@ -29,7 +28,6 @@ pub(crate) async fn farm(
         plot_size,
         max_plot_size,
     }: FarmingArgs,
-    best_block_number_check_interval: Duration,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
 
@@ -72,7 +70,6 @@ pub(crate) async fn farm(
             client,
             object_mappings: object_mappings.clone(),
             reward_address,
-            best_block_number_check_interval,
         },
         plot_size,
         max_plot_size,

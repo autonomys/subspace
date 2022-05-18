@@ -4,7 +4,8 @@ use crate::{
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use rayon::prelude::*;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::path::PathBuf;
+use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_solving::SubspaceCodec;
 use tracing::info;
@@ -28,7 +29,7 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
 
     let plot_sizes =
         std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
-    if total_plot_size % max_plot_size > 0 {
+    if total_plot_size % max_plot_size > max_plot_size / 2 {
         plot_sizes
             .chain(std::iter::once(total_plot_size % max_plot_size))
             .collect::<Vec<_>>()
@@ -43,7 +44,6 @@ pub struct Options<C: RpcClient> {
     pub client: C,
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
-    pub best_block_number_check_interval: Duration,
 }
 
 impl MultiFarming {
@@ -54,7 +54,6 @@ impl MultiFarming {
             client,
             object_mappings,
             reward_address,
-            best_block_number_check_interval,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -125,34 +124,28 @@ impl MultiFarming {
             .map_err(|error| anyhow!(error))?;
 
         // Start archiving task
-        let archiving = Archiving::start(
-            farmer_metadata,
-            object_mappings,
-            client.clone(),
-            best_block_number_check_interval,
-            {
-                let mut on_pieces_to_plots = plots
-                    .iter()
-                    .zip(subspace_codecs)
-                    .zip(&commitments)
-                    .map(|((plot, subspace_codec), commitments)| {
-                        plotting::plot_pieces(subspace_codec, plot, commitments.clone())
-                    })
-                    .collect::<Vec<_>>();
+        let archiving = Archiving::start(farmer_metadata, object_mappings, client.clone(), {
+            let mut on_pieces_to_plots = plots
+                .iter()
+                .zip(subspace_codecs)
+                .zip(&commitments)
+                .map(|((plot, subspace_codec), commitments)| {
+                    plotting::plot_pieces(subspace_codec, plot, commitments.clone())
+                })
+                .collect::<Vec<_>>();
 
-                move |pieces_to_plot| {
-                    on_pieces_to_plots
-                        .par_iter_mut()
-                        .map(|on_pieces_to_plot| {
-                            // TODO: It might be desirable to not clone it and instead pick just
-                            //  unnecessary pieces and copy pieces once since different plots will
-                            //  care about different pieces
-                            on_pieces_to_plot(pieces_to_plot.clone())
-                        })
-                        .reduce(|| true, |result, should_continue| result && should_continue)
-                }
-            },
-        )
+            move |pieces_to_plot| {
+                on_pieces_to_plots
+                    .par_iter_mut()
+                    .map(|on_pieces_to_plot| {
+                        // TODO: It might be desirable to not clone it and instead pick just
+                        //  unnecessary pieces and copy pieces once since different plots will
+                        //  care about different pieces
+                        on_pieces_to_plot(pieces_to_plot.clone())
+                    })
+                    .reduce(|| true, |result, should_continue| result && should_continue)
+            }
+        })
         .await?;
 
         Ok(Self {

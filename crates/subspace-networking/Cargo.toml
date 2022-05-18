@@ -20,8 +20,8 @@ hex = "0.4.3"
 nohash-hasher = "0.2.0"
 parking_lot = "0.12.0"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-thiserror = "1.0.30"
-tokio = { version = "1.17.0", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
+thiserror = "1.0.31"
+tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
 tracing = "0.1"
 
 [dependencies.libp2p]
@@ -40,6 +40,6 @@ features = [
 ]
 
 [dev-dependencies]
-anyhow = "1.0.56"
-clap = { version = "3.1.8", features = ["color", "derive"] }
+anyhow = "1.0.57"
+clap = { version = "3.1.18", features = ["color", "derive"] }
 env_logger = "0.9.0"

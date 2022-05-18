@@ -93,7 +93,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   `spec_version`, and `authoring_version` are the same between Wasm and native.
     // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
     //   the compatible custom types.
-    spec_version: 102,
+    spec_version: 103,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -729,10 +729,12 @@ fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
                 return;
             }
 
+            // remove the hash and fetch the object mapping for this call
             successful_calls.next();
         }
         None => return,
     }
+
     call.extract_call_objects()
         .into_iter()
         .for_each(|object_map| {
@@ -773,7 +775,9 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     base_offset += 1;
 
     match call {
-        pallet_utility::Call::batch { calls } | pallet_utility::Call::batch_all { calls } => {
+        pallet_utility::Call::batch { calls }
+        | pallet_utility::Call::batch_all { calls }
+        | pallet_utility::Call::force_batch { calls } => {
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
@@ -1046,6 +1050,10 @@ impl_runtime_apis! {
 
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
+        }
+
+        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
+            BlockObjectMapping::default()
         }
     }
 

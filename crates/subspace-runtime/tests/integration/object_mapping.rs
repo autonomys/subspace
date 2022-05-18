@@ -94,6 +94,7 @@ fn object_mapping() {
     assert_eq!(successful_calls.len(), 8);
     // remove third call signifying that it failed
     successful_calls.remove(2);
+
     let encoded_block = block.encode();
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed

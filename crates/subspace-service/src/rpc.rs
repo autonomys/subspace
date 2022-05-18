@@ -21,11 +21,14 @@
 
 #![warn(missing_docs)]
 
+use jsonrpsee::RpcModule;
+use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPaymentRpc};
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
 };
+use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -35,6 +38,7 @@ use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
+use substrate_frame_rpc_system::{SystemApiServer, SystemRpc};
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
@@ -57,7 +61,9 @@ pub struct FullDeps<C, P> {
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P>(deps: FullDeps<C, P>) -> jsonrpc_core::IoHandler<sc_rpc::Metadata>
+pub fn create_full<C, P>(
+    deps: FullDeps<C, P>,
+) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -72,10 +78,7 @@ where
         + sp_consensus_subspace::SubspaceApi<Block>,
     P: TransactionPool + 'static,
 {
-    use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};
-    use substrate_frame_rpc_system::{FullSystem, SystemApi};
-
-    let mut io = jsonrpc_core::IoHandler::default();
+    let mut module = RpcModule::new(());
     let FullDeps {
         client,
         pool,
@@ -86,25 +89,19 @@ where
         archived_segment_notification_stream,
     } = deps;
 
-    io.extend_with(SystemApi::to_delegate(FullSystem::new(
-        client.clone(),
-        pool,
-        deny_unsafe,
-    )));
+    module.merge(SystemRpc::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(TransactionPaymentRpc::new(client.clone()).into_rpc())?;
 
-    io.extend_with(TransactionPaymentApi::to_delegate(TransactionPayment::new(
-        client.clone(),
-    )));
-
-    io.extend_with(sc_consensus_subspace_rpc::SubspaceRpcApi::to_delegate(
-        sc_consensus_subspace_rpc::SubspaceRpcHandler::new(
+    module.merge(
+        SubspaceRpc::new(
             client,
             subscription_executor,
             new_slot_notification_stream,
             block_signing_notification_stream,
             archived_segment_notification_stream,
-        ),
-    ));
+        )
+        .into_rpc(),
+    )?;
 
-    io
+    Ok(module)
 }

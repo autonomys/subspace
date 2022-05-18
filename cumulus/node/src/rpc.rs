@@ -5,19 +5,17 @@
 
 #![warn(missing_docs)]
 
-use std::sync::Arc;
-
 use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce};
-
+use jsonrpsee::RpcModule;
+use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPaymentRpc};
 use sc_client_api::AuxStore;
-pub use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
+use sc_rpc::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
-
-/// A type representing all RPC extensions.
-pub type RpcExtension = jsonrpc_core::IoHandler<sc_rpc::Metadata>;
+use std::sync::Arc;
+use substrate_frame_rpc_system::{SystemApiServer, SystemRpc};
 
 /// Full client dependencies
 pub struct FullDeps<C, P> {
@@ -30,7 +28,9 @@ pub struct FullDeps<C, P> {
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<C, P>(deps: FullDeps<C, P>) -> RpcExtension
+pub fn create_full<C, P>(
+	deps: FullDeps<C, P>,
+) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
 	C: ProvideRuntimeApi<Block>
 		+ HeaderBackend<Block>
@@ -44,14 +44,11 @@ where
 	C::Api: BlockBuilder<Block>,
 	P: TransactionPool + Sync + Send + 'static,
 {
-	use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};
-	use substrate_frame_rpc_system::{FullSystem, SystemApi};
-
-	let mut io = jsonrpc_core::IoHandler::default();
+	let mut module = RpcModule::new(());
 	let FullDeps { client, pool, deny_unsafe } = deps;
 
-	io.extend_with(SystemApi::to_delegate(FullSystem::new(client.clone(), pool, deny_unsafe)));
-	io.extend_with(TransactionPaymentApi::to_delegate(TransactionPayment::new(client)));
+	module.merge(SystemRpc::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+	module.merge(TransactionPaymentRpc::new(client).into_rpc())?;
 
-	io
+	Ok(module)
 }

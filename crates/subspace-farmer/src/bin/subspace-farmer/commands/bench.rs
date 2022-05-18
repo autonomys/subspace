@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use std::{fmt, io};
 
 use anyhow::anyhow;
@@ -86,7 +85,6 @@ pub(crate) async fn bench(
     custom_path: Option<PathBuf>,
     plot_size: u64,
     max_plot_size: Option<u64>,
-    best_block_number_check_interval: Duration,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
 ) -> anyhow::Result<()> {
@@ -141,7 +139,6 @@ pub(crate) async fn bench(
             client: client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
-            best_block_number_check_interval,
         },
         plot_size,
         max_plot_size,
