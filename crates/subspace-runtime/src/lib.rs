@@ -1046,10 +1046,6 @@ impl_runtime_apis! {
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
         }
-
-        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
-            BlockObjectMapping::default()
-        }
     }
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
