@@ -47,7 +47,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{BlockNumber, Solution};
+use subspace_core_primitives::Solution;
 use subspace_rpc_primitives::{
     BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
 };
@@ -60,10 +60,6 @@ pub trait SubspaceRpcApi {
     /// Ger metadata necessary for farmer operation
     #[method(name = "subspace_getFarmerMetadata")]
     fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata>;
-
-    /// Get best block number
-    #[method(name = "subspace_getBestBlockNumber")]
-    fn get_best_block_number(&self) -> RpcResult<BlockNumber>;
 
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
@@ -207,15 +203,6 @@ where
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })
-    }
-
-    fn get_best_block_number(&self) -> RpcResult<BlockNumber> {
-        let best_number = TryInto::<BlockNumber>::try_into(self.client.info().best_number)
-            .unwrap_or_else(|_| {
-                panic!("Block number can't be converted into BlockNumber");
-            });
-
-        Ok(best_number)
     }
 
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()> {
