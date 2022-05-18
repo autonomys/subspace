@@ -16,6 +16,8 @@ jobs:
     # Only run for releases
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-20.04
+    # Aarch64 cross-compilation is very slow :(
+    timeout-minutes: 720
     permissions:
       contents: write
       packages: write
