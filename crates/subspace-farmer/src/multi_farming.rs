@@ -29,7 +29,7 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
 
     let plot_sizes =
         std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
-    if total_plot_size % max_plot_size > max_plot_size / 2 {
+    if total_plot_size / max_plot_size == 0 || total_plot_size % max_plot_size > max_plot_size / 2 {
         plot_sizes
             .chain(std::iter::once(total_plot_size % max_plot_size))
             .collect::<Vec<_>>()
