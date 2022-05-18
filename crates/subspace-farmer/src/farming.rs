@@ -181,9 +181,16 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 let client = client.clone();
 
                 async move {
-                    if let Some(BlockSigningInfo { header_hash }) =
-                        block_signing_info_notifications.recv().await
+                    if let Some(BlockSigningInfo {
+                        header_hash,
+                        public_key,
+                    }) = block_signing_info_notifications.recv().await
                     {
+                        // Multiple plots might have solved, only sign with correct one
+                        if identity.public_key().to_bytes() != public_key {
+                            return;
+                        }
+
                         let signature = identity.sign_block_header_hash(&header_hash);
 
                         match client

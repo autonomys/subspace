@@ -333,6 +333,7 @@ where
             move |block_signing_notification| {
                 let BlockSigningNotification {
                     header_hash,
+                    public_key,
                     mut signature_sender,
                 } = block_signing_notification;
 
@@ -387,6 +388,10 @@ where
                 // This will be sent to the farmer
                 BlockSigningInfo {
                     header_hash: header_hash.into(),
+                    public_key: public_key
+                        .as_slice()
+                        .try_into()
+                        .expect("Public key is always 32 bytes; qed"),
                 }
             },
         );
