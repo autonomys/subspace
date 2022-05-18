@@ -15,7 +15,7 @@ include = [
 [dependencies]
 merkle_light = { version = "0.4.0", default-features = false }
 parity-scale-codec = { version = "3.1.2", default-features = false, features = ["derive"] }
-reed-solomon-erasure = { version = "5.0.2", default-features = true }
+reed-solomon-erasure = { version = "5.0.2", default-features = false }
 serde = { version = "1.0.137", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 thiserror = { version = "1.0.31", optional = true }
@@ -41,6 +41,7 @@ std = [
     "merkle_light/std",
     "parity-scale-codec/std",
     "reed-solomon-erasure/simd-accel",
+    "reed-solomon-erasure/std",
     "serde",
     "sha2/std",
     "subspace-core-primitives/std",
