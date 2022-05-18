@@ -1,7 +1,7 @@
 # This action enables building container images and executables for farmer and node, can be triggered manually or by
 # release creation.
 #
-# Container images are only built for releases, pushed to GitHub Container Registry.
+# Container images are only pushed to GitHub Container Registry for releases.
 # Executables are built both for releases and for manually triggered runs, uploaded to artifacts and assets.
 name: Snapshot build
 
@@ -12,9 +12,7 @@ on:
       - 'snapshot-*'
 
 jobs:
-  container-images:
-    # Only run for releases
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+  container-linux:
     runs-on: ubuntu-20.04
     # Aarch64 cross-compilation is very slow :(
     timeout-minutes: 720
@@ -24,11 +22,13 @@ jobs:
     strategy:
       matrix:
         image:
-          - node
           - farmer
+          - node
         platform:
-          - linux/amd64
-          - linux/arm64
+          - arch: linux/amd64
+            suffix: ubuntu-x86_64-${{ github.ref_name }}
+          - arch: linux/arm64
+            suffix: ubuntu-aarch64-${{ github.ref_name }}
 
     steps:
       - name: Set up QEMU
@@ -60,19 +60,39 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           file: Dockerfile-${{ matrix.image }}
-          platforms: ${{ matrix.platform }}
-          push: true
+          platforms: ${{ matrix.platform.arch }}
+          # Only push for releases
+          push: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
 
+      - name: Extract executable from container image
+        # Using `steps.meta.outputs.tags` instead of `steps.build.outputs.digest` because of https://github.com/docker/build-push-action/issues/321
+        run: |
+          docker run --rm -u root --platform ${{ matrix.platform.arch }} --entrypoint /bin/cat ${{ steps.meta.outputs.tags }} /subspace-${{ matrix.image }} > subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}
+
+      - name: Upload executable to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: executables
+          path: |
+            subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}
+          if-no-files-found: error
+
+      - name: Upload executable to assets
+        uses: alexellis/upload-assets@0.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}"]'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+
   executables:
     strategy:
       matrix:
         build:
-          - os: ubuntu-20.04
-            suffix: ubuntu-x86_64-${{ github.ref_name }}
           - os: macos-11
             suffix: macos-x86_64-${{ github.ref_name }}
           - os: windows-2022
@@ -146,6 +166,8 @@ jobs:
           # echo "Stapling node"
           # xcrun stapler staple target/production/subspace-node
           echo "Done!"
+        # Allow code signing to fail on non-release builds
+        continue-on-error: ${{ github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
@@ -155,14 +177,9 @@ jobs:
           password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
           certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
           folder: 'target/production'
+        # Allow code signing to fail on non-release builds
+        continue-on-error: ${{ github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
-
-      - name: Prepare executables for uploading Linux
-        run: |
-          mkdir executables
-          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
-        if: runner.os == 'Linux'
 
       - name: Prepare executables for uploading macOS
         run: |
