@@ -294,7 +294,7 @@ where
                     };
 
                     // Run above future with timeout
-                    let _ = executor.spawn(
+                    executor.spawn(
                         "subspace-slot-info-forward",
                         Some("rpc"),
                         future::select(
@@ -373,7 +373,7 @@ where
                 };
 
                 // Run above future with timeout
-                let _ = executor.spawn(
+                executor.spawn(
                     "subspace-block-signing-forward",
                     Some("rpc"),
                     future::select(

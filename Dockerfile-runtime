@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-ARG RUSTC_VERSION=nightly-2022-02-15
+ARG RUSTC_VERSION=nightly-2022-05-16
 
 WORKDIR /code
 

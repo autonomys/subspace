@@ -35,7 +35,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-02-15
+          toolchain: nightly-2022-05-16
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -78,7 +78,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-02-15
+          toolchain: nightly-2022-05-16
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
@@ -130,7 +130,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-02-15
+          toolchain: nightly-2022-05-16
           target: wasm32-unknown-unknown
           override: true
 
@@ -171,7 +171,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-02-15
+          toolchain: nightly-2022-05-16
           target: wasm32-unknown-unknown
           override: true
           components: rustfmt, clippy
