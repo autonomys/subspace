@@ -99,7 +99,6 @@ jobs:
             suffix: macos-x86_64-${{ github.ref_name }}
           - os: windows-2022
             suffix: windows-x86_64-${{ github.ref_name }}
-
     runs-on: ${{ matrix.build.os }}
 
     steps:
@@ -168,8 +167,8 @@ jobs:
           # echo "Stapling node"
           # xcrun stapler staple target/production/subspace-node
           echo "Done!"
-        # Allow code signing to fail on non-release builds
-        continue-on-error: ${{ github.event_name != 'push' || github.ref_type != 'tag' }}
+        # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
+        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
@@ -179,8 +178,8 @@ jobs:
           password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
           certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
           folder: 'target/production'
-        # Allow code signing to fail on non-release builds
-        continue-on-error: ${{ github.event_name != 'push' || github.ref_type != 'tag' }}
+        # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
+        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
 
       - name: Prepare executables for uploading macOS
