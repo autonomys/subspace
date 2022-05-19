@@ -325,6 +325,9 @@ above instructions before starting your node:
 * `--pruning 1024`
 * `--keep-blocks 1024`
 
+And instead add this:
+* `--pruning archive`
+
 Archival node is useful if you run an RPC node and want to support querying older blockchain history.
 
 NOTE: You can't switch between full and archival node without wiping it, so if you need that, follow steps in
