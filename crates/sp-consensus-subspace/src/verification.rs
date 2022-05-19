@@ -226,17 +226,12 @@ where
 
 /// Returns true if `solution.tag` is within the solution range.
 fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range: u64) -> bool {
-    let target = u64::from_be_bytes(solution.local_challenge.derive_target());
-    let (lower, is_lower_overflowed) = target.overflowing_sub(solution_range / 2);
-    let (upper, is_upper_overflowed) = target.overflowing_add(solution_range / 2);
-
     let solution_tag = u64::from_be_bytes(solution.tag);
+    let target = u64::from_be_bytes(solution.local_challenge.derive_target());
 
-    if is_lower_overflowed || is_upper_overflowed {
-        upper <= solution_tag || solution_tag <= lower
-    } else {
-        lower <= solution_tag && solution_tag <= upper
-    }
+    let distance = subspace_core_primitives::bidirectional_distance(&target, &solution_tag);
+
+    distance <= solution_range / 2
 }
 
 /// Returns true if piece index is within farmer sector
