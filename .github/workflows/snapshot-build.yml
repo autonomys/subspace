@@ -14,8 +14,6 @@ on:
 jobs:
   container-linux:
     runs-on: ubuntu-20.04
-    # Aarch64 cross-compilation is very slow :(
-    timeout-minutes: 720
     permissions:
       contents: write
       packages: write
@@ -26,8 +24,11 @@ jobs:
           - node
         platform:
           - arch: linux/amd64
+            profile: production
             suffix: ubuntu-x86_64-${{ github.ref_name }}
           - arch: linux/arm64
+            # Fewer optimizations on aarch64 to reduce CI time and make it not exceed 6 hours
+            profile: release
             suffix: ubuntu-aarch64-${{ github.ref_name }}
 
     steps:
@@ -67,6 +68,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
+            PROFILE=${{ matrix.platform.profile }}
 
       - name: Extract executable from container image
         # Using `steps.meta.outputs.tags` instead of `steps.build.outputs.digest` because of https://github.com/docker/build-push-action/issues/321
