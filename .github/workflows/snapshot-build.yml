@@ -30,10 +30,10 @@ jobs:
           - arch: linux/amd64
             profile: production
             suffix: ubuntu-x86_64-${{ github.ref_name }}
-          - arch: linux/arm64
-            # Fewer optimizations on aarch64 to reduce CI time and make it not exceed 6 hours
-            profile: release
-            suffix: ubuntu-aarch64-${{ github.ref_name }}
+#          - arch: linux/arm64
+#            # Fewer optimizations on aarch64 to reduce CI time
+#            profile: release
+#            suffix: ubuntu-aarch64-${{ github.ref_name }}
 
     steps:
       - name: Set up QEMU
