@@ -1,6 +1,11 @@
 FROM ubuntu:20.04
 
 ARG RUSTC_VERSION=nightly-2022-05-16
+ARG PROFILE=production
+# Workaround for https://github.com/rust-lang/cargo/issues/10583
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+# Incremental compilation here isn't helpful
+ENV CARGO_INCREMENTAL=0
 
 WORKDIR /code
 
@@ -29,8 +34,8 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
-    /root/.cargo/bin/cargo build --profile production --bin subspace-farmer && \
-    mv target/production/subspace-farmer subspace-farmer && \
+    /root/.cargo/bin/cargo build --profile $PROFILE --bin subspace-farmer && \
+    mv target/$PROFILE/subspace-farmer subspace-farmer && \
     rm -rf target
 
 FROM ubuntu:20.04
