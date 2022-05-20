@@ -570,7 +570,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_solving = SubspaceCodec::new(&keypair.public);
+            let subspace_codec = SubspaceCodec::new(&keypair.public);
             let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
@@ -581,7 +581,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
-            subspace_solving.encode(&mut encoding, piece_index).unwrap();
+            subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -598,7 +598,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                                 keypair.public.to_bytes(),
                             ),
                             piece_index,
-                            encoding,
+                            encoding: encoding.clone(),
                             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
                             local_challenge: keypair
                                 .sign(ctx.bytes(&new_slot_info.global_challenge))

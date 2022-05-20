@@ -323,8 +323,7 @@ impl Plot {
     }
 
     pub fn read_piece(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Vec<u8>> {
-        self.read(index_hash)
-            .map(|piece| <[u8; PIECE_SIZE]>::from(piece).to_vec())
+        self.read(index_hash).map(Into::into)
     }
 
     pub(crate) fn read_piece_with_index(

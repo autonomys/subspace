@@ -140,7 +140,7 @@ async fn start_farming<Client>(
         }
     });
 
-    let subspace_solving = SubspaceCodec::new(&keypair.public);
+    let subspace_codec = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let (piece_index, mut encoding) = archived_pieces_receiver
         .await
@@ -151,7 +151,7 @@ async fn start_farming<Client>(
         .choose(&mut rand::thread_rng())
         .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
         .unwrap();
-    subspace_solving.encode(&mut encoding, piece_index).unwrap();
+    subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
 
@@ -168,7 +168,7 @@ async fn start_farming<Client>(
                     public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     piece_index,
-                    encoding,
+                    encoding: encoding.clone(),
                     signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
                     local_challenge: keypair
                         .sign(ctx.bytes(&new_slot_info.global_challenge))

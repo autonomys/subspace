@@ -227,7 +227,7 @@ pub fn check_piece<Header>(
 where
     Header: HeaderT,
 {
-    let mut piece = solution.encoding;
+    let mut piece = solution.encoding.clone();
 
     // Ensure piece is decodable.
     let subspace_codec = SubspaceCodec::new(&solution.public_key);

@@ -182,11 +182,11 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let subspace_solving = SubspaceCodec::new(&keypair.public);
+    let subspace_codec = SubspaceCodec::new(&keypair.public);
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
     let mut encoding = Piece::default();
-    subspace_solving.encode(&mut encoding, piece_index).unwrap();
+    subspace_codec.encode(&mut encoding, piece_index).unwrap();
     let tag: Tag = subspace_solving::create_tag(&encoding, {
         let salts = Subspace::salts();
         if salts.switch_next_block {
@@ -259,7 +259,7 @@ pub fn generate_equivocation_proof(
                 public_key: public_key.clone(),
                 reward_address: public_key.clone(),
                 piece_index,
-                encoding,
+                encoding: encoding.clone(),
                 signature: signature.into(),
                 local_challenge: LocalChallenge::default(),
                 tag,
