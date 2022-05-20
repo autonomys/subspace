@@ -143,8 +143,12 @@ mod pallet {
             sp_consensus_subspace::SolutionRanges {
                 current: T::InitialSolutionRange::get(),
                 next: None,
-                voting_current: T::InitialSolutionRange::get()
-                    .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1),
+                voting_current: if T::ShouldAdjustSolutionRange::get() {
+                    T::InitialSolutionRange::get()
+                        .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1)
+                } else {
+                    T::InitialSolutionRange::get()
+                },
                 voting_next: None,
             }
         }
@@ -540,8 +544,10 @@ impl<T: Config> Pallet<T> {
         let current_slot = Self::current_slot();
 
         SolutionRanges::<T>::mutate(|solution_ranges| {
+            let next_solution_range;
+            let next_voting_solution_range;
             // Check if the solution range should be adjusted for next era.
-            let next_solution_range = if ShouldAdjustSolutionRange::<T>::get() {
+            if ShouldAdjustSolutionRange::<T>::get() {
                 // If Era start slot is not found it means we have just finished the first era
                 let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
                 let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
@@ -558,14 +564,18 @@ impl<T: Config> Pallet<T> {
                 let adjustment_factor =
                     (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-                (solution_ranges.current as f64 * adjustment_factor).round() as u64
+                next_solution_range =
+                    (solution_ranges.current as f64 * adjustment_factor).round() as u64;
+                next_voting_solution_range = next_solution_range
+                    .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1);
             } else {
-                solution_ranges.current
+                next_solution_range = solution_ranges.current;
+                next_voting_solution_range = solution_ranges.current;
             };
             solution_ranges.next.replace(next_solution_range);
-            solution_ranges.voting_next.replace(
-                next_solution_range.saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1),
-            )
+            solution_ranges
+                .voting_next
+                .replace(next_voting_solution_range);
         });
 
         EraStartSlot::<T>::put(current_slot);
