@@ -37,8 +37,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 /// too old.
 pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: BlockT>(
 	backend: &Backend,
-	block_hash: Block::Hash,
-	block_number: <<Block as BlockT>::Header as HeaderT>::Number,
+	(block_hash, block_number): (Block::Hash, NumberFor<Block>),
 	execution_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 ) -> Result<(), sp_blockchain::Error> {
 	let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
@@ -47,11 +46,8 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: 
 			.unwrap_or_default();
 	hashes_at_block_number.push(block_hash);
 
-	let first_saved_receipt = load_decode::<_, <<Block as BlockT>::Header as HeaderT>::Number>(
-		backend,
-		EXECUTION_RECEIPT_START,
-	)?
-	.unwrap_or(block_number);
+	let first_saved_receipt = load_decode::<_, NumberFor<Block>>(backend, EXECUTION_RECEIPT_START)?
+		.unwrap_or(block_number);
 
 	let mut new_first_saved_receipt = first_saved_receipt;
 
@@ -107,7 +103,7 @@ pub(super) fn target_receipt_is_pruned(
 	current_block: BlockNumber,
 	target_block: BlockNumber,
 ) -> bool {
-	current_block > target_block && current_block - target_block >= PRUNING_DEPTH
+	current_block.checked_sub(target_block + PRUNING_DEPTH).is_some()
 }
 
 #[cfg(test)]
@@ -150,7 +146,7 @@ mod tests {
 		let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
 		let write_receipt_at = |hash: Hash, number: BlockNumber, receipt: &ExecutionReceipt| {
-			write_execution_receipt::<_, Block, PBlock>(&client, hash, number, receipt).unwrap()
+			write_execution_receipt::<_, Block, PBlock>(&client, (hash, number), receipt).unwrap()
 		};
 
 		assert_eq!(receipt_start(), None);

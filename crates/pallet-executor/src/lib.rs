@@ -182,8 +182,6 @@ mod pallet {
                 signed_execution_receipt
             );
 
-            // TODO: ensure the receipt is ready to be applied
-
             let SignedExecutionReceipt {
                 execution_receipt, ..
             } = signed_execution_receipt;

@@ -597,7 +597,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		.expect("Submit receipt successfully");
 	let tx3 = create_and_send_submit_execution_receipt(3)
 		.await
-		.expect("Best block receipt must be able be included in the next block");
+		.expect("Best block receipt must be able to be included in the next block");
 
 	let ready_txs = || {
 		alice
