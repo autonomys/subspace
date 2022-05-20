@@ -2,7 +2,8 @@ use crate::bench_rpc_client::BenchRpcClient;
 use crate::{utils, WriteToDisk};
 use anyhow::anyhow;
 use futures::channel::mpsc;
-use futures::SinkExt;
+use futures::stream::FuturesUnordered;
+use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -117,6 +118,7 @@ pub(crate) async fn bench(
     max_plot_size: Option<u64>,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
+    do_recommitments: bool,
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
@@ -223,8 +225,6 @@ pub(crate) async fn bench(
         }
     }
 
-    client.stop().await;
-
     let took = start.elapsed();
 
     let space_allocated = get_size(base_directory)?;
@@ -257,6 +257,28 @@ pub(crate) async fn bench(
         actual_space_pledged as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
+    if do_recommitments {
+        let start = Instant::now();
+
+        let mut tasks = multi_farming
+            .commitments
+            .iter()
+            .cloned()
+            .zip(multi_farming.plots.iter().cloned())
+            .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+            .map(tokio::task::spawn_blocking)
+            .collect::<FuturesUnordered<_>>();
+        while let Some(result) = tasks.next().await {
+            if let Err(error) = result {
+                tracing::error!(%error, "Discovered error while recommitments bench")
+            }
+        }
+
+        // TODO: update to human readable duration
+        println!("Recommitment took {:?}", start.elapsed());
+    }
+
+    client.stop().await;
     multi_farming.wait().await?;
 
     Ok(())
