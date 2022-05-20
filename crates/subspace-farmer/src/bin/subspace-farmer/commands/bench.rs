@@ -2,7 +2,8 @@ use crate::bench_rpc_client::BenchRpcClient;
 use crate::{utils, WriteToDisk};
 use anyhow::anyhow;
 use futures::channel::mpsc;
-use futures::SinkExt;
+use futures::stream::FuturesUnordered;
+use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
 use std::{fmt, io};
@@ -195,8 +196,6 @@ pub(crate) async fn bench(
     })
     .await?;
 
-    client.stop().await;
-
     let took = start.elapsed();
 
     let space_allocated = get_size(base_directory)?;
@@ -226,6 +225,23 @@ pub(crate) async fn bench(
         write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
+    let start = Instant::now();
+
+    multi_farming
+        .commitments
+        .iter()
+        .cloned()
+        .zip(multi_farming.plots.iter().cloned())
+        .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+        .map(tokio::task::spawn_blocking)
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+    // TODO: update to human readable duration
+    println!("Recommitment took {:?}", start.elapsed());
+
+    client.stop().await;
     multi_farming.wait().await?;
 
     Ok(())
