@@ -31,9 +31,7 @@ use crate::digests::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
-use schnorrkel::{PublicKey, Signature};
 use sp_api::{BlockT, HeaderT};
-use sp_application_crypto::ByteArray;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
@@ -41,7 +39,6 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -130,26 +127,6 @@ pub struct SignedVote<Number, Hash, RewardAddress> {
     pub vote: Vote<Number, Hash, RewardAddress>,
     /// Signature.
     pub signature: FarmerSignature,
-}
-
-impl<Number, Hash, RewardAddress> SignedVote<Number, Hash, RewardAddress>
-where
-    Number: Encode,
-    Hash: Encode,
-    RewardAddress: Encode,
-{
-    /// Whether vote signature is valid
-    pub fn is_valid(&self) -> bool {
-        let ctx = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
-        PublicKey::from_bytes(self.vote.public_key().as_slice())
-            .expect("Public key always uses the same crypto; qed")
-            .verify(
-                ctx.bytes(&self.vote.encode()),
-                &Signature::from_bytes(&self.signature)
-                    .expect("Signature always uses the same crypto; qed"),
-            )
-            .is_ok()
-    }
 }
 
 fn find_pre_digest<Header, RewardAddress>(

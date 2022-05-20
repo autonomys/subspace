@@ -232,11 +232,13 @@ where
 
                 // If solution is of high enough quality, block reward is claimed
                 if verification::is_within_solution_range(&pre_digest.solution, solution_range) {
-                    info!(target: "subspace", "Claimed block at slot {slot}");
+                    info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
                     return Some(pre_digest);
-                } else {
-                    info!(target: "subspace", "Claimed vote at slot {slot}");
+                } else if !parent_header.number().is_zero() {
+                    // Not sending vote on top of genesis bloc since root blocks since piece
+                    // verification wouldn't be possible due to empty records root
+                    info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
                     self.create_vote(pre_digest, parent_header, &parent_block_id)
                         .await;

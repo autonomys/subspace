@@ -26,6 +26,7 @@ mod mock;
 #[cfg(all(feature = "std", test))]
 mod tests;
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
@@ -36,14 +37,17 @@ use frame_support::{
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
+use num_traits::One;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
     SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
-use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
+use sp_consensus_subspace::verification::{PieceCheckParams, VerifySolutionParams};
+use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
 use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
@@ -54,8 +58,9 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::ConsensusEngineId;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    crypto, Randomness, RootBlock, Salt, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
+use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
 const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
@@ -122,9 +127,23 @@ impl EonChangeTrigger for NormalEonChange {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
+struct VoteVerificationData {
+    global_randomness: Randomness,
+    solution_range: u64,
+    salt: Salt,
+    record_size: u32,
+    recorded_history_segment_size: u32,
+    max_plot_size: u64,
+    total_pieces: u64,
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::{EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, WeightInfo};
+    use super::{
+        EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
+        WeightInfo,
+    };
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -331,6 +350,10 @@ mod pallet {
     #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
+    /// Storage of previous vote verification data, updated on each block during finalization.
+    #[pallet::storage]
+    pub(super) type ParentVoteVerificationData<T> = StorageValue<_, VoteVerificationData>;
+
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
     pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
@@ -506,29 +529,26 @@ impl<T: Config> Pallet<T> {
 
     /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
+    fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
         block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
 
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_era_change(block_number: T::BlockNumber) -> bool {
+    fn should_era_change(block_number: T::BlockNumber) -> bool {
         block_number % T::EraDuration::get() == Zero::zero()
     }
 
     /// Determine whether an eon change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_eon_change(_block_number: T::BlockNumber) -> bool {
+    fn should_eon_change(_block_number: T::BlockNumber) -> bool {
         let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
         *diff >= T::EonDuration::get()
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_update_global_randomness(
-        _block_number: T::BlockNumber,
-        por_randomness: Randomness,
-    ) {
+    fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
             global_randomnesses.next = Some(por_randomness);
         });
@@ -538,7 +558,7 @@ impl<T: Config> Pallet<T> {
     /// returned `true`, and the caller is the only caller of this function.
     ///
     /// This will update solution range used in consensus.
-    pub fn enact_era_change() {
+    fn enact_era_change() {
         let slot_probability = T::SlotProbability::get();
 
         let current_slot = Self::current_slot();
@@ -583,7 +603,7 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_eon_change(_block_number: T::BlockNumber) {
+    fn enact_eon_change(_block_number: T::BlockNumber) {
         let current_slot = *Self::current_slot();
         let eon_index = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
@@ -600,7 +620,7 @@ impl<T: Config> Pallet<T> {
     /// Finds the start slot of the current eon. Only guaranteed to give correct results after
     /// `do_initialize` of the first block in the chain (as its result is based off of
     /// `GenesisSlot`).
-    pub fn current_eon_start() -> Slot {
+    fn current_eon_start() -> Slot {
         Self::eon_start(EonIndex::<T>::get())
     }
 
@@ -736,6 +756,18 @@ impl<T: Config> Pallet<T> {
 
     fn do_finalize(_block_number: T::BlockNumber) {
         PorRandomness::<T>::take();
+
+        let current_vote_verification_data = current_vote_verification_data::<T>();
+        match ParentVoteVerificationData::<T>::get() {
+            Some(parent_vote_verification_data) => {
+                if current_vote_verification_data != parent_vote_verification_data {
+                    ParentVoteVerificationData::<T>::put(current_vote_verification_data);
+                }
+            }
+            None => {
+                ParentVoteVerificationData::<T>::put(current_vote_verification_data);
+            }
+        }
     }
 
     fn do_report_equivocation(
@@ -834,7 +866,7 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace", "Submitted Subspace vote");
+                log::debug!(target: "runtime::subspace", "Submitted Subspace vote");
             }
             Err(()) => {
                 log::error!(target: "runtime::subspace", "Error submitting Subspace vote");
@@ -882,9 +914,9 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_vote(
-        _signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> TransactionValidity {
-        // TODO: Validate vote
+        check_vote::<T>(signed_vote)?;
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
             // We assign the maximum priority for any vote.
@@ -895,12 +927,125 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_vote(
-        _signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
-        // TODO: Validate vote
-
-        Ok(())
+        check_vote::<T>(signed_vote).map_err(Into::into)
     }
+}
+
+fn current_vote_verification_data<T: Config>() -> VoteVerificationData {
+    VoteVerificationData {
+        global_randomness: GlobalRandomnesses::<T>::get().current,
+        solution_range: SolutionRanges::<T>::get().voting_current,
+        salt: Salts::<T>::get().current,
+        record_size: T::RecordSize::get(),
+        recorded_history_segment_size: T::RecordedHistorySegmentSize::get(),
+        max_plot_size: T::MaxPlotSize::get(),
+        total_pieces: Pallet::<T>::total_pieces(),
+    }
+}
+
+fn check_vote<T: Config>(
+    signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+) -> Result<(), InvalidTransaction> {
+    let Vote::V0 {
+        height,
+        parent_hash,
+        slot,
+        solution,
+    } = &signed_vote.vote;
+
+    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+    // Height must be either the same as in current block or smaller by one
+    if !(*height == current_block_number || *height == current_block_number - One::one()) {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: bad height {height:?}"
+        );
+        return Err(InvalidTransaction::Future);
+    }
+
+    // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
+    if !(*parent_hash == frame_system::Pallet::<T>::parent_hash()
+        || *parent_hash
+            == frame_system::Pallet::<T>::block_hash(current_block_number - 2u32.into()))
+    {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: parent hash {}",
+            hex::encode(parent_hash)
+        );
+        return Err(InvalidTransaction::Call);
+    }
+
+    if let Err(error) = verification::check_reward_signature(
+        signed_vote.vote.hash().as_bytes(),
+        &signed_vote.signature,
+        &solution.public_key,
+        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+    ) {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(InvalidTransaction::BadProof);
+    }
+
+    let vote_verification_data = if *height == current_block_number {
+        current_vote_verification_data::<T>()
+    } else if let Some(value) = ParentVoteVerificationData::<T>::get() {
+        value
+    } else {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: vote verification data not available"
+        );
+        return Err(InvalidTransaction::Call);
+    };
+
+    let merkle_num_leaves = u64::from(
+        vote_verification_data.recorded_history_segment_size / vote_verification_data.record_size
+            * 2,
+    );
+    let segment_index = solution.piece_index / merkle_num_leaves;
+    let position = solution.piece_index % merkle_num_leaves;
+
+    let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
+        records_root
+    } else {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: no records root for segment index {segment_index}"
+        );
+        return Err(InvalidTransaction::Call);
+    };
+
+    if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
+        solution,
+        *slot,
+        VerifySolutionParams {
+            global_randomness: &vote_verification_data.global_randomness,
+            solution_range: vote_verification_data.solution_range,
+            salt: vote_verification_data.salt,
+            piece_check_params: Some(PieceCheckParams {
+                records_root,
+                position,
+                record_size: vote_verification_data.record_size,
+                max_plot_size: vote_verification_data.max_plot_size,
+                total_pieces: vote_verification_data.total_pieces,
+            }),
+            solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
+        },
+    ) {
+        log::debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(InvalidTransaction::Call);
+    }
+
+    Ok(())
 }
 
 fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
