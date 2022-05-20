@@ -26,7 +26,7 @@ use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPay
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
@@ -54,7 +54,7 @@ pub struct FullDeps<C, P> {
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -85,7 +85,7 @@ where
         deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
-        block_signing_notification_stream,
+        reward_signing_notification_stream,
         archived_segment_notification_stream,
     } = deps;
 
@@ -97,7 +97,7 @@ where
             client,
             subscription_executor,
             new_slot_notification_stream,
-            block_signing_notification_stream,
+            reward_signing_notification_stream,
             archived_segment_notification_stream,
         )
         .into_rpc(),

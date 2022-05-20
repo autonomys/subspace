@@ -69,7 +69,7 @@ use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Solution, Tag};
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -404,7 +404,12 @@ impl TestNetFactory for SubspaceTestNet {
                     Slot::from_timestamp(*timestamp, SlotDuration::from_millis(6000))
                 }),
                 telemetry: None,
-                signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+                solution_signing_context: schnorrkel::context::signing_context(
+                    SOLUTION_SIGNING_CONTEXT,
+                ),
+                reward_signing_context: schnorrkel::context::signing_context(
+                    REWARD_SIGNING_CONTEXT,
+                ),
                 block: PhantomData::default(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),

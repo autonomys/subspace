@@ -43,7 +43,7 @@ use sp_consensus_subspace::digests::{
     SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
-use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
 use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
 use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
@@ -130,7 +130,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
@@ -390,7 +390,10 @@ mod pallet {
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]
-        pub fn vote(origin: OriginFor<T>, _vote: Box<T::Header>) -> DispatchResult {
+        pub fn vote(
+            origin: OriginFor<T>,
+            _signed_vote: Box<SignedVote<T::BlockNumber, T::Hash>>,
+        ) -> DispatchResult {
             ensure_none(origin)?;
 
             // TODO: Process vote
@@ -462,7 +465,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::validate_root_block(source, root_blocks)
                 }
-                Call::vote { vote } => Self::validate_vote(vote),
+                Call::vote { signed_vote } => Self::validate_vote(signed_vote),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -475,7 +478,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::pre_dispatch_root_block(root_blocks)
                 }
-                Call::vote { vote } => Self::pre_dispatch_vote(vote),
+                Call::vote { signed_vote } => Self::pre_dispatch_vote(signed_vote),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -812,9 +815,9 @@ where
 {
     /// Submit farmer vote vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
-    pub fn submit_vote(vote: T::Header) {
+    pub fn submit_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash>) {
         let call = Call::vote {
-            vote: Box::new(vote),
+            signed_vote: Box::new(signed_vote),
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
@@ -866,7 +869,7 @@ impl<T: Config> Pallet<T> {
         check_root_blocks::<T>(root_blocks)
     }
 
-    fn validate_vote(_vote: &T::Header) -> TransactionValidity {
+    fn validate_vote(_signed_vote: &SignedVote<T::BlockNumber, T::Hash>) -> TransactionValidity {
         // TODO: Validate vote
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
@@ -877,7 +880,9 @@ impl<T: Config> Pallet<T> {
             .build()
     }
 
-    fn pre_dispatch_vote(_vote: &T::Header) -> Result<(), TransactionValidityError> {
+    fn pre_dispatch_vote(
+        _signed_vote: &SignedVote<T::BlockNumber, T::Hash>,
+    ) -> Result<(), TransactionValidityError> {
         // TODO: Validate vote
 
         Ok(())

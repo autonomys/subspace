@@ -17,12 +17,13 @@
 
 //! Verification for Subspace headers.
 use crate::digests::{CompatibleDigestItem, PreDigest};
-use crate::{find_pre_digest, FarmerPublicKey};
+use crate::{find_pre_digest, FarmerPublicKey, FarmerSignature};
 use schnorrkel::context::SigningContext;
+use schnorrkel::{PublicKey, Signature};
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::ByteArray;
-use sp_runtime::{DigestItem, RuntimeAppPublic};
+use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution};
 use subspace_solving::{
@@ -42,9 +43,9 @@ pub enum VerificationError<Header: HeaderT> {
     /// Header is unsealed
     #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
     HeaderUnsealed(Header::Hash),
-    /// Bad signature
-    #[cfg_attr(feature = "thiserror", error("Bad signature on {0:?}"))]
-    BadSignature(Header::Hash),
+    /// Bad reward signature
+    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
+    BadRewardSignature(Header::Hash),
     /// Bad solution signature
     #[cfg_attr(
         feature = "thiserror",
@@ -100,6 +101,8 @@ where
     pub slot_now: Slot,
     /// Parameters for solution verification
     pub verify_solution_params: VerifySolutionParams<'a>,
+    /// Signing context for reward signature
+    pub reward_signing_context: &'a SigningContext,
 }
 
 /// Information from verified header
@@ -128,6 +131,7 @@ where
         mut header,
         slot_now,
         verify_solution_params,
+        reward_signing_context,
     } = params;
 
     let pre_digest =
@@ -139,7 +143,7 @@ where
         .pop()
         .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
 
-    let sig = seal
+    let signature = seal
         .as_subspace_seal()
         .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
 
@@ -152,8 +156,15 @@ where
     }
 
     // Verify that block is signed properly
-    if !pre_digest.solution.public_key.verify(&pre_hash, &sig) {
-        return Err(VerificationError::BadSignature(pre_hash));
+    if check_reward_signature(
+        pre_hash.as_ref(),
+        &signature,
+        &pre_digest.solution.public_key,
+        reward_signing_context,
+    )
+    .is_err()
+    {
+        return Err(VerificationError::BadRewardSignature(pre_hash));
     }
 
     // Verify that solution is valid
@@ -165,14 +176,26 @@ where
     ))
 }
 
-/// Check the solution signature validity.
-fn check_signature(
-    signing_context: &SigningContext,
-    solution: &Solution<FarmerPublicKey>,
+/// Check the reward signature validity.
+pub fn check_reward_signature(
+    hash: &[u8],
+    signature: &FarmerSignature,
+    public_key: &FarmerPublicKey,
+    reward_signing_context: &SigningContext,
 ) -> Result<(), schnorrkel::SignatureError> {
-    let public_key = schnorrkel::PublicKey::from_bytes(solution.public_key.as_slice())?;
-    let signature = schnorrkel::Signature::from_bytes(&solution.signature)?;
-    public_key.verify(signing_context.bytes(&solution.tag), &signature)
+    let public_key = PublicKey::from_bytes(public_key.as_slice())?;
+    let signature = Signature::from_bytes(signature)?;
+    public_key.verify(reward_signing_context.bytes(hash), &signature)
+}
+
+/// Check the solution signature validity.
+fn check_solution_signature(
+    solution: &Solution<FarmerPublicKey>,
+    solution_signing_context: &SigningContext,
+) -> Result<(), schnorrkel::SignatureError> {
+    let public_key = PublicKey::from_bytes(solution.public_key.as_slice())?;
+    let signature = Signature::from_bytes(&solution.signature)?;
+    public_key.verify(solution_signing_context.bytes(&solution.tag), &signature)
 }
 
 /// Check if the tag of a solution's piece is valid.
@@ -275,7 +298,7 @@ pub struct VerifySolutionParams<'a> {
     /// If `None`, piece validity check will be skipped.
     pub piece_check_params: Option<PieceCheckParams>,
     /// Signing context for solution signature
-    pub signing_context: &'a SigningContext,
+    pub solution_signing_context: &'a SigningContext,
 }
 
 /// Solution verification
@@ -292,7 +315,7 @@ where
         solution_range,
         salt,
         piece_check_params,
-        signing_context,
+        solution_signing_context,
     } = params;
 
     if let Err(error) = is_local_challenge_valid(
@@ -307,7 +330,7 @@ where
         return Err(VerificationError::OutsideOfSolutionRange(slot));
     }
 
-    check_signature(signing_context, solution)
+    check_solution_signature(solution, solution_signing_context)
         .map_err(|e| VerificationError::BadSolutionSignature(slot, e))?;
 
     check_piece_tag(slot, salt, solution)?;

@@ -17,8 +17,8 @@
 
 use crate::verification::PieceCheckParams;
 use crate::{
-    find_pre_digest, subspace_err, verification, BlockSigningNotification, NewSlotInfo,
-    NewSlotNotification, SubspaceLink,
+    find_pre_digest, subspace_err, verification, NewSlotInfo, NewSlotNotification,
+    RewardSigningNotification, SubspaceLink,
 };
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -36,12 +36,12 @@ use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{AppVerify, Block as BlockT, Header, One, Saturating, Zero};
-use sp_runtime::{Digest, DigestItem};
+use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
+use sp_runtime::DigestItem;
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
 use subspace_core_primitives::{Randomness, Salt};
@@ -55,7 +55,8 @@ pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
     pub(super) force_authoring: bool,
     pub(super) backoff_authoring_blocks: Option<BS>,
     pub(super) subspace_link: SubspaceLink<B>,
-    pub(super) signing_context: SigningContext,
+    pub(super) solution_signing_context: SigningContext,
+    pub(super) reward_signing_context: SigningContext,
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
@@ -215,7 +216,7 @@ where
                         max_plot_size,
                         total_pieces,
                     }),
-                    signing_context: &self.signing_context,
+                    solution_signing_context: &self.solution_signing_context,
                 },
             );
 
@@ -255,7 +256,7 @@ where
         _epoch_data: Self::EpochData,
     ) -> Result<BlockImportParams<B, I::Transaction>, ConsensusError> {
         let signature = self
-            .sign_pre_header(
+            .sign_reward(
                 H256::from_slice(header_hash.as_ref()),
                 &pre_digest.solution.public_key,
             )
@@ -358,21 +359,15 @@ where
         }
 
         // Vote doesn't have extrinsics or state, hence dummy values
-        let mut vote = B::Header::new(
-            parent_header.number().saturating_add(One::one()),
-            <B::Header as Header>::Hash::default(),
-            <B::Header as Header>::Hash::default(),
-            parent_header.hash(),
-            Digest {
-                logs: vec![DigestItem::subspace_pre_digest(&pre_digest)],
-            },
-        );
+        let vote = Vote::V0 {
+            height: parent_header.number().saturating_add(One::one()),
+            parent_hash: parent_header.hash(),
+            slot,
+            solution: pre_digest.solution.clone(),
+        };
 
         let signature = match self
-            .sign_pre_header(
-                H256::from_slice(vote.hash().as_ref()),
-                &pre_digest.solution.public_key,
-            )
+            .sign_reward(vote.hash(), &pre_digest.solution.public_key)
             .await
         {
             Ok(signature) => signature,
@@ -385,11 +380,9 @@ where
             }
         };
 
-        vote.digest_mut()
-            .logs
-            .push(DigestItem::subspace_seal(signature));
+        let signed_vote = SignedVote { vote, signature };
 
-        if let Err(error) = runtime_api.submit_vote_extrinsic(parent_block_id, vote) {
+        if let Err(error) = runtime_api.submit_vote_extrinsic(parent_block_id, signed_vote) {
             error!(
                 target: "subspace",
                 "Failed to submit vote at slot {slot}: {error:?}",
@@ -397,28 +390,34 @@ where
         }
     }
 
-    async fn sign_pre_header(
+    async fn sign_reward(
         &self,
-        header_hash: H256,
+        hash: H256,
         public_key: &FarmerPublicKey,
     ) -> Result<FarmerSignature, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream");
 
-        // Sign the pre-sealed header of the block and then add it to a digest item.
         self.subspace_link
-            .block_signing_notification_sender
-            .notify(|| BlockSigningNotification {
-                header_hash,
+            .reward_signing_notification_sender
+            .notify(|| RewardSigningNotification {
+                hash,
                 public_key: public_key.clone(),
                 signature_sender,
             });
 
         while let Some(signature) = signature_receiver.next().await {
-            if !signature.verify(header_hash.as_ref(), public_key) {
+            if verification::check_reward_signature(
+                hash.as_ref(),
+                &signature,
+                public_key,
+                &self.reward_signing_context,
+            )
+            .is_err()
+            {
                 warn!(
                     target: "subspace",
-                    "Received invalid signature for pre-header {header_hash:?}"
+                    "Received invalid signature for reward hash {hash:?}"
                 );
                 continue;
             }
@@ -428,7 +427,7 @@ where
 
         Err(ConsensusError::CannotSign(
             public_key.to_raw_vec(),
-            "Farmer didn't sign header".to_string(),
+            "Farmer didn't sign reward".to_string(),
         ))
     }
 }

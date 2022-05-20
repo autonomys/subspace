@@ -29,8 +29,11 @@ use subspace_core_primitives::{
     crypto, LocalChallenge, Piece, Randomness, Salt, Sha256Hash, Tag, TAG_SIZE,
 };
 
-/// Signing context used for creating solution signatures by farmer
+/// Signing context used for creating solution signatures by farmers.
 pub const SOLUTION_SIGNING_CONTEXT: &[u8] = b"farmer_solution";
+
+/// Signing context used for creating reward signatures by farmers.
+pub const REWARD_SIGNING_CONTEXT: &[u8] = b"farmer_reward";
 
 #[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
 mod construct_uint {

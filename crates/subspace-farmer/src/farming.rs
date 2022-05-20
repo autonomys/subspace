@@ -11,7 +11,7 @@ use futures::{future, future::Either, StreamExt};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
-use subspace_rpc_primitives::{BlockSignature, BlockSigningInfo, SlotInfo, SolutionResponse};
+use subspace_rpc_primitives::{RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
@@ -171,8 +171,8 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         // When solution is found, wait for block signing request.
         if maybe_solution.is_some() {
             debug!("Subscribing to sign block notifications");
-            let mut block_signing_info_notifications = client
-                .subscribe_block_signing()
+            let mut reward_signing_info_notifications = client
+                .subscribe_reward_signing()
                 .await
                 .map_err(FarmingError::RpcError)?;
 
@@ -181,36 +181,31 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 let client = client.clone();
 
                 async move {
-                    if let Some(BlockSigningInfo {
-                        header_hash,
-                        public_key,
-                    }) = block_signing_info_notifications.next().await
+                    if let Some(RewardSigningInfo { hash, public_key }) =
+                        reward_signing_info_notifications.next().await
                     {
                         // Multiple plots might have solved, only sign with correct one
                         if identity.public_key().to_bytes() != public_key {
                             return;
                         }
 
-                        let signature = identity.sign_block_header_hash(&header_hash);
+                        let signature = identity.sign_reward_hash(&hash);
 
                         match client
-                            .submit_block_signature(BlockSignature {
-                                header_hash,
+                            .submit_reward_signature(RewardSignature {
+                                hash,
                                 signature: Some(signature.to_bytes().into()),
                             })
                             .await
                         {
                             Ok(_) => {
-                                info!(
-                                    "Successfully signed pre-header hash 0x{} and sent to node",
-                                    hex::encode(header_hash)
-                                );
+                                info!("Successfully signed reward hash 0x{}", hex::encode(hash));
                             }
                             Err(error) => {
                                 warn!(
                                     %error,
-                                    "Failed to send signature for pre-header hash 0x{}",
-                                    hex::encode(header_hash),
+                                    "Failed to send signature for reward hash 0x{}",
+                                    hex::encode(hash),
                                 );
                             }
                         }

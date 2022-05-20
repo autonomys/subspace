@@ -6,7 +6,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_farmer::{RpcClient, RpcClientError as MockError};
 use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -83,15 +83,15 @@ impl RpcClient for BenchRpcClient {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
-    async fn subscribe_block_signing(
+    async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, MockError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
-    async fn submit_block_signature(
+    async fn submit_reward_signature(
         &self,
-        _block_signature: BlockSignature,
+        _reward_signature: RewardSignature,
     ) -> Result<(), MockError> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }

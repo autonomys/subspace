@@ -24,7 +24,7 @@ use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::{
-    notification::SubspaceNotificationStream, BlockSigningNotification, NewSlotNotification,
+    notification::SubspaceNotificationStream, NewSlotNotification, RewardSigningNotification,
 };
 use sp_api::{BlockId, ProvideRuntimeApi};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
@@ -35,7 +35,7 @@ use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 use zeroize::Zeroizing;
 
 /// Subspace native executor instance.
@@ -64,7 +64,7 @@ pub type Backend = sc_service::TFullBackend<Block>;
 pub fn start_farmer(new_full: &NewFull<Client>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
-    let block_signing_notification_stream = new_full.block_signing_notification_stream.clone();
+    let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();
     let mut archived_segment_notification_stream =
         new_full.archived_segment_notification_stream.subscribe();
 
@@ -95,25 +95,23 @@ pub fn start_farmer(new_full: &NewFull<Client>) {
         .task_manager
         .spawn_essential_handle()
         .spawn_blocking("subspace-farmer", Some("block-signing"), async move {
-            const SUBSTRATE_SIGNING_CONTEXT: &[u8] = b"substrate";
-
-            let substrate_ctx = schnorrkel::context::signing_context(SUBSTRATE_SIGNING_CONTEXT);
+            let substrate_ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
             let signing_pair: Zeroizing<schnorrkel::Keypair> = Zeroizing::new(keypair);
 
-            let mut block_signing_notification_stream =
-                block_signing_notification_stream.subscribe();
+            let mut reward_signing_notification_stream =
+                reward_signing_notification_stream.subscribe();
 
-            while let Some(BlockSigningNotification {
-                header_hash,
+            while let Some(RewardSigningNotification {
+                hash: header_hash,
                 mut signature_sender,
                 ..
-            }) = block_signing_notification_stream.next().await
+            }) = reward_signing_notification_stream.next().await
             {
                 let header_hash: [u8; 32] = header_hash.into();
-                let block_signature: schnorrkel::Signature =
+                let reward_signature: schnorrkel::Signature =
                     signing_pair.sign(substrate_ctx.bytes(&header_hash));
                 let signature: subspace_core_primitives::Signature =
-                    block_signature.to_bytes().into();
+                    reward_signature.to_bytes().into();
                 signature_sender
                     .send(
                         FarmerSignature::decode(&mut signature.encode().as_ref())

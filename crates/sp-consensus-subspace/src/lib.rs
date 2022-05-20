@@ -31,15 +31,22 @@ use crate::digests::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
+use schnorrkel::{PublicKey, Signature};
 use sp_api::{BlockT, HeaderT};
+use sp_application_crypto::ByteArray;
+use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
+use sp_core::H256;
+use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
 use sp_std::vec::Vec;
-use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash};
+use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
 
+// TODO: Remove this and replace with simple encodable wrappers of Schnorrkel's types
 mod app {
     use super::KEY_TYPE;
     use sp_application_crypto::{app_crypto, sr25519};
@@ -78,6 +85,69 @@ enum ConsensusLog {
     /// Salt for this block/eon.
     #[codec(index = 3)]
     Salt(SaltDescriptor),
+}
+
+/// Farmer vote.
+#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
+pub enum Vote<Number, Hash> {
+    /// V0 of the farmer vote.
+    V0 {
+        /// Height at which vote was created.
+        ///
+        /// Equivalent to block number, but this is not a block.
+        height: Number,
+        /// Hash of the block on top of which vote was created.
+        parent_hash: Hash,
+        /// Slot at which vote was created.
+        slot: Slot,
+        /// Solution (includes PoR).
+        solution: Solution<FarmerPublicKey>,
+    },
+}
+
+impl<Number, Hash> Vote<Number, Hash>
+where
+    Number: Encode,
+    Hash: Encode,
+{
+    /// Farmer public key in the solution.
+    pub fn public_key(&self) -> &FarmerPublicKey {
+        let Self::V0 { solution, .. } = self;
+        &solution.public_key
+    }
+
+    /// Hash of the vote, used for signing and verifying signature.
+    pub fn hash(&self) -> H256 {
+        hashing::blake2_256(&self.encode()).into()
+    }
+}
+
+/// Signed farmer vote.
+#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
+pub struct SignedVote<Number, Hash> {
+    /// Farmer vote.
+    pub vote: Vote<Number, Hash>,
+    /// Signature.
+    pub signature: FarmerSignature,
+}
+
+impl<Number, Hash> SignedVote<Number, Hash>
+where
+    Number: Encode,
+    Hash: Encode,
+{
+    /// Whether vote signature is valid
+    pub fn is_valid(&self) -> bool {
+        let ctx = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
+        PublicKey::from_bytes(self.vote.public_key().as_slice())
+            .expect("Public key always uses the same crypto; qed")
+            .verify(
+                ctx.bytes(&self.vote.encode()),
+                &Signature::from_bytes(&self.signature)
+                    .expect("Signature always uses the same crypto; qed"),
+            )
+            .is_ok()
+    }
 }
 
 fn find_pre_digest<Header>(header: &Header) -> Option<PreDigest<FarmerPublicKey>>
@@ -240,7 +310,7 @@ sp_api::decl_runtime_apis! {
 
         /// Submit farmer vote vote that is essentially a header with bigger solution range than
         /// acceptable for block authoring. Only useful in an offchain context.
-        fn submit_vote_extrinsic(vote: Block::Header);
+        fn submit_vote_extrinsic(signed_vote: SignedVote<<<Block as BlockT>::Header as HeaderT>::Number, Block::Hash>);
 
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;

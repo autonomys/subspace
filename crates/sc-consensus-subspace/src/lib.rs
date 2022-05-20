@@ -77,7 +77,7 @@ use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
-use subspace_solving::SOLUTION_SIGNING_CONTEXT;
+use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -103,11 +103,11 @@ pub struct NewSlotNotification {
     pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey>>,
 }
 
-/// Notification with block header hash that needs to be signed and sender for signature.
+/// Notification with a hash that needs to be signed to receive reward and sender for signature.
 #[derive(Debug, Clone)]
-pub struct BlockSigningNotification {
-    /// Header hash of the block to be signed.
-    pub header_hash: H256,
+pub struct RewardSigningNotification {
+    /// Hash to be signed.
+    pub hash: H256,
     /// Public key of the plot identity that should create signature.
     pub public_key: FarmerPublicKey,
     /// Sender that can be used to send signature for the header.
@@ -158,9 +158,9 @@ pub enum Error<Header: HeaderT> {
     /// Header is unsealed
     #[error("Header {0:?} is unsealed")]
     HeaderUnsealed(Header::Hash),
-    /// Bad signature
-    #[error("Bad signature on {0:?}")]
-    BadSignature(Header::Hash),
+    /// Bad reward signature
+    #[error("Bad reward signature on {0:?}")]
+    BadRewardSignature(Header::Hash),
     /// Bad solution signature
     #[error("Bad solution signature on slot {0:?}: {1:?}")]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
@@ -238,7 +238,9 @@ where
             VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
             VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
             VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
-            VerificationError::BadSignature(block_hash) => Error::BadSignature(block_hash),
+            VerificationError::BadRewardSignature(block_hash) => {
+                Error::BadRewardSignature(block_hash)
+            }
             VerificationError::BadSolutionSignature(slot, signature_error) => {
                 Error::BadSolutionSignature(slot, signature_error)
             }
@@ -415,8 +417,8 @@ where
         force_authoring,
         backoff_authoring_blocks,
         subspace_link: subspace_link.clone(),
-        // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
@@ -553,8 +555,8 @@ pub struct SubspaceLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    block_signing_notification_sender: SubspaceNotificationSender<BlockSigningNotification>,
-    block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
+    reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
@@ -577,10 +579,10 @@ impl<Block: BlockT> SubspaceLink<Block> {
 
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub fn block_signing_notification_stream(
+    pub fn reward_signing_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<BlockSigningNotification> {
-        self.block_signing_notification_stream.clone()
+    ) -> SubspaceNotificationStream<RewardSigningNotification> {
+        self.reward_signing_notification_stream.clone()
     }
 
     /// Get stream with notifications about archived segment creation
@@ -613,7 +615,8 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     select_chain: SelectChain,
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
-    signing_context: SigningContext,
+    solution_signing_context: SigningContext,
+    reward_signing_context: SigningContext,
     block: PhantomData<Block>,
 }
 
@@ -751,8 +754,9 @@ where
                     solution_range,
                     salt,
                     piece_check_params: None,
-                    signing_context: &self.signing_context,
+                    solution_signing_context: &self.solution_signing_context,
                 },
+                reward_signing_context: &self.reward_signing_context,
             })
             .map_err(|error| subspace_err(error.into()))?
         };
@@ -1202,8 +1206,8 @@ where
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
-    let (block_signing_notification_sender, block_signing_notification_stream) =
-        notification::channel("subspace_block_signing_notification_stream");
+    let (reward_signing_notification_sender, reward_signing_notification_stream) =
+        notification::channel("subspace_reward_signing_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
         notification::channel("subspace_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
@@ -1225,8 +1229,8 @@ where
         config,
         new_slot_notification_sender,
         new_slot_notification_stream,
-        block_signing_notification_sender,
-        block_signing_notification_stream,
+        reward_signing_notification_sender,
+        reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
@@ -1287,8 +1291,8 @@ where
         slot_now,
         telemetry,
         client,
-        // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block: PhantomData::default(),
     };
 

@@ -411,6 +411,7 @@ sp_api::decl_runtime_apis! {
 
 // TODO: remove once the fraud proof verification is moved into the client.
 pub mod fraud_proof_ext {
+    #[cfg(feature = "std")]
     use sp_externalities::ExternalitiesExt;
     use sp_runtime_interface::runtime_interface;
 

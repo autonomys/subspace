@@ -477,7 +477,7 @@ impl PieceIndexHash {
 }
 
 /// Farmer solution for slot challenge.
-#[derive(Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct Solution<AccountId> {

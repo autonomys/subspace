@@ -37,7 +37,6 @@ use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
 use sp_core::{offchain::KeyTypeId, OpaqueMetadata, RuntimeDebug};
 use sp_inherents::{CheckInherentsResult, InherentData};
-#[cfg(feature = "std")]
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
@@ -59,6 +58,7 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::PIECE_SIZE;
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
+use sp_consensus_subspace::SignedVote;
 use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
 
 // Ensure Babe and Aura use the same crypto to simplify things a bit.
@@ -987,7 +987,9 @@ cfg_if! {
                     )
                 }
 
-                fn submit_vote_extrinsic(_vote: <Block as BlockT>::Header) {
+                fn submit_vote_extrinsic(
+                    _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+                ) {
                     unimplemented!()
                 }
 
@@ -1319,7 +1321,9 @@ cfg_if! {
                     )
                 }
 
-                fn submit_vote_extrinsic(_vote: <Block as BlockT>::Header) {
+                fn submit_vote_extrinsic(
+                    _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+                ) {
                     unimplemented!()
                 }
 

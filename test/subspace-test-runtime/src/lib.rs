@@ -45,7 +45,7 @@ use pallet_grandpa_finality_verifier::chain::Chain;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote, SolutionRanges,
 };
 use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
@@ -963,8 +963,10 @@ impl_runtime_apis! {
             Subspace::submit_equivocation_report(equivocation_proof)
         }
 
-        fn submit_vote_extrinsic(vote: <Block as BlockT>::Header) {
-            Subspace::submit_vote(vote)
+        fn submit_vote_extrinsic(
+            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+        ) {
+            Subspace::submit_vote(signed_vote)
         }
 
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
