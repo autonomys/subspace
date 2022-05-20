@@ -55,9 +55,9 @@ impl PlotFile for BenchPlotMock {
     }
 }
 
-struct HumanReadable<T>(pub T);
+struct HumanReadableSize(pub u64);
 
-impl fmt::Display for HumanReadable<u64> {
+impl fmt::Display for HumanReadableSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let suffixes = [
             ("M", 1024 * 1024),
@@ -75,7 +75,9 @@ impl fmt::Display for HumanReadable<u64> {
     }
 }
 
-impl fmt::Display for HumanReadable<Duration> {
+struct HumanReadableDuration(pub Duration);
+
+impl fmt::Display for HumanReadableDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // If duration is too small we can just print it as it is
         if self.0 < Duration::from_secs(60) {
@@ -175,52 +177,49 @@ pub(crate) async fn bench(
 
     let start = Instant::now();
 
-    tokio::spawn(async move {
-        let mut last_archived_block = LastArchivedBlock {
-            number: 0,
-            archived_progress: ArchivedBlockProgress::Partial(0),
-        };
+    let mut last_archived_block = LastArchivedBlock {
+        number: 0,
+        archived_progress: ArchivedBlockProgress::Partial(0),
+    };
 
-        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
-            last_archived_block
-                .archived_progress
-                .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
+    for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
+        last_archived_block
+            .archived_progress
+            .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
 
-            let archived_segment = {
-                let root_block = RootBlock::V0 {
-                    segment_index,
-                    records_root: Sha256Hash::default(),
-                    prev_root_block_hash: Sha256Hash::default(),
-                    last_archived_block,
-                };
-
-                let mut pieces = FlatPieces::new(256);
-                rand::thread_rng().fill(pieces.as_mut());
-
-                let objects = std::iter::repeat_with(|| PieceObject::V0 {
-                    hash: rand::random(),
-                    offset: rand::random(),
-                })
-                .take(100)
-                .collect();
-
-                ArchivedSegment {
-                    root_block,
-                    pieces,
-                    object_mapping: vec![PieceObjectMapping { objects }],
-                }
+        let archived_segment = {
+            let root_block = RootBlock::V0 {
+                segment_index,
+                records_root: Sha256Hash::default(),
+                prev_root_block_hash: Sha256Hash::default(),
+                last_archived_block,
             };
 
-            if archived_segments_sender
-                .send(archived_segment)
-                .await
-                .is_err()
-            {
-                break;
+            let mut pieces = FlatPieces::new(256);
+            rand::thread_rng().fill(pieces.as_mut());
+
+            let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                hash: rand::random(),
+                offset: rand::random(),
+            })
+            .take(100)
+            .collect();
+
+            ArchivedSegment {
+                root_block,
+                pieces,
+                object_mapping: vec![PieceObjectMapping { objects }],
             }
+        };
+
+        if archived_segments_sender
+            .send(archived_segment)
+            .await
+            .is_err()
+        {
+            break;
         }
-    })
-    .await?;
+    }
 
     client.stop().await;
 
@@ -236,24 +235,24 @@ pub(crate) async fn bench(
     let overhead = space_allocated - actual_space_pledged;
 
     println!("Finished benchmarking.\n");
-    println!("{} allocated for farming", HumanReadable(space_allocated));
+    println!(
+        "{} allocated for farming",
+        HumanReadableSize(space_allocated)
+    );
     println!(
         "{} actual space pledged (which is {:.2}%)",
-        HumanReadable(actual_space_pledged),
+        HumanReadableSize(actual_space_pledged),
         (actual_space_pledged * 100) as f64 / space_allocated as f64
     );
     println!(
         "{} of overhead (which is {:.2}%)",
-        HumanReadable(overhead),
+        HumanReadableSize(overhead),
         (overhead * 100) as f64 / space_allocated as f64
     );
-    println!("{} plotting time", HumanReadable(took));
+    println!("{} plotting time", HumanReadableDuration(took));
     println!(
         "{:.2}M/s average plotting throughput",
-        (write_pieces_size * multi_farming.plots.len() as u64) as f64
-            / 1000.
-            / 1000.
-            / took.as_secs_f64()
+        actual_space_pledged as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
     multi_farming.wait().await?;
