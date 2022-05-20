@@ -737,6 +737,21 @@ impl<T: PlotFile> PlotWorker<T> {
             .write_all(&piece_index.to_le_bytes())
     }
 
+    fn put_piece_indexes(
+        &mut self,
+        start_offset: PieceOffset,
+        piece_indexes: &[PieceIndex],
+    ) -> io::Result<()> {
+        self.piece_offset_to_index.seek(SeekFrom::Start(
+            start_offset * std::mem::size_of::<PieceIndex>() as u64,
+        ))?;
+        let piece_indexes = piece_indexes
+            .iter()
+            .flat_map(|piece_index| piece_index.to_le_bytes())
+            .collect::<Vec<_>>();
+        self.piece_offset_to_index.write_all(&piece_indexes)
+    }
+
     // TODO: Add error recovery
     fn write_encodings(
         &mut self,
@@ -768,8 +783,9 @@ impl<T: PlotFile> PlotWorker<T> {
             {
                 self.piece_index_hash_to_offset_db
                     .put(&piece_index.into(), piece_offset)?;
-                self.put_piece_index(piece_offset, piece_index)?;
             }
+
+            self.put_piece_indexes(current_piece_count, sequential_piece_indexes)?;
 
             self.piece_count
                 .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
