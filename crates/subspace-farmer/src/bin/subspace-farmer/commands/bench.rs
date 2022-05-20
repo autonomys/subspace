@@ -5,6 +5,7 @@ use futures::channel::mpsc;
 use futures::SinkExt;
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
@@ -54,9 +55,9 @@ impl PlotFile for BenchPlotMock {
     }
 }
 
-struct HumanReadable(pub u64);
+struct HumanReadable<T>(pub T);
 
-impl fmt::Display for HumanReadable {
+impl fmt::Display for HumanReadable<u64> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let suffixes = [
             ("M", 1024 * 1024),
@@ -71,6 +72,32 @@ impl fmt::Display for HumanReadable {
             .unwrap_or(*suffixes.last().unwrap());
 
         write!(f, "{:.2}{suffix}", self.0 as f64 / divisor as f64)
+    }
+}
+
+impl fmt::Display for HumanReadable<Duration> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // If duration is too small we can just print it as it is
+        if self.0 < Duration::from_secs(60) {
+            return write!(f, "{:?}", self.0);
+        }
+
+        let seconds = self.0.as_secs() % 60;
+        let minutes = self.0.as_secs() / 60 % 60;
+        let hours = self.0.as_secs() / 60 / 60;
+        let mut out = String::new();
+
+        if hours > 0 {
+            out.push_str(&format!("{hours}h "));
+        }
+        if minutes > 0 {
+            out.push_str(&format!("{minutes}m "));
+        }
+        if seconds > 0 {
+            out.push_str(&format!("{seconds}s "));
+        }
+
+        out.trim_end().fmt(f)
     }
 }
 
@@ -220,7 +247,7 @@ pub(crate) async fn bench(
         HumanReadable(overhead),
         (overhead * 100) as f64 / space_allocated as f64
     );
-    println!("{:.2?} plotting time", took);
+    println!("{} plotting time", HumanReadable(took));
     println!(
         "{:.2}M/s average plotting throughput",
         (write_pieces_size * multi_farming.plots.len() as u64) as f64
