@@ -229,16 +229,19 @@ pub(crate) async fn bench(
     if !skip_recommitments_bench {
         let start = Instant::now();
 
-        multi_farming
+        let mut tasks = multi_farming
             .commitments
             .iter()
             .cloned()
             .zip(multi_farming.plots.iter().cloned())
             .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
             .map(tokio::task::spawn_blocking)
-            .collect::<FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
+            .collect::<FuturesUnordered<_>>();
+        while let Some(result) = tasks.next().await {
+            if let Err(error) = result {
+                tracing::error!(%error, "Discovered error while recommitments bench")
+            }
+        }
 
         // TODO: update to human readable duration
         println!("Recommitment took {:?}", start.elapsed());
