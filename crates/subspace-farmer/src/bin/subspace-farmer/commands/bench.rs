@@ -87,7 +87,7 @@ pub(crate) async fn bench(
     max_plot_size: Option<u64>,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
-    skip_recommitments_bench: bool,
+    do_recommitments: bool,
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
@@ -226,7 +226,7 @@ pub(crate) async fn bench(
         write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
-    if !skip_recommitments_bench {
+    if do_recommitments {
         let start = Instant::now();
 
         let mut tasks = multi_farming

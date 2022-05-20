@@ -104,7 +104,7 @@ enum Command {
         write_pieces_size: u64,
         /// Skip recommitment benchmark
         #[clap(long)]
-        skip_recommitments: bool,
+        no_recommitments: bool,
     },
 }
 
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
             max_plot_size,
             write_to_disk,
             write_pieces_size,
-            skip_recommitments,
+            no_recommitments,
         } => {
             commands::bench(
                 custom_path,
@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
                 max_plot_size,
                 write_to_disk,
                 write_pieces_size,
-                skip_recommitments,
+                !no_recommitments,
             )
             .await?
         }
