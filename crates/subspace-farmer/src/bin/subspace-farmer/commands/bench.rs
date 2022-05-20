@@ -223,7 +223,10 @@ pub(crate) async fn bench(
     println!("{:.2?} plotting time", took);
     println!(
         "{:.2}M/s average plotting throughput",
-        write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
+        (write_pieces_size * multi_farming.plots.len() as u64) as f64
+            / 1000.
+            / 1000.
+            / took.as_secs_f64()
     );
 
     multi_farming.wait().await?;
