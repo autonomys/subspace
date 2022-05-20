@@ -87,17 +87,12 @@ sp_runtime::impl_opaque_keys! {
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
-    authoring_version: 1,
-    // The version of the runtime specification. A full node will not attempt to use its native
-    //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
-    //   `spec_version`, and `authoring_version` are the same between Wasm and native.
-    // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
-    //   the compatible custom types.
-    spec_version: 103,
-    impl_version: 1,
+    authoring_version: 0,
+    spec_version: 0,
+    impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
-    state_version: 1,
+    transaction_version: 0,
+    state_version: 0,
 };
 
 /// The version information used to identify this runtime when compiled natively.
@@ -660,19 +655,19 @@ construct_runtime!(
 
         Subspace: pallet_subspace = 2,
         OffencesSubspace: pallet_offences_subspace = 3,
-        Rewards: pallet_rewards = 9,
+        Rewards: pallet_rewards = 4,
 
-        Balances: pallet_balances = 4,
-        TransactionFees: pallet_transaction_fees = 12,
-        TransactionPayment: pallet_transaction_payment = 5,
+        Balances: pallet_balances = 5,
+        TransactionFees: pallet_transaction_fees = 6,
+        TransactionPayment: pallet_transaction_payment = 7,
         Utility: pallet_utility = 8,
 
-        Feeds: pallet_feeds = 6,
-        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
-        ObjectStore: pallet_object_store = 10,
-        Executor: pallet_executor = 11,
+        Feeds: pallet_feeds = 9,
+        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
+        ObjectStore: pallet_object_store = 11,
+        Executor: pallet_executor = 12,
 
-        Vesting: orml_vesting = 7,
+        Vesting: orml_vesting = 13,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
@@ -1050,10 +1045,6 @@ impl_runtime_apis! {
 
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
-        }
-
-        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
-            BlockObjectMapping::default()
         }
     }
 

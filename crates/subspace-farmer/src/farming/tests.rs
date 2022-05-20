@@ -6,7 +6,7 @@ use crate::plot::Plot;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, TAG_SIZE};
+use subspace_core_primitives::{FlatPieces, Salt, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -100,7 +100,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 async fn farming_happy_path() {
     let slot_info = SlotInfo {
         slot_number: 3,
-        global_challenge: [1; TAG_SIZE],
+        global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
@@ -117,21 +117,21 @@ async fn farming_happy_path() {
 async fn farming_salt_change() {
     let first_slot = SlotInfo {
         slot_number: 1,
-        global_challenge: [1; TAG_SIZE],
+        global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
     };
     let second_slot = SlotInfo {
         slot_number: 2,
-        global_challenge: [1; TAG_SIZE],
+        global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
     };
     let third_slot = SlotInfo {
         slot_number: 3,
-        global_challenge: [1; TAG_SIZE],
+        global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 2],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,

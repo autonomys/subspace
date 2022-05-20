@@ -17,7 +17,7 @@
 
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
-use subspace_core_primitives::{PublicKey, Salt, Signature, SlotNumber, Solution, Tag};
+use subspace_core_primitives::{PublicKey, Salt, Sha256Hash, Signature, SlotNumber, Solution};
 
 /// Metadata necessary for farmer operation
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ pub struct SlotInfo {
     /// Slot number
     pub slot_number: SlotNumber,
     /// Global slot challenge
-    pub global_challenge: Tag,
+    pub global_challenge: Sha256Hash,
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon

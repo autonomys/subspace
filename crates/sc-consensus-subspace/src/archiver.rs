@@ -26,7 +26,6 @@ use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -131,8 +130,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
             .runtime_api()
             .validated_object_call_hashes(&BlockId::Number(last_archived_block_number.into()))
             .and_then(|calls| {
-                ObjectsApi::extract_block_object_mapping(
-                    client.runtime_api().deref(),
+                client.runtime_api().extract_block_object_mapping(
                     &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
                     last_archived_block.block.clone(),
                     calls,
@@ -198,8 +196,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                     .runtime_api()
                     .validated_object_call_hashes(&BlockId::Number(block_to_archive.into()))
                     .and_then(|calls| {
-                        ObjectsApi::extract_block_object_mapping(
-                            client.runtime_api().deref(),
+                        client.runtime_api().extract_block_object_mapping(
                             &BlockId::Number(block_to_archive.saturating_sub(1).into()),
                             block.block.clone(),
                             calls,
@@ -300,8 +297,7 @@ pub fn start_subspace_archiver<Block: BlockT, Client>(
                         .runtime_api()
                         .validated_object_call_hashes(&BlockId::Number(block_to_archive))
                         .and_then(|calls| {
-                            ObjectsApi::extract_block_object_mapping(
-                                client.runtime_api().deref(),
+                            client.runtime_api().extract_block_object_mapping(
                                 &BlockId::Number(block_to_archive.saturating_sub(One::one())),
                                 block.block.clone(),
                                 calls,

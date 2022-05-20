@@ -38,7 +38,7 @@ use std::{
 	pin::Pin,
 	sync::Arc,
 };
-use subspace_core_primitives::{Randomness, Tag};
+use subspace_core_primitives::{Randomness, Sha256Hash};
 use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
@@ -50,7 +50,7 @@ pub(super) struct ExecutorSlotInfo {
 	/// Slot
 	pub(super) slot: Slot,
 	/// Global slot challenge
-	pub(super) global_challenge: Tag,
+	pub(super) global_challenge: Sha256Hash,
 }
 
 /// An event telling the `Overseer` on the particular block
@@ -109,7 +109,7 @@ pub(super) async fn start_worker<
 	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
 	Backend: sc_client_api::Backend<Block> + 'static,
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-	NSNS: Stream<Item = (Slot, Tag)> + Send + 'static,
+	NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
 {
 	let span = tracing::Span::current();
 

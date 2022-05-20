@@ -21,6 +21,7 @@ use crate::chain_spec_utils::{
 };
 use cirrus_runtime::AccountId;
 use sc_service::ChainType;
+use sp_core::crypto::Ss58Codec;
 use subspace_runtime::SSC;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
@@ -79,6 +80,34 @@ pub fn local_testnet_config() -> ExecutionChainSpec {
         None,
         // Protocol ID
         Some("template-local"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        None,
+    )
+}
+
+pub fn gemini_config() -> ExecutionChainSpec {
+    ExecutionChainSpec::from_genesis(
+        // Name
+        "Subspace Gemini Execution 1",
+        // ID
+        "subspace_gemini_execution_1",
+        ChainType::Local,
+        move || {
+            testnet_genesis(vec![
+                // Same with the Sudo account on primary chain.
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Wrong root account address"),
+            ])
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        None,
+        // Protocol ID
+        Some("subspace-gemini-execution-1"),
         None,
         // Properties
         Some(chain_spec_properties()),

@@ -220,6 +220,8 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
+            "gemini-1" => chain_spec::gemini_config()?,
+            "gemini-1-compiled" => chain_spec::gemini_config_compiled()?,
             "testnet" => chain_spec::testnet_config_json()?,
             "testnet-compiled" => chain_spec::testnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

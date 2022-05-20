@@ -1,0 +1,47 @@
+# This action enabling building chain spec used in the node build, can be triggered manually or by release creation.
+#
+# Regular and raw chain specs are built both for releases and for manually triggered runs, uploaded to artifacts and
+# assets.
+name: Chain spec snapshot build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'chain-spec-snapshot-*'
+
+jobs:
+  chains-spec:
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Build node image
+        id: build
+        uses: docker/build-push-action@v2
+        with:
+          file: Dockerfile-node
+          push: false
+
+      - name: Generate testnet chain specifications
+        run: |
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled > chain-spec-gemini-1.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --raw > chain-spec-raw-gemini-1.json
+
+      - name: Upload chain specifications to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: chain-specifications
+          path: |
+            chain-spec-gemini-1.json
+            chain-spec-raw-gemini-1.json
+          if-no-files-found: error
+
+      - name: Upload chain specifications to assets
+        uses: alexellis/upload-assets@0.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["chain-spec-gemini-1.json", "chain-spec-raw-gemini-1.json"]'

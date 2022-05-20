@@ -134,12 +134,12 @@ impl_opaque_keys! {
 pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("subspace-executor"),
 	impl_name: create_runtime_str!("subspace-executor"),
-	authoring_version: 1,
-	spec_version: 1,
+	authoring_version: 0,
+	spec_version: 0,
 	impl_version: 0,
 	apis: RUNTIME_API_VERSIONS,
-	transaction_version: 1,
-	state_version: 1,
+	transaction_version: 0,
+	state_version: 0,
 };
 
 /// This determines the average expected block time that we are targeting.
@@ -322,8 +322,8 @@ construct_runtime!(
 		ExecutivePallet: cirrus_pallet_executive = 1,
 
 		// Monetary stuff.
-		Balances: pallet_balances = 10,
-		TransactionPayment: pallet_transaction_payment = 11,
+		Balances: pallet_balances = 2,
+		TransactionPayment: pallet_transaction_payment = 3,
 	}
 );
 
