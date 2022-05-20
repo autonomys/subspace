@@ -18,8 +18,6 @@ You need 2 executables, select whichever applies to your operating system
 
 You can find these executables in the [Releases](https://github.com/subspace/subspace/releases) section of this Repository.
 
-> This is a ***non-incentivized*** testnet. Meaning there are no rewards in place at this time, and has absolutely no financial benefit to being run at this time.
-
 ## Polkadot.js wallet
 
 Before running anything you need to have a wallet where you'll receive testnet coins.
@@ -38,9 +36,8 @@ The address of your account will be necessary at the last step.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain testnet `
+--chain gemini-1 `
 --execution native `
---unsafe-pruning `
 --pruning 1024 `
 --keep-blocks 1024 `
 --validator `
@@ -51,7 +48,7 @@ The address of your account will be necessary at the last step.
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-windows
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at C:\Users\X\AppData\Local\subspace-node-windows-x86_64-snapshot-2022-jan-05.exe\data\chains\subspace_test\db\full
@@ -89,9 +86,8 @@ The address of your account will be necessary at the last step.
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain testnet \
+  --chain gemini-1 \
   --execution wasm \
-  --unsafe-pruning \
   --pruning 1024 \
   --keep-blocks 1024 \
   --validator \
@@ -102,7 +98,7 @@ The address of your account will be necessary at the last step.
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-ubuntu
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /home/X/.local/share/subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -143,9 +139,8 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain testnet \
+  --chain gemini-1 \
   --execution wasm \
-  --unsafe-pruning \
   --pruning 1024 \
   --keep-blocks 1024 \
   --validator \
@@ -156,7 +151,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace testnet
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -203,10 +198,9 @@ services:
       - "0.0.0.0:30333:30333"
     restart: unless-stopped
     command: [
-      "--chain", "testnet",
+      "--chain", "gemini-1",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
-      "--unsafe-pruning",
       "--pruning", "1024",
       "--keep-blocks", "1024",
       "--port", "30333",
@@ -284,7 +278,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain testnet
+./NODE_FILE_NAME purge-chain --chain gemini-1
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -306,8 +300,8 @@ Below are some helpful samples:
 
 - `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
 - `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain testnet ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain testnet` : erases data related to the node if data were stored in `/path/to/data`
+- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-1 ...` : start node and store data in `/path/to/data` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-1` : erases data related to the node if data were stored in `/path/to/data`
 
 Examples:
 ```bash
@@ -321,7 +315,6 @@ Examples:
 Instructions above will get you full node (doesn't store the history and state of the whole blockchain, only last 1024
 blocks). If you want to opt in to storing the whole history (archival node), remove following parameters (lines) from
 above instructions before starting your node:
-* `--unsafe-pruning`
 * `--pruning 1024`
 * `--keep-blocks 1024`
 
