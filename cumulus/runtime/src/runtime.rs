@@ -120,13 +120,15 @@ pub const MINUTES: BlockNumber = 60_000 / (MILLISECS_PER_BLOCK as BlockNumber);
 pub const HOURS: BlockNumber = MINUTES * 60;
 pub const DAYS: BlockNumber = HOURS * 24;
 
-// Unit = the base number of indivisible units for balances
-pub const UNIT: Balance = 1_000_000_000_000;
-pub const MILLIUNIT: Balance = 1_000_000_000;
-pub const MICROUNIT: Balance = 1_000_000;
+/// The smallest unit of the token is called Shannon.
+pub const SHANNON: Balance = 1;
+/// Subspace Credits have 18 decimal places.
+pub const DECIMAL_PLACES: u8 = 18;
+/// One Subspace Credit.
+pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
-/// The existential deposit. Set to 1/10 of the Rococo Relay Chain.
-pub const EXISTENTIAL_DEPOSIT: Balance = MILLIUNIT;
+/// The existential deposit. Same with the one on primary chain.
+pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
 
 // 1 in 4 blocks (on average, not counting collisions) will be primary babe blocks.
 pub const PRIMARY_PROBABILITY: (u64, u64) = (1, 4);
@@ -202,7 +204,7 @@ impl frame_system::Config for Runtime {
 	/// The ubiquitous origin type.
 	type Origin = Origin;
 	/// Maximum number of block number to block hash mappings to keep (oldest pruned first).
-	type BlockHashCount = ConstU32<250>;
+	type BlockHashCount = BlockHashCount;
 	/// Runtime version.
 	type Version = Version;
 	/// Converts a module to an index of this module in the runtime.
@@ -251,8 +253,7 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-	/// Relay Chain `TransactionByteFee` / 10
-	pub const TransactionByteFee: Balance = 10 * MICROUNIT;
+	pub const TransactionByteFee: Balance = 1;
 	pub const OperationalFeeMultiplier: u8 = 5;
 }
 
