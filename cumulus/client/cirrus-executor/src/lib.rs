@@ -678,6 +678,7 @@ where
 		}
 
 		let primary_number = execution_receipt.primary_number;
+		// TODO: best_execution_chain_number?
 		let best_number = self.client.info().best_number;
 
 		// Just ignore it if the receipt is too old and has been pruned.
