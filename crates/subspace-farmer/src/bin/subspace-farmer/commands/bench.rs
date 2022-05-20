@@ -87,6 +87,7 @@ pub(crate) async fn bench(
     max_plot_size: Option<u64>,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
+    skip_recommitments_bench: bool,
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
@@ -225,21 +226,23 @@ pub(crate) async fn bench(
         write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
-    let start = Instant::now();
+    if !skip_recommitments_bench {
+        let start = Instant::now();
 
-    multi_farming
-        .commitments
-        .iter()
-        .cloned()
-        .zip(multi_farming.plots.iter().cloned())
-        .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
-        .map(tokio::task::spawn_blocking)
-        .collect::<FuturesUnordered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+        multi_farming
+            .commitments
+            .iter()
+            .cloned()
+            .zip(multi_farming.plots.iter().cloned())
+            .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+            .map(tokio::task::spawn_blocking)
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
 
-    // TODO: update to human readable duration
-    println!("Recommitment took {:?}", start.elapsed());
+        // TODO: update to human readable duration
+        println!("Recommitment took {:?}", start.elapsed());
+    }
 
     client.stop().await;
     multi_farming.wait().await?;
