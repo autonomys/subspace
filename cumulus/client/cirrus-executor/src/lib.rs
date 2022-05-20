@@ -445,7 +445,10 @@ where
 		Ok((execution_proof, execution_phase))
 	}
 
-	async fn wait_for_local_receipt(
+	/// The background is that a receipt received from the network points to a future block
+	/// from the local view, so we need to wait for the receipt for the block at the same
+	/// height to be produced locally in order to check the validity of the external receipt.
+	async fn wait_for_local_future_receipt(
 		&self,
 		secondary_block_hash: Block::Hash,
 		secondary_block_number: <Block::Header as HeaderT>::Number,
@@ -461,7 +464,8 @@ where
 					// TODO: test how this works under the primary forks.
 					//       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
 					//
-					// The local client has moved to the next block, that means the receipt
+					// Whether or not the best execution chain number on primary chain has been
+					// updated, the local client has proceeded to a higher block, that means the receipt
 					// of `block_hash` received from the network does not match the local one,
 					// we should just send back the local receipt at the same height.
 					if self.client.info().best_number >= secondary_block_number {
@@ -678,12 +682,16 @@ where
 		}
 
 		let primary_number = execution_receipt.primary_number;
-		// TODO: best_execution_chain_number?
-		let best_number = self.client.info().best_number;
+		let best_execution_chain_number = self
+			.primary_chain_client
+			.runtime_api()
+			.best_execution_chain_number(&BlockId::Hash(
+				self.primary_chain_client.info().best_hash,
+			))?;
 
 		// Just ignore it if the receipt is too old and has been pruned.
 		if aux_schema::target_receipt_is_pruned(
-			best_number.saturated_into(),
+			best_execution_chain_number.saturated_into(),
 			primary_number.saturated_into(),
 		) {
 			return Ok(Action::Empty)
@@ -709,7 +717,7 @@ where
 				None,
 				async move {
 					if let Err(err) =
-						executor.wait_for_local_receipt(block_hash, block_number, tx).await
+						executor.wait_for_local_future_receipt(block_hash, block_number, tx).await
 					{
 						tracing::error!(
 							target: LOG_TARGET,
