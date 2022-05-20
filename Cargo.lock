@@ -974,7 +974,6 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "scale-info",
- "smallvec",
  "sp-api",
  "sp-block-builder",
  "sp-core",
@@ -987,6 +986,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
 
@@ -1008,7 +1008,6 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "scale-info",
- "smallvec",
  "sp-api",
  "sp-block-builder",
  "sp-core",
@@ -1021,6 +1020,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
 

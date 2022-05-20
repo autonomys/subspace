@@ -62,6 +62,13 @@ pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 100);
 // TODO: Proper value here
 pub const STORAGE_FEES_ESCROW_BLOCK_TAX: (u64, u64) = (1, 2);
 
+/// The smallest unit of the token is called Shannon.
+pub const SHANNON: Balance = 1;
+/// Subspace Credits have 18 decimal places.
+pub const DECIMAL_PLACES: u8 = 18;
+/// One Subspace Credit.
+pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
+
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
 
