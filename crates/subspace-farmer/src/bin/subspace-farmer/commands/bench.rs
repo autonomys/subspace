@@ -79,6 +79,8 @@ struct HumanReadableDuration(pub Duration);
 
 impl fmt::Display for HumanReadableDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::fmt::Write;
+
         // If duration is too small we can just print it as it is
         if self.0 < Duration::from_secs(60) {
             return write!(f, "{:?}", self.0);
@@ -90,13 +92,13 @@ impl fmt::Display for HumanReadableDuration {
         let mut out = String::new();
 
         if hours > 0 {
-            out.push_str(&format!("{hours}h "));
+            write!(out, "{hours}h ")?;
         }
         if minutes > 0 {
-            out.push_str(&format!("{minutes}m "));
+            write!(out, "{minutes}m ")?;
         }
         if seconds > 0 {
-            out.push_str(&format!("{seconds}s "));
+            write!(out, "{seconds}s ")?;
         }
 
         out.trim_end().fmt(f)
