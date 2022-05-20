@@ -46,6 +46,7 @@ pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "
 cirrus-pallet-executive = { path = "../pallets/executive", default-features = false }
 cirrus-primitives = { path = "../primitives", default-features = false }
 sp-executor = { path = "../../crates/sp-executor", default-features = false }
+subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives", default-features = false }
 
 [build-dependencies]
 substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
@@ -78,6 +79,7 @@ std = [
 	"cirrus-pallet-executive/std",
 	"cirrus-primitives/std",
 	"sp-executor/std",
+	"subspace-runtime-primitives/std",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []

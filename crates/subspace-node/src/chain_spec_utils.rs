@@ -18,7 +18,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use subspace_runtime::{SS58Prefix, DECIMAL_PLACES};
+use subspace_runtime::SS58Prefix;
+use subspace_runtime_primitives::DECIMAL_PLACES;
 
 /// Shared chain spec properties related to the coin.
 pub(crate) fn chain_spec_properties() -> Properties {

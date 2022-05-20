@@ -30,9 +30,9 @@ use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
     BalancesConfig, ExecutorConfig, GenesisConfig, SudoConfig, SystemConfig, VestingConfig,
-    MILLISECS_PER_BLOCK, SSC, WASM_BINARY,
+    MILLISECS_PER_BLOCK, WASM_BINARY,
 };
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";

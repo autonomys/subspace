@@ -49,6 +49,7 @@ pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "
 cirrus-pallet-executive = { path = "../../pallets/executive", default-features = false }
 cirrus-primitives = { path = "../../primitives", default-features = false }
 sp-executor = { path = "../../../crates/sp-executor", default-features = false }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
 [features]
 default = [
@@ -78,6 +79,7 @@ std = [
 	"cirrus-pallet-executive/std",
 	"cirrus-primitives/std",
 	"sp-executor/std",
+	"subspace-runtime-primitives/std",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []

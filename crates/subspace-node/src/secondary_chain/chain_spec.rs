@@ -22,7 +22,7 @@ use crate::chain_spec_utils::{
 use cirrus_runtime::AccountId;
 use sc_service::ChainType;
 use sp_core::crypto::Ss58Codec;
-use subspace_runtime::SSC;
+use subspace_runtime_primitives::SSC;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ExecutionChainSpec = SerializableChainSpec<cirrus_runtime::GenesisConfig>;

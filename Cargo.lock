@@ -986,6 +986,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
 
@@ -1019,6 +1020,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
 

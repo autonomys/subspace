@@ -23,6 +23,7 @@ use frame_support::{
 };
 use frame_system::limits::{BlockLength, BlockWeights};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use subspace_runtime_primitives::SHANNON;
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -102,13 +103,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	transaction_version: 0,
 	state_version: 0,
 };
-
-/// The smallest unit of the token is called Shannon.
-pub const SHANNON: Balance = 1;
-/// Subspace Credits have 18 decimal places.
-pub const DECIMAL_PLACES: u8 = 18;
-/// One Subspace Credit.
-pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
 /// The existential deposit. Same with the one on primary chain.
 pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
