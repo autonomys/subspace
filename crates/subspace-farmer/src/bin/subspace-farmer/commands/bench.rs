@@ -274,8 +274,10 @@ pub(crate) async fn bench(
             }
         }
 
-        // TODO: update to human readable duration
-        println!("Recommitment took {:?}", start.elapsed());
+        println!(
+            "Recommitment took {}",
+            HumanReadableDuration(start.elapsed())
+        );
     }
 
     client.stop().await;
