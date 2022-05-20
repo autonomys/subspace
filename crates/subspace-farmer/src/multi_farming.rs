@@ -25,7 +25,7 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // less than it was specified before.
     // TODO: Piece count should account for database overhead of various additional databases
     // For now assume 92% will go for plot itself
-    let total_plot_size = (total_plot_size as f64 * 0.92) as u64 / PIECE_SIZE as u64;
+    let total_plot_size = total_plot_size * 92 * 100 / PIECE_SIZE as u64;
 
     let plot_sizes =
         std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
