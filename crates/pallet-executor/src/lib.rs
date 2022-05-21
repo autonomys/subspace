@@ -459,7 +459,7 @@ mod pallet {
                     if let Err(e) = Self::validate_execution_receipt(signed_execution_receipt) {
                         log::error!(
                             target: "runtime::subspace::executor",
-                            "[validate_unsigned] Invalid execution receipt: {:?}, error: {:?}",
+                            "Invalid execution receipt: {:?}, error: {:?}",
                             signed_execution_receipt, e
                         );
                         return InvalidTransactionCode::ExecutionReceipt.into();
@@ -490,7 +490,7 @@ mod pallet {
                     if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
                         log::error!(
                             target: "runtime::subspace::executor",
-                            "[validate_unsigned] Invalid signed opaque bundle: {:?}, error: {:?}",
+                            "Invalid signed opaque bundle: {:?}, error: {:?}",
                             signed_opaque_bundle, e
                         );
                         return InvalidTransactionCode::Bundle.into();
@@ -504,7 +504,7 @@ mod pallet {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
                         log::error!(
                             target: "runtime::subspace::executor",
-                            "[validate_unsigned] Invalid fraud proof: {:?}, error: {:?}",
+                            "Invalid fraud proof: {:?}, error: {:?}",
                             fraud_proof, e
                         );
                         return InvalidTransactionCode::FraudProof.into();
@@ -521,7 +521,7 @@ mod pallet {
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
-                            "[validate_unsigned] Invalid bundle equivocation proof: {:?}, error: {:?}",
+                            "Invalid bundle equivocation proof: {:?}, error: {:?}",
                             bundle_equivocation_proof, e
                         );
                         return InvalidTransactionCode::BundleEquivicationProof.into();
@@ -540,7 +540,7 @@ mod pallet {
                     {
                         log::error!(
                             target: "runtime::subspace::executor",
-                            "[validate_unsigned] Wrong InvalidTransactionProof: {:?}, error: {:?}",
+                            "Wrong InvalidTransactionProof: {:?}, error: {:?}",
                             invalid_transaction_proof, e
                         );
                         return InvalidTransactionCode::TrasactionProof.into();
