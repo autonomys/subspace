@@ -1169,6 +1169,13 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
     }
 }
 
+impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
+    fn find_voting_reward_addresses() -> Vec<T::AccountId> {
+        // TODO: Implement
+        Vec::new()
+    }
+}
+
 impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();

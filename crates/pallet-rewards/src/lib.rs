@@ -24,7 +24,7 @@ mod default_weights;
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
-use subspace_runtime_primitives::FindBlockRewardAddress;
+use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 pub trait WeightInfo {
     fn on_initialize() -> Weight;
@@ -36,7 +36,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
-    use subspace_runtime_primitives::FindBlockRewardAddress;
+    use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -52,7 +52,13 @@ mod pallet {
         #[pallet::constant]
         type BlockReward: Get<BalanceOf<Self>>;
 
+        /// Fixed reward for voter.
+        #[pallet::constant]
+        type VoteReward: Get<BalanceOf<Self>>;
+
         type FindBlockRewardAddress: FindBlockRewardAddress<Self::AccountId>;
+
+        type FindVotingRewardAddresses: FindVotingRewardAddresses<Self::AccountId>;
 
         type WeightInfo: WeightInfo;
     }
@@ -71,19 +77,28 @@ mod pallet {
             block_author: T::AccountId,
             reward: BalanceOf<T>,
         },
+        /// Issued reward for the voter.
+        VoteReward {
+            voter: T::AccountId,
+            reward: BalanceOf<T>,
+        },
     }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(now: BlockNumberFor<T>) -> Weight {
-            Self::do_initialize(now);
+        fn on_initialize(block_number: BlockNumberFor<T>) -> Weight {
+            Self::do_initialize(block_number);
             T::WeightInfo::on_initialize()
+        }
+
+        fn on_finalize(now: BlockNumberFor<T>) {
+            Self::do_finalize(now);
         }
     }
 }
 
 impl<T: Config> Pallet<T> {
-    fn do_initialize(_n: T::BlockNumber) {
+    fn do_initialize(_block_number: T::BlockNumber) {
         let block_author = T::FindBlockRewardAddress::find_block_reward_address(
             frame_system::Pallet::<T>::digest()
                 .logs
@@ -99,5 +114,15 @@ impl<T: Config> Pallet<T> {
             block_author,
             reward,
         });
+    }
+
+    fn do_finalize(_block_number: T::BlockNumber) {
+        let reward = T::VoteReward::get();
+
+        for voter in T::FindVotingRewardAddresses::find_voting_reward_addresses() {
+            T::Currency::deposit_creating(&voter, reward);
+
+            Self::deposit_event(Event::VoteReward { voter, reward });
+        }
     }
 }
