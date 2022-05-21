@@ -38,7 +38,6 @@ use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, info, warn};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
-use num_traits::{CheckedSub, One};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -51,7 +50,7 @@ use sp_consensus_subspace::verification::{PieceCheckParams, VerifySolutionParams
 use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_io::hashing;
 use sp_runtime::generic::{DigestItem, DigestItemRef};
-use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -777,7 +776,7 @@ impl<T: Config> Pallet<T> {
     fn do_finalize(_block_number: T::BlockNumber) {
         PorRandomness::<T>::take();
 
-        let current_vote_verification_data = current_vote_verification_data::<T>();
+        let current_vote_verification_data = current_vote_verification_data::<T>(true);
         match ParentVoteVerificationData::<T>::get() {
             Some(parent_vote_verification_data) => {
                 if current_vote_verification_data != parent_vote_verification_data {
@@ -936,7 +935,7 @@ impl<T: Config> Pallet<T> {
     fn validate_vote(
         signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> TransactionValidity {
-        check_vote::<T>(signed_vote)?;
+        check_vote::<T>(signed_vote, false)?;
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
             // We assign the maximum priority for any vote.
@@ -949,15 +948,39 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_vote(
         signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
-        check_vote::<T>(signed_vote).map_err(Into::into)
+        check_vote::<T>(signed_vote, true).map_err(Into::into)
     }
 }
 
-fn current_vote_verification_data<T: Config>() -> VoteVerificationData {
+/// Verification data retrieval depends on whether it is called from pre_dispatch (meaning block
+/// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
+/// block initialization didn't happen yet).
+fn current_vote_verification_data<T: Config>(pre_dispatch: bool) -> VoteVerificationData {
+    let global_randomnesses = GlobalRandomnesses::<T>::get();
+    let solution_ranges = SolutionRanges::<T>::get();
+    let salts = Salts::<T>::get();
     VoteVerificationData {
-        global_randomness: GlobalRandomnesses::<T>::get().current,
-        solution_range: SolutionRanges::<T>::get().voting_current,
-        salt: Salts::<T>::get().current,
+        global_randomness: if pre_dispatch {
+            global_randomnesses.current
+        } else {
+            global_randomnesses
+                .next
+                .unwrap_or(global_randomnesses.current)
+        },
+        solution_range: if pre_dispatch {
+            solution_ranges.voting_current
+        } else {
+            solution_ranges
+                .voting_next
+                .unwrap_or(solution_ranges.voting_current)
+        },
+        salt: if pre_dispatch || !salts.switch_next_block {
+            salts.current
+        } else {
+            salts
+                .next
+                .expect("Next salt must always be available if `switch_next_block` is true")
+        },
         record_size: T::RecordSize::get(),
         recorded_history_segment_size: T::RecordedHistorySegmentSize::get(),
         max_plot_size: T::MaxPlotSize::get(),
@@ -970,6 +993,7 @@ fn current_vote_verification_data<T: Config>() -> VoteVerificationData {
 // TODO: Equivocation
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    pre_dispatch: bool,
 ) -> Result<(), InvalidTransaction> {
     let Vote::V0 {
         height,
@@ -996,34 +1020,26 @@ fn check_vote<T: Config>(
     if !(height == current_block_number || height == current_block_number - One::one()) {
         warn!(
             target: "runtime::subspace",
-            "Vote verification error: bad height {height:?}"
+            "Vote verification error: bad height {height:?}, current block number is \
+            {current_block_number:?}"
         );
-        return Err(InvalidTransaction::Future);
+        return Err(if height > current_block_number {
+            InvalidTransaction::Future
+        } else {
+            InvalidTransaction::Stale
+        });
     }
 
     // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
-    if *parent_hash != frame_system::Pallet::<T>::parent_hash() {
-        let grandparent_number =
-            current_block_number
-                .checked_sub(&2u32.into())
-                .ok_or_else(|| {
-                    warn!(
-                        target: "runtime::subspace",
-                        "Vote verification error: parent hash {}",
-                        hex::encode(parent_hash)
-                    );
-
-                    InvalidTransaction::Call
-                })?;
-
-        if *parent_hash != frame_system::Pallet::<T>::block_hash(grandparent_number) {
-            warn!(
-                target: "runtime::subspace",
-                "Vote verification error: parent hash {}",
-                hex::encode(parent_hash)
-            );
-            return Err(InvalidTransaction::Call);
-        }
+    //
+    // Subtraction will not panic due to check above.
+    if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
+        warn!(
+            target: "runtime::subspace",
+            "Vote verification error: parent hash {}",
+            hex::encode(parent_hash)
+        );
+        return Err(InvalidTransaction::Call);
     }
 
     if let Err(error) = verification::check_reward_signature(
@@ -1040,7 +1056,7 @@ fn check_vote<T: Config>(
     }
 
     let vote_verification_data = if height == current_block_number {
-        current_vote_verification_data::<T>()
+        current_vote_verification_data::<T>(pre_dispatch)
     } else if let Some(value) = ParentVoteVerificationData::<T>::get() {
         value
     } else {

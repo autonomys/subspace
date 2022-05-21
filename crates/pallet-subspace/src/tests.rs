@@ -18,8 +18,9 @@
 
 use crate::mock::{
     create_root_block, create_signed_vote, generate_equivocation_proof, go_to_block, new_test_ext,
-    progress_to_block, Event, Origin, RecordSize, RecordedHistorySegmentSize, ReportLongevity,
-    Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    progress_to_block, EonDuration, Event, GlobalRandomnessUpdateInterval, Origin, RecordSize,
+    RecordedHistorySegmentSize, ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
+    SLOT_PROBABILITY,
 };
 use crate::{Call, Config, CurrentSlot, Error, RecordsRoot, WeightInfo};
 use codec::Encode;
@@ -227,7 +228,7 @@ fn can_update_salt_on_eon_change() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
-        assert_eq!(<Test as Config>::EonDuration::get(), 5);
+        assert_eq!(<Test as Config>::EonDuration::get(), 6);
         assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 3);
         let initial_salts = Salts::default();
         assert_eq!(Subspace::salts(), initial_salts);
@@ -238,7 +239,7 @@ fn can_update_salt_on_eon_change() {
         assert_eq!(Subspace::salts(), initial_salts);
 
         // Salt reveal
-        progress_to_block(&keypair, 4);
+        progress_to_block(&keypair, 5);
         // Next salt should be revealed, but current is still unchanged and it is not yet scheduled
         // for switch in the next block.
         let revealed_salts = Subspace::salts();
@@ -247,12 +248,12 @@ fn can_update_salt_on_eon_change() {
         assert!(!revealed_salts.switch_next_block);
 
         // Almost eon edge
-        progress_to_block(&keypair, 5);
+        progress_to_block(&keypair, 6);
         // No changes from before
         assert_eq!(Subspace::salts(), revealed_salts);
 
         // Eon edge
-        progress_to_block(&keypair, 6);
+        progress_to_block(&keypair, 7);
         // Same salts, scheduled to be updated in the next block
         assert_eq!(
             Subspace::salts(),
@@ -263,7 +264,7 @@ fn can_update_salt_on_eon_change() {
             }
         );
 
-        progress_to_block(&keypair, 7);
+        progress_to_block(&keypair, 8);
         // Salts switched
         assert_eq!(
             Subspace::salts(),
@@ -613,7 +614,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn voting() {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("error"));
 
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
@@ -862,6 +863,79 @@ fn voting() {
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
                 Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_ok!(Subspace::validate_unsigned(
+                TransactionSource::Local,
+                &Call::vote {
+                    signed_vote: Box::new(signed_vote),
+                }
+            ));
+        }
+
+        progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get());
+
+        // Reset so that any solution works for votes
+        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        // On the edge of change of global randomness, salt or solution range vote must be validated
+        // with correct data (in this test case randomness just updated)
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                10,
+                frame_system::Pallet::<Test>::block_hash(9),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().next.unwrap(),
+                {
+                    let salts = Subspace::salts();
+                    if salts.switch_next_block {
+                        salts.next.unwrap()
+                    } else {
+                        salts.current
+                    }
+                },
+                first_piece.into(),
+            );
+
+            assert_ok!(Subspace::validate_unsigned(
+                TransactionSource::Local,
+                &Call::vote {
+                    signed_vote: Box::new(signed_vote),
+                }
+            ));
+        }
+
+        // Jump to the edge of hte eon where salt update happens
+        go_to_block(
+            &keypair,
+            11,
+            u64::from(
+                (u64::from(Subspace::current_slot()) as u32 / EonDuration::get() + 1)
+                    * EonDuration::get(),
+            ),
+        );
+
+        // On the edge of change of global randomness, salt or solution range vote must be validated
+        // with correct data (in this test case salt just updated)
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                11,
+                frame_system::Pallet::<Test>::block_hash(10),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                {
+                    let salts = Subspace::salts();
+                    if salts.switch_next_block {
+                        salts.next.unwrap()
+                    } else {
+                        salts.current
+                    }
+                },
                 first_piece.into(),
             );
 
