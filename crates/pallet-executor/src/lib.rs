@@ -28,7 +28,7 @@ use sp_executor::{
     BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
     SignedOpaqueBundle,
 };
-use sp_runtime::traits::BlockNumberProvider;
+use sp_runtime::traits::{BlockNumberProvider, One};
 use sp_runtime::RuntimeAppPublic;
 
 #[frame_support::pallet]
@@ -570,7 +570,19 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::BadSignature);
         }
 
-        if BlockHash::<T>::get(execution_receipt.primary_number) != execution_receipt.primary_hash {
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        // Due to `initialize_block` is skipped while calling the runtime api, the block
+        // hash mapping for last block is unknown to the transaction pool, but this info
+        // is already available in System.
+        let point_to_parent_block = execution_receipt.primary_number
+            == current_block_number - One::one()
+            && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+
+        if !point_to_parent_block
+            && BlockHash::<T>::get(execution_receipt.primary_number)
+                != execution_receipt.primary_hash
+        {
             return Err(ExecutionReceiptError::UnknownBlock);
         }
 
@@ -590,7 +602,6 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Stale);
         }
 
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
         if primary_number == current_block_number
             || primary_number > best_number + T::MaximumReceiptDrift::get()
         {

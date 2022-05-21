@@ -559,7 +559,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		.build(Role::Full)
 		.await;
 
-	alice_executor.wait_for_blocks(4).await;
+	alice_executor.wait_for_blocks(3).await;
 
 	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
 		let pool = alice.transaction_pool.pool();
@@ -597,7 +597,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		.expect("Submit receipt successfully");
 	let tx3 = create_and_send_submit_execution_receipt(3)
 		.await
-		.expect("Submit receipt successfully");
+		.expect("Best block receipt must be able be included in the next block");
 
 	let ready_txs = || {
 		alice
