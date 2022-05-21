@@ -209,6 +209,7 @@ mod pallet {
             // Remove the oldest once the receipts cache is full.
             if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
                 Receipts::<T>::remove(to_prune);
+                BlockHash::<T>::remove(to_prune);
                 OldestReceiptNumber::<T>::put(to_prune + One::one());
             }
 
@@ -331,6 +332,15 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Map of block number to block hash.
+    ///
+    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
+    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
+    /// this mapping will grow indefinitely.
+    #[pallet::storage]
+    pub(super) type BlockHash<T: Config> =
+        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
+
     /// Latest execution chain block number.
     #[pallet::storage]
     #[pallet::getter(fn best_execution_chain_number)]
@@ -340,6 +350,17 @@ mod pallet {
     /// Number of the block that the oldest execution receipt points to.
     #[pallet::storage]
     pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
+        fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            <BlockHash<T>>::insert(
+                block_number - One::one(),
+                frame_system::Pallet::<T>::parent_hash(),
+            );
+            T::DbWeight::get().writes(1)
+        }
+    }
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -549,9 +570,7 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::BadSignature.into());
         }
 
-        if frame_system::Pallet::<T>::block_hash(execution_receipt.primary_number)
-            != execution_receipt.primary_hash
-        {
+        if BlockHash::<T>::get(execution_receipt.primary_number) != execution_receipt.primary_hash {
             return Err(ExecutionReceiptError::UnknownBlock.into());
         }
 
