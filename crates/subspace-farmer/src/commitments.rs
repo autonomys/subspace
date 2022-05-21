@@ -88,7 +88,7 @@ impl Commitments {
     }
 
     /// Create commitments for all pieces for a given salt
-    pub(crate) fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
+    pub fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
         let mut commitment_databases = self.inner.commitment_databases.lock();
 
         let db_entry = match commitment_databases.create_db_entry(salt)? {

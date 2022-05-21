@@ -16,6 +16,7 @@ use tracing::info;
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct MultiFarming {
     pub plots: Arc<Vec<Plot>>,
+    pub commitments: Vec<Commitments>,
     farmings: Vec<Farming>,
     archiving: Archiving,
 }
@@ -150,6 +151,7 @@ impl MultiFarming {
 
         Ok(Self {
             plots: Arc::new(plots),
+            commitments,
             farmings,
             archiving,
         })

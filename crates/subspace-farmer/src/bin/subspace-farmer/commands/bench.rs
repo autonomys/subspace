@@ -2,9 +2,11 @@ use crate::bench_rpc_client::BenchRpcClient;
 use crate::{utils, WriteToDisk};
 use anyhow::anyhow;
 use futures::channel::mpsc;
-use futures::SinkExt;
+use futures::stream::FuturesUnordered;
+use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
@@ -54,9 +56,9 @@ impl PlotFile for BenchPlotMock {
     }
 }
 
-struct HumanReadable(pub u64);
+struct HumanReadableSize(pub u64);
 
-impl fmt::Display for HumanReadable {
+impl fmt::Display for HumanReadableSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let suffixes = [
             ("M", 1024 * 1024),
@@ -74,6 +76,36 @@ impl fmt::Display for HumanReadable {
     }
 }
 
+struct HumanReadableDuration(pub Duration);
+
+impl fmt::Display for HumanReadableDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::fmt::Write;
+
+        // If duration is too small we can just print it as it is
+        if self.0 < Duration::from_secs(60) {
+            return write!(f, "{:?}", self.0);
+        }
+
+        let seconds = self.0.as_secs() % 60;
+        let minutes = self.0.as_secs() / 60 % 60;
+        let hours = self.0.as_secs() / 60 / 60;
+        let mut out = String::new();
+
+        if hours > 0 {
+            write!(out, "{hours}h ")?;
+        }
+        if minutes > 0 {
+            write!(out, "{minutes}m ")?;
+        }
+        if seconds > 0 {
+            write!(out, "{seconds}s ")?;
+        }
+
+        out.trim_end().fmt(f)
+    }
+}
+
 const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
     record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
     recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
@@ -86,6 +118,7 @@ pub(crate) async fn bench(
     max_plot_size: Option<u64>,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
+    do_recommitments: bool,
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
@@ -148,54 +181,49 @@ pub(crate) async fn bench(
 
     let start = Instant::now();
 
-    tokio::spawn(async move {
-        let mut last_archived_block = LastArchivedBlock {
-            number: 0,
-            archived_progress: ArchivedBlockProgress::Partial(0),
-        };
+    let mut last_archived_block = LastArchivedBlock {
+        number: 0,
+        archived_progress: ArchivedBlockProgress::Partial(0),
+    };
 
-        for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
-            last_archived_block
-                .archived_progress
-                .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
+    for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
+        last_archived_block
+            .archived_progress
+            .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
 
-            let archived_segment = {
-                let root_block = RootBlock::V0 {
-                    segment_index,
-                    records_root: Sha256Hash::default(),
-                    prev_root_block_hash: Sha256Hash::default(),
-                    last_archived_block,
-                };
-
-                let mut pieces = FlatPieces::new(256);
-                rand::thread_rng().fill(pieces.as_mut());
-
-                let objects = std::iter::repeat_with(|| PieceObject::V0 {
-                    hash: rand::random(),
-                    offset: rand::random(),
-                })
-                .take(100)
-                .collect();
-
-                ArchivedSegment {
-                    root_block,
-                    pieces,
-                    object_mapping: vec![PieceObjectMapping { objects }],
-                }
+        let archived_segment = {
+            let root_block = RootBlock::V0 {
+                segment_index,
+                records_root: Sha256Hash::default(),
+                prev_root_block_hash: Sha256Hash::default(),
+                last_archived_block,
             };
 
-            if archived_segments_sender
-                .send(archived_segment)
-                .await
-                .is_err()
-            {
-                break;
-            }
-        }
-    })
-    .await?;
+            let mut pieces = FlatPieces::new(256);
+            rand::thread_rng().fill(pieces.as_mut());
 
-    client.stop().await;
+            let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                hash: rand::random(),
+                offset: rand::random(),
+            })
+            .take(100)
+            .collect();
+
+            ArchivedSegment {
+                root_block,
+                pieces,
+                object_mapping: vec![PieceObjectMapping { objects }],
+            }
+        };
+
+        if archived_segments_sender
+            .send(archived_segment)
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
 
     let took = start.elapsed();
 
@@ -209,23 +237,50 @@ pub(crate) async fn bench(
     let overhead = space_allocated - actual_space_pledged;
 
     println!("Finished benchmarking.\n");
-    println!("{} allocated for farming", HumanReadable(space_allocated));
+    println!(
+        "{} allocated for farming",
+        HumanReadableSize(space_allocated)
+    );
     println!(
         "{} actual space pledged (which is {:.2}%)",
-        HumanReadable(actual_space_pledged),
+        HumanReadableSize(actual_space_pledged),
         (actual_space_pledged * 100) as f64 / space_allocated as f64
     );
     println!(
         "{} of overhead (which is {:.2}%)",
-        HumanReadable(overhead),
+        HumanReadableSize(overhead),
         (overhead * 100) as f64 / space_allocated as f64
     );
-    println!("{:.2?} plotting time", took);
+    println!("{} plotting time", HumanReadableDuration(took));
     println!(
         "{:.2}M/s average plotting throughput",
-        write_pieces_size as f64 / 1000. / 1000. / took.as_secs_f64()
+        actual_space_pledged as f64 / 1000. / 1000. / took.as_secs_f64()
     );
 
+    if do_recommitments {
+        let start = Instant::now();
+
+        let mut tasks = multi_farming
+            .commitments
+            .iter()
+            .cloned()
+            .zip(multi_farming.plots.iter().cloned())
+            .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+            .map(tokio::task::spawn_blocking)
+            .collect::<FuturesUnordered<_>>();
+        while let Some(result) = tasks.next().await {
+            if let Err(error) = result {
+                tracing::error!(%error, "Discovered error while recommitments bench")
+            }
+        }
+
+        println!(
+            "Recommitment took {}",
+            HumanReadableDuration(start.elapsed())
+        );
+    }
+
+    client.stop().await;
     multi_farming.wait().await?;
 
     Ok(())

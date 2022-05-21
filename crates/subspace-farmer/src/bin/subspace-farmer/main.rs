@@ -102,6 +102,9 @@ enum Command {
         /// Only `G` and `T` endings are supported.
         #[clap(long, parse(try_from_str = parse_human_readable_size))]
         write_pieces_size: u64,
+        /// Skip recommitment benchmark
+        #[clap(long)]
+        no_recommitments: bool,
     },
 }
 
@@ -152,6 +155,7 @@ async fn main() -> Result<()> {
             max_plot_size,
             write_to_disk,
             write_pieces_size,
+            no_recommitments,
         } => {
             commands::bench(
                 custom_path,
@@ -159,6 +163,7 @@ async fn main() -> Result<()> {
                 max_plot_size,
                 write_to_disk,
                 write_pieces_size,
+                !no_recommitments,
             )
             .await?
         }
