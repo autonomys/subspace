@@ -35,6 +35,7 @@ use frame_support::{
     weights::{Pays, Weight},
 };
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
+use log::{debug, error, info, warn};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 use num_traits::{CheckedSub, One};
@@ -751,7 +752,7 @@ impl<T: Config> Pallet<T> {
             Salts::<T>::mutate(|salts| {
                 if salts.next.is_none() {
                     let eon_index = Self::eon_index();
-                    log::info!(
+                    info!(
                         target: "runtime::subspace",
                         "🔃 Updating next salt on eon {} slot {}",
                         eon_index,
@@ -885,10 +886,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::debug!(target: "runtime::subspace", "Submitted Subspace vote");
+                debug!(target: "runtime::subspace", "Submitted Subspace vote");
             }
             Err(()) => {
-                log::error!(target: "runtime::subspace", "Error submitting Subspace vote");
+                error!(target: "runtime::subspace", "Error submitting Subspace vote");
             }
         }
     }
@@ -908,7 +909,7 @@ impl<T: Config> Pallet<T> {
             source,
             TransactionSource::Local | TransactionSource::InBlock,
         ) {
-            log::warn!(
+            warn!(
                 target: "runtime::subspace",
                 "Rejecting root block extrinsic because it is not local/in-block.",
             );
@@ -981,7 +982,7 @@ fn check_vote<T: Config>(
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
     if current_block_number <= One::one() || height <= One::one() {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Votes are not expected at height below 2"
         );
@@ -993,7 +994,7 @@ fn check_vote<T: Config>(
     //
     // Subtraction will not panic due to check above.
     if !(height == current_block_number || height == current_block_number - One::one()) {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Vote verification error: bad height {height:?}"
         );
@@ -1006,7 +1007,7 @@ fn check_vote<T: Config>(
             current_block_number
                 .checked_sub(&2u32.into())
                 .ok_or_else(|| {
-                    log::debug!(
+                    warn!(
                         target: "runtime::subspace",
                         "Vote verification error: parent hash {}",
                         hex::encode(parent_hash)
@@ -1016,7 +1017,7 @@ fn check_vote<T: Config>(
                 })?;
 
         if *parent_hash != frame_system::Pallet::<T>::block_hash(grandparent_number) {
-            log::debug!(
+            warn!(
                 target: "runtime::subspace",
                 "Vote verification error: parent hash {}",
                 hex::encode(parent_hash)
@@ -1031,7 +1032,7 @@ fn check_vote<T: Config>(
         &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
@@ -1043,7 +1044,7 @@ fn check_vote<T: Config>(
     } else if let Some(value) = ParentVoteVerificationData::<T>::get() {
         value
     } else {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Vote verification error: vote verification data not available"
         );
@@ -1060,7 +1061,7 @@ fn check_vote<T: Config>(
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
         records_root
     } else {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Vote verification error: no records root for segment index {segment_index}"
         );
@@ -1084,7 +1085,7 @@ fn check_vote<T: Config>(
             solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
         },
     ) {
-        log::debug!(
+        warn!(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
