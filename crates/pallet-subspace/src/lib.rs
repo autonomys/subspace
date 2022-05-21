@@ -149,7 +149,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
@@ -182,7 +182,7 @@ mod pallet {
     #[pallet::disable_frame_system_supertrait_check]
     pub trait Config: pallet_timestamp::Config {
         /// The overarching event type.
-        type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
@@ -283,9 +283,15 @@ mod pallet {
     /// Events type.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event {
+    pub enum Event<T: Config> {
         /// Root block was stored in blockchain history.
         RootBlockStored { root_block: RootBlock },
+        /// Farmer vote.
+        FarmerVote {
+            farmer: FarmerPublicKey,
+            height: T::BlockNumber,
+            parent_hash: T::Hash,
+        },
     }
 
     #[pallet::error]
@@ -419,11 +425,24 @@ mod pallet {
         #[allow(clippy::boxed_local)]
         pub fn vote(
             origin: OriginFor<T>,
-            _signed_vote: Box<SignedVote<T::BlockNumber, T::Hash, T::AccountId>>,
+            signed_vote: Box<SignedVote<T::BlockNumber, T::Hash, T::AccountId>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
+            let Vote::V0 {
+                height,
+                parent_hash,
+                solution,
+                ..
+            } = signed_vote.vote;
+
             // TODO: Process vote
+
+            Self::deposit_event(Event::FarmerVote {
+                farmer: solution.public_key,
+                height,
+                parent_hash,
+            });
             Ok(())
         }
     }
@@ -945,6 +964,9 @@ fn current_vote_verification_data<T: Config>() -> VoteVerificationData {
     }
 }
 
+// TODO: Prevent voters from previous block to claim reward in the current block as well as to
+//  claim
+// TODO: Equivocation
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
 ) -> Result<(), InvalidTransaction> {

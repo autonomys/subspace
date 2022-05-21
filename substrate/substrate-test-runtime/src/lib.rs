@@ -503,8 +503,8 @@ impl From<frame_system::Event<Runtime>> for Event {
     }
 }
 
-impl From<pallet_subspace::Event> for Event {
-    fn from(_evt: pallet_subspace::Event) -> Self {
+impl From<pallet_subspace::Event<Runtime>> for Event {
+    fn from(_evt: pallet_subspace::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
