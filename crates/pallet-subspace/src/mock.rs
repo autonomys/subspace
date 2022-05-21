@@ -26,19 +26,20 @@ use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::{FarmerSignature, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
 use sp_runtime::{
     testing::{Digest, DigestItem, Header, TestXt},
-    traits::{Header as _, IdentityLookup},
+    traits::{Block as BlockT, Header as _, IdentityLookup},
     Perbill,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash,
-    Solution, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
+    Sha256Hash, Solution, Tag,
 };
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -312,4 +313,51 @@ pub fn create_root_block(segment_index: u64) -> RootBlock {
             archived_progress: ArchivedBlockProgress::Complete,
         },
     }
+}
+
+pub fn create_signed_vote(
+    keypair: &Keypair,
+    height: u64,
+    parent_hash: <Block as BlockT>::Hash,
+    slot: Slot,
+    global_randomnesses: &Randomness,
+    salt: Salt,
+    encoding: Piece,
+) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
+    let solution_signing_context = schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT);
+    let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
+
+    let global_challenge = subspace_solving::derive_global_challenge(global_randomnesses, slot);
+    let local_challenge = keypair
+        .sign(solution_signing_context.bytes(&global_challenge))
+        .to_bytes()
+        .into();
+
+    let tag = subspace_solving::create_tag(&encoding, salt);
+
+    let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
+        height,
+        parent_hash,
+        slot,
+        solution: Solution {
+            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            reward_address: 1,
+            piece_index: 0,
+            encoding,
+            signature: keypair
+                .sign(solution_signing_context.bytes(&tag))
+                .to_bytes()
+                .into(),
+            local_challenge,
+            tag,
+        },
+    };
+
+    let signature = FarmerSignature::unchecked_from(
+        keypair
+            .sign(reward_signing_context.bytes(vote.hash().as_ref()))
+            .to_bytes(),
+    );
+
+    SignedVote { vote, signature }
 }

@@ -37,7 +37,7 @@ use frame_support::{
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
-use num_traits::One;
+use num_traits::{CheckedSub, One};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -976,11 +976,23 @@ fn check_vote<T: Config>(
         slot,
         solution,
     } = &signed_vote.vote;
+    let height = *height;
 
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
-    // Height must be either the same as in current block or smaller by one
-    if !(*height == current_block_number || *height == current_block_number - One::one()) {
+    if current_block_number <= One::one() || height <= One::one() {
+        log::debug!(
+            target: "runtime::subspace",
+            "Votes are not expected at height below 2"
+        );
+
+        return Err(InvalidTransaction::Call);
+    }
+
+    // Height must be either the same as in current block or smaller by one.
+    //
+    // Subtraction will not panic due to check above.
+    if !(height == current_block_number || height == current_block_number - One::one()) {
         log::debug!(
             target: "runtime::subspace",
             "Vote verification error: bad height {height:?}"
@@ -989,16 +1001,28 @@ fn check_vote<T: Config>(
     }
 
     // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
-    if !(*parent_hash == frame_system::Pallet::<T>::parent_hash()
-        || *parent_hash
-            == frame_system::Pallet::<T>::block_hash(current_block_number - 2u32.into()))
-    {
-        log::debug!(
-            target: "runtime::subspace",
-            "Vote verification error: parent hash {}",
-            hex::encode(parent_hash)
-        );
-        return Err(InvalidTransaction::Call);
+    if *parent_hash != frame_system::Pallet::<T>::parent_hash() {
+        let grandparent_number =
+            current_block_number
+                .checked_sub(&2u32.into())
+                .ok_or_else(|| {
+                    log::debug!(
+                        target: "runtime::subspace",
+                        "Vote verification error: parent hash {}",
+                        hex::encode(parent_hash)
+                    );
+
+                    InvalidTransaction::Call
+                })?;
+
+        if *parent_hash != frame_system::Pallet::<T>::block_hash(grandparent_number) {
+            log::debug!(
+                target: "runtime::subspace",
+                "Vote verification error: parent hash {}",
+                hex::encode(parent_hash)
+            );
+            return Err(InvalidTransaction::Call);
+        }
     }
 
     if let Err(error) = verification::check_reward_signature(
@@ -1014,7 +1038,7 @@ fn check_vote<T: Config>(
         return Err(InvalidTransaction::BadProof);
     }
 
-    let vote_verification_data = if *height == current_block_number {
+    let vote_verification_data = if height == current_block_number {
         current_vote_verification_data::<T>()
     } else if let Some(value) = ParentVoteVerificationData::<T>::get() {
         value

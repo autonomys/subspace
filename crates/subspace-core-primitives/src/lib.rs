@@ -209,8 +209,8 @@ impl Default for Piece {
 }
 
 impl From<[u8; PIECE_SIZE]> for Piece {
-    fn from(inner: [u8; PIECE_SIZE]) -> Self {
-        Self(inner.to_vec())
+    fn from(piece: [u8; PIECE_SIZE]) -> Self {
+        Self(piece.to_vec())
     }
 }
 

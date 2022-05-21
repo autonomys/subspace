@@ -17,23 +17,30 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_root_block, generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
-    Event, Origin, ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
-    SLOT_PROBABILITY,
+    create_root_block, create_signed_vote, generate_equivocation_proof, go_to_block, new_test_ext,
+    progress_to_block, Event, Origin, RecordSize, RecordedHistorySegmentSize, ReportLongevity,
+    Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
-use crate::{Call, Config, CurrentSlot, Error, WeightInfo};
+use crate::{Call, Config, CurrentSlot, Error, RecordsRoot, WeightInfo};
 use codec::Encode;
 use frame_support::weights::{GetDispatchInfo, Pays};
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
+use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, GlobalRandomnesses, Salts, SolutionRanges};
-use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Header;
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
+use sp_consensus_subspace::{
+    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
 };
+use sp_core::crypto::UncheckedFrom;
+use sp_runtime::traits::{Header, ValidateUnsigned};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidityError,
+    ValidTransaction,
+};
+use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::PIECE_SIZE;
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT};
 
 #[test]
 fn genesis_slot_is_correct() {
@@ -601,5 +608,269 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
             <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner2),
             InvalidTransaction::BadMandatory,
         );
+    });
+}
+
+#[test]
+fn voting() {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let mut archiver = Archiver::new(
+            RecordSize::get() as usize,
+            RecordedHistorySegmentSize::get() as usize,
+        )
+        .unwrap();
+        let codec = SubspaceCodec::new(&keypair.public);
+
+        let archived_segments = {
+            let mut block = vec![0u8; 1024 * 1024];
+            rand::thread_rng().fill(block.as_mut_slice());
+            archiver.add_block(block, Default::default())
+        };
+
+        let mut first_piece: [u8; PIECE_SIZE] = archived_segments[0]
+            .pieces
+            .as_pieces()
+            .next()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        codec.encode(&mut first_piece, 0).unwrap();
+
+        // Can't submit vote right after genesis block
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                0,
+                <Test as frame_system::Config>::Hash::default(),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Call)
+            );
+        }
+
+        progress_to_block(&keypair, 1);
+
+        // Can't submit vote with height lower than 2
+        {
+            for height in 0..2 {
+                let signed_vote = create_signed_vote(
+                    &keypair,
+                    height,
+                    <Test as frame_system::Config>::Hash::default(),
+                    Subspace::current_slot() + 1,
+                    &Subspace::global_randomnesses().current,
+                    Subspace::salts().current,
+                    first_piece.into(),
+                );
+
+                assert_err!(
+                    Subspace::validate_unsigned(
+                        TransactionSource::Local,
+                        &Call::vote {
+                            signed_vote: Box::new(signed_vote),
+                        }
+                    ),
+                    TransactionValidityError::Invalid(InvalidTransaction::Call)
+                );
+            }
+        }
+
+        progress_to_block(&keypair, 2);
+
+        // Height must be either the same as current block or older by one
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                3,
+                <Test as frame_system::Config>::Hash::default(),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Future)
+            );
+        }
+
+        // Vote must point to real parent hash
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                <Test as frame_system::Config>::Hash::default(),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Call)
+            );
+        }
+
+        // Vote must be signed correctly
+        {
+            let mut signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            signed_vote.signature = FarmerSignature::unchecked_from(rand::random::<[u8; 64]>());
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+            );
+        }
+
+        // There must be record root corresponding to the piece used
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Call)
+            );
+        }
+
+        RecordsRoot::<Test>::insert(
+            archived_segments[0].root_block.segment_index(),
+            archived_segments[0].root_block.records_root(),
+        );
+
+        // Solution must be within solution range
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Call)
+            );
+        }
+
+        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        // Solution signature must be correct
+        {
+            let mut signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            let Vote::V0 { solution, .. } = &mut signed_vote.vote;
+            solution.signature = rand::random::<[u8; 64]>().into();
+
+            // Fix signed vote signature after changed contents
+            signed_vote.signature = FarmerSignature::unchecked_from(
+                keypair
+                    .sign(
+                        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT)
+                            .bytes(signed_vote.vote.hash().as_ref()),
+                    )
+                    .to_bytes(),
+            );
+
+            assert_err!(
+                Subspace::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::vote {
+                        signed_vote: Box::new(signed_vote),
+                    }
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::Call)
+            );
+        }
+
+        // Finally correct signature
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                first_piece.into(),
+            );
+
+            assert_ok!(Subspace::validate_unsigned(
+                TransactionSource::Local,
+                &Call::vote {
+                    signed_vote: Box::new(signed_vote),
+                }
+            ));
+        }
     });
 }

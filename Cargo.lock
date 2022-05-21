@@ -4716,6 +4716,7 @@ dependencies = [
 name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
  "frame-support",
  "frame-system",
  "hex",
@@ -4725,6 +4726,7 @@ dependencies = [
  "pallet-offences-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
+ "rand 0.8.5",
  "scale-info",
  "schnorrkel",
  "sp-consensus-slots",
@@ -4733,6 +4735,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-archiving",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-solving",
