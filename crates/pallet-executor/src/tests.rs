@@ -1,10 +1,10 @@
 use crate::{
-    self as pallet_executor, Error, ExecutionChainBestNumber, ExecutionReceiptError,
+    self as pallet_executor, BlockHash, Error, ExecutionChainBestNumber, ExecutionReceiptError,
     OldestReceiptNumber, Receipts,
 };
 use frame_support::{
     assert_noop, assert_ok, parameter_types,
-    traits::{ConstU16, ConstU32, ConstU64, GenesisBuild},
+    traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks},
 };
 use sp_core::{crypto::Pair, H256, U256};
 use sp_executor::{
@@ -48,7 +48,7 @@ impl frame_system::Config for Test {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
-    type BlockHashCount = ConstU64<10>;
+    type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
     type AccountData = ();
@@ -91,13 +91,14 @@ fn new_test_ext() -> sp_io::TestExternalities {
 
 fn create_dummy_receipt(
     primary_number: BlockNumber,
+    primary_hash: Hash,
 ) -> SignedExecutionReceipt<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
     let signer = pair.public();
 
     let execution_receipt = ExecutionReceipt {
         primary_number,
-        primary_hash: H256::random(),
+        primary_hash,
         secondary_hash: H256::random(),
         trace: Vec::new(),
         trace_root: Default::default(),
@@ -115,7 +116,7 @@ fn create_dummy_receipt(
 #[test]
 fn submit_execution_receipt_should_work() {
     let dummy_receipts = (1u64..=256u64 + 3u64)
-        .map(create_dummy_receipt)
+        .map(|n| create_dummy_receipt(n, Hash::random()))
         .collect::<Vec<_>>();
 
     new_test_ext().execute_with(|| {
@@ -154,9 +155,71 @@ fn submit_execution_receipt_should_work() {
 }
 
 #[test]
+fn submit_execution_receipt_with_huge_gap_should_work() {
+    let (dummy_receipts, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 2)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (create_dummy_receipt(n, primary_hash), primary_hash)
+        })
+        .unzip();
+
+    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
+        System::set_block_number(1);
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Executor as Hooks<BlockNumber>>::on_initialize(1);
+        System::finalize();
+
+        for b in 2..=n {
+            System::set_block_number(b);
+            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
+            <Executor as Hooks<BlockNumber>>::on_initialize(b);
+            System::finalize();
+        }
+    };
+
+    new_test_ext().execute_with(|| {
+        run_to_block(256 + 2, block_hashes);
+
+        // Submit ancient receipts still works even the block hash mapping for [1, 256)
+        // in System has been removed.
+        assert!(!frame_system::BlockHash::<Test>::contains_key(1));
+        assert!(!frame_system::BlockHash::<Test>::contains_key(255));
+        (0..255).for_each(|index| {
+            assert_ok!(Executor::submit_execution_receipt(
+                Origin::none(),
+                dummy_receipts[index].clone(),
+            ));
+        });
+
+        // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
+        assert!(BlockHash::<Test>::contains_key(0));
+        assert_ok!(Executor::submit_execution_receipt(
+            Origin::none(),
+            dummy_receipts[255].clone(),
+        ));
+        assert!(!BlockHash::<Test>::contains_key(0));
+
+        assert!(BlockHash::<Test>::contains_key(1));
+        assert_ok!(Executor::submit_execution_receipt(
+            Origin::none(),
+            dummy_receipts[256].clone(),
+        ));
+        assert!(!BlockHash::<Test>::contains_key(1));
+
+        assert!(BlockHash::<Test>::contains_key(2));
+        assert_ok!(Executor::submit_execution_receipt(
+            Origin::none(),
+            dummy_receipts[257].clone(),
+        ));
+        assert!(!BlockHash::<Test>::contains_key(2));
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
+    });
+}
+
+#[test]
 fn submit_fraud_proof_should_work() {
     let dummy_receipts = (1u64..=256u64)
-        .map(create_dummy_receipt)
+        .map(|n| create_dummy_receipt(n, Hash::random()))
         .collect::<Vec<_>>();
 
     let dummy_proof = FraudProof {

@@ -559,7 +559,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		.build(Role::Full)
 		.await;
 
-	alice_executor.wait_for_blocks(3).await;
+	alice_executor.wait_for_blocks(4).await;
 
 	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
 		let pool = alice.transaction_pool.pool();
