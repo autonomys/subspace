@@ -35,6 +35,7 @@ use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_consensus_subspace::FarmerPublicKey;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
@@ -75,7 +76,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + sp_consensus_subspace::SubspaceApi<Block>,
+        + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
 {
     let mut module = RpcModule::new(());

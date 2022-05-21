@@ -51,17 +51,20 @@ use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::{
     digests::CompatibleDigestItem, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts,
-    SignedVote, SolutionRanges,
+    SignedVote, SolutionRanges, Vote,
 };
-use sp_core::{crypto::KeyTypeId, Hasher, OpaqueMetadata};
+use sp_core::crypto::{ByteArray, KeyTypeId};
+use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
+use sp_runtime::traits::{
+    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
+};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+};
 use sp_runtime::{
-    create_runtime_str, generic,
-    traits::{AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero},
-    transaction_validity::{
-        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-    },
-    ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic, Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
+    Perbill,
 };
 use sp_std::iter::Peekable;
 use sp_std::{borrow::Cow, prelude::*};
@@ -921,6 +924,25 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
     }
 }
 
+struct RewardAddress([u8; 32]);
+
+impl From<FarmerPublicKey> for RewardAddress {
+    fn from(farmer_public_key: FarmerPublicKey) -> Self {
+        Self(
+            farmer_public_key
+                .as_slice()
+                .try_into()
+                .expect("Public key is always of correct size; qed"),
+        )
+    }
+}
+
+impl From<RewardAddress> for AccountId32 {
+    fn from(reward_address: RewardAddress) -> Self {
+        reward_address.0.into()
+    }
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -989,7 +1011,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
             <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
@@ -1033,9 +1055,25 @@ impl_runtime_apis! {
         }
 
         fn submit_vote_extrinsic(
-            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
         ) {
-            Subspace::submit_vote(signed_vote)
+            let SignedVote { vote, signature } = signed_vote;
+            let Vote::V0 {
+                height,
+                parent_hash,
+                slot,
+                solution,
+            } = vote;
+
+            Subspace::submit_vote(SignedVote {
+                vote: Vote::V0 {
+                    height,
+                    parent_hash,
+                    slot,
+                    solution: solution.into_reward_address_format::<RewardAddress, AccountId32>(),
+                },
+                signature,
+            })
         }
 
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {

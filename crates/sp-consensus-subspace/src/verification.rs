@@ -18,6 +18,7 @@
 //! Verification for Subspace headers.
 use crate::digests::{CompatibleDigestItem, PreDigest};
 use crate::{find_pre_digest, FarmerPublicKey, FarmerSignature};
+use codec::Decode;
 use schnorrkel::context::SigningContext;
 use schnorrkel::{PublicKey, Signature};
 use sp_api::HeaderT;
@@ -106,9 +107,9 @@ where
 }
 
 /// Information from verified header
-pub struct VerifiedHeaderInfo {
+pub struct VerifiedHeaderInfo<RewardAddress> {
     /// Pre-digest
-    pub pre_digest: PreDigest<FarmerPublicKey>,
+    pub pre_digest: PreDigest<FarmerPublicKey, RewardAddress>,
     /// Seal (signature)
     pub seal: DigestItem,
 }
@@ -121,11 +122,12 @@ pub struct VerifiedHeaderInfo {
 /// required for security and must not be changed.
 ///
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-pub fn check_header<Header>(
+pub fn check_header<Header, RewardAddress>(
     params: VerificationParams<Header>,
-) -> Result<CheckedHeader<Header, VerifiedHeaderInfo>, VerificationError<Header>>
+) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
     Header: HeaderT,
+    RewardAddress: Decode,
 {
     let VerificationParams {
         mut header,
@@ -134,8 +136,8 @@ where
         reward_signing_context,
     } = params;
 
-    let pre_digest =
-        find_pre_digest::<Header>(&header).ok_or(VerificationError::NoPreRuntimeDigest)?;
+    let pre_digest = find_pre_digest::<Header, RewardAddress>(&header)
+        .ok_or(VerificationError::NoPreRuntimeDigest)?;
     let slot = pre_digest.slot;
 
     let seal = header
@@ -189,8 +191,8 @@ pub fn check_reward_signature(
 }
 
 /// Check the solution signature validity.
-fn check_solution_signature(
-    solution: &Solution<FarmerPublicKey>,
+fn check_solution_signature<RewardAddress>(
+    solution: &Solution<FarmerPublicKey, RewardAddress>,
     solution_signing_context: &SigningContext,
 ) -> Result<(), schnorrkel::SignatureError> {
     let public_key = PublicKey::from_bytes(solution.public_key.as_slice())?;
@@ -199,10 +201,10 @@ fn check_solution_signature(
 }
 
 /// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<Header>(
+fn check_piece_tag<Header, RewardAddress>(
     slot: Slot,
     salt: Salt,
-    solution: &Solution<FarmerPublicKey>,
+    solution: &Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), VerificationError<Header>>
 where
     Header: HeaderT,
@@ -217,12 +219,12 @@ where
 /// Check piece validity.
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
-pub fn check_piece<Header>(
+pub fn check_piece<Header, RewardAddress>(
     slot: Slot,
     records_root: Sha256Hash,
     position: u64,
     record_size: u32,
-    solution: &Solution<FarmerPublicKey>,
+    solution: &Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), VerificationError<Header>>
 where
     Header: HeaderT,
@@ -248,7 +250,10 @@ where
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-pub fn is_within_solution_range(solution: &Solution<FarmerPublicKey>, solution_range: u64) -> bool {
+pub fn is_within_solution_range<RewardAddress>(
+    solution: &Solution<FarmerPublicKey, RewardAddress>,
+    solution_range: u64,
+) -> bool {
     let solution_tag = u64::from_be_bytes(solution.tag);
     let target = u64::from_be_bytes(solution.local_challenge.derive_target());
 
@@ -302,8 +307,8 @@ pub struct VerifySolutionParams<'a> {
 }
 
 /// Solution verification
-pub fn verify_solution<Header>(
-    solution: &Solution<FarmerPublicKey>,
+pub fn verify_solution<Header, RewardAddress>(
+    solution: &Solution<FarmerPublicKey, RewardAddress>,
     slot: Slot,
     params: VerifySolutionParams,
 ) -> Result<(), VerificationError<Header>>

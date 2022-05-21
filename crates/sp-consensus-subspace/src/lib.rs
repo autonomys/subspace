@@ -65,7 +65,7 @@ pub type FarmerPublicKey = app::Public;
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
-pub type EquivocationProof<H> = sp_consensus_slots::EquivocationProof<H, FarmerPublicKey>;
+pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
 /// The cumulative weight of a Subspace block, i.e. sum of block weights starting
 /// at this block until the genesis block.
@@ -89,7 +89,7 @@ enum ConsensusLog {
 
 /// Farmer vote.
 #[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
-pub enum Vote<Number, Hash> {
+pub enum Vote<Number, Hash, RewardAddress> {
     /// V0 of the farmer vote.
     V0 {
         /// Height at which vote was created.
@@ -101,14 +101,15 @@ pub enum Vote<Number, Hash> {
         /// Slot at which vote was created.
         slot: Slot,
         /// Solution (includes PoR).
-        solution: Solution<FarmerPublicKey>,
+        solution: Solution<FarmerPublicKey, RewardAddress>,
     },
 }
 
-impl<Number, Hash> Vote<Number, Hash>
+impl<Number, Hash, RewardAddress> Vote<Number, Hash, RewardAddress>
 where
     Number: Encode,
     Hash: Encode,
+    RewardAddress: Encode,
 {
     /// Farmer public key in the solution.
     pub fn public_key(&self) -> &FarmerPublicKey {
@@ -124,17 +125,18 @@ where
 
 /// Signed farmer vote.
 #[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
-pub struct SignedVote<Number, Hash> {
+pub struct SignedVote<Number, Hash, RewardAddress> {
     /// Farmer vote.
-    pub vote: Vote<Number, Hash>,
+    pub vote: Vote<Number, Hash, RewardAddress>,
     /// Signature.
     pub signature: FarmerSignature,
 }
 
-impl<Number, Hash> SignedVote<Number, Hash>
+impl<Number, Hash, RewardAddress> SignedVote<Number, Hash, RewardAddress>
 where
     Number: Encode,
     Hash: Encode,
+    RewardAddress: Encode,
 {
     /// Whether vote signature is valid
     pub fn is_valid(&self) -> bool {
@@ -150,9 +152,12 @@ where
     }
 }
 
-fn find_pre_digest<Header>(header: &Header) -> Option<PreDigest<FarmerPublicKey>>
+fn find_pre_digest<Header, RewardAddress>(
+    header: &Header,
+) -> Option<PreDigest<FarmerPublicKey, RewardAddress>>
 where
     Header: HeaderT,
+    RewardAddress: Decode,
 {
     header
         .digest()
@@ -185,22 +190,23 @@ where
 /// Verifies the equivocation proof by making sure that: both headers have
 /// different hashes, are targeting the same slot, and have valid signatures by
 /// the same authority.
-pub fn is_equivocation_proof_valid<Header>(proof: EquivocationProof<Header>) -> bool
+pub fn is_equivocation_proof_valid<Header, RewardAddress>(proof: EquivocationProof<Header>) -> bool
 where
     Header: HeaderT,
+    RewardAddress: Decode,
 {
     // we must have different headers for the equivocation to be valid
     if proof.first_header.hash() == proof.second_header.hash() {
         return false;
     }
 
-    let first_pre_digest = match find_pre_digest(&proof.first_header) {
+    let first_pre_digest = match find_pre_digest::<_, RewardAddress>(&proof.first_header) {
         Some(pre_digest) => pre_digest,
         None => {
             return false;
         }
     };
-    let second_pre_digest = match find_pre_digest(&proof.second_header) {
+    let second_pre_digest = match find_pre_digest::<_, RewardAddress>(&proof.second_header) {
         Some(pre_digest) => pre_digest,
         None => {
             return false;
@@ -272,7 +278,7 @@ pub struct Salts {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
-    pub trait SubspaceApi {
+    pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
@@ -310,7 +316,13 @@ sp_api::decl_runtime_apis! {
 
         /// Submit farmer vote vote that is essentially a header with bigger solution range than
         /// acceptable for block authoring. Only useful in an offchain context.
-        fn submit_vote_extrinsic(signed_vote: SignedVote<<<Block as BlockT>::Header as HeaderT>::Number, Block::Hash>);
+        fn submit_vote_extrinsic(
+            signed_vote: SignedVote<
+                <<Block as BlockT>::Header as HeaderT>::Number,
+                Block::Hash,
+                RewardAddress,
+            >,
+        );
 
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;

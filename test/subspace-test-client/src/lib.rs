@@ -129,7 +129,7 @@ async fn start_farming<Client>(
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
 ) where
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + Send + Sync + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     let (archived_pieces_sender, archived_pieces_receiver) = futures::channel::oneshot::channel();
 
@@ -184,7 +184,7 @@ async fn start_farming<Client>(
 fn get_archived_pieces<Client>(client: &Arc<Client>) -> Vec<FlatPieces>
 where
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
     let runtime_api = client.runtime_api();

@@ -698,7 +698,9 @@ fn sig_is_not_pre_digest() {
 }
 
 /// Claims the given slot number. always returning a dummy block.
-pub fn dummy_claim_slot(slot: Slot) -> Option<(PreDigest<FarmerPublicKey>, FarmerPublicKey)> {
+pub fn dummy_claim_slot(
+    slot: Slot,
+) -> Option<(PreDigest<FarmerPublicKey, FarmerPublicKey>, FarmerPublicKey)> {
     Some((
         PreDigest {
             solution: Solution {

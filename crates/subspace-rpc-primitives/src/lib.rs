@@ -57,7 +57,7 @@ pub struct SolutionResponse {
     /// Optional solution.
     ///
     /// Derived from the farmer's plot corresponding to `slot_number` above.
-    pub maybe_solution: Option<Solution<PublicKey>>,
+    pub maybe_solution: Option<Solution<PublicKey, PublicKey>>,
 }
 
 /// Reward info that needs to be signed.

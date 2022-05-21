@@ -200,7 +200,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            reward_address: 1,
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -224,7 +224,10 @@ pub fn progress_to_block(keypair: &Keypair, n: u64) {
     }
 }
 
-pub fn make_pre_digest(slot: Slot, solution: Solution<FarmerPublicKey>) -> Digest {
+pub fn make_pre_digest(
+    slot: Slot,
+    solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
+) -> Digest {
     let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution });
     Digest { logs: vec![log] }
 }
@@ -251,13 +254,13 @@ pub fn generate_equivocation_proof(
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
-    let make_header = |piece_index| {
+    let make_header = |piece_index, account_id: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
                 public_key: public_key.clone(),
-                reward_address: public_key.clone(),
+                reward_address: account_id,
                 piece_index,
                 encoding: encoding.clone(),
                 signature: signature.into(),
@@ -282,8 +285,8 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(0);
-    let mut h2 = make_header(1);
+    let mut h1 = make_header(0, 0);
+    let mut h2 = make_header(1, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);

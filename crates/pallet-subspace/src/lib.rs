@@ -396,7 +396,7 @@ mod pallet {
         #[allow(clippy::boxed_local)]
         pub fn vote(
             origin: OriginFor<T>,
-            _signed_vote: Box<SignedVote<T::BlockNumber, T::Hash>>,
+            _signed_vote: Box<SignedVote<T::BlockNumber, T::Hash, T::AccountId>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -745,7 +745,9 @@ impl<T: Config> Pallet<T> {
         let slot = equivocation_proof.slot;
 
         // validate the equivocation proof
-        if !sp_consensus_subspace::is_equivocation_proof_valid(equivocation_proof) {
+        if !sp_consensus_subspace::is_equivocation_proof_valid::<_, T::AccountId>(
+            equivocation_proof,
+        ) {
             return Err(Error::<T>::InvalidEquivocationProof.into());
         }
 
@@ -825,7 +827,7 @@ where
 {
     /// Submit farmer vote vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
-    pub fn submit_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash>) {
+    pub fn submit_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) {
         let call = Call::vote {
             signed_vote: Box::new(signed_vote),
         };
@@ -879,7 +881,9 @@ impl<T: Config> Pallet<T> {
         check_root_blocks::<T>(root_blocks)
     }
 
-    fn validate_vote(_signed_vote: &SignedVote<T::BlockNumber, T::Hash>) -> TransactionValidity {
+    fn validate_vote(
+        _signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    ) -> TransactionValidity {
         // TODO: Validate vote
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
@@ -891,7 +895,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_vote(
-        _signed_vote: &SignedVote<T::BlockNumber, T::Hash>,
+        _signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
         // TODO: Validate vote
 
@@ -959,18 +963,6 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
             timestamp_slot,
             "Timestamp slot must match `CurrentSlot`",
         );
-    }
-}
-
-impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
-    fn find_author<'a, I>(digests: I) -> Option<T::AccountId>
-    where
-        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
-    {
-        digests
-            .into_iter()
-            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.public_key)
     }
 }
 

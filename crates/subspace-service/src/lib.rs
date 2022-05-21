@@ -42,7 +42,7 @@ use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::SubspaceApi;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_executor::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -145,7 +145,7 @@ where
         + ExecutorApi<Block, SecondaryHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SubspaceApi<Block>
+        + SubspaceApi<Block, FarmerPublicKey>
         + ObjectsApi<Block>
         + TaggedTransactionQueue<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -327,7 +327,7 @@ where
         + ExecutorApi<Block, SecondaryHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SubspaceApi<Block>
+        + SubspaceApi<Block, FarmerPublicKey>
         + ObjectsApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>

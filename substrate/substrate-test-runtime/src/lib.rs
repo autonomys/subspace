@@ -58,7 +58,7 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::PIECE_SIZE;
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
-use sp_consensus_subspace::SignedVote;
+use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
 use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
 
 // Ensure Babe and Aura use the same crypto to simplify things a bit.
@@ -938,7 +938,7 @@ cfg_if! {
                 }
             }
 
-            impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
+            impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
@@ -988,7 +988,11 @@ cfg_if! {
                 }
 
                 fn submit_vote_extrinsic(
-                    _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+                    _signed_vote: SignedVote<
+                        NumberFor<Block>,
+                        <Block as BlockT>::Hash,
+                        FarmerPublicKey,
+                    >,
                 ) {
                     unimplemented!()
                 }
@@ -1272,7 +1276,7 @@ cfg_if! {
                 }
             }
 
-            impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
+            impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
@@ -1322,7 +1326,11 @@ cfg_if! {
                 }
 
                 fn submit_vote_extrinsic(
-                    _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash>,
+                    _signed_vote: SignedVote<
+                        NumberFor<Block>,
+                        <Block as BlockT>::Hash,
+                        FarmerPublicKey,
+                    >,
                 ) {
                     unimplemented!()
                 }

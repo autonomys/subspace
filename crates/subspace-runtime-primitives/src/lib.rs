@@ -156,9 +156,9 @@ pub mod opaque {
 }
 
 /// A trait for finding the address for a block reward based on the `PreRuntime` digests contained within it.
-pub trait FindBlockRewardAddress<Address> {
+pub trait FindBlockRewardAddress<RewardAddress> {
     /// Find the address for a block rewards based on the pre-runtime digests.
-    fn find_block_reward_address<'a, I>(digests: I) -> Option<Address>
+    fn find_block_reward_address<'a, I>(digests: I) -> Option<RewardAddress>
     where
         I: 'a + IntoIterator<Item = (sp_runtime::ConsensusEngineId, &'a [u8])>;
 }

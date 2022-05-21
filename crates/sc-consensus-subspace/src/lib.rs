@@ -100,7 +100,7 @@ pub struct NewSlotNotification {
     /// New slot information.
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey>>,
+    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey, FarmerPublicKey>>,
 }
 
 /// Notification with a hash that needs to be signed to receive reward and sender for signature.
@@ -280,10 +280,11 @@ pub struct Config(SlotDuration);
 
 impl Config {
     /// Fetch the config from the runtime.
-    pub fn get<B: BlockT, C>(client: &C) -> ClientResult<Self>
+    pub fn get<Block, Client>(client: &Client) -> ClientResult<Self>
     where
-        C: AuxStore + ProvideRuntimeApi<B> + UsageProvider<B>,
-        C::Api: SubspaceApi<B>,
+        Block: BlockT,
+        Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
+        Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     {
         trace!(target: "subspace", "Getting slot duration");
 
@@ -392,7 +393,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
@@ -458,7 +459,9 @@ impl Future for SubspaceWorker {
 
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
 /// function will return `Err` if none is found.
-pub fn find_pre_digest<Header>(header: &Header) -> Result<PreDigest<FarmerPublicKey>, Error<Header>>
+pub fn find_pre_digest<Header>(
+    header: &Header,
+) -> Result<PreDigest<FarmerPublicKey, FarmerPublicKey>, Error<Header>>
 where
     Header: HeaderT,
 {
@@ -467,7 +470,10 @@ where
     if header.number().is_zero() {
         return Ok(PreDigest {
             slot: Slot::from(0),
-            solution: Solution::genesis_solution(FarmerPublicKey::unchecked_from([0u8; 32])),
+            solution: Solution::genesis_solution(
+                FarmerPublicKey::unchecked_from([0u8; 32]),
+                FarmerPublicKey::unchecked_from([0u8; 32]),
+            ),
         });
     }
 
@@ -624,7 +630,7 @@ impl<Block, Client, SelectChain, SN> SubspaceVerifier<Block, Client, SelectChain
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     async fn check_and_report_equivocation(
@@ -697,7 +703,7 @@ where
         + Send
         + Sync
         + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
@@ -746,7 +752,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header(VerificationParams {
+            verification::check_header::<_, FarmerPublicKey>(VerificationParams {
                 header: block.header.clone(),
                 slot_now: slot_now + 1,
                 verify_solution_params: VerifySolutionParams {
@@ -854,7 +860,7 @@ impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CID
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
@@ -885,7 +891,7 @@ where
         origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        pre_digest: &PreDigest<FarmerPublicKey>,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
@@ -1056,7 +1062,7 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
@@ -1200,7 +1206,7 @@ where
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
@@ -1282,7 +1288,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {

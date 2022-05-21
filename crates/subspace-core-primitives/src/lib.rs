@@ -475,15 +475,16 @@ impl PieceIndexHash {
     }
 }
 
+// TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
-pub struct Solution<AccountId> {
+pub struct Solution<PublicKey, RewardAddress> {
     /// Public key of the farmer that created the solution
-    pub public_key: AccountId,
+    pub public_key: PublicKey,
     /// Address for receiving block reward
-    pub reward_address: AccountId,
+    pub reward_address: RewardAddress,
     /// Index of encoded piece
     pub piece_index: PieceIndex,
     /// Encoding
@@ -496,10 +497,44 @@ pub struct Solution<AccountId> {
     pub tag: Tag,
 }
 
-impl<AccountId: Clone> Solution<AccountId> {
+impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
+    /// Transform solution with one reward address type into solution with another compatible
+    /// reward address type.
+    pub fn into_reward_address_format<T, RewardAddressB>(
+        self,
+    ) -> Solution<PublicKey, RewardAddressB>
+    where
+        RewardAddressA: Into<T>,
+        T: Into<RewardAddressB>,
+    {
+        let Solution {
+            public_key,
+            reward_address,
+            piece_index,
+            encoding,
+            signature,
+            local_challenge,
+            tag,
+        } = self;
+        Solution {
+            public_key,
+            reward_address: Into::<T>::into(reward_address).into(),
+            piece_index,
+            encoding,
+            signature,
+            local_challenge,
+            tag,
+        }
+    }
+}
+
+impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress>
+where
+    PublicKey: Clone,
+    RewardAddress: Clone,
+{
     /// Dummy solution for the genesis block
-    pub fn genesis_solution(public_key: AccountId) -> Self {
-        let reward_address = public_key.clone();
+    pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {
             public_key,
             reward_address,

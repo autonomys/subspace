@@ -46,15 +46,15 @@ use std::future::Future;
 use std::{pin::Pin, sync::Arc};
 use subspace_core_primitives::{Randomness, Salt};
 
-pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
-    pub(super) client: Arc<C>,
+pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
+    pub(super) client: Arc<Client>,
     pub(super) block_import: I,
     pub(super) env: E,
     pub(super) sync_oracle: SO,
     pub(super) justification_sync_link: L,
     pub(super) force_authoring: bool,
     pub(super) backoff_authoring_blocks: Option<BS>,
-    pub(super) subspace_link: SubspaceLink<B>,
+    pub(super) subspace_link: SubspaceLink<Block>,
     pub(super) solution_signing_context: SigningContext,
     pub(super) reward_signing_context: SigningContext,
     pub(super) block_proposal_slot_portion: SlotProportion,
@@ -63,17 +63,21 @@ pub(super) struct SubspaceSlotWorker<B: BlockT, C, E, I, SO, L, BS> {
 }
 
 #[async_trait::async_trait]
-impl<B, C, E, I, Error, SO, L, BS> SimpleSlotWorker<B> for SubspaceSlotWorker<B, C, E, I, SO, L, BS>
+impl<Block, Client, E, I, Error, SO, L, BS> SimpleSlotWorker<Block>
+    for SubspaceSlotWorker<Block, Client, E, I, SO, L, BS>
 where
-    B: BlockT,
-    C: ProvideRuntimeApi<B> + HeaderBackend<B> + HeaderMetadata<B, Error = ClientError> + 'static,
-    C::Api: SubspaceApi<B>,
-    E: Environment<B, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<B, Error = Error, Transaction = TransactionFor<C, B>>,
-    I: BlockImport<B, Transaction = TransactionFor<C, B>> + Send + Sync + 'static,
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = ClientError>
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    E: Environment<Block, Error = Error> + Send + Sync,
+    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
+    I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone,
-    L: JustificationSyncLink<B>,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
+    L: JustificationSyncLink<Block>,
+    BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     type BlockImport = I;
@@ -82,7 +86,7 @@ where
     type CreateProposer =
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
-    type Claim = PreDigest<FarmerPublicKey>;
+    type Claim = PreDigest<FarmerPublicKey, FarmerPublicKey>;
     type EpochData = ();
 
     fn logging_target(&self) -> &'static str {
@@ -95,7 +99,7 @@ where
 
     fn epoch_data(
         &self,
-        _parent: &B::Header,
+        _parent: &Block::Header,
         _slot: Slot,
     ) -> Result<Self::EpochData, ConsensusError> {
         Ok(())
@@ -110,7 +114,7 @@ where
 
     async fn claim_slot(
         &self,
-        parent_header: &B::Header,
+        parent_header: &Block::Header,
         slot: Slot,
         _epoch_data: &Self::EpochData,
     ) -> Option<Self::Claim> {
@@ -202,23 +206,24 @@ where
                 }
             };
 
-            let solution_verification_result = verification::verify_solution::<B::Header>(
-                &solution,
-                slot,
-                verification::VerifySolutionParams {
-                    global_randomness: &global_randomness,
-                    solution_range: voting_solution_range,
-                    salt,
-                    piece_check_params: Some(PieceCheckParams {
-                        records_root,
-                        position,
-                        record_size,
-                        max_plot_size,
-                        total_pieces,
-                    }),
-                    solution_signing_context: &self.solution_signing_context,
-                },
-            );
+            let solution_verification_result =
+                verification::verify_solution::<Block::Header, FarmerPublicKey>(
+                    &solution,
+                    slot,
+                    verification::VerifySolutionParams {
+                        global_randomness: &global_randomness,
+                        solution_range: voting_solution_range,
+                        salt,
+                        piece_check_params: Some(PieceCheckParams {
+                            records_root,
+                            position,
+                            record_size,
+                            max_plot_size,
+                            total_pieces,
+                        }),
+                        solution_signing_context: &self.solution_signing_context,
+                    },
+                );
 
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
@@ -248,13 +253,13 @@ where
 
     async fn block_import_params(
         &self,
-        header: B::Header,
-        header_hash: &B::Hash,
-        body: Vec<B::Extrinsic>,
-        storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, B>,
+        header: Block::Header,
+        header_hash: &Block::Hash,
+        body: Vec<Block::Extrinsic>,
+        storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, Block>,
         pre_digest: Self::Claim,
         _epoch_data: Self::EpochData,
-    ) -> Result<BlockImportParams<B, I::Transaction>, ConsensusError> {
+    ) -> Result<BlockImportParams<Block, I::Transaction>, ConsensusError> {
         let signature = self
             .sign_reward(
                 H256::from_slice(header_hash.as_ref()),
@@ -277,7 +282,7 @@ where
         self.force_authoring
     }
 
-    fn should_backoff(&self, slot: Slot, chain_head: &B::Header) -> bool {
+    fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
             if let Ok(chain_head_slot) = find_pre_digest(chain_head)
                 .map(|digest| digest.slot)
@@ -303,7 +308,7 @@ where
         &mut self.justification_sync_link
     }
 
-    fn proposer(&mut self, block: &B::Header) -> Self::CreateProposer {
+    fn proposer(&mut self, block: &Block::Header) -> Self::CreateProposer {
         Box::pin(
             self.env
                 .init(block)
@@ -315,7 +320,7 @@ where
         self.telemetry.clone()
     }
 
-    fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> std::time::Duration {
+    fn proposing_remaining_duration(&self, slot_info: &SlotInfo<Block>) -> std::time::Duration {
         let parent_slot = find_pre_digest(&slot_info.chain_head)
             .map_err(subspace_err)
             .ok()
@@ -332,24 +337,27 @@ where
     }
 }
 
-impl<B, C, E, I, Error, SO, L, BS> SubspaceSlotWorker<B, C, E, I, SO, L, BS>
+impl<Block, Client, E, I, Error, SO, L, BS> SubspaceSlotWorker<Block, Client, E, I, SO, L, BS>
 where
-    B: BlockT,
-    C: ProvideRuntimeApi<B> + HeaderBackend<B> + HeaderMetadata<B, Error = ClientError> + 'static,
-    C::Api: SubspaceApi<B>,
-    E: Environment<B, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<B, Error = Error, Transaction = TransactionFor<C, B>>,
-    I: BlockImport<B, Transaction = TransactionFor<C, B>> + Send + Sync + 'static,
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = ClientError>
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    E: Environment<Block, Error = Error> + Send + Sync,
+    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
+    I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone,
-    L: JustificationSyncLink<B>,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + Sync,
+    L: JustificationSyncLink<Block>,
+    BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     async fn create_vote(
         &self,
-        pre_digest: PreDigest<FarmerPublicKey>,
-        parent_header: &B::Header,
-        parent_block_id: &BlockId<B>,
+        pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        parent_header: &Block::Header,
+        parent_block_id: &BlockId<Block>,
     ) {
         let slot = pre_digest.slot;
         let runtime_api = self.client.runtime_api();
@@ -440,7 +448,7 @@ pub(crate) fn extract_global_randomness_for_block<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     client
         .runtime_api()
@@ -456,7 +464,7 @@ pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     client
         .runtime_api()
@@ -479,7 +487,7 @@ pub(crate) fn extract_salt_for_block<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     client.runtime_api().salts(parent_block_id).map(|salts| {
         if salts.switch_next_block {

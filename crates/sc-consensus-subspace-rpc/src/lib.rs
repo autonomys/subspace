@@ -142,7 +142,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceRuntimeApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
@@ -178,7 +178,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceRuntimeApi<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
     fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
