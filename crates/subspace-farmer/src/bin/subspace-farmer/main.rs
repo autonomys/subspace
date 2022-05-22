@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+use tempfile::TempDir;
 use tracing::info;
 use tracing_subscriber::{
     filter::LevelFilter,
@@ -106,6 +107,10 @@ struct Command {
     /// Base path for data storage instead of platform-specific default
     #[clap(long, default_value_os_t = utils::default_base_path(), value_hint = ValueHint::FilePath)]
     base_path: PathBuf,
+    /// Run temporary farmer, this will create a temporary directory for storing farmer data that
+    /// will be delete at the end of the process
+    #[clap(long, conflicts_with = "base-path")]
+    tmp: bool,
 }
 
 fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
@@ -128,6 +133,7 @@ fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
         .map(|key| PublicKey::from(key.0))
 }
 
+// TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
@@ -142,7 +148,12 @@ async fn main() -> Result<()> {
 
     let command = Command::parse();
 
-    let base_path = command.base_path;
+    let (base_path, _tmp_directory) = if command.tmp {
+        let tmp_directory = TempDir::new()?;
+        (tmp_directory.as_ref().to_path_buf(), Some(tmp_directory))
+    } else {
+        (command.base_path, None)
+    };
 
     match command.subcommand {
         Subcommand::Wipe => {
