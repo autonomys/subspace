@@ -264,14 +264,6 @@ where
     }
 }
 
-fn subspace_err<Header>(error: Error<Header>) -> Error<Header>
-where
-    Header: HeaderT,
-{
-    debug!(target: "subspace", "{}", error);
-    error
-}
-
 /// A slot duration.
 ///
 /// Create with [`Self::get`].
@@ -684,14 +676,6 @@ where
     }
 }
 
-type BlockVerificationResult<Block> = Result<
-    (
-        BlockImportParams<Block, ()>,
-        Option<Vec<(CacheKeyId, Vec<u8>)>>,
-    ),
-    String,
->;
-
 #[async_trait::async_trait]
 impl<Block, Client, SelectChain, SN> Verifier<Block>
     for SubspaceVerifier<Block, Client, SelectChain, SN>
@@ -710,7 +694,13 @@ where
     async fn verify(
         &mut self,
         mut block: BlockImportParams<Block, ()>,
-    ) -> BlockVerificationResult<Block> {
+    ) -> Result<
+        (
+            BlockImportParams<Block, ()>,
+            Option<Vec<(CacheKeyId, Vec<u8>)>>,
+        ),
+        String,
+    > {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
@@ -734,18 +724,15 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let global_randomness = find_global_randomness_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?
                 .global_randomness;
 
-            let solution_range = find_solution_range_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let solution_range = find_solution_range_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?
                 .solution_range;
 
-            let salt = find_salt_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let salt = find_salt_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingSalt(hash))?
                 .salt;
 
@@ -764,7 +751,7 @@ where
                 },
                 reward_signing_context: &self.reward_signing_context,
             })
-            .map_err(|error| subspace_err(error.into()))?
+            .map_err(Error::<Block::Header>::from)?
         };
 
         match checked_header {
@@ -1088,11 +1075,10 @@ where
                     .map_err(Into::into);
             }
             Ok(sp_blockchain::BlockStatus::Unknown) => {}
-            Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
+            Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
         }
 
         let pre_digest = find_pre_digest::<Block::Header>(&block.header)
-            .map_err(subspace_err)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
@@ -1103,7 +1089,6 @@ where
             &pre_digest,
         )
         .await
-        .map_err(subspace_err)
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         let parent_weight = if block_number.is_one() {
@@ -1113,10 +1098,8 @@ where
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
-                        subspace_err(Error::<Block::Header>::ParentBlockNoAssociatedWeight(
-                            block_hash,
-                        ))
-                        .into(),
+                        Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
+                            .to_string(),
                     )
                 })?
         };
