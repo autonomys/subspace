@@ -236,7 +236,7 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ShouldAdjustSolutionRange: bool = false;
-    pub const ExpectedVotesPerBlock: u32 = 10;
+    pub const ExpectedVotesPerBlock: u32 = 9;
 }
 
 impl pallet_subspace::Config for Runtime {

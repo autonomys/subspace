@@ -21,7 +21,6 @@ use crate::{
 };
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
-use sp_runtime::generic::DigestItemRef;
 use sp_runtime::{DigestItem, RuntimeDebug};
 use subspace_core_primitives::{Randomness, Salt, Solution};
 
@@ -173,28 +172,5 @@ impl CompatibleDigestItem for DigestItem {
                 None
             }
         })
-    }
-}
-
-/// A digest item which is usable with Subspace consensus.
-pub trait CompatibleDigestItemRef: Sized {
-    /// If this item is an Subspace pre-digest, return it.
-    fn as_subspace_pre_digest<RewardAddress: Decode>(
-        &self,
-    ) -> Option<PreDigest<FarmerPublicKey, RewardAddress>>;
-
-    /// Construct a digest item which contains a Subspace seal.
-    fn as_subspace_seal(&self) -> Option<FarmerSignature>;
-}
-
-impl CompatibleDigestItemRef for DigestItemRef<'_> {
-    fn as_subspace_pre_digest<RewardAddress: Decode>(
-        &self,
-    ) -> Option<PreDigest<FarmerPublicKey, RewardAddress>> {
-        self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
-    }
-
-    fn as_subspace_seal(&self) -> Option<FarmerSignature> {
-        self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 }

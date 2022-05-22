@@ -174,15 +174,10 @@ where
     BalanceOf<T>: From<u64>,
 {
     fn do_initialize(_n: T::BlockNumber) {
-        let block_author = T::FindBlockRewardAddress::find_block_reward_address(
-            frame_system::Pallet::<T>::digest()
-                .logs
-                .iter()
-                .filter_map(|d| d.as_pre_runtime()),
-        )
-        .expect("Block author must always be present; qed");
-
-        BlockAuthor::<T>::put(block_author);
+        // Block author may equivocate, in which case they'll not be present here
+        if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
+            BlockAuthor::<T>::put(block_author);
+        }
 
         CollectedBlockFees::<T>::put(CollectedFees {
             storage: BalanceOf::<T>::zero(),
@@ -195,67 +190,77 @@ where
     fn do_finalize(_n: T::BlockNumber) {
         TransactionByteFee::<T>::take();
 
-        let block_author =
-            BlockAuthor::<T>::take().expect("`BlockAuthor` was set in `on_initialize`; qed");
-
-        let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
         let collected_fees = CollectedBlockFees::<T>::take()
             .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
 
-        let mut storage_fees_escrow = original_storage_fees_escrow;
+        // Block author may equivocate, in which case they'll not be present here
+        if let Some(block_author) = BlockAuthor::<T>::take() {
+            let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
+            let mut storage_fees_escrow = original_storage_fees_escrow;
 
-        // Take a portion of storage fees escrow as a farmer reward.
-        let storage_fees_escrow_reward = storage_fees_escrow
-            / T::StorageFeesEscrowBlockReward::get().1.into()
-            * T::StorageFeesEscrowBlockReward::get().0.into();
-        storage_fees_escrow -= storage_fees_escrow_reward;
+            // Take a portion of storage fees escrow as a farmer reward.
+            let storage_fees_escrow_reward = storage_fees_escrow
+                / T::StorageFeesEscrowBlockReward::get().1.into()
+                * T::StorageFeesEscrowBlockReward::get().0.into();
+            storage_fees_escrow -= storage_fees_escrow_reward;
 
-        // Take a portion of storage fees collected in this block as a farmer reward.
-        let collected_storage_fees_reward = collected_fees.storage
-            / T::StorageFeesEscrowBlockTax::get().1.into()
-            * (T::StorageFeesEscrowBlockTax::get().1 - T::StorageFeesEscrowBlockTax::get().0)
-                .into();
-        storage_fees_escrow += collected_fees.storage - collected_storage_fees_reward;
+            // Take a portion of storage fees collected in this block as a farmer reward.
+            let collected_storage_fees_reward = collected_fees.storage
+                / T::StorageFeesEscrowBlockTax::get().1.into()
+                * (T::StorageFeesEscrowBlockTax::get().1 - T::StorageFeesEscrowBlockTax::get().0)
+                    .into();
+            storage_fees_escrow += collected_fees.storage - collected_storage_fees_reward;
 
-        // Update storage fees escrow.
-        if storage_fees_escrow != original_storage_fees_escrow {
+            // Update storage fees escrow.
+            if storage_fees_escrow != original_storage_fees_escrow {
+                CollectedStorageFeesEscrow::<T>::put(storage_fees_escrow);
+                Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
+                    before: original_storage_fees_escrow,
+                    after: storage_fees_escrow,
+                });
+            }
+
+            // Issue storage fees reward.
+            let storage_fees_reward = storage_fees_escrow_reward + collected_storage_fees_reward;
+            if !storage_fees_reward.is_zero() {
+                T::Currency::deposit_creating(&block_author, storage_fees_reward);
+                Self::deposit_event(Event::<T>::StorageFeesReward {
+                    who: block_author.clone(),
+                    amount: storage_fees_reward,
+                });
+            }
+
+            // Issue compute fees reward.
+            if !collected_fees.compute.is_zero() {
+                T::Currency::deposit_creating(&block_author, collected_fees.compute);
+                Self::deposit_event(Event::<T>::ComputeFeesReward {
+                    who: block_author.clone(),
+                    amount: collected_fees.compute,
+                });
+            }
+
+            // Issue tips reward.
+            if !collected_fees.tips.is_zero() {
+                T::Currency::deposit_creating(&block_author, collected_fees.tips);
+                Self::deposit_event(Event::<T>::TipsReward {
+                    who: block_author,
+                    amount: collected_fees.tips,
+                });
+            }
+        } else {
+            // If farmer equivocated, all fees go into storage escrow.
+            let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
+            let mut storage_fees_escrow = original_storage_fees_escrow;
+
+            storage_fees_escrow += collected_fees.storage;
+            storage_fees_escrow += collected_fees.compute;
+            storage_fees_escrow += collected_fees.tips;
+
             CollectedStorageFeesEscrow::<T>::put(storage_fees_escrow);
+
             Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
                 before: original_storage_fees_escrow,
                 after: storage_fees_escrow,
-            });
-        }
-
-        // Issue storage fees reward.
-        let storage_fees_reward = storage_fees_escrow_reward + collected_storage_fees_reward;
-        if !storage_fees_reward.is_zero() {
-            T::Currency::deposit_into_existing(&block_author, storage_fees_reward).expect(
-                "Farmer account must have already received the block reward before fees are \
-                collected; qed",
-            );
-            Self::deposit_event(Event::<T>::StorageFeesReward {
-                who: block_author.clone(),
-                amount: storage_fees_reward,
-            });
-        }
-
-        // Issue compute fees reward.
-        if !collected_fees.compute.is_zero() {
-            T::Currency::deposit_into_existing(&block_author, collected_fees.compute)
-                .expect("Executor account must already exist before they execute the block; qed");
-            Self::deposit_event(Event::<T>::ComputeFeesReward {
-                who: block_author.clone(),
-                amount: collected_fees.compute,
-            });
-        }
-
-        // Issue tips reward.
-        if !collected_fees.tips.is_zero() {
-            T::Currency::deposit_into_existing(&block_author, collected_fees.tips)
-                .expect("Executor account must already exist before they execute the block; qed");
-            Self::deposit_event(Event::<T>::TipsReward {
-                who: block_author,
-                amount: collected_fees.tips,
             });
         }
     }

@@ -99,21 +99,16 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     fn do_initialize(_block_number: T::BlockNumber) {
-        let block_author = T::FindBlockRewardAddress::find_block_reward_address(
-            frame_system::Pallet::<T>::digest()
-                .logs
-                .iter()
-                .filter_map(|d| d.as_pre_runtime()),
-        )
-        .expect("Block author must always be present; qed");
+        // Block author may equivocate, in which case they'll not be present here
+        if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
+            let reward = T::BlockReward::get();
+            T::Currency::deposit_creating(&block_author, reward);
 
-        let reward = T::BlockReward::get();
-        T::Currency::deposit_creating(&block_author, reward);
-
-        Self::deposit_event(Event::BlockReward {
-            block_author,
-            reward,
-        });
+            Self::deposit_event(Event::BlockReward {
+                block_author,
+                reward,
+            });
+        }
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {

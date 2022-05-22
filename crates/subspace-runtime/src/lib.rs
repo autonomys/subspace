@@ -157,7 +157,7 @@ const INITIAL_SOLUTION_RANGE: u64 =
 /// Number of votes expected per block.
 ///
 /// This impacts solution range for votes in consensus.
-const EXPECTED_VOTES_PER_BLOCK: u32 = 10;
+const EXPECTED_VOTES_PER_BLOCK: u32 = 9;
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);

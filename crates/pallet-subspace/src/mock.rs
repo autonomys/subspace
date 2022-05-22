@@ -140,7 +140,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
-    pub const ExpectedVotesPerBlock: u32 = 10;
+    pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
     pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);

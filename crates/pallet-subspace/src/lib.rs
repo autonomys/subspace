@@ -40,20 +40,19 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
-    SolutionRangeDescriptor,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
+use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::verification::{PieceCheckParams, VerifySolutionParams};
 use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_io::hashing;
-use sp_runtime::generic::{DigestItem, DigestItemRef};
+use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::ConsensusEngineId;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
     crypto, Randomness, RootBlock, Salt, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
@@ -148,6 +147,7 @@ mod pallet {
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
@@ -174,6 +174,7 @@ mod pallet {
     /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -286,7 +287,8 @@ mod pallet {
         RootBlockStored { root_block: RootBlock },
         /// Farmer vote.
         FarmerVote {
-            farmer: FarmerPublicKey,
+            public_key: FarmerPublicKey,
+            reward_address: T::AccountId,
             height: T::BlockNumber,
             parent_hash: T::Hash,
         },
@@ -357,6 +359,25 @@ mod pallet {
     /// Storage of previous vote verification data, updated on each block during finalization.
     #[pallet::storage]
     pub(super) type ParentVoteVerificationData<T> = StorageValue<_, VoteVerificationData>;
+
+    /// Parent block author information.
+    #[pallet::storage]
+    pub(super) type ParentBlockAuthorInfo<T: Config> = StorageValue<_, (FarmerPublicKey, Slot)>;
+
+    /// Temporary value (cleared at block finalization) with block author information.
+    #[pallet::storage]
+    pub(super) type CurrentBlockAuthorInfo<T: Config> =
+        StorageValue<_, (FarmerPublicKey, Slot, T::AccountId)>;
+
+    /// Voters in the parent block (set at the end of the block with current values).
+    #[pallet::storage]
+    pub(super) type ParentBlockVoters<T: Config> =
+        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), T::AccountId>, ValueQuery>;
+
+    /// Temporary value (cleared at block finalization) with voters in the current block thus far.
+    #[pallet::storage]
+    pub(super) type CurrentBlockVoters<T: Config> =
+        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), T::AccountId>>;
 
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
@@ -434,13 +455,15 @@ mod pallet {
                 ..
             } = signed_vote.vote;
 
-            // TODO: Process vote
+            // No special handling needed here since voters are collected in `pre_dispatch`.
 
             Self::deposit_event(Event::FarmerVote {
-                farmer: solution.public_key,
+                public_key: solution.public_key,
+                reward_address: solution.reward_address,
                 height,
                 parent_hash,
             });
+
             Ok(())
         }
     }
@@ -689,6 +712,37 @@ impl<T: Config> Pallet<T> {
         // The slot number of the current block being initialized.
         CurrentSlot::<T>::put(pre_digest.slot);
 
+        {
+            let key = (pre_digest.solution.public_key, pre_digest.slot);
+            if ParentBlockVoters::<T>::get().contains_key(&key) {
+                let (public_key, slot) = key;
+
+                let offence = SubspaceEquivocationOffence {
+                    slot,
+                    offender: public_key,
+                };
+
+                // Report equivocation, we don't care about duplicate report here
+                if let Err(OffenceError::Other(code)) =
+                    T::HandleEquivocation::report_offence(offence)
+                {
+                    warn!(
+                        target: "runtime::subspace",
+                        "Failed to submit block author offence report with code {code}"
+                    );
+                }
+            } else {
+                let (public_key, slot) = key;
+
+                CurrentBlockAuthorInfo::<T>::put((
+                    public_key,
+                    slot,
+                    pre_digest.solution.reward_address,
+                ));
+            }
+        }
+        CurrentBlockVoters::<T>::put(BTreeMap::<(FarmerPublicKey, Slot), T::AccountId>::default());
+
         // If global randomness was updated in previous block, set it as current.
         if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
             GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
@@ -790,6 +844,10 @@ impl<T: Config> Pallet<T> {
     fn do_finalize(_block_number: T::BlockNumber) {
         PorRandomness::<T>::take();
 
+        if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
+            ParentBlockAuthorInfo::<T>::put((public_key, slot));
+        }
+
         let current_vote_verification_data = current_vote_verification_data::<T>(true);
         match ParentVoteVerificationData::<T>::get() {
             Some(parent_vote_verification_data) => {
@@ -801,6 +859,8 @@ impl<T: Config> Pallet<T> {
                 ParentVoteVerificationData::<T>::put(current_vote_verification_data);
             }
         }
+
+        ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::take().unwrap_or_default());
     }
 
     fn do_report_equivocation(
@@ -1002,9 +1062,7 @@ fn current_vote_verification_data<T: Config>(pre_dispatch: bool) -> VoteVerifica
     }
 }
 
-// TODO: Prevent voters from previous block to claim reward in the current block as well as to
-//  claim
-// TODO: Equivocation
+// TODO: Equivocation test case
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
@@ -1016,6 +1074,11 @@ fn check_vote<T: Config>(
         solution,
     } = &signed_vote.vote;
     let height = *height;
+    let slot = *slot;
+
+    if BlockList::<T>::contains_key(&solution.public_key) {
+        return Err(InvalidTransaction::BadSigner);
+    }
 
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
@@ -1100,7 +1163,7 @@ fn check_vote<T: Config>(
 
     if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
         solution,
-        *slot,
+        slot,
         VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
@@ -1120,6 +1183,57 @@ fn check_vote<T: Config>(
             "Vote verification error: {error:?}"
         );
         return Err(InvalidTransaction::Call);
+    }
+
+    let key = (solution.public_key.clone(), slot);
+    // Check that farmer didn't use solution from this vote yet in:
+    // * parent block
+    // * current block
+    // * parent block vote
+    // * current block vote
+    if ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
+        || CurrentBlockAuthorInfo::<T>::get()
+            .map(|(public_key, slot, _reward_address)| (public_key, slot))
+            .as_ref()
+            == Some(&key)
+        || ParentBlockVoters::<T>::get().contains_key(&key)
+        || CurrentBlockVoters::<T>::get()
+            .unwrap_or_default()
+            .contains_key(&key)
+    {
+        // Revoke reward if assigned in current block.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            if let Some(current_reward_receivers) = current_reward_receivers {
+                current_reward_receivers.remove(&key);
+            }
+        });
+
+        let (public_key, _slot) = key;
+
+        let offence = SubspaceEquivocationOffence {
+            slot,
+            offender: public_key,
+        };
+
+        // Report equivocation, we don't care about duplicate report here
+        if let Err(OffenceError::Other(code)) = T::HandleEquivocation::report_offence(offence) {
+            warn!(
+                target: "runtime::subspace",
+                "Failed to submit voter offence report with code {code}"
+            );
+        }
+
+        return Err(InvalidTransaction::BadSigner);
+    }
+
+    if pre_dispatch {
+        // During `pre_dispatch` call put farmer into the list of reward receivers.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            current_reward_receivers
+                .as_mut()
+                .expect("Always set during block initialization")
+                .insert(key, solution.reward_address.clone());
+        });
     }
 
     Ok(())
@@ -1189,21 +1303,27 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
 }
 
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
-    fn find_block_reward_address<'a, I>(digests: I) -> Option<T::AccountId>
-    where
-        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
-    {
-        digests
-            .into_iter()
-            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.reward_address)
+    fn find_block_reward_address() -> Option<T::AccountId> {
+        CurrentBlockAuthorInfo::<T>::get().and_then(|(public_key, _slot, reward_address)| {
+            // Equivocation might have happened in this block, if so - no reward for block
+            // author
+            if BlockList::<T>::contains_key(&public_key) {
+                None
+            } else {
+                Some(reward_address)
+            }
+        })
     }
 }
 
 impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
     fn find_voting_reward_addresses() -> Vec<T::AccountId> {
-        // TODO: Implement
-        Vec::new()
+        // It is possible that this is called during initialization when current block voters are
+        // already moved into parent block voters, handle it accordingly
+        CurrentBlockVoters::<T>::get()
+            .unwrap_or_else(ParentBlockVoters::<T>::get)
+            .into_values()
+            .collect()
     }
 }
 

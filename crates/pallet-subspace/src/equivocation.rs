@@ -214,20 +214,18 @@ fn is_known_offence<T: Config>(
 /// A Subspace equivocation offence report.
 ///
 /// When a farmer released two or more blocks at the same slot.
-pub struct SubspaceEquivocationOffence<FullIdentification> {
+pub struct SubspaceEquivocationOffence<PublicKey> {
     /// A Subspace slot in which this incident happened.
     pub slot: Slot,
-    /// The authority that produced the equivocation.
-    pub offender: FullIdentification,
+    /// Identity of the farmer that produced the equivocation.
+    pub offender: PublicKey,
 }
 
-impl<FullIdentification: Clone> Offence<FullIdentification>
-    for SubspaceEquivocationOffence<FullIdentification>
-{
+impl<PublicKey: Clone> Offence<PublicKey> for SubspaceEquivocationOffence<PublicKey> {
     const ID: Kind = *b"sub:equivocation";
     type TimeSlot = Slot;
 
-    fn offenders(&self) -> Vec<FullIdentification> {
+    fn offenders(&self) -> Vec<PublicKey> {
         vec![self.offender.clone()]
     }
 
