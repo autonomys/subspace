@@ -675,18 +675,25 @@ where
     pub fn submit_execution_receipt_unsigned(
         signed_execution_receipt: SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) {
+        let primary_number = signed_execution_receipt.execution_receipt.primary_number;
+
         let call = Call::submit_execution_receipt {
             signed_execution_receipt,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted execution receipt");
+                log::info!(
+                    target: "runtime::subspace::executor",
+                    "Execution receipt for block #{:?} submitted to the tx pool",
+                    primary_number,
+                );
             }
             Err(()) => {
                 log::error!(
                     target: "runtime::subspace::executor",
-                    "Error submitting execution receipt",
+                    "Error submitting execution receipt for block #{:?} to the tx pool",
+                    primary_number,
                 );
             }
         }
