@@ -36,8 +36,6 @@ use frame_support::{
 };
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, info, warn};
-#[cfg(not(feature = "std"))]
-use num_traits::float::FloatCore;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -597,14 +595,30 @@ impl<T: Config> Pallet<T> {
                 let era_duration: u64 = T::EraDuration::get()
                     .try_into()
                     .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-                let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-                let expected_slots_per_block =
-                    slot_probability.1 as f64 / slot_probability.0 as f64;
-                let adjustment_factor =
-                    (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
 
-                next_solution_range =
-                    (solution_ranges.current as f64 * adjustment_factor).round() as u64;
+                // Below is code analogous to the following, but without using floats:
+                // ```rust
+                // let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+                // let expected_slots_per_block =
+                //     slot_probability.1 as f64 / slot_probability.0 as f64;
+                // let adjustment_factor =
+                //     (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+                //
+                // next_solution_range =
+                //     (solution_ranges.current as f64 * adjustment_factor).round() as u64;
+                // ```
+                next_solution_range = u64::saturated_from(
+                    u128::from(solution_ranges.current)
+                        .saturating_mul(u128::from(era_slot_count))
+                        .saturating_mul(u128::from(slot_probability.0))
+                        / u128::from(era_duration)
+                        / u128::from(slot_probability.1),
+                )
+                .clamp(
+                    solution_ranges.current / 4,
+                    solution_ranges.current.saturating_mul(4),
+                );
+
                 next_voting_solution_range = next_solution_range
                     .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1);
             } else {

@@ -4722,7 +4722,6 @@ dependencies = [
  "frame-system",
  "hex",
  "log",
- "num-traits",
  "pallet-balances",
  "pallet-offences-subspace",
  "pallet-timestamp",
