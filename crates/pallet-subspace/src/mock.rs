@@ -23,6 +23,7 @@ use crate::{
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
+use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
@@ -35,9 +36,11 @@ use sp_runtime::{
     traits::{Block as BlockT, Header as _, IdentityLookup},
     Perbill,
 };
+use std::sync::Once;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
-    Sha256Hash, Solution, Tag,
+    Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
 use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
@@ -234,6 +237,11 @@ pub fn make_pre_digest(
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
+    static INITIALIZE_LOGGER: Once = Once::new();
+    INITIALIZE_LOGGER.call_once(|| {
+        env_logger::init_from_env(env_logger::Env::new().default_filter_or("error"));
+    });
+
     frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap()
@@ -313,6 +321,42 @@ pub fn create_root_block(segment_index: u64) -> RootBlock {
             archived_progress: ArchivedBlockProgress::Complete,
         },
     }
+}
+
+pub fn create_archived_segment() -> ArchivedSegment {
+    let mut archiver = Archiver::new(
+        RecordSize::get() as usize,
+        RecordedHistorySegmentSize::get() as usize,
+    )
+    .unwrap();
+
+    let mut block = vec![0u8; 1024 * 1024];
+    rand::thread_rng().fill(block.as_mut_slice());
+    archiver
+        .add_block(block, Default::default())
+        .into_iter()
+        .next()
+        .unwrap()
+}
+
+pub fn extract_piece(
+    keypair: &Keypair,
+    archived_segment: &ArchivedSegment,
+    piece_index: u64,
+) -> Piece {
+    let codec = SubspaceCodec::new(&keypair.public);
+
+    let mut piece: [u8; PIECE_SIZE] = archived_segment
+        .pieces
+        .as_pieces()
+        .nth(piece_index as usize)
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    codec.encode(&mut piece, piece_index).unwrap();
+
+    piece.into()
 }
 
 pub fn create_signed_vote(

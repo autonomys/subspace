@@ -38,16 +38,21 @@ use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, info, warn};
 pub use pallet::*;
 use scale_info::TypeInfo;
+use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{PieceCheckParams, VerifySolutionParams};
+use sp_consensus_subspace::verification::{
+    PieceCheckParams, VerificationError, VerifySolutionParams,
+};
 use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_io::hashing;
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{
+    BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
+};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -133,6 +138,8 @@ struct VoteVerificationData {
     recorded_history_segment_size: u32,
     max_plot_size: u64,
     total_pieces: u64,
+    current_slot: Slot,
+    parent_slot: Slot,
 }
 
 #[frame_support::pallet]
@@ -1053,12 +1060,55 @@ fn current_vote_verification_data<T: Config>(pre_dispatch: bool) -> VoteVerifica
         } else {
             salts
                 .next
-                .expect("Next salt must always be available if `switch_next_block` is true")
+                .expect("Next salt must always be available if `switch_next_block` is true; qed")
         },
         record_size: T::RecordSize::get(),
         recorded_history_segment_size: T::RecordedHistorySegmentSize::get(),
         max_plot_size: T::MaxPlotSize::get(),
         total_pieces: Pallet::<T>::total_pieces(),
+        current_slot: Pallet::<T>::current_slot(),
+        parent_slot: ParentVoteVerificationData::<T>::get()
+            .map(|parent_vote_verification_data| parent_vote_verification_data.current_slot)
+            .unwrap_or_else(Pallet::<T>::current_slot),
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CheckVoteError<Header>
+where
+    Header: HeaderT,
+{
+    BlockListed,
+    UnexpectedBeforeHeightTwo,
+    HeightInTheFuture,
+    HeightInThePast,
+    IncorrectParentHash,
+    SlotInTheFuture,
+    SlotInThePast,
+    BadRewardSignature(SignatureError),
+    UnknownRecordsRoot,
+    InvalidSolution(VerificationError<Header>),
+    Equivocated,
+}
+
+impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
+where
+    Header: HeaderT,
+{
+    fn from(error: CheckVoteError<Header>) -> Self {
+        TransactionValidityError::Invalid(match error {
+            CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
+            CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
+            CheckVoteError::HeightInTheFuture => InvalidTransaction::Future,
+            CheckVoteError::HeightInThePast => InvalidTransaction::Stale,
+            CheckVoteError::IncorrectParentHash => InvalidTransaction::Call,
+            CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
+            CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
+            CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
+            CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
+            CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
+            CheckVoteError::Equivocated => InvalidTransaction::BadSigner,
+        })
     }
 }
 
@@ -1066,7 +1116,7 @@ fn current_vote_verification_data<T: Config>(pre_dispatch: bool) -> VoteVerifica
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
-) -> Result<(), InvalidTransaction> {
+) -> Result<(), CheckVoteError<T::Header>> {
     let Vote::V0 {
         height,
         parent_hash,
@@ -1077,7 +1127,7 @@ fn check_vote<T: Config>(
     let slot = *slot;
 
     if BlockList::<T>::contains_key(&solution.public_key) {
-        return Err(InvalidTransaction::BadSigner);
+        return Err(CheckVoteError::BlockListed);
     }
 
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
@@ -1088,7 +1138,7 @@ fn check_vote<T: Config>(
             "Votes are not expected at height below 2"
         );
 
-        return Err(InvalidTransaction::Call);
+        return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
     }
 
     // Height must be either the same as in current block or smaller by one.
@@ -1101,9 +1151,9 @@ fn check_vote<T: Config>(
             {current_block_number:?}"
         );
         return Err(if height > current_block_number {
-            InvalidTransaction::Future
+            CheckVoteError::HeightInTheFuture
         } else {
-            InvalidTransaction::Stale
+            CheckVoteError::HeightInThePast
         });
     }
 
@@ -1116,7 +1166,53 @@ fn check_vote<T: Config>(
             "Vote verification error: parent hash {}",
             hex::encode(parent_hash)
         );
-        return Err(InvalidTransaction::Call);
+        return Err(CheckVoteError::IncorrectParentHash);
+    }
+
+    let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
+    let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
+        .expect("Above check for block number ensures that this value is always present");
+
+    if pre_dispatch {
+        // New time slot is already set, whatever time slot is in the vote it must be smaller
+        let current_slot = Pallet::<T>::current_slot();
+        if slot >= current_slot {
+            warn!(
+                target: "runtime::subspace",
+                "Vote slot {slot:?} must be before current slot {current_slot:?}",
+            );
+            return Err(CheckVoteError::SlotInTheFuture);
+        }
+    }
+
+    let parent_slot = if pre_dispatch {
+        // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
+        // was updated in current block because initialization hook was already called) if vote is
+        // at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from parent vote verification data needs to be taken instead
+        if height == current_block_number {
+            parent_vote_verification_data.current_slot
+        } else {
+            parent_vote_verification_data.parent_slot
+        }
+    } else {
+        // Otherwise parent slot is `current_slot` if the current vote verification data (that
+        // wan't updated from parent block because initialization hook wasn't called yet) if vote
+        // is at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from current vote verification data needs to be taken instead
+        if height == current_block_number {
+            current_vote_verification_data.current_slot
+        } else {
+            current_vote_verification_data.parent_slot
+        }
+    };
+
+    if slot <= parent_slot {
+        warn!(
+            target: "runtime::subspace",
+            "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
+        );
+        return Err(CheckVoteError::SlotInThePast);
     }
 
     if let Err(error) = verification::check_reward_signature(
@@ -1129,19 +1225,13 @@ fn check_vote<T: Config>(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
-        return Err(InvalidTransaction::BadProof);
+        return Err(CheckVoteError::BadRewardSignature(error));
     }
 
     let vote_verification_data = if height == current_block_number {
-        current_vote_verification_data::<T>(pre_dispatch)
-    } else if let Some(value) = ParentVoteVerificationData::<T>::get() {
-        value
+        current_vote_verification_data
     } else {
-        warn!(
-            target: "runtime::subspace",
-            "Vote verification error: vote verification data not available"
-        );
-        return Err(InvalidTransaction::Call);
+        parent_vote_verification_data
     };
 
     let merkle_num_leaves = u64::from(
@@ -1158,7 +1248,7 @@ fn check_vote<T: Config>(
             target: "runtime::subspace",
             "Vote verification error: no records root for segment index {segment_index}"
         );
-        return Err(InvalidTransaction::Call);
+        return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
     if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
@@ -1182,7 +1272,7 @@ fn check_vote<T: Config>(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
-        return Err(InvalidTransaction::Call);
+        return Err(CheckVoteError::InvalidSolution(error));
     }
 
     let key = (solution.public_key.clone(), slot);
@@ -1223,7 +1313,7 @@ fn check_vote<T: Config>(
             );
         }
 
-        return Err(InvalidTransaction::BadSigner);
+        return Err(CheckVoteError::Equivocated);
     }
 
     if pre_dispatch {

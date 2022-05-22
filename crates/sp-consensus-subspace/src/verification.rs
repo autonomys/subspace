@@ -32,7 +32,7 @@ use subspace_solving::{
 };
 
 /// Errors encountered by the Subspace authorship task.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError<Header: HeaderT> {
     /// No Subspace pre-runtime digest found
