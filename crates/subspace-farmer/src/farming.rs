@@ -135,11 +135,25 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
             move || {
                 let local_challenge = derive_local_challenge(slot_info.global_challenge, &identity);
-                match commitments.find_by_range(
-                    local_challenge.derive_target(),
-                    slot_info.solution_range,
-                    slot_info.salt,
-                ) {
+                // Try to first find a block authoring solution, then if not found try to find a vote
+                let maybe_tag = commitments
+                    .find_by_range(
+                        local_challenge.derive_target(),
+                        slot_info.solution_range,
+                        slot_info.salt,
+                    )
+                    .or_else(|| {
+                        if slot_info.solution_range == slot_info.voting_solution_range {
+                            return None;
+                        }
+
+                        commitments.find_by_range(
+                            local_challenge.derive_target(),
+                            slot_info.voting_solution_range,
+                            slot_info.salt,
+                        )
+                    });
+                match maybe_tag {
                     Some((tag, piece_offset)) => {
                         let (encoding, piece_index) = plot
                             .read_piece_with_index(piece_offset)

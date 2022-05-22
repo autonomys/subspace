@@ -135,7 +135,8 @@ where
             global_challenge: subspace_solving::derive_global_challenge(&global_randomness, slot),
             salt,
             next_salt,
-            solution_range: voting_solution_range,
+            solution_range,
+            voting_solution_range,
         };
         let (solution_sender, mut solution_receiver) =
             tracing_unbounded("subspace_slot_solution_stream");

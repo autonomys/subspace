@@ -90,8 +90,10 @@ pub struct NewSlotInfo {
     pub salt: Salt,
     /// Salt for the next eon
     pub next_salt: Option<Salt>,
-    /// Acceptable solution range
+    /// Acceptable solution range for block authoring
     pub solution_range: u64,
+    /// Acceptable solution range for voting
+    pub voting_solution_range: u64,
 }
 
 /// New slot notification with slot information and sender for solution for the slot.

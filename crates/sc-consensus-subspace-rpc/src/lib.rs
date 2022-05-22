@@ -306,6 +306,7 @@ where
                         salt: new_slot_info.salt,
                         next_salt: new_slot_info.next_salt,
                         solution_range: new_slot_info.solution_range,
+                        voting_solution_range: new_slot_info.voting_solution_range,
                     }
                 });
 
