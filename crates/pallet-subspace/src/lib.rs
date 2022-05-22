@@ -1112,7 +1112,6 @@ where
     }
 }
 
-// TODO: Equivocation test case
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
@@ -1133,7 +1132,7 @@ fn check_vote<T: Config>(
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
     if current_block_number <= One::one() || height <= One::one() {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Votes are not expected at height below 2"
         );
@@ -1145,7 +1144,7 @@ fn check_vote<T: Config>(
     //
     // Subtraction will not panic due to check above.
     if !(height == current_block_number || height == current_block_number - One::one()) {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote verification error: bad height {height:?}, current block number is \
             {current_block_number:?}"
@@ -1161,7 +1160,7 @@ fn check_vote<T: Config>(
     //
     // Subtraction will not panic due to check above.
     if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote verification error: parent hash {}",
             hex::encode(parent_hash)
@@ -1177,7 +1176,7 @@ fn check_vote<T: Config>(
         // New time slot is already set, whatever time slot is in the vote it must be smaller
         let current_slot = Pallet::<T>::current_slot();
         if slot >= current_slot {
-            warn!(
+            debug!(
                 target: "runtime::subspace",
                 "Vote slot {slot:?} must be before current slot {current_slot:?}",
             );
@@ -1208,7 +1207,7 @@ fn check_vote<T: Config>(
     };
 
     if slot <= parent_slot {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
         );
@@ -1221,7 +1220,7 @@ fn check_vote<T: Config>(
         &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
@@ -1244,7 +1243,7 @@ fn check_vote<T: Config>(
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
         records_root
     } else {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote verification error: no records root for segment index {segment_index}"
         );
@@ -1268,7 +1267,7 @@ fn check_vote<T: Config>(
             solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
         },
     ) {
-        warn!(
+        debug!(
             target: "runtime::subspace",
             "Vote verification error: {error:?}"
         );
@@ -1307,7 +1306,7 @@ fn check_vote<T: Config>(
 
         // Report equivocation, we don't care about duplicate report here
         if let Err(OffenceError::Other(code)) = T::HandleEquivocation::report_offence(offence) {
-            warn!(
+            debug!(
                 target: "runtime::subspace",
                 "Failed to submit voter offence report with code {code}"
             );

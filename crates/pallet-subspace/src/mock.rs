@@ -174,7 +174,12 @@ impl Config for Test {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
 }
 
-pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
+pub fn go_to_block(
+    keypair: &Keypair,
+    block: u64,
+    slot: u64,
+    reward_address: <Test as frame_system::Config>::AccountId,
+) {
     use frame_support::traits::OnFinalize;
 
     Subspace::on_finalize(System::block_number());
@@ -204,7 +209,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address: 1,
+            reward_address,
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -220,10 +225,14 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
 }
 
 /// Slots will grow accordingly to blocks
-pub fn progress_to_block(keypair: &Keypair, n: u64) {
+pub fn progress_to_block(
+    keypair: &Keypair,
+    n: u64,
+    reward_address: <Test as frame_system::Config>::AccountId,
+) {
     let mut slot = u64::from(Subspace::current_slot()) + 1;
     for i in System::block_number() + 1..=n {
-        go_to_block(keypair, i, slot);
+        go_to_block(keypair, i, slot, reward_address);
         slot += 1;
     }
 }
@@ -263,13 +272,13 @@ pub fn generate_equivocation_proof(
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
-    let make_header = |piece_index, account_id: <Test as frame_system::Config>::AccountId| {
+    let make_header = |piece_index, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
                 public_key: public_key.clone(),
-                reward_address: account_id,
+                reward_address,
                 piece_index,
                 encoding: encoding.clone(),
                 signature: signature.into(),
@@ -301,7 +310,7 @@ pub fn generate_equivocation_proof(
     seal_header(&mut h2);
 
     // restore previous runtime state
-    go_to_block(keypair, current_block, *current_slot);
+    go_to_block(keypair, current_block, *current_slot, 2);
 
     sp_consensus_subspace::EquivocationProof {
         slot,
@@ -359,6 +368,7 @@ pub fn extract_piece(
     piece.into()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_signed_vote(
     keypair: &Keypair,
     height: u64,
@@ -367,6 +377,7 @@ pub fn create_signed_vote(
     global_randomnesses: &Randomness,
     salt: Salt,
     encoding: Piece,
+    reward_address: <Test as frame_system::Config>::AccountId,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let solution_signing_context = schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT);
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
@@ -385,7 +396,7 @@ pub fn create_signed_vote(
         slot,
         solution: Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address: 1,
+            reward_address,
             piece_index: 0,
             encoding,
             signature: keypair
