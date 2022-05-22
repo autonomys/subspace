@@ -114,16 +114,20 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
     pub seal: DigestItem,
 }
 
-/// Check a header has been signed by the right key. If the slot is too far in
-/// the future, an error will be returned. If successful, returns the pre-header
-/// and the digest item containing the seal.
+/// Check a header has been signed correctly and whether solution is correct. If the slot is too far
+/// in the future, an error will be returned. If successful, returns the pre-header and the digest
+/// item containing the seal.
 ///
 /// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This is
 /// required for security and must not be changed.
 ///
 /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
+///
+/// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
+/// it from the header twice.
 pub fn check_header<Header, RewardAddress>(
     params: VerificationParams<Header>,
+    pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
 ) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
     Header: HeaderT,
@@ -136,8 +140,11 @@ where
         reward_signing_context,
     } = params;
 
-    let pre_digest = find_pre_digest::<Header, RewardAddress>(&header)
-        .ok_or(VerificationError::NoPreRuntimeDigest)?;
+    let pre_digest = match pre_digest {
+        Some(pre_digest) => pre_digest,
+        None => find_pre_digest::<Header, RewardAddress>(&header)
+            .ok_or(VerificationError::NoPreRuntimeDigest)?,
+    };
     let slot = pre_digest.slot;
 
     let seal = header

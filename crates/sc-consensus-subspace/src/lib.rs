@@ -714,6 +714,29 @@ where
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
+        let pre_digest = find_pre_digest(&block.header)?;
+        // Check if farmer's plot is burned.
+        if self
+            .client
+            .runtime_api()
+            .is_in_block_list(
+                &BlockId::Hash(*block.header.parent_hash()),
+                &pre_digest.solution.public_key,
+            )
+            .map_err(Error::<Block::Header>::RuntimeApi)?
+        {
+            warn!(
+                target: "subspace",
+                "Verifying block with solution provided by farmer in block list: {}",
+                pre_digest.solution.public_key
+            );
+
+            return Err(Error::<Block::Header>::FarmerInBlockList(
+                pre_digest.solution.public_key.clone(),
+            )
+            .into());
+        }
+
         let slot_now = (self.slot_now)();
 
         // Stateless header verification only. This means only check that header contains required
@@ -739,18 +762,21 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header::<_, FarmerPublicKey>(VerificationParams {
-                header: block.header.clone(),
-                slot_now: slot_now + 1,
-                verify_solution_params: VerifySolutionParams {
-                    global_randomness: &global_randomness,
-                    solution_range,
-                    salt,
-                    piece_check_params: None,
-                    solution_signing_context: &self.solution_signing_context,
+            verification::check_header::<_, FarmerPublicKey>(
+                VerificationParams {
+                    header: block.header.clone(),
+                    slot_now: slot_now + 1,
+                    verify_solution_params: VerifySolutionParams {
+                        global_randomness: &global_randomness,
+                        solution_range,
+                        salt,
+                        piece_check_params: None,
+                        solution_signing_context: &self.solution_signing_context,
+                    },
+                    reward_signing_context: &self.reward_signing_context,
                 },
-                reward_signing_context: &self.reward_signing_context,
-            })
+                Some(pre_digest),
+            )
             .map_err(Error::<Block::Header>::from)?
         };
 
