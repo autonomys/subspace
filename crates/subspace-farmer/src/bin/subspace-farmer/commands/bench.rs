@@ -113,7 +113,7 @@ const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
 };
 
 pub(crate) async fn bench(
-    custom_path: Option<PathBuf>,
+    base_directory: PathBuf,
     plot_size: u64,
     max_plot_size: Option<u64>,
     write_to_disk: WriteToDisk,
@@ -125,7 +125,6 @@ pub(crate) async fn bench(
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
     let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
 
-    let base_directory = crate::utils::get_path(custom_path);
     let base_directory = TempDir::new_in(base_directory)?;
 
     let metadata = client

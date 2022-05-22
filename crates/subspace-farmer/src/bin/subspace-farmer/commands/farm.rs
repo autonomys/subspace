@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::mem;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
@@ -18,9 +19,9 @@ use crate::{utils, FarmingArgs};
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm(
+    base_directory: PathBuf,
     FarmingArgs {
         bootstrap_nodes,
-        custom_path,
         listen_on,
         node_rpc_url,
         mut ws_server_listen_addr,
@@ -30,8 +31,6 @@ pub(crate) async fn farm(
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
-
-    let base_directory = utils::get_path(custom_path);
 
     info!("Connecting to node at {}", node_rpc_url);
     let client = NodeRpcClient::new(&node_rpc_url).await?;

@@ -5,6 +5,7 @@ mod utils;
 use anyhow::Result;
 use clap::{ArgEnum, Parser, ValueHint};
 use sp_core::crypto::PublicError;
+use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use subspace_core_primitives::PublicKey;
@@ -23,9 +24,6 @@ struct FarmingArgs {
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
     #[clap(long)]
     bootstrap_nodes: Vec<Multiaddr>,
-    /// Custom path for data storage instead of platform-specific default
-    #[clap(long, value_hint = ValueHint::FilePath)]
-    custom_path: Option<PathBuf>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported, subspace networking is disabled when none specified
     #[clap(long)]
@@ -65,22 +63,14 @@ impl Default for WriteToDisk {
     }
 }
 
-#[derive(Debug, Parser)]
-#[clap(about, version)]
-enum Command {
+#[derive(Debug, clap::Subcommand)]
+enum Subcommand {
     /// Wipes plot and identity
-    Wipe {
-        /// Use custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
-        custom_path: Option<PathBuf>,
-    },
+    Wipe,
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
     /// Benchmark disk in order to see a throughput of the disk for plotting
     Bench {
-        /// Custom path for data storage instead of platform-specific default
-        #[clap(long, value_hint = ValueHint::FilePath)]
-        custom_path: Option<PathBuf>,
         /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
         ///
         /// Only `G` and `T` endings are supported.
@@ -106,6 +96,16 @@ enum Command {
         #[clap(long)]
         no_recommitments: bool,
     },
+}
+
+#[derive(Debug, Parser)]
+#[clap(about, version)]
+struct Command {
+    #[clap(subcommand)]
+    subcommand: Subcommand,
+    /// Base path for data storage instead of platform-specific default
+    #[clap(long, default_value_os_t = utils::default_base_path(), value_hint = ValueHint::FilePath)]
+    base_path: PathBuf,
 }
 
 fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
@@ -140,25 +140,45 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    match Command::parse() {
-        Command::Wipe { custom_path } => {
-            let path = utils::get_path(custom_path);
-            commands::wipe(&path)?;
+    let command = Command::parse();
+
+    let base_path = command.base_path;
+
+    match command.subcommand {
+        Subcommand::Wipe => {
+            commands::wipe(&base_path)?;
             info!("Done");
         }
-        Command::Farm(args) => {
-            commands::farm(args).await?;
+        Subcommand::Farm(farming_args) => {
+            if !base_path.exists() {
+                fs::create_dir_all(&base_path).unwrap_or_else(|error| {
+                    panic!(
+                        "Failed to create data directory {:?}: {:?}",
+                        base_path, error
+                    )
+                });
+            }
+
+            commands::farm(base_path, farming_args).await?;
         }
-        Command::Bench {
-            custom_path,
+        Subcommand::Bench {
             plot_size,
             max_plot_size,
             write_to_disk,
             write_pieces_size,
             no_recommitments,
         } => {
+            if !base_path.exists() {
+                fs::create_dir_all(&base_path).unwrap_or_else(|error| {
+                    panic!(
+                        "Failed to create data directory {:?}: {:?}",
+                        base_path, error
+                    )
+                });
+            }
+
             commands::bench(
-                custom_path,
+                base_path,
                 plot_size,
                 max_plot_size,
                 write_to_disk,
