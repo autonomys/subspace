@@ -176,14 +176,14 @@ pub struct CallFilter;
 
 impl Contains<Call> for CallFilter {
     fn contains(c: &Call) -> bool {
-        // Disable all balance transfers
+        // Disable executor and all balance transfers
         !matches!(
             c,
             Call::Balances(
                 BalancesCall::transfer { .. }
                     | BalancesCall::transfer_keep_alive { .. }
                     | BalancesCall::transfer_all { .. }
-            )
+            ) | Call::Executor(_)
         )
     }
 }
