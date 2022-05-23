@@ -240,8 +240,8 @@ services:
 #      - /path/to/subspace-farmer:/var/subspace:rw
     restart: unless-stopped
     command: [
+      "--base-path", "/var/subspace",
       "farm",
-      "--custom-path", "/var/subspace",
       "--node-rpc-url", "ws://node:9944",
       "--ws-server-listen-addr", "0.0.0.0:9955",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
@@ -304,8 +304,8 @@ There are extra commands and parameters you can use on farmer or node, use the `
 
 Below are some helpful samples:
 
-- `./FARMER_FILE_NAME farm --custom-path /path/to/data ...` : will store data in `/path/to/data` instead of default location
-- `./FARMER_FILE_NAME wipe --custom-path /path/to/data` : erases everything related to farmer if data were stored in `/path/to/data`
+- `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
+- `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
 - `./NODE_FILE_NAME --base-path /path/to/data --chain testnet ...` : start node and store data in `/path/to/data` instead of default location
 - `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain testnet` : erases data related to the node if data were stored in `/path/to/data`
 
