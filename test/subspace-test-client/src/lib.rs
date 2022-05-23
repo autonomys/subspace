@@ -140,7 +140,7 @@ async fn start_farming<Client>(
         }
     });
 
-    let subspace_codec = SubspaceCodec::new(&keypair.public);
+    let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let (piece_index, mut encoding) = archived_pieces_receiver
         .await

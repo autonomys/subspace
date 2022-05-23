@@ -49,9 +49,9 @@ mod construct_uint {
 
     impl PieceDistance {
         /// Calculates the distance metric between piece index hash and farmer address.
-        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: impl AsRef<[u8]>) -> Self {
+        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> Self {
             let piece = Self::from_big_endian(piece);
-            let address = Self::from_big_endian(address.as_ref());
+            let address = Self::from_big_endian(address);
             subspace_core_primitives::bidirectional_distance(&piece, &address)
         }
 
@@ -89,28 +89,25 @@ pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
 }
 
 /// Create a commitment tag of a piece for a particular salt.
-pub fn create_tag(piece: impl AsRef<[u8]>, salt: Salt) -> Tag {
-    crypto::hmac_sha256(salt, piece.as_ref())[..TAG_SIZE]
+pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
+    crypto::hmac_sha256(&salt, piece)[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
 
 /// Derive global slot challenge from global randomness.
-pub fn derive_global_challenge<Slot: Into<u64>>(
-    global_randomness: &Randomness,
-    slot: Slot,
-) -> Sha256Hash {
-    crypto::sha256_hash_pair(global_randomness, Into::<u64>::into(slot).to_le_bytes())
+pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Sha256Hash {
+    crypto::sha256_hash_pair(global_randomness, &slot.to_le_bytes())
 }
 
 /// Verify local challenge for farmer's public key that was derived from the global challenge.
-pub fn is_local_challenge_valid<P: AsRef<[u8]>>(
+pub fn is_local_challenge_valid(
     global_challenge: Sha256Hash,
     local_challenge: &LocalChallenge,
-    public_key: P,
+    public_key: &[u8],
 ) -> SignatureResult<()> {
     let signature = schnorrkel::Signature::from_bytes(local_challenge)?;
-    let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())?;
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key)?;
 
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     public_key.verify(ctx.bytes(&global_challenge), &signature)

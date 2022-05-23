@@ -132,7 +132,10 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge: subspace_solving::derive_global_challenge(&global_randomness, slot),
+            global_challenge: subspace_solving::derive_global_challenge(
+                &global_randomness,
+                slot.into(),
+            ),
             salt,
             next_salt,
             solution_range,

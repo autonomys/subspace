@@ -904,16 +904,14 @@ impl<T: Config> Pallet<T> {
         eon_index: u64,
         randomness: &Randomness,
     ) -> subspace_core_primitives::Salt {
-        crypto::sha256_hash({
-            let mut input =
-                [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-            input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
-            input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
-                .copy_from_slice(randomness);
-            input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
-                .copy_from_slice(&eon_index.to_le_bytes());
-            input
-        })[..SALT_SIZE]
+        let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
+        input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
+        input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
+            .copy_from_slice(randomness);
+        input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
+            .copy_from_slice(&eon_index.to_le_bytes());
+
+        crypto::sha256_hash(&input)[..SALT_SIZE]
             .try_into()
             .expect("Slice has exactly the size needed; qed")
     }

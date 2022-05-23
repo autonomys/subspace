@@ -570,7 +570,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_codec = SubspaceCodec::new(&keypair.public);
+            let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
             let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
