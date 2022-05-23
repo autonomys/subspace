@@ -98,7 +98,6 @@ pub mod opaque {
     use parity_scale_codec::{Decode, Encode};
     #[cfg(feature = "std")]
     use serde::{Deserialize, Serialize};
-    use sp_core::RuntimeDebug;
     use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
     use sp_runtime::{generic, DigestItem, OpaqueExtrinsic};
     use sp_std::prelude::*;
@@ -108,7 +107,7 @@ pub mod opaque {
     /// Opaque block type.
 
     /// Abstraction over a substrate block.
-    #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+    #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
     #[cfg_attr(
         feature = "std",
         derive(Serialize, Deserialize, parity_util_mem::MallocSizeOf)

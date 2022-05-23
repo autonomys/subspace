@@ -35,7 +35,7 @@ use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
-use sp_core::{offchain::KeyTypeId, OpaqueMetadata, RuntimeDebug};
+use sp_core::{offchain::KeyTypeId, OpaqueMetadata};
 use sp_inherents::{CheckInherentsResult, InherentData};
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{
@@ -120,7 +120,7 @@ pub fn native_version() -> NativeVersion {
 }
 
 /// Calls in transactions.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Transfer {
     pub from: AccountId,
     pub to: AccountId,
@@ -159,7 +159,7 @@ impl Transfer {
 }
 
 /// Extrinsic for test-runtime.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum Extrinsic {
     AuthoritiesChange(Vec<AuthorityId>),
     Transfer {
@@ -437,7 +437,7 @@ impl GetRuntimeBlockType for Runtime {
     type RuntimeBlock = Block;
 }
 
-#[derive(Clone, RuntimeDebug, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
 pub struct Origin;
 
 impl From<frame_system::Origin<Runtime>> for Origin {
@@ -494,7 +494,7 @@ impl frame_support::traits::OriginTrait for Origin {
     }
 }
 
-#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
 pub struct Event;
 
 impl From<frame_system::Event<Runtime>> for Event {
