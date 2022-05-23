@@ -7,9 +7,16 @@ use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_networking::{
+    libp2p::{identity::sr25519, multiaddr::Protocol, Multiaddr},
+    multimess::MultihashCode,
+    Config,
+};
 use subspace_solving::SubspaceCodec;
 use tracing::info;
 
+// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
+// will have the same length.
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///
 /// It is needed because of the limit of a single plot size from the consensus
@@ -19,6 +26,7 @@ pub struct MultiFarming {
     pub commitments: Vec<Commitments>,
     farmings: Vec<Farming>,
     archiving: Archiving,
+    networking_node_runners: Vec<subspace_networking::NodeRunner>,
 }
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
@@ -45,6 +53,8 @@ pub struct Options<C: RpcClient> {
     pub client: C,
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
+    pub bootstrap_nodes: Vec<Multiaddr>,
+    pub listen_on: Vec<Multiaddr>,
 }
 
 impl MultiFarming {
@@ -55,6 +65,8 @@ impl MultiFarming {
             client,
             object_mappings,
             reward_address,
+            bootstrap_nodes,
+            listen_on,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -67,6 +79,7 @@ impl MultiFarming {
         let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
         let mut commitments = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
+        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
         let results = plot_sizes
             .into_iter()
@@ -99,18 +112,75 @@ impl MultiFarming {
                             plot.clone(),
                             plot_commitments.clone(),
                             client.clone(),
-                            identity,
+                            identity.clone(),
                             reward_address,
                         )
                     });
 
-                    Ok::<_, anyhow::Error>((plot, subspace_codec, plot_commitments, farming))
+                    Ok::<_, anyhow::Error>((
+                        identity,
+                        plot,
+                        subspace_codec,
+                        plot_commitments,
+                        farming,
+                    ))
                 })
-            })
-            .collect::<Vec<_>>();
+            });
 
-        for result_future in results {
-            let (plot, subspace_codec, plot_commitments, farming) = result_future.await.unwrap()?;
+        for (i, result_future) in results.enumerate() {
+            let (identity, plot, subspace_codec, plot_commitments, farming) =
+                result_future.await.unwrap()?;
+
+            let (node, node_runner) = subspace_networking::create(Config {
+                bootstrap_nodes: bootstrap_nodes.clone(),
+                value_getter: Arc::new({
+                    let plot = plot.clone();
+                    move |key| {
+                        let code = key.code();
+
+                        if code != u64::from(MultihashCode::Piece)
+                            && code != u64::from(MultihashCode::PieceIndex)
+                        {
+                            return None;
+                        }
+
+                        let piece_index = u64::from_le_bytes(
+                            key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
+                        );
+                        plot.read(piece_index)
+                            .ok()
+                            .and_then(|mut piece| {
+                                subspace_codec
+                                    .decode(&mut piece, piece_index)
+                                    .ok()
+                                    .map(move |()| piece)
+                            })
+                            .map(|piece| piece.to_vec())
+                    }
+                }),
+                allow_non_globals_in_dht: true,
+                listen_on: if i == 0 { listen_on.clone() } else { vec![] },
+                ..Config::with_keypair(sr25519::Keypair::from(
+                    sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
+                        .expect("Always valid"),
+                ))
+            })
+            .await?;
+
+            node.on_new_listener(Arc::new({
+                let node_id = node.id();
+
+                move |multiaddr| {
+                    info!(
+                        "Listening on {}",
+                        multiaddr.clone().with(Protocol::P2p(node_id.into()))
+                    );
+                }
+            }))
+            .detach();
+
+            networking_node_runners.push(node_runner);
+
             plots.push(plot);
             subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
@@ -154,6 +224,7 @@ impl MultiFarming {
             commitments,
             farmings,
             archiving,
+            networking_node_runners,
         })
     }
 
@@ -168,11 +239,17 @@ impl MultiFarming {
             .into_iter()
             .map(|farming| farming.wait())
             .collect::<FuturesUnordered<_>>();
+        let mut node_runners = self
+            .networking_node_runners
+            .into_iter()
+            .map(|mut node_runner| async move { node_runner.run().await })
+            .collect::<FuturesUnordered<_>>();
 
         tokio::select! {
             res = farming.select_next_some() => {
                 res?;
             },
+            () = node_runners.select_next_some() => {},
             res = self.archiving.wait() => {
                 res?;
             },
