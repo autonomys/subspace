@@ -66,10 +66,10 @@ impl fmt::Debug for Config {
 
 impl Config {
     pub fn with_generated_keypair() -> Self {
-        Self::with_keypair(identity::ed25519::Keypair::generate())
+        Self::with_keypair(identity::sr25519::Keypair::generate())
     }
 
-    pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
+    pub fn with_keypair(keypair: identity::sr25519::Keypair) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_protocol_name(KADEMLIA_PROTOCOL)
@@ -93,7 +93,7 @@ impl Config {
             .build()
             .expect("Default config for gossipsub is always correct; qed");
 
-        let keypair = identity::Keypair::Ed25519(keypair);
+        let keypair = identity::Keypair::Sr25519(keypair);
 
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
