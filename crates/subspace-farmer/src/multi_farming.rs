@@ -8,7 +8,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::{
-    libp2p::{identity::sr25519, multiaddr::Protocol, Multiaddr},
+    libp2p::{
+        identity::{self, sr25519},
+        multiaddr::Protocol,
+        Multiaddr, PeerId,
+    },
     multimess::MultihashCode,
     Config,
 };
@@ -54,7 +58,7 @@ pub struct Options<C: RpcClient> {
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
-    pub listen_on: Vec<Multiaddr>,
+    pub dsn_ports_start: Option<u16>,
 }
 
 impl MultiFarming {
@@ -65,8 +69,8 @@ impl MultiFarming {
             client,
             object_mappings,
             reward_address,
-            bootstrap_nodes,
-            listen_on,
+            mut bootstrap_nodes,
+            dsn_ports_start,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -131,6 +135,19 @@ impl MultiFarming {
             let (identity, plot, subspace_codec, plot_commitments, farming) =
                 result_future.await.unwrap()?;
 
+            let mut listen_on = if let Some(starting_port) = dsn_ports_start {
+                subspace_networking::libp2p::build_multiaddr!(Tcp(starting_port + i as u16))
+            } else {
+                "/ip4/0.0.0.0/tcp/0".parse().unwrap()
+            };
+
+            listen_on.push(Protocol::P2p(
+                PeerId::from_public_key(&identity::PublicKey::Sr25519(
+                    (*identity.public_key()).into(),
+                ))
+                .into(),
+            ));
+
             let (node, node_runner) = subspace_networking::create(Config {
                 bootstrap_nodes: bootstrap_nodes.clone(),
                 value_getter: Arc::new({
@@ -159,7 +176,7 @@ impl MultiFarming {
                     }
                 }),
                 allow_non_globals_in_dht: true,
-                listen_on: if i == 0 { listen_on.clone() } else { vec![] },
+                listen_on: vec![listen_on.clone()],
                 ..Config::with_keypair(sr25519::Keypair::from(
                     sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
                         .expect("Always valid"),
@@ -179,6 +196,7 @@ impl MultiFarming {
             }))
             .detach();
 
+            bootstrap_nodes.push(listen_on);
             networking_node_runners.push(node_runner);
 
             plots.push(plot);

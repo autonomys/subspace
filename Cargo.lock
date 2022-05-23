@@ -1570,19 +1570,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "curve25519-dalek-ng"
-version = "4.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c359b7249347e46fb28804470d071c921156ad62b3eef5d34e2ba867533dec8"
-dependencies = [
- "byteorder 1.4.3",
- "digest 0.9.0",
- "rand_core 0.6.3",
- "subtle-ng",
- "zeroize",
-]
-
-[[package]]
 name = "data-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3345,7 +3332,7 @@ dependencies = [
 [[package]]
 name = "libp2p"
 version = "0.45.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "bytes",
  "futures 0.3.21",
@@ -3430,7 +3417,7 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.33.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "asn1_der",
  "bs58",
@@ -3454,7 +3441,7 @@ dependencies = [
  "rand 0.8.5",
  "ring",
  "rw-stream-sink 0.3.0",
- "schnorrkel 0.10.2",
+ "schnorrkel",
  "sha2 0.10.2",
  "smallvec",
  "thiserror",
@@ -3491,7 +3478,7 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.33.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "futures 0.3.21",
  "libp2p-core 0.33.0",
@@ -3550,7 +3537,7 @@ dependencies = [
 [[package]]
 name = "libp2p-gossipsub"
 version = "0.38.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "asynchronous-codec",
  "base64",
@@ -3594,7 +3581,7 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "asynchronous-codec",
  "futures 0.3.21",
@@ -3641,7 +3628,7 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.37.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "arrayvec 0.7.2",
  "asynchronous-codec",
@@ -3705,7 +3692,7 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.6.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "libp2p-core 0.33.0",
  "libp2p-gossipsub 0.38.0",
@@ -3759,7 +3746,7 @@ dependencies = [
 [[package]]
 name = "libp2p-noise"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "bytes",
  "curve25519-dalek 3.2.0",
@@ -3796,7 +3783,7 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "futures 0.3.21",
  "futures-timer",
@@ -3929,7 +3916,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "either",
  "fnv",
@@ -3958,7 +3945,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.27.2"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "quote",
  "syn",
@@ -3984,7 +3971,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.33.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "futures 0.3.21",
  "futures-timer",
@@ -4044,7 +4031,7 @@ dependencies = [
 [[package]]
 name = "libp2p-websocket"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "either",
  "futures 0.3.21",
@@ -4075,7 +4062,7 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.37.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "futures 0.3.21",
  "libp2p-core 0.33.0",
@@ -4398,18 +4385,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merlin"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d"
-dependencies = [
- "byteorder 1.4.3",
- "keccak",
- "rand_core 0.6.3",
- "zeroize",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4546,7 +4521,7 @@ dependencies = [
 [[package]]
 name = "multistream-select"
 version = "0.11.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "bytes",
  "futures 0.3.21",
@@ -5006,7 +4981,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
@@ -5059,7 +5034,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
@@ -5745,7 +5720,7 @@ dependencies = [
 [[package]]
 name = "prost-codec"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -6351,7 +6326,7 @@ dependencies = [
 [[package]]
 name = "rw-stream-sink"
 version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#f3e7ad33c8b9a5b54af77a3a87d776d55d92bfde"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys#62604bce13ca852c986d0fcc159a45138a3d0e57"
 dependencies = [
  "futures 0.3.21",
  "pin-project 1.0.10",
@@ -6624,7 +6599,7 @@ dependencies = [
  "sc-service",
  "sc-telemetry",
  "sc-utils",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "serde",
  "sp-api",
  "sp-block-builder",
@@ -7316,28 +7291,11 @@ dependencies = [
  "arrayvec 0.5.2",
  "curve25519-dalek 2.1.3",
  "getrandom 0.1.16",
- "merlin 2.0.1",
+ "merlin",
  "rand 0.7.3",
  "rand_core 0.5.1",
  "sha2 0.8.2",
  "subtle",
- "zeroize",
-]
-
-[[package]]
-name = "schnorrkel"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "844b7645371e6ecdf61ff246ba1958c29e802881a749ae3fb1993675d210d28d"
-dependencies = [
- "arrayref",
- "arrayvec 0.7.2",
- "curve25519-dalek-ng",
- "merlin 3.0.0",
- "rand_core 0.6.3",
- "serde_bytes",
- "sha2 0.9.9",
- "subtle-ng",
  "zeroize",
 ]
 
@@ -7473,15 +7431,6 @@ name = "serde_arrays"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "212e73464ebcde48d723aa02eb270ba62eff38a9b732df31f33f1b4e145f3a54"
 dependencies = [
  "serde",
 ]
@@ -7891,7 +7840,7 @@ version = "0.10.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=5d3e7c4ee9f5c8e370022d5f3fa9723185710831#5d3e7c4ee9f5c8e370022d5f3fa9723185710831"
 dependencies = [
  "async-trait",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -7929,7 +7878,7 @@ dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus",
@@ -7952,7 +7901,7 @@ source = "git+https://github.com/paritytech/substrate?rev=5d3e7c4ee9f5c8e370022d
 dependencies = [
  "parity-scale-codec",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-core",
  "sp-runtime",
  "sp-std",
@@ -7977,7 +7926,7 @@ dependencies = [
  "lazy_static",
  "libsecp256k1",
  "log",
- "merlin 2.0.1",
+ "merlin",
  "num-traits",
  "parity-scale-codec",
  "parity-util-mem",
@@ -7986,7 +7935,7 @@ dependencies = [
  "rand 0.7.3",
  "regex",
  "scale-info",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "secp256k1",
  "secrecy",
  "serde",
@@ -8154,10 +8103,10 @@ source = "git+https://github.com/paritytech/substrate?rev=5d3e7c4ee9f5c8e370022d
 dependencies = [
  "async-trait",
  "futures 0.3.21",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot 0.12.0",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "serde",
  "sp-core",
  "sp-externalities",
@@ -8606,7 +8555,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rocksdb",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "serde",
  "serde_json",
  "sp-core",
@@ -8831,7 +8780,7 @@ dependencies = [
  "num_cpus",
  "rand 0.8.5",
  "rayon",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sloth256-189",
  "subspace-core-primitives",
  "thiserror",
@@ -8850,7 +8799,7 @@ dependencies = [
  "sc-consensus-subspace",
  "sc-executor",
  "sc-service",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
@@ -8954,7 +8903,7 @@ checksum = "49eee6965196b32f882dd2ee85a92b1dbead41b04e53907f269de3b0dc04733c"
 dependencies = [
  "hmac 0.11.0",
  "pbkdf2 0.8.0",
- "schnorrkel 0.9.1",
+ "schnorrkel",
  "sha2 0.9.9",
  "zeroize",
 ]
@@ -9152,12 +9101,6 @@ name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
-
-[[package]]
-name = "subtle-ng"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "syn"
@@ -9661,7 +9604,7 @@ checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
  "cfg-if",
  "digest 0.10.3",
- "rand 0.8.5",
+ "rand 0.4.6",
  "static_assertions",
 ]
 

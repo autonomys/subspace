@@ -17,7 +17,7 @@ pub(crate) async fn farm(
     base_directory: PathBuf,
     FarmingArgs {
         bootstrap_nodes,
-        listen_on,
+        dsn_ports_start,
         node_rpc_url,
         mut ws_server_listen_addr,
         reward_address,
@@ -65,7 +65,7 @@ pub(crate) async fn farm(
             object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
-            listen_on,
+            dsn_ports_start,
         },
         plot_size,
         max_plot_size,
