@@ -65,7 +65,7 @@ pub trait Offence<Offender> {
 }
 
 /// Errors that may happen on offence reports.
-#[derive(PartialEq, sp_runtime::RuntimeDebug)]
+#[derive(Debug, PartialEq)]
 pub enum OffenceError {
     /// The report has already been submitted.
     DuplicateReport,
@@ -114,7 +114,7 @@ impl<Offender> OnOffenceHandler<Offender> for () {
 }
 
 /// A details about an offending authority for a particular kind of offence.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub struct OffenceDetails<Offender> {
     /// The offending authority id
     pub offender: Offender,

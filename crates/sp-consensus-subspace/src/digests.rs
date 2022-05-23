@@ -21,12 +21,12 @@ use crate::{
 };
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
-use sp_runtime::{DigestItem, RuntimeDebug};
+use sp_runtime::DigestItem;
 use subspace_core_primitives::{Randomness, Salt, Solution};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
-#[derive(Clone, RuntimeDebug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct PreDigest<PublicKey, RewardAddress> {
     /// Slot
     pub slot: Slot,
@@ -46,21 +46,21 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
 }
 
 /// Information about the global randomness for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct GlobalRandomnessDescriptor {
     /// Global randomness used for deriving global slot challenges.
     pub global_randomness: Randomness,
 }
 
 /// Information about the solution range for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct SolutionRangeDescriptor {
     /// Solution range used for challenges.
     pub solution_range: u64,
 }
 
 /// Salt for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct SaltDescriptor {
     /// Salt used with challenges.
     pub salt: Salt,

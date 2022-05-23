@@ -4,7 +4,6 @@ use codec::Encode;
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature};
 use finality_grandpa::voter_set::VoterSet;
 use sp_finality_grandpa::{AuthorityId, AuthorityList, AuthorityWeight};
-use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 
 /// Set of test accounts with friendly names.
@@ -15,7 +14,7 @@ pub(crate) const DAVE: Account = Account(3);
 pub(crate) const EVE: Account = Account(4);
 
 /// A test account which can be used to sign messages.
-#[derive(RuntimeDebug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Account(pub u16);
 
 impl Account {

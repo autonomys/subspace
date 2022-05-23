@@ -191,7 +191,7 @@ pub fn go_to_block(
         System::parent_hash()
     };
 
-    let subspace_codec = SubspaceCodec::new(&keypair.public);
+    let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
     let mut encoding = Piece::default();
@@ -353,7 +353,7 @@ pub fn extract_piece(
     archived_segment: &ArchivedSegment,
     piece_index: u64,
 ) -> Piece {
-    let codec = SubspaceCodec::new(&keypair.public);
+    let codec = SubspaceCodec::new(keypair.public.as_ref());
 
     let mut piece: [u8; PIECE_SIZE] = archived_segment
         .pieces
@@ -382,7 +382,8 @@ pub fn create_signed_vote(
     let solution_signing_context = schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT);
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
 
-    let global_challenge = subspace_solving::derive_global_challenge(global_randomnesses, slot);
+    let global_challenge =
+        subspace_solving::derive_global_challenge(global_randomnesses, slot.into());
     let local_challenge = keypair
         .sign(solution_signing_context.bytes(&global_challenge))
         .to_bytes()

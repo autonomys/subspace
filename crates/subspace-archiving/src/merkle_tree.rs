@@ -90,7 +90,7 @@ impl<'a> Witness<'a> {
 
         // Hash one more time as Merkle Tree implementation does
         // Merkle Tree leaf hash prefix is `0x00`
-        let leaf_hash = crypto::sha256_hash_pair(&[0x00], leaf_hash);
+        let leaf_hash = crypto::sha256_hash_pair(&[0x00], &leaf_hash);
 
         // Reconstruct lemma for verification
         let lemma = iter::once(leaf_hash)
@@ -174,7 +174,10 @@ impl MerkleTree {
         T: AsRef<[u8]>,
         I: IntoIterator<Item = T>,
     {
-        Self::new(data.into_iter().map(crypto::sha256_hash))
+        Self::new(
+            data.into_iter()
+                .map(|item| crypto::sha256_hash(item.as_ref())),
+        )
     }
 
     /// Get Merkle Root

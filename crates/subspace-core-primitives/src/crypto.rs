@@ -20,9 +20,9 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
 /// Simple Sha2-256 hashing.
-pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {
+pub fn sha256_hash(data: &[u8]) -> Sha256Hash {
     let mut hasher = Sha256::new();
-    hasher.update(data.as_ref());
+    hasher.update(data);
     hasher
         .finalize()
         .as_slice()
@@ -31,10 +31,10 @@ pub fn sha256_hash<D: AsRef<[u8]>>(data: D) -> Sha256Hash {
 }
 
 /// Simple Sha2-256 hashing of a pair of values.
-pub fn sha256_hash_pair(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Sha256Hash {
+pub fn sha256_hash_pair(a: &[u8], b: &[u8]) -> Sha256Hash {
     let mut hasher = Sha256::new();
-    hasher.update(a.as_ref());
-    hasher.update(b.as_ref());
+    hasher.update(a);
+    hasher.update(b);
     hasher
         .finalize()
         .as_slice()
@@ -43,10 +43,10 @@ pub fn sha256_hash_pair(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Sha256Hash 
 }
 
 /// Hmac with Sha2-256 hash function.
-pub fn hmac_sha256<K: AsRef<[u8]>, P: AsRef<[u8]>>(key: K, piece: P) -> Sha256Hash {
-    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_ref())
-        .expect("Sha256 HMAC can take key of any size; qed");
-    mac.update(piece.as_ref());
+pub fn hmac_sha256(key: &[u8], piece: &[u8]) -> Sha256Hash {
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key).expect("Sha256 HMAC can take key of any size; qed");
+    mac.update(piece);
 
     // `result` has type `Output` which is a thin wrapper around array of
     // bytes for providing constant time equality check

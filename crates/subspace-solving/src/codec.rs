@@ -83,7 +83,7 @@ pub struct SubspaceCodec {
 
 impl SubspaceCodec {
     /// New instance with 256-bit prime and 4096-byte genesis piece size
-    pub fn new<P: AsRef<[u8]>>(farmer_public_key: &P) -> Self {
+    pub fn new(farmer_public_key: &[u8]) -> Self {
         #[cfg(feature = "cuda")]
         let cuda_available = cuda::is_cuda_available();
 

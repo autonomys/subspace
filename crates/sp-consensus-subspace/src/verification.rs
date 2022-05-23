@@ -239,7 +239,7 @@ where
     let mut piece = solution.encoding.clone();
 
     // Ensure piece is decodable.
-    let subspace_codec = SubspaceCodec::new(&solution.public_key);
+    let subspace_codec = SubspaceCodec::new(solution.public_key.as_ref());
     subspace_codec
         .decode(&mut piece, solution.piece_index)
         .map_err(|_| VerificationError::InvalidEncoding(slot))?;
@@ -280,7 +280,7 @@ fn is_within_max_plot(
         return true;
     }
     let max_distance_one_direction = PieceDistance::MAX / total_pieces * max_plot_size / 2;
-    PieceDistance::distance(&piece_index.into(), key) <= max_distance_one_direction
+    PieceDistance::distance(&piece_index.into(), key.as_ref()) <= max_distance_one_direction
 }
 
 /// Parameters for checking piece validity
@@ -331,9 +331,9 @@ where
     } = params;
 
     if let Err(error) = is_local_challenge_valid(
-        derive_global_challenge(global_randomness, slot),
+        derive_global_challenge(global_randomness, slot.into()),
         &solution.local_challenge,
-        &solution.public_key,
+        solution.public_key.as_ref(),
     ) {
         return Err(VerificationError::BadLocalChallenge(slot, error));
     }

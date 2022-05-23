@@ -36,7 +36,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::{ConsensusEngineId, RuntimeAppPublic, RuntimeDebug};
+use sp_runtime::{ConsensusEngineId, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
 
@@ -71,7 +71,7 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 pub type SubspaceBlockWeight = u128;
 
 /// An consensus log item for Subspace.
-#[derive(Decode, Encode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
     /// Global randomness for this block/interval.
     #[codec(index = 1)]
@@ -85,7 +85,7 @@ enum ConsensusLog {
 }
 
 /// Farmer vote.
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
 pub enum Vote<Number, Hash, RewardAddress> {
     /// V0 of the farmer vote.
     V0 {
@@ -121,7 +121,7 @@ where
 }
 
 /// Signed farmer vote.
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo, RuntimeDebug)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
 pub struct SignedVote<Number, Hash, RewardAddress> {
     /// Farmer vote.
     pub vote: Vote<Number, Hash, RewardAddress>,
