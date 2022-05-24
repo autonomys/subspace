@@ -1171,9 +1171,10 @@ fn check_vote<T: Config>(
         .expect("Above check for block number ensures that this value is always present");
 
     if pre_dispatch {
-        // New time slot is already set, whatever time slot is in the vote it must be smaller
+        // New time slot is already set, whatever time slot is in the vote it must be smaller or the
+        // same (for votes produced locally)
         let current_slot = Pallet::<T>::current_slot();
-        if slot >= current_slot {
+        if slot > current_slot {
             debug!(
                 target: "runtime::subspace",
                 "Vote slot {slot:?} must be before current slot {current_slot:?}",
