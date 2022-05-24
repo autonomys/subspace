@@ -107,6 +107,14 @@ struct Salts {
     next: Option<Salt>,
 }
 
+struct AbortOnDrop<T>(JoinHandle<T>);
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
     client: &T,
@@ -120,6 +128,48 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .subscribe_slot_info()
         .await
         .map_err(FarmingError::RpcError)?;
+
+    let mut reward_signing_info_notifications = client
+        .subscribe_reward_signing()
+        .await
+        .map_err(FarmingError::RpcError)?;
+
+    let _reward_signing_task = AbortOnDrop(tokio::spawn({
+        let identity = identity.clone();
+        let client = client.clone();
+
+        async move {
+            while let Some(RewardSigningInfo { hash, public_key }) =
+                reward_signing_info_notifications.next().await
+            {
+                // Multiple plots might have solved, only sign with correct one
+                if identity.public_key().to_bytes() != public_key {
+                    continue;
+                }
+
+                let signature = identity.sign_reward_hash(&hash);
+
+                match client
+                    .submit_reward_signature(RewardSignature {
+                        hash,
+                        signature: Some(signature.to_bytes().into()),
+                    })
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Successfully signed reward hash 0x{}", hex::encode(hash));
+                    }
+                    Err(error) => {
+                        warn!(
+                            %error,
+                            "Failed to send signature for reward hash 0x{}",
+                            hex::encode(hash),
+                        );
+                    }
+                }
+            }
+        }
+    }));
 
     let mut salts = Salts::default();
 
@@ -181,52 +231,6 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         });
 
         let maybe_solution = maybe_solution_handle.await.unwrap()?;
-
-        // When solution is found, wait for block signing request.
-        if maybe_solution.is_some() {
-            debug!("Subscribing to sign block notifications");
-            let mut reward_signing_info_notifications = client
-                .subscribe_reward_signing()
-                .await
-                .map_err(FarmingError::RpcError)?;
-
-            tokio::spawn({
-                let identity = identity.clone();
-                let client = client.clone();
-
-                async move {
-                    if let Some(RewardSigningInfo { hash, public_key }) =
-                        reward_signing_info_notifications.next().await
-                    {
-                        // Multiple plots might have solved, only sign with correct one
-                        if identity.public_key().to_bytes() != public_key {
-                            return;
-                        }
-
-                        let signature = identity.sign_reward_hash(&hash);
-
-                        match client
-                            .submit_reward_signature(RewardSignature {
-                                hash,
-                                signature: Some(signature.to_bytes().into()),
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                info!("Successfully signed reward hash 0x{}", hex::encode(hash));
-                            }
-                            Err(error) => {
-                                warn!(
-                                    %error,
-                                    "Failed to send signature for reward hash 0x{}",
-                                    hex::encode(hash),
-                                );
-                            }
-                        }
-                    }
-                }
-            });
-        }
 
         client
             .submit_solution_response(SolutionResponse {

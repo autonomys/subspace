@@ -52,7 +52,8 @@ use subspace_rpc_primitives::{
     FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
-const SOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
+const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
+const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc(client, server)]
@@ -373,7 +374,7 @@ where
                     "subspace-block-signing-forward",
                     Some("rpc"),
                     future::select(
-                        futures_timer::Delay::new(SOLUTION_TIMEOUT),
+                        futures_timer::Delay::new(REWARD_SIGNING_TIMEOUT),
                         Box::pin(forward_signature_fut),
                     )
                     .map(|_| ())

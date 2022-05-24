@@ -44,7 +44,7 @@ use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
-use subspace_core_primitives::{Randomness, Salt};
+use subspace_core_primitives::{Randomness, Salt, Solution};
 
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
@@ -151,6 +151,8 @@ where
                 solution_sender,
             });
 
+        let mut maybe_pre_digest = None;
+
         while let Some(solution) = solution_receiver.next().await {
             // TODO: We need also need to check for equivocation of farmers connected to *this node*
             //  during block import, currently farmers connected to this node are considered trusted
@@ -232,25 +234,26 @@ where
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
             } else {
-                let pre_digest = PreDigest { solution, slot };
-
-                // If solution is of high enough quality, block reward is claimed
-                if verification::is_within_solution_range(&pre_digest.solution, solution_range) {
+                // If solution is of high enough quality and block pre-digest wasn't produced yet,
+                // block reward is claimed
+                if maybe_pre_digest.is_none()
+                    && verification::is_within_solution_range(&solution, solution_range)
+                {
                     info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
-                    return Some(pre_digest);
+                    maybe_pre_digest.replace(PreDigest { solution, slot });
                 } else if !parent_header.number().is_zero() {
                     // Not sending vote on top of genesis bloc since root blocks since piece
                     // verification wouldn't be possible due to empty records root
                     info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
-                    self.create_vote(pre_digest, parent_header, &parent_block_id)
+                    self.create_vote(solution, slot, parent_header, &parent_block_id)
                         .await;
                 }
             }
         }
 
-        None
+        maybe_pre_digest
     }
 
     fn pre_digest_data(&self, _slot: Slot, claim: &Self::Claim) -> Vec<DigestItem> {
@@ -355,11 +358,11 @@ where
 {
     async fn create_vote(
         &self,
-        pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
+        slot: Slot,
         parent_header: &Block::Header,
         parent_block_id: &BlockId<Block>,
     ) {
-        let slot = pre_digest.slot;
         let runtime_api = self.client.runtime_api();
 
         if self.should_backoff(slot, parent_header) {
@@ -371,13 +374,10 @@ where
             height: parent_header.number().saturating_add(One::one()),
             parent_hash: parent_header.hash(),
             slot,
-            solution: pre_digest.solution.clone(),
+            solution: solution.clone(),
         };
 
-        let signature = match self
-            .sign_reward(vote.hash(), &pre_digest.solution.public_key)
-            .await
-        {
+        let signature = match self.sign_reward(vote.hash(), &solution.public_key).await {
             Ok(signature) => signature,
             Err(error) => {
                 error!(
