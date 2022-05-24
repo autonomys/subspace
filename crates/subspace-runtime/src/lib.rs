@@ -322,22 +322,25 @@ impl Get<Balance> for CreditSupply {
 
 pub struct TotalSpacePledged;
 
-impl Get<u64> for TotalSpacePledged {
-    fn get() -> u64 {
-        let piece_size = u64::try_from(PIECE_SIZE)
-            .expect("Piece size is definitely small enough to fit into u64; qed");
-        // Operations reordered to avoid u64 overflow, but essentially are:
+impl Get<u128> for TotalSpacePledged {
+    fn get() -> u128 {
+        let piece_size = u128::try_from(PIECE_SIZE)
+            .expect("Piece size is definitely small enough to fit into u128; qed");
+        // Operations reordered to avoid data loss, but essentially are:
         // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
-        u64::MAX / Subspace::solution_ranges().current * piece_size * SlotProbability::get().0
-            / SlotProbability::get().1
+        u128::from(u64::MAX)
+            .saturating_mul(piece_size)
+            .saturating_mul(u128::from(SlotProbability::get().0))
+            / u128::from(Subspace::solution_ranges().current)
+            / u128::from(SlotProbability::get().1)
     }
 }
 
 pub struct BlockchainHistorySize;
 
-impl Get<u64> for BlockchainHistorySize {
-    fn get() -> u64 {
-        Subspace::archived_history_size()
+impl Get<u128> for BlockchainHistorySize {
+    fn get() -> u128 {
+        u128::from(Subspace::archived_history_size())
     }
 }
 

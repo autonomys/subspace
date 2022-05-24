@@ -23,6 +23,7 @@ mod default_weights;
 
 use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
+use frame_support::sp_runtime::SaturatedConversion;
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 pub use pallet::*;
@@ -78,12 +79,12 @@ mod pallet {
 
         /// How much space there is on the network.
         #[pallet::constant]
-        type TotalSpacePledged: Get<u64>;
+        type TotalSpacePledged: Get<u128>;
 
         /// How big is the history of the blockchain in archived state (thus includes erasure
         /// coding, but not replication).
         #[pallet::constant]
-        type BlockchainHistorySize: Get<u64>;
+        type BlockchainHistorySize: Get<u128>;
 
         type Currency: Currency<Self::AccountId>;
 
@@ -273,9 +274,12 @@ where
         let credit_supply = T::CreditSupply::get();
 
         let transaction_byte_fee = match T::TotalSpacePledged::get().checked_sub(
-            T::BlockchainHistorySize::get() * u64::from(T::MinReplicationFactor::get()),
+            T::BlockchainHistorySize::get()
+                .saturating_mul(u128::from(T::MinReplicationFactor::get())),
         ) {
-            Some(free_space) if free_space > 0 => credit_supply / BalanceOf::<T>::from(free_space),
+            Some(free_space) if free_space > 0 => {
+                credit_supply / BalanceOf::<T>::saturated_from(free_space)
+            }
             _ => credit_supply,
         };
 
