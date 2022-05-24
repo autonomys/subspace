@@ -50,31 +50,33 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: 
 
 	let mut new_first_saved_receipt = first_saved_receipt;
 
-	let keys_to_delete =
-		if best_execution_chain_number >= first_saved_receipt + PRUNING_DEPTH.saturated_into() {
-			new_first_saved_receipt =
-				best_execution_chain_number.saturating_sub((PRUNING_DEPTH - 1).saturated_into());
+	let keys_to_delete = if best_execution_chain_number.saturating_sub(first_saved_receipt) >=
+		PRUNING_DEPTH.into()
+	{
+		// `first_saved_receipt` starts from 1 instead of 0, hence `PRUNING_DEPTH` - 1.
+		new_first_saved_receipt =
+			best_execution_chain_number.saturating_sub((PRUNING_DEPTH - 1).saturated_into());
 
-			let mut keys_to_delete = vec![];
-			let mut to_delete_start = first_saved_receipt;
-			while to_delete_start < new_first_saved_receipt {
-				let delete_block_number_key =
-					(EXECUTION_RECEIPT_BLOCK_NUMBER, to_delete_start).encode();
-				if let Some(hashes_to_delete) =
-					load_decode::<_, Vec<Block::Hash>>(backend, delete_block_number_key.as_slice())?
-				{
-					keys_to_delete.extend(
-						hashes_to_delete.into_iter().map(|h| (EXECUTION_RECEIPT_KEY, h).encode()),
-					);
-					keys_to_delete.push(delete_block_number_key);
-				}
-				to_delete_start = to_delete_start.saturating_add(One::one());
+		let mut keys_to_delete = vec![];
+		let mut to_delete_start = first_saved_receipt;
+		while to_delete_start < new_first_saved_receipt {
+			let delete_block_number_key =
+				(EXECUTION_RECEIPT_BLOCK_NUMBER, to_delete_start).encode();
+			if let Some(hashes_to_delete) =
+				load_decode::<_, Vec<Block::Hash>>(backend, delete_block_number_key.as_slice())?
+			{
+				keys_to_delete.extend(
+					hashes_to_delete.into_iter().map(|h| (EXECUTION_RECEIPT_KEY, h).encode()),
+				);
+				keys_to_delete.push(delete_block_number_key);
 			}
+			to_delete_start = to_delete_start.saturating_add(One::one());
+		}
 
-			keys_to_delete
-		} else {
-			vec![]
-		};
+		keys_to_delete
+	} else {
+		vec![]
+	};
 
 	backend.insert_aux(
 		&[
@@ -104,7 +106,7 @@ pub(super) fn target_receipt_is_pruned(
 	best_execution_chain_number: BlockNumber,
 	target_block: BlockNumber,
 ) -> bool {
-	best_execution_chain_number.checked_sub(target_block + PRUNING_DEPTH).is_some()
+	best_execution_chain_number.saturating_sub(target_block) >= PRUNING_DEPTH
 }
 
 #[cfg(test)]
@@ -305,7 +307,7 @@ mod tests {
 			&create_execution_receipt(PRUNING_DEPTH + 3),
 		);
 
-		// Create PRUNING_DEPTH + 3 receipt, best_execution_chain_number is PRUNING_DEPTH + 3.
+		// Create PRUNING_DEPTH + 4 receipt, best_execution_chain_number is PRUNING_DEPTH + 3.
 		let block_hash = Hash::random();
 		write_receipt_at(
 			(block_hash, PRUNING_DEPTH + 4),
