@@ -816,7 +816,68 @@ fn vote_past_future_slot() {
                 &keypair,
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
-                3.into(),
+                4.into(),
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                piece,
+                1,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::SlotInTheFuture
+            );
+        }
+    });
+}
+
+#[test]
+fn vote_same_slot() {
+    new_test_ext().execute_with(|| {
+        let block_keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
+
+        // Move to the block 3, but time slot 4, but in two time slots
+        go_to_block(&block_keypair, 3, 4, 1);
+
+        RecordsRoot::<Test>::insert(
+            archived_segment.root_block.segment_index(),
+            archived_segment.root_block.records_root(),
+        );
+
+        // Reset so that any solution works for votes
+        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        // Same time slot in the vote as in the block is fine if height is the same (pre-dispatch)
+        {
+            let keypair = Keypair::generate();
+            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let signed_vote = create_signed_vote(
+                &keypair,
+                3,
+                frame_system::Pallet::<Test>::block_hash(2),
+                Subspace::current_slot(),
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                piece,
+                1,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, true));
+        }
+
+        // Same time slot in the vote as in the block is not fine if height is different though
+        // (pre-dispatch)
+        {
+            let keypair = Keypair::generate();
+            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
                 Subspace::salts().current,
                 piece,

@@ -1174,7 +1174,7 @@ fn check_vote<T: Config>(
         // New time slot is already set, whatever time slot is in the vote it must be smaller or the
         // same (for votes produced locally)
         let current_slot = Pallet::<T>::current_slot();
-        if slot > current_slot {
+        if slot > current_slot || (slot == current_slot && height != current_block_number) {
             debug!(
                 target: "runtime::subspace",
                 "Vote slot {slot:?} must be before current slot {current_slot:?}",
