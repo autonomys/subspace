@@ -39,7 +39,7 @@ sudo apt-get install llvm clang
 
 Then build the farmer using Cargo:
 ```
-cargo build --profile production subspace-farmer
+cargo build --profile production --package subspace-farmer
 target/production/subspace-farmer --version
 ```
 
