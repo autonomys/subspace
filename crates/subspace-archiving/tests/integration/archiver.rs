@@ -159,7 +159,7 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             first_archived_segment.root_block,
-            block_1.clone(),
+            &block_1,
             block_1_object_mapping.clone(),
         )
         .unwrap();
@@ -248,7 +248,7 @@ fn archiver() {
             RECORD_SIZE,
             SEGMENT_SIZE,
             last_root_block,
-            block_2,
+            &block_2,
             BlockObjectMapping::default(),
         )
         .unwrap();
@@ -316,7 +316,7 @@ fn invalid_usage() {
                     archived_progress: ArchivedBlockProgress::Partial(10),
                 },
             },
-            &vec![0u8; 10],
+            &[0u8; 10],
             BlockObjectMapping::default(),
         );
 
@@ -343,7 +343,7 @@ fn invalid_usage() {
                     archived_progress: ArchivedBlockProgress::Partial(10),
                 },
             },
-            &vec![0u8; 6],
+            &[0u8; 6],
             BlockObjectMapping::default(),
         );
 

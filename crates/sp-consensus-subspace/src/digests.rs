@@ -16,24 +16,25 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{ConsensusLog, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID};
+use crate::{
+    ConsensusLog, FarmerPublicKey, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID,
+};
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
-use sp_runtime::generic::DigestItemRef;
-use sp_runtime::{DigestItem, RuntimeDebug};
+use sp_runtime::DigestItem;
 use subspace_core_primitives::{Randomness, Salt, Solution};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
-#[derive(Clone, RuntimeDebug, Encode, Decode)]
-pub struct PreDigest<AccountId> {
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct PreDigest<PublicKey, RewardAddress> {
     /// Slot
     pub slot: Slot,
     /// Solution (includes PoR)
-    pub solution: Solution<AccountId>,
+    pub solution: Solution<PublicKey, RewardAddress>,
 }
 
-impl<AccountId> PreDigest<AccountId> {
+impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
     /// Returns the weight _added_ by this digest, not the cumulative weight
     /// of the chain.
     pub fn added_weight(&self) -> SubspaceBlockWeight {
@@ -45,21 +46,21 @@ impl<AccountId> PreDigest<AccountId> {
 }
 
 /// Information about the global randomness for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct GlobalRandomnessDescriptor {
     /// Global randomness used for deriving global slot challenges.
     pub global_randomness: Randomness,
 }
 
 /// Information about the solution range for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct SolutionRangeDescriptor {
     /// Solution range used for challenges.
     pub solution_range: u64,
 }
 
 /// Salt for the block.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, PartialEq, Eq, Clone)]
 pub struct SaltDescriptor {
     /// Salt used with challenges.
     pub salt: Salt,
@@ -68,10 +69,14 @@ pub struct SaltDescriptor {
 /// A digest item which is usable with Subspace consensus.
 pub trait CompatibleDigestItem: Sized {
     /// Construct a digest item which contains a Subspace pre-digest.
-    fn subspace_pre_digest<AccountId: Encode>(pre_digest: &PreDigest<AccountId>) -> Self;
+    fn subspace_pre_digest<AccountId: Encode>(
+        pre_digest: &PreDigest<FarmerPublicKey, AccountId>,
+    ) -> Self;
 
     /// If this item is an Subspace pre-digest, return it.
-    fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>>;
+    fn as_subspace_pre_digest<AccountId: Decode>(
+        &self,
+    ) -> Option<PreDigest<FarmerPublicKey, AccountId>>;
 
     /// Construct a digest item which contains a Subspace seal.
     fn subspace_seal(signature: FarmerSignature) -> Self;
@@ -99,11 +104,15 @@ pub trait CompatibleDigestItem: Sized {
 }
 
 impl CompatibleDigestItem for DigestItem {
-    fn subspace_pre_digest<AccountId: Encode>(pre_digest: &PreDigest<AccountId>) -> Self {
+    fn subspace_pre_digest<RewardAddress: Encode>(
+        pre_digest: &PreDigest<FarmerPublicKey, RewardAddress>,
+    ) -> Self {
         Self::PreRuntime(SUBSPACE_ENGINE_ID, pre_digest.encode())
     }
 
-    fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>> {
+    fn as_subspace_pre_digest<RewardAddress: Decode>(
+        &self,
+    ) -> Option<PreDigest<FarmerPublicKey, RewardAddress>> {
         self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
     }
 
@@ -163,24 +172,5 @@ impl CompatibleDigestItem for DigestItem {
                 None
             }
         })
-    }
-}
-
-/// A digest item which is usable with Subspace consensus.
-pub trait CompatibleDigestItemRef: Sized {
-    /// If this item is an Subspace pre-digest, return it.
-    fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>>;
-
-    /// Construct a digest item which contains a Subspace seal.
-    fn as_subspace_seal(&self) -> Option<FarmerSignature>;
-}
-
-impl CompatibleDigestItemRef for DigestItemRef<'_> {
-    fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>> {
-        self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
-    }
-
-    fn as_subspace_seal(&self) -> Option<FarmerSignature> {
-        self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 }

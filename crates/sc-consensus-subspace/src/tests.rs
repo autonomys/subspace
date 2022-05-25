@@ -69,7 +69,7 @@ use std::{cell::RefCell, task::Poll, time::Duration};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Signature, Solution, Tag};
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -404,7 +404,12 @@ impl TestNetFactory for SubspaceTestNet {
                     Slot::from_timestamp(*timestamp, SlotDuration::from_millis(6000))
                 }),
                 telemetry: None,
-                signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+                solution_signing_context: schnorrkel::context::signing_context(
+                    SOLUTION_SIGNING_CONTEXT,
+                ),
+                reward_signing_context: schnorrkel::context::signing_context(
+                    REWARD_SIGNING_CONTEXT,
+                ),
                 block: PhantomData::default(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
@@ -565,7 +570,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_solving = SubspaceCodec::new(&keypair.public);
+            let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
             let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
@@ -576,7 +581,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
-            subspace_solving.encode(&mut encoding, piece_index).unwrap();
+            subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -593,7 +598,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                                 keypair.public.to_bytes(),
                             ),
                             piece_index,
-                            encoding,
+                            encoding: encoding.clone(),
                             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
                             local_challenge: keypair
                                 .sign(ctx.bytes(&new_slot_info.global_challenge))
@@ -693,7 +698,9 @@ fn sig_is_not_pre_digest() {
 }
 
 /// Claims the given slot number. always returning a dummy block.
-pub fn dummy_claim_slot(slot: Slot) -> Option<(PreDigest<FarmerPublicKey>, FarmerPublicKey)> {
+pub fn dummy_claim_slot(
+    slot: Slot,
+) -> Option<(PreDigest<FarmerPublicKey, FarmerPublicKey>, FarmerPublicKey)> {
     Some((
         PreDigest {
             solution: Solution {

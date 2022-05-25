@@ -43,8 +43,10 @@ pub struct SlotInfo {
     pub salt: Salt,
     /// Salt for the next eon
     pub next_salt: Option<Salt>,
-    /// Acceptable solution range
+    /// Acceptable solution range for block authoring
     pub solution_range: u64,
+    /// Acceptable solution range for voting
+    pub voting_solution_range: u64,
 }
 
 /// Response of a slot challenge consisting of an optional solution and
@@ -57,28 +59,28 @@ pub struct SolutionResponse {
     /// Optional solution.
     ///
     /// Derived from the farmer's plot corresponding to `slot_number` above.
-    pub maybe_solution: Option<Solution<PublicKey>>,
+    pub maybe_solution: Option<Solution<PublicKey, PublicKey>>,
 }
 
-/// Block header hash that needs to be signed.
+/// Reward info that needs to be signed.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BlockSigningInfo {
-    /// Header hash of the block to be signed.
+pub struct RewardSigningInfo {
+    /// Hash to be signed.
     #[serde(with = "HexForm")]
-    pub header_hash: [u8; 32],
+    pub hash: [u8; 32],
     /// Public key of the plot identity that should create signature.
     #[serde(with = "HexForm")]
     pub public_key: [u8; 32],
 }
 
-/// Signature in response to block header hash signing request.
+/// Signature in response to reward hash signing request.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BlockSignature {
-    /// Header hash of the block to be signed.
+pub struct RewardSignature {
+    /// Hash that was signed.
     #[serde(with = "HexForm")]
-    pub header_hash: [u8; 32],
-    /// Block header hash signature.
+    pub hash: [u8; 32],
+    /// Pre-header or vote hash signature.
     pub signature: Option<Signature>,
 }

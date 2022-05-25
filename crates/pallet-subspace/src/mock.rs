@@ -23,22 +23,26 @@ use crate::{
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
+use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::{FarmerSignature, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
 use sp_runtime::{
     testing::{Digest, DigestItem, Header, TestXt},
-    traits::{Header as _, IdentityLookup},
+    traits::{Block as BlockT, Header as _, IdentityLookup},
     Perbill,
 };
+use std::sync::Once;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, RootBlock, Sha256Hash,
-    Solution, Tag,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
+    Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
-use subspace_solving::{SubspaceCodec, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -131,7 +135,7 @@ pub const INITIAL_SOLUTION_RANGE: u64 =
 parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
-    pub const EonDuration: u32 = 5;
+    pub const EonDuration: u32 = 6;
     pub const EonNextSaltReveal: u64 = 3;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
@@ -139,6 +143,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
     pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
+    pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
     pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);
@@ -158,6 +163,7 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecordSize = RecordSize;
     type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
+    type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
     type EonChangeTrigger = NormalEonChange;
@@ -168,7 +174,12 @@ impl Config for Test {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
 }
 
-pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
+pub fn go_to_block(
+    keypair: &Keypair,
+    block: u64,
+    slot: u64,
+    reward_address: <Test as frame_system::Config>::AccountId,
+) {
     use frame_support::traits::OnFinalize;
 
     Subspace::on_finalize(System::block_number());
@@ -180,11 +191,11 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         System::parent_hash()
     };
 
-    let subspace_solving = SubspaceCodec::new(&keypair.public);
+    let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
     let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
     let mut encoding = Piece::default();
-    subspace_solving.encode(&mut encoding, piece_index).unwrap();
+    subspace_codec.encode(&mut encoding, piece_index).unwrap();
     let tag: Tag = subspace_solving::create_tag(&encoding, {
         let salts = Subspace::salts();
         if salts.switch_next_block {
@@ -198,7 +209,7 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            reward_address,
             piece_index: 0,
             encoding,
             signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
@@ -214,20 +225,32 @@ pub fn go_to_block(keypair: &Keypair, block: u64, slot: u64) {
 }
 
 /// Slots will grow accordingly to blocks
-pub fn progress_to_block(keypair: &Keypair, n: u64) {
+pub fn progress_to_block(
+    keypair: &Keypair,
+    n: u64,
+    reward_address: <Test as frame_system::Config>::AccountId,
+) {
     let mut slot = u64::from(Subspace::current_slot()) + 1;
     for i in System::block_number() + 1..=n {
-        go_to_block(keypair, i, slot);
+        go_to_block(keypair, i, slot, reward_address);
         slot += 1;
     }
 }
 
-pub fn make_pre_digest(slot: Slot, solution: Solution<FarmerPublicKey>) -> Digest {
+pub fn make_pre_digest(
+    slot: Slot,
+    solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
+) -> Digest {
     let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution });
     Digest { logs: vec![log] }
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
+    static INITIALIZE_LOGGER: Once = Once::new();
+    INITIALIZE_LOGGER.call_once(|| {
+        env_logger::init_from_env(env_logger::Env::new().default_filter_or("error"));
+    });
+
     frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap()
@@ -249,15 +272,15 @@ pub fn generate_equivocation_proof(
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
-    let make_header = |piece_index| {
+    let make_header = |piece_index, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
                 public_key: public_key.clone(),
-                reward_address: public_key.clone(),
+                reward_address,
                 piece_index,
-                encoding,
+                encoding: encoding.clone(),
                 signature: signature.into(),
                 local_challenge: LocalChallenge::default(),
                 tag,
@@ -280,14 +303,14 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(0);
-    let mut h2 = make_header(1);
+    let mut h1 = make_header(0, 0);
+    let mut h2 = make_header(1, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);
 
     // restore previous runtime state
-    go_to_block(keypair, current_block, *current_slot);
+    go_to_block(keypair, current_block, *current_slot, 2);
 
     sp_consensus_subspace::EquivocationProof {
         slot,
@@ -307,4 +330,90 @@ pub fn create_root_block(segment_index: u64) -> RootBlock {
             archived_progress: ArchivedBlockProgress::Complete,
         },
     }
+}
+
+pub fn create_archived_segment() -> ArchivedSegment {
+    let mut archiver = Archiver::new(
+        RecordSize::get() as usize,
+        RecordedHistorySegmentSize::get() as usize,
+    )
+    .unwrap();
+
+    let mut block = vec![0u8; 1024 * 1024];
+    rand::thread_rng().fill(block.as_mut_slice());
+    archiver
+        .add_block(block, Default::default())
+        .into_iter()
+        .next()
+        .unwrap()
+}
+
+pub fn extract_piece(
+    keypair: &Keypair,
+    archived_segment: &ArchivedSegment,
+    piece_index: u64,
+) -> Piece {
+    let codec = SubspaceCodec::new(keypair.public.as_ref());
+
+    let mut piece: [u8; PIECE_SIZE] = archived_segment
+        .pieces
+        .as_pieces()
+        .nth(piece_index as usize)
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    codec.encode(&mut piece, piece_index).unwrap();
+
+    piece.into()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_signed_vote(
+    keypair: &Keypair,
+    height: u64,
+    parent_hash: <Block as BlockT>::Hash,
+    slot: Slot,
+    global_randomnesses: &Randomness,
+    salt: Salt,
+    encoding: Piece,
+    reward_address: <Test as frame_system::Config>::AccountId,
+) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
+    let solution_signing_context = schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT);
+    let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
+
+    let global_challenge =
+        subspace_solving::derive_global_challenge(global_randomnesses, slot.into());
+    let local_challenge = keypair
+        .sign(solution_signing_context.bytes(&global_challenge))
+        .to_bytes()
+        .into();
+
+    let tag = subspace_solving::create_tag(&encoding, salt);
+
+    let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
+        height,
+        parent_hash,
+        slot,
+        solution: Solution {
+            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            reward_address,
+            piece_index: 0,
+            encoding,
+            signature: keypair
+                .sign(solution_signing_context.bytes(&tag))
+                .to_bytes()
+                .into(),
+            local_challenge,
+            tag,
+        },
+    };
+
+    let signature = FarmerSignature::unchecked_from(
+        keypair
+            .sign(reward_signing_context.bytes(vote.hash().as_ref()))
+            .to_bytes(),
+    );
+
+    SignedVote { vote, signature }
 }

@@ -77,7 +77,7 @@ use std::marker::PhantomData;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
-use subspace_solving::SOLUTION_SIGNING_CONTEXT;
+use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -90,8 +90,10 @@ pub struct NewSlotInfo {
     pub salt: Salt,
     /// Salt for the next eon
     pub next_salt: Option<Salt>,
-    /// Acceptable solution range
+    /// Acceptable solution range for block authoring
     pub solution_range: u64,
+    /// Acceptable solution range for voting
+    pub voting_solution_range: u64,
 }
 
 /// New slot notification with slot information and sender for solution for the slot.
@@ -100,14 +102,14 @@ pub struct NewSlotNotification {
     /// New slot information.
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey>>,
+    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey, FarmerPublicKey>>,
 }
 
-/// Notification with block header hash that needs to be signed and sender for signature.
+/// Notification with a hash that needs to be signed to receive reward and sender for signature.
 #[derive(Debug, Clone)]
-pub struct BlockSigningNotification {
-    /// Header hash of the block to be signed.
-    pub header_hash: H256,
+pub struct RewardSigningNotification {
+    /// Hash to be signed.
+    pub hash: H256,
     /// Public key of the plot identity that should create signature.
     pub public_key: FarmerPublicKey,
     /// Sender that can be used to send signature for the header.
@@ -158,9 +160,9 @@ pub enum Error<Header: HeaderT> {
     /// Header is unsealed
     #[error("Header {0:?} is unsealed")]
     HeaderUnsealed(Header::Hash),
-    /// Bad signature
-    #[error("Bad signature on {0:?}")]
-    BadSignature(Header::Hash),
+    /// Bad reward signature
+    #[error("Bad reward signature on {0:?}")]
+    BadRewardSignature(Header::Hash),
     /// Bad solution signature
     #[error("Bad solution signature on slot {0:?}: {1:?}")]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
@@ -238,7 +240,9 @@ where
             VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
             VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
             VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
-            VerificationError::BadSignature(block_hash) => Error::BadSignature(block_hash),
+            VerificationError::BadRewardSignature(block_hash) => {
+                Error::BadRewardSignature(block_hash)
+            }
             VerificationError::BadSolutionSignature(slot, signature_error) => {
                 Error::BadSolutionSignature(slot, signature_error)
             }
@@ -262,14 +266,6 @@ where
     }
 }
 
-fn subspace_err<Header>(error: Error<Header>) -> Error<Header>
-where
-    Header: HeaderT,
-{
-    debug!(target: "subspace", "{}", error);
-    error
-}
-
 /// A slot duration.
 ///
 /// Create with [`Self::get`].
@@ -278,10 +274,11 @@ pub struct Config(SlotDuration);
 
 impl Config {
     /// Fetch the config from the runtime.
-    pub fn get<B: BlockT, C>(client: &C) -> ClientResult<Self>
+    pub fn get<Block, Client>(client: &Client) -> ClientResult<Self>
     where
-        C: AuxStore + ProvideRuntimeApi<B> + UsageProvider<B>,
-        C::Api: SubspaceApi<B>,
+        Block: BlockT,
+        Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
+        Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     {
         trace!(target: "subspace", "Getting slot duration");
 
@@ -390,7 +387,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
@@ -415,8 +412,8 @@ where
         force_authoring,
         backoff_authoring_blocks,
         subspace_link: subspace_link.clone(),
-        // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
@@ -456,7 +453,9 @@ impl Future for SubspaceWorker {
 
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
 /// function will return `Err` if none is found.
-pub fn find_pre_digest<Header>(header: &Header) -> Result<PreDigest<FarmerPublicKey>, Error<Header>>
+pub fn find_pre_digest<Header>(
+    header: &Header,
+) -> Result<PreDigest<FarmerPublicKey, FarmerPublicKey>, Error<Header>>
 where
     Header: HeaderT,
 {
@@ -465,7 +464,10 @@ where
     if header.number().is_zero() {
         return Ok(PreDigest {
             slot: Slot::from(0),
-            solution: Solution::genesis_solution(FarmerPublicKey::unchecked_from([0u8; 32])),
+            solution: Solution::genesis_solution(
+                FarmerPublicKey::unchecked_from([0u8; 32]),
+                FarmerPublicKey::unchecked_from([0u8; 32]),
+            ),
         });
     }
 
@@ -553,8 +555,8 @@ pub struct SubspaceLink<Block: BlockT> {
     config: Config,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    block_signing_notification_sender: SubspaceNotificationSender<BlockSigningNotification>,
-    block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
+    reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
@@ -577,10 +579,10 @@ impl<Block: BlockT> SubspaceLink<Block> {
 
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub fn block_signing_notification_stream(
+    pub fn reward_signing_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<BlockSigningNotification> {
-        self.block_signing_notification_stream.clone()
+    ) -> SubspaceNotificationStream<RewardSigningNotification> {
+        self.reward_signing_notification_stream.clone()
     }
 
     /// Get stream with notifications about archived segment creation
@@ -613,7 +615,8 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     select_chain: SelectChain,
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
-    signing_context: SigningContext,
+    solution_signing_context: SigningContext,
+    reward_signing_context: SigningContext,
     block: PhantomData<Block>,
 }
 
@@ -621,7 +624,7 @@ impl<Block, Client, SelectChain, SN> SubspaceVerifier<Block, Client, SelectChain
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + HeaderMetadata<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     async fn check_and_report_equivocation(
@@ -675,14 +678,6 @@ where
     }
 }
 
-type BlockVerificationResult<Block> = Result<
-    (
-        BlockImportParams<Block, ()>,
-        Option<Vec<(CacheKeyId, Vec<u8>)>>,
-    ),
-    String,
->;
-
 #[async_trait::async_trait]
 impl<Block, Client, SelectChain, SN> Verifier<Block>
     for SubspaceVerifier<Block, Client, SelectChain, SN>
@@ -694,14 +689,20 @@ where
         + Send
         + Sync
         + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
     async fn verify(
         &mut self,
         mut block: BlockImportParams<Block, ()>,
-    ) -> BlockVerificationResult<Block> {
+    ) -> Result<
+        (
+            BlockImportParams<Block, ()>,
+            Option<Vec<(CacheKeyId, Vec<u8>)>>,
+        ),
+        String,
+    > {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
@@ -715,6 +716,29 @@ where
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
+        let pre_digest = find_pre_digest(&block.header)?;
+        // Check if farmer's plot is burned.
+        if self
+            .client
+            .runtime_api()
+            .is_in_block_list(
+                &BlockId::Hash(*block.header.parent_hash()),
+                &pre_digest.solution.public_key,
+            )
+            .map_err(Error::<Block::Header>::RuntimeApi)?
+        {
+            warn!(
+                target: "subspace",
+                "Verifying block with solution provided by farmer in block list: {}",
+                pre_digest.solution.public_key
+            );
+
+            return Err(Error::<Block::Header>::FarmerInBlockList(
+                pre_digest.solution.public_key.clone(),
+            )
+            .into());
+        }
+
         let slot_now = (self.slot_now)();
 
         // Stateless header verification only. This means only check that header contains required
@@ -725,36 +749,37 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let global_randomness = find_global_randomness_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?
                 .global_randomness;
 
-            let solution_range = find_solution_range_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let solution_range = find_solution_range_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?
                 .solution_range;
 
-            let salt = find_salt_descriptor(&block.header)
-                .map_err(subspace_err)?
+            let salt = find_salt_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingSalt(hash))?
                 .salt;
 
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header(VerificationParams {
-                header: block.header.clone(),
-                slot_now: slot_now + 1,
-                verify_solution_params: VerifySolutionParams {
-                    global_randomness: &global_randomness,
-                    solution_range,
-                    salt,
-                    piece_check_params: None,
-                    signing_context: &self.signing_context,
+            verification::check_header::<_, FarmerPublicKey>(
+                VerificationParams {
+                    header: block.header.clone(),
+                    slot_now: slot_now + 1,
+                    verify_solution_params: VerifySolutionParams {
+                        global_randomness: &global_randomness,
+                        solution_range,
+                        salt,
+                        piece_check_params: None,
+                        solution_signing_context: &self.solution_signing_context,
+                    },
+                    reward_signing_context: &self.reward_signing_context,
                 },
-            })
-            .map_err(|error| subspace_err(error.into()))?
+                Some(pre_digest),
+            )
+            .map_err(Error::<Block::Header>::from)?
         };
 
         match checked_header {
@@ -850,7 +875,7 @@ impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CID
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
@@ -881,7 +906,7 @@ where
         origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        pre_digest: &PreDigest<FarmerPublicKey>,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
@@ -922,8 +947,8 @@ where
         let solution_range = find_solution_range_descriptor(&header)?
             .ok_or(Error::MissingSolutionRange(block_hash))?
             .solution_range;
-        let correct_solution_range =
-            slot_worker::extract_solution_range_for_block(self.client.as_ref(), &parent_block_id)?;
+        let (correct_solution_range, _) =
+            slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
         if solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
@@ -1052,7 +1077,7 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
@@ -1078,11 +1103,10 @@ where
                     .map_err(Into::into);
             }
             Ok(sp_blockchain::BlockStatus::Unknown) => {}
-            Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
+            Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
         }
 
         let pre_digest = find_pre_digest::<Block::Header>(&block.header)
-            .map_err(subspace_err)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
@@ -1093,7 +1117,6 @@ where
             &pre_digest,
         )
         .await
-        .map_err(subspace_err)
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         let parent_weight = if block_number.is_one() {
@@ -1103,10 +1126,8 @@ where
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
-                        subspace_err(Error::<Block::Header>::ParentBlockNoAssociatedWeight(
-                            block_hash,
-                        ))
-                        .into(),
+                        Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
+                            .to_string(),
                     )
                 })?
         };
@@ -1196,14 +1217,14 @@ where
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
-    let (block_signing_notification_sender, block_signing_notification_stream) =
-        notification::channel("subspace_block_signing_notification_stream");
+    let (reward_signing_notification_sender, reward_signing_notification_stream) =
+        notification::channel("subspace_reward_signing_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
         notification::channel("subspace_archived_segment_notification_stream");
     let (imported_block_notification_sender, imported_block_notification_stream) =
@@ -1225,8 +1246,8 @@ where
         config,
         new_slot_notification_sender,
         new_slot_notification_stream,
-        block_signing_notification_sender,
-        block_signing_notification_stream,
+        reward_signing_notification_sender,
+        reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
@@ -1278,7 +1299,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
@@ -1287,8 +1308,8 @@ where
         slot_now,
         telemetry,
         client,
-        // TODO: Figure out how to remove explicit schnorrkel dependency
-        signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block: PhantomData::default(),
     };
 

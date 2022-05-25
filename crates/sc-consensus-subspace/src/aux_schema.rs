@@ -56,7 +56,7 @@ where
 }
 
 /// Load the cumulative chain-weight associated with a block.
-pub fn load_block_weight<H: Encode, B: AuxStore>(
+pub(crate) fn load_block_weight<H: Encode, B: AuxStore>(
     backend: &B,
     block_hash: H,
 ) -> ClientResult<Option<SubspaceBlockWeight>> {

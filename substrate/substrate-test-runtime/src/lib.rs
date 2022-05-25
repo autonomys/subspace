@@ -35,9 +35,8 @@ use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
-use sp_core::{offchain::KeyTypeId, OpaqueMetadata, RuntimeDebug};
+use sp_core::{offchain::KeyTypeId, OpaqueMetadata};
 use sp_inherents::{CheckInherentsResult, InherentData};
-#[cfg(feature = "std")]
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{
     create_runtime_str, impl_opaque_keys,
@@ -59,6 +58,7 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::PIECE_SIZE;
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
+use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
 use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
 
 // Ensure Babe and Aura use the same crypto to simplify things a bit.
@@ -120,7 +120,7 @@ pub fn native_version() -> NativeVersion {
 }
 
 /// Calls in transactions.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Transfer {
     pub from: AccountId,
     pub to: AccountId,
@@ -159,7 +159,7 @@ impl Transfer {
 }
 
 /// Extrinsic for test-runtime.
-#[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum Extrinsic {
     AuthoritiesChange(Vec<AuthorityId>),
     Transfer {
@@ -437,7 +437,7 @@ impl GetRuntimeBlockType for Runtime {
     type RuntimeBlock = Block;
 }
 
-#[derive(Clone, RuntimeDebug, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
 pub struct Origin;
 
 impl From<frame_system::Origin<Runtime>> for Origin {
@@ -494,7 +494,7 @@ impl frame_support::traits::OriginTrait for Origin {
     }
 }
 
-#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
 pub struct Event;
 
 impl From<frame_system::Event<Runtime>> for Event {
@@ -503,8 +503,8 @@ impl From<frame_system::Event<Runtime>> for Event {
     }
 }
 
-impl From<pallet_subspace::Event> for Event {
-    fn from(_evt: pallet_subspace::Event) -> Self {
+impl From<pallet_subspace::Event<Runtime>> for Event {
+    fn from(_evt: pallet_subspace::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
@@ -667,6 +667,7 @@ impl pallet_subspace::Config for Runtime {
     type RecordSize = ConstU32<3840>;
     type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 / PIECE_SIZE as u64 }>;
     type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
+    type ExpectedVotesPerBlock = ConstU32<9>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -937,7 +938,7 @@ cfg_if! {
                 }
             }
 
-            impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
+            impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
@@ -984,6 +985,16 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::submit_test_equivocation_report(
                         equivocation_proof,
                     )
+                }
+
+                fn submit_vote_extrinsic(
+                    _signed_vote: SignedVote<
+                        NumberFor<Block>,
+                        <Block as BlockT>::Hash,
+                        FarmerPublicKey,
+                    >,
+                ) {
+                    unimplemented!()
                 }
 
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {
@@ -1265,7 +1276,7 @@ cfg_if! {
                 }
             }
 
-            impl sp_consensus_subspace::SubspaceApi<Block> for Runtime {
+            impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
@@ -1312,6 +1323,16 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::submit_test_equivocation_report(
                         equivocation_proof,
                     )
+                }
+
+                fn submit_vote_extrinsic(
+                    _signed_vote: SignedVote<
+                        NumberFor<Block>,
+                        <Block as BlockT>::Hash,
+                        FarmerPublicKey,
+                    >,
+                ) {
+                    unimplemented!()
                 }
 
                 fn is_in_block_list(farmer_public_key: &sp_consensus_subspace::FarmerPublicKey) -> bool {

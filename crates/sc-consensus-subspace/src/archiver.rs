@@ -22,7 +22,7 @@ use sc_client_api::BlockBackend;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::SubspaceApi;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
@@ -33,10 +33,11 @@ use subspace_core_primitives::{BlockNumber, RootBlock};
 
 const ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL: Duration = Duration::from_secs(5);
 
-fn find_last_root_block<Block: BlockT, Client>(client: &Client) -> Option<RootBlock>
+fn find_last_root_block<Block, Client>(client: &Client) -> Option<RootBlock>
 where
+    Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     let mut block_to_check = BlockId::Hash(client.info().best_hash);
     loop {
@@ -77,19 +78,20 @@ where
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
 /// producing pieces and root blocks (root blocks are then added back to the blockchain as
 /// `store_root_block` extrinsic).
-pub fn start_subspace_archiver<Block: BlockT, Client>(
+pub fn start_subspace_archiver<Block, Client>(
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     is_authoring_blocks: bool,
 ) where
+    Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
     let best_block_id = BlockId::Hash(client.info().best_hash);
 

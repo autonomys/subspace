@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 
@@ -26,12 +26,12 @@ pub struct Inner {
     solution_receiver: Arc<Mutex<mpsc::Receiver<SolutionResponse>>>,
     // TODO: Use this
     #[allow(dead_code)]
-    block_signing_info_sender: Mutex<Option<mpsc::Sender<BlockSigningInfo>>>,
-    block_signing_info_receiver: Arc<Mutex<mpsc::Receiver<BlockSigningInfo>>>,
-    block_signature_sender: mpsc::Sender<BlockSignature>,
+    reward_signing_info_sender: Mutex<Option<mpsc::Sender<RewardSigningInfo>>>,
+    reward_signing_info_receiver: Arc<Mutex<mpsc::Receiver<RewardSigningInfo>>>,
+    reward_signature_sender: mpsc::Sender<RewardSignature>,
     // TODO: Use this
     #[allow(dead_code)]
-    block_signature_receiver: Arc<Mutex<mpsc::Receiver<BlockSignature>>>,
+    reward_signature_receiver: Arc<Mutex<mpsc::Receiver<RewardSignature>>>,
     archived_segments_sender: Mutex<Option<mpsc::Sender<ArchivedSegment>>>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
@@ -45,8 +45,8 @@ impl MockRpcClient {
         let (metadata_sender, metadata_receiver) = mpsc::channel(10);
         let (slot_info_sender, slot_info_receiver) = mpsc::channel(10);
         let (solution_sender, solution_receiver) = mpsc::channel(1);
-        let (block_signing_info_sender, block_signing_info_receiver) = mpsc::channel(10);
-        let (block_signature_sender, block_signature_receiver) = mpsc::channel(1);
+        let (reward_signing_info_sender, reward_signing_info_receiver) = mpsc::channel(10);
+        let (reward_signature_sender, reward_signature_receiver) = mpsc::channel(1);
         let (archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
         let (acknowledge_archived_segment_sender, acknowledge_archived_segment_receiver) =
             mpsc::channel(1);
@@ -59,10 +59,10 @@ impl MockRpcClient {
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 solution_sender,
                 solution_receiver: Arc::new(Mutex::new(solution_receiver)),
-                block_signing_info_sender: Mutex::new(Some(block_signing_info_sender)),
-                block_signing_info_receiver: Arc::new(Mutex::new(block_signing_info_receiver)),
-                block_signature_sender,
-                block_signature_receiver: Arc::new(Mutex::new(block_signature_receiver)),
+                reward_signing_info_sender: Mutex::new(Some(reward_signing_info_sender)),
+                reward_signing_info_receiver: Arc::new(Mutex::new(reward_signing_info_receiver)),
+                reward_signature_sender,
+                reward_signature_receiver: Arc::new(Mutex::new(reward_signature_receiver)),
                 archived_segments_sender: Mutex::new(Some(archived_segments_sender)),
                 archived_segments_receiver: Arc::new(Mutex::new(archived_segments_receiver)),
                 acknowledge_archived_segment_sender,
@@ -176,14 +176,15 @@ impl RpcClient for MockRpcClient {
         Ok(())
     }
 
-    async fn subscribe_block_signing(
+    async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, MockError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, MockError> {
         let (mut sender, receiver) = mpsc::channel(10);
-        let block_signing_receiver = self.inner.block_signing_info_receiver.clone();
+        let reward_signing_receiver = self.inner.reward_signing_info_receiver.clone();
         tokio::spawn(async move {
-            while let Some(block_signing_info) = block_signing_receiver.lock().await.next().await {
-                if sender.send(block_signing_info).await.is_err() {
+            while let Some(reward_signing_info) = reward_signing_receiver.lock().await.next().await
+            {
+                if sender.send(reward_signing_info).await.is_err() {
                     break;
                 }
             }
@@ -192,14 +193,11 @@ impl RpcClient for MockRpcClient {
         Ok(Box::pin(receiver))
     }
 
-    async fn submit_block_signature(
-        &self,
-        block_signature: BlockSignature,
-    ) -> Result<(), MockError> {
+    async fn submit_reward_signature(&self, signature: RewardSignature) -> Result<(), MockError> {
         self.inner
-            .block_signature_sender
+            .reward_signature_sender
             .clone()
-            .send(block_signature)
+            .send(signature)
             .await
             .unwrap();
         Ok(())

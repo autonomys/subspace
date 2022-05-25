@@ -11,15 +11,15 @@ use std::{
     sync::Arc,
 };
 use subspace_archiving::archiver::{Segment, SegmentItem};
-use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash};
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
 
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct HexPiece(#[serde(with = "HexForm")] [u8; PIECE_SIZE]);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HexPiece(#[serde(with = "HexForm")] Vec<u8>);
 
 impl From<Piece> for HexPiece {
     fn from(piece: Piece) -> Self {
@@ -29,7 +29,11 @@ impl From<Piece> for HexPiece {
 
 impl From<HexPiece> for Piece {
     fn from(piece: HexPiece) -> Self {
-        piece.0.into()
+        piece
+            .0
+            .as_slice()
+            .try_into()
+            .expect("Internal piece is always has correct length; qed")
     }
 }
 
