@@ -1066,7 +1066,13 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
         total_pieces: Pallet::<T>::total_pieces(),
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
-            .map(|parent_vote_verification_data| parent_vote_verification_data.current_slot)
+            .map(|parent_vote_verification_data| {
+                if is_block_initialized {
+                    parent_vote_verification_data.current_slot
+                } else {
+                    parent_vote_verification_data.parent_slot
+                }
+            })
             .unwrap_or_else(Pallet::<T>::current_slot),
     }
 }
