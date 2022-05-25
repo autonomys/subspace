@@ -1034,26 +1034,26 @@ impl<T: Config> Pallet<T> {
 /// Verification data retrieval depends on whether it is called from pre_dispatch (meaning block
 /// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
 /// block initialization didn't happen yet).
-fn current_vote_verification_data<T: Config>(pre_dispatch: bool) -> VoteVerificationData {
+fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
     let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
     let salts = Salts::<T>::get();
     VoteVerificationData {
-        global_randomness: if pre_dispatch {
+        global_randomness: if is_block_initialized {
             global_randomnesses.current
         } else {
             global_randomnesses
                 .next
                 .unwrap_or(global_randomnesses.current)
         },
-        solution_range: if pre_dispatch {
+        solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
             solution_ranges
                 .voting_next
                 .unwrap_or(solution_ranges.voting_current)
         },
-        salt: if pre_dispatch || !salts.switch_next_block {
+        salt: if is_block_initialized || !salts.switch_next_block {
             salts.current
         } else {
             salts
@@ -1160,8 +1160,7 @@ fn check_vote<T: Config>(
     if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
         debug!(
             target: "runtime::subspace",
-            "Vote verification error: parent hash {}",
-            hex::encode(parent_hash)
+            "Vote verification error: parent hash {parent_hash:?}",
         );
         return Err(CheckVoteError::IncorrectParentHash);
     }
