@@ -23,6 +23,7 @@
 
 pub(crate) mod archiving;
 pub(crate) mod commitments;
+pub mod dsn;
 pub(crate) mod farming;
 pub(crate) mod identity;
 #[cfg(test)]
