@@ -1,11 +1,13 @@
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
+    dsn::{DSNSync, NoSync, PieceIndexHashNumber, SyncOptions},
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, PiecesToPlot, Plot,
+    PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{ops::ControlFlow, path::PathBuf};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::{
     libp2p::{identity::sr25519, multiaddr::Protocol, Multiaddr},
@@ -48,7 +50,7 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
 }
 
 /// Options for `MultiFarming` creation
-pub struct Options<C: RpcClient> {
+pub struct Options<C> {
     pub base_directory: PathBuf,
     pub client: C,
     pub object_mappings: ObjectMappings,
@@ -196,6 +198,52 @@ impl MultiFarming {
             .farmer_metadata()
             .await
             .map_err(|error| anyhow!(error))?;
+
+        // Start syncing
+        tokio::spawn({
+            let plots = plots.clone();
+            let commitments = commitments.clone();
+            async move {
+                let dsn = NoSync;
+
+                let mut futures = plots
+                    .into_iter()
+                    .zip(commitments)
+                    .map(|(plot, commitments)| {
+                        let options = SyncOptions {
+                            pieces_per_request: 100 * 1024 * 1024 / PIECE_SIZE as u64,
+                            initial_range_size: (200 * 1024 * 1024 / PIECE_SIZE as u64).into(),
+                            max_range_size: PieceIndexHashNumber::MAX / 8,
+                            address: plot.public_key(),
+                        };
+                        let mut plot_pieces = plotting::plot_pieces(
+                            SubspaceCodec::new(&plot.public_key()),
+                            &plot,
+                            commitments.clone(),
+                        );
+                        dsn.sync(options, move |pieces, piece_indexes| {
+                            tracing::info!("In plot");
+                            if !plot_pieces(PiecesToPlot {
+                                pieces,
+                                piece_indexes,
+                            }) {
+                                return ControlFlow::Break(Err(anyhow::anyhow!(
+                                    "Failed to plot pieces in archiving"
+                                )));
+                            }
+                            ControlFlow::Continue(())
+                        })
+                    })
+                    .collect::<FuturesUnordered<_>>();
+                while let Some(result) = futures.next().await {
+                    result?;
+                }
+
+                tracing::info!("Sync done");
+
+                Ok::<_, anyhow::Error>(())
+            }
+        });
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, client.clone(), {

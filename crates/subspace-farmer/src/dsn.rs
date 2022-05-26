@@ -30,11 +30,11 @@ pub trait DSNSync {
     /// Get pieces from the network which fall within the range
     async fn get_pieces(&mut self, range: Range<PieceIndexHash>) -> Self::Stream;
 
-    async fn sync<OP>(&mut self, options: SyncOptions, on_pieces: OP) -> anyhow::Result<()>
+    async fn sync<OP>(mut self, options: SyncOptions, on_pieces: OP) -> anyhow::Result<()>
     where
         // On pieces might `break` with some result from the sync or just continue
         OP: FnMut(FlatPieces, Vec<PieceIndex>) -> ControlFlow<anyhow::Result<()>> + Send + 'static,
-        Self: Send,
+        Self: Send + Sized,
         Self::Stream: Unpin + Send,
     {
         let mut range_size = options.initial_range_size;
@@ -108,7 +108,7 @@ impl DSNSync for NoSync {
         futures::stream::empty()
     }
 
-    async fn sync<OP>(&mut self, _options: SyncOptions, _on_pieces: OP) -> anyhow::Result<()>
+    async fn sync<OP>(self, _options: SyncOptions, _on_pieces: OP) -> anyhow::Result<()>
     where
         // On pieces might `break` with some result from the sync or just continue
         OP: FnMut(FlatPieces, Vec<PieceIndex>) -> ControlFlow<anyhow::Result<()>> + Send + 'static,
