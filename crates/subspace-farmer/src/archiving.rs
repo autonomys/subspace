@@ -3,7 +3,7 @@ use crate::rpc_client::RpcClient;
 use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{FlatPieces, Sha256Hash};
+use subspace_core_primitives::{FlatPieces, PieceIndex, Sha256Hash};
 use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -29,8 +29,8 @@ pub enum ArchivingError {
 /// Collection of pieces that potentially need to be plotted
 #[derive(Debug, Clone)]
 pub struct PiecesToPlot {
-    /// Offset of the index of the first piece in `pieces`
-    pub piece_index_offset: u64,
+    /// Piece indexes for each of the `pieces`
+    pub piece_indexes: Vec<PieceIndex>,
     /// Pieces themselves
     pub pieces: FlatPieces,
 }
@@ -92,7 +92,7 @@ impl Archiving {
                     let piece_index_offset = merkle_num_leaves * segment_index;
 
                     let pieces_to_plot = PiecesToPlot {
-                        piece_index_offset,
+                        piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
                         pieces,
                     };
                     if !on_pieces_to_plot(pieces_to_plot) {
