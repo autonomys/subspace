@@ -259,10 +259,12 @@ where
 
             CollectedStorageFeesEscrow::<T>::put(storage_fees_escrow);
 
-            Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
-                before: original_storage_fees_escrow,
-                after: storage_fees_escrow,
-            });
+            if original_storage_fees_escrow != storage_fees_escrow {
+                Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
+                    before: original_storage_fees_escrow,
+                    after: storage_fees_escrow,
+                });
+            }
         }
     }
 
