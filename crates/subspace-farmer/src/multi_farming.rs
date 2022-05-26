@@ -2,7 +2,7 @@ use crate::{
     plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
 use anyhow::anyhow;
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,7 +58,7 @@ pub struct Options<C: RpcClient> {
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
-    pub dsn_ports_start: Option<u16>,
+    pub listen_on: Option<Multiaddr>,
 }
 
 impl MultiFarming {
@@ -70,7 +70,7 @@ impl MultiFarming {
             object_mappings,
             reward_address,
             mut bootstrap_nodes,
-            dsn_ports_start,
+            listen_on,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -85,7 +85,7 @@ impl MultiFarming {
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
-        let results = plot_sizes
+        let mut results = plot_sizes
             .into_iter()
             .enumerate()
             .map(|(plot_index, max_plot_pieces)| {
@@ -129,17 +129,28 @@ impl MultiFarming {
                         farming,
                     ))
                 })
-            });
+            })
+            .collect::<FuturesOrdered<_>>()
+            .enumerate();
 
-        for (i, result_future) in results.enumerate() {
-            let (identity, plot, subspace_codec, plot_commitments, farming) =
-                result_future.await.unwrap()?;
-
-            let mut listen_on = if let Some(starting_port) = dsn_ports_start {
-                subspace_networking::libp2p::build_multiaddr!(Tcp(starting_port + i as u16))
+        let starting_port = if let Some(mut starting_multiaddr) = listen_on.clone() {
+            if let Some(Protocol::Tcp(starting_port)) = starting_multiaddr.pop() {
+                Some(starting_port)
             } else {
-                "/ip4/0.0.0.0/tcp/0".parse().unwrap()
-            };
+                return Err(anyhow::anyhow!("Unknown protocol {}", listen_on.unwrap()));
+            }
+        } else {
+            None
+        };
+
+        while let Some((i, result)) = results.next().await {
+            let (identity, plot, subspace_codec, plot_commitments, farming) = result.unwrap()?;
+
+            let mut listen_on = starting_port
+                .map(|starting_port| {
+                    subspace_networking::libp2p::build_multiaddr!(Tcp(starting_port + i as u16))
+                })
+                .unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
 
             listen_on.push(Protocol::P2p(
                 PeerId::from_public_key(&identity::PublicKey::Sr25519(

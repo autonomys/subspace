@@ -171,7 +171,7 @@ pub(crate) async fn bench(
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],
-            dsn_ports_start: None,
+            listen_on: None,
         },
         plot_size,
         max_plot_size,
