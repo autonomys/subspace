@@ -8,11 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::{
-    libp2p::{
-        identity::{self, sr25519},
-        multiaddr::Protocol,
-        Multiaddr, PeerId,
-    },
+    libp2p::{identity::sr25519, multiaddr::Protocol, Multiaddr},
     multimess::MultihashCode,
     Config,
 };
@@ -134,19 +130,14 @@ impl MultiFarming {
             .enumerate();
 
         while let Some((i, result)) = results.next().await {
-            let (identity, plot, subspace_codec, plot_commitments, farming) = result.unwrap()?;
+            let (identity, plot, subspace_codec, plot_commitments, farming) =
+                result.expect("Plot and farming never fails")?;
 
             let mut listen_on = listen_on.clone();
 
             for multiaddr in &mut listen_on {
                 if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
                     multiaddr.push(Protocol::Tcp(starting_port + i as u16));
-                    multiaddr.push(Protocol::P2p(
-                        PeerId::from_public_key(&identity::PublicKey::Sr25519(
-                            (*identity.public_key()).into(),
-                        ))
-                        .into(),
-                    ));
                 } else {
                     return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
                 }
