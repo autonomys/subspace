@@ -112,7 +112,11 @@ fn can_update_solution_range_on_era_change() {
         };
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
         // enable solution range adjustment
-        assert_ok!(Subspace::enable_solution_range_adjustment(Origin::root()));
+        assert_ok!(Subspace::enable_solution_range_adjustment(
+            Origin::root(),
+            None,
+            None
+        ));
 
         // Progress to almost era edge
         progress_to_block(&keypair, 3, 1);
@@ -159,6 +163,56 @@ fn can_update_solution_range_on_era_change() {
         );
         // This should cause solution range to increase as apparent pledged space decreased
         assert!(Subspace::solution_ranges().next.unwrap() > last_solution_range);
+    })
+}
+
+#[test]
+fn can_override_solution_range_update() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        assert_eq!(
+            <Test as Config>::InitialSolutionRange::get(),
+            INITIAL_SOLUTION_RANGE
+        );
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+            voting_current: INITIAL_SOLUTION_RANGE,
+            voting_next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+        // enable solution range adjustment
+        let random_solution_range = rand::random();
+        let random_voting_solution_range = random_solution_range + 5;
+        assert_ok!(Subspace::enable_solution_range_adjustment(
+            Origin::root(),
+            Some(random_solution_range),
+            Some(random_voting_solution_range),
+        ));
+
+        // Solution range must be updated instantly
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(updated_solution_ranges.current, random_solution_range);
+        assert_eq!(
+            updated_solution_ranges.voting_current,
+            random_voting_solution_range
+        );
+
+        // Era edge
+        progress_to_block(&keypair, <Test as Config>::EraDuration::get().into(), 1);
+        // Next solution range should be updated to the same value as current due to override
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(updated_solution_ranges.current, random_solution_range);
+        assert_eq!(
+            updated_solution_ranges.voting_current,
+            random_voting_solution_range
+        );
+        assert_eq!(updated_solution_ranges.next, Some(random_solution_range));
+        assert_eq!(
+            updated_solution_ranges.voting_next,
+            Some(random_voting_solution_range)
+        );
     })
 }
 

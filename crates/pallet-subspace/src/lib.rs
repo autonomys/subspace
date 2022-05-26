@@ -178,6 +178,15 @@ mod pallet {
         }
     }
 
+    /// Override for next solution range adjustment
+    #[derive(Debug, Encode, Decode, TypeInfo)]
+    pub struct SolutionRangeOverride {
+        /// Value that should be set as solution range
+        pub solution_range: u64,
+        /// Value that should be set as voting solution range
+        pub voting_solution_range: u64,
+    }
+
     /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
@@ -307,6 +316,8 @@ mod pallet {
         InvalidEquivocationProof,
         /// A given equivocation report is valid but already previously reported.
         DuplicateOffenceReport,
+        /// Solution range adjustment already enabled.
+        SolutionRangeAdjustmentAlreadyEnabled,
     }
 
     /// Current eon index.
@@ -344,6 +355,10 @@ mod pallet {
     #[pallet::storage]
     pub type ShouldAdjustSolutionRange<T: Config> =
         StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
+
+    /// Override solution range during next update
+    #[pallet::storage]
+    pub type NextSolutionRangeOverride<T: Config> = StorageValue<_, SolutionRangeOverride>;
 
     /// Salts used for challenges.
     #[pallet::storage]
@@ -437,10 +452,17 @@ mod pallet {
         /// Enables solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
         #[pallet::weight(T::DbWeight::get().writes(1))]
-        pub fn enable_solution_range_adjustment(origin: OriginFor<T>) -> DispatchResult {
+        pub fn enable_solution_range_adjustment(
+            origin: OriginFor<T>,
+            solution_range_override: Option<u64>,
+            voting_solution_range_override: Option<u64>,
+        ) -> DispatchResult {
             ensure_root(origin)?;
-            ShouldAdjustSolutionRange::<T>::put(true);
-            Ok(())
+
+            Self::do_enable_solution_range_adjustment(
+                solution_range_override,
+                voting_solution_range_override,
+            )
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.
@@ -614,7 +636,13 @@ impl<T: Config> Pallet<T> {
             let next_solution_range;
             let next_voting_solution_range;
             // Check if the solution range should be adjusted for next era.
-            if ShouldAdjustSolutionRange::<T>::get() {
+            if !ShouldAdjustSolutionRange::<T>::get() {
+                next_solution_range = solution_ranges.current;
+                next_voting_solution_range = solution_ranges.current;
+            } else if let Some(solution_range_override) = NextSolutionRangeOverride::<T>::take() {
+                next_solution_range = solution_range_override.solution_range;
+                next_voting_solution_range = solution_range_override.voting_solution_range;
+            } else {
                 // If Era start slot is not found it means we have just finished the first era
                 let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
                 let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
@@ -651,9 +679,6 @@ impl<T: Config> Pallet<T> {
 
                 next_voting_solution_range = next_solution_range
                     .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1);
-            } else {
-                next_solution_range = solution_ranges.current;
-                next_voting_solution_range = solution_ranges.current;
             };
             solution_ranges.next.replace(next_solution_range);
             solution_ranges
@@ -897,6 +922,42 @@ impl<T: Config> Pallet<T> {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
             Self::deposit_event(Event::RootBlockStored { root_block });
         }
+        Ok(())
+    }
+
+    fn do_enable_solution_range_adjustment(
+        solution_range_override: Option<u64>,
+        voting_solution_range_override: Option<u64>,
+    ) -> DispatchResult {
+        if ShouldAdjustSolutionRange::<T>::get() {
+            return Err(Error::<T>::SolutionRangeAdjustmentAlreadyEnabled.into());
+        }
+
+        ShouldAdjustSolutionRange::<T>::put(true);
+
+        if let Some(solution_range) = solution_range_override {
+            let voting_solution_range = voting_solution_range_override.unwrap_or_else(|| {
+                solution_range.saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1)
+            });
+            SolutionRanges::<T>::mutate(|solution_ranges| {
+                // If solution range update is already scheduled, just update values
+                if solution_ranges.next.is_some() {
+                    solution_ranges.next.replace(solution_range);
+                    solution_ranges.voting_next.replace(voting_solution_range);
+                } else {
+                    solution_ranges.current = solution_range;
+                    solution_ranges.voting_current = voting_solution_range;
+
+                    // Solution range can re-adjust very soon, make sure next re-adjustment is
+                    // also overridden
+                    NextSolutionRangeOverride::<T>::put(SolutionRangeOverride {
+                        solution_range,
+                        voting_solution_range,
+                    });
+                }
+            });
+        }
+
         Ok(())
     }
 
