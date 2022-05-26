@@ -40,6 +40,10 @@ pub(crate) enum Command {
         message: Vec<u8>,
         result_sender: oneshot::Sender<Result<(), PublishError>>,
     },
+    GetClosestPeers {
+        key: Multihash,
+        result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
+    },
 }
 
 #[derive(Default, Debug)]

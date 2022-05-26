@@ -24,6 +24,9 @@ enum QueryResultSender {
     GetValue {
         sender: oneshot::Sender<Option<Vec<u8>>>,
     },
+    GetClosestPeers {
+        sender: oneshot::Sender<Option<Vec<PeerId>>>,
+    },
 }
 
 /// Runner for the Node.
@@ -199,30 +202,43 @@ impl NodeRunner {
 
         match event {
             KademliaEvent::OutboundQueryCompleted {
+                id,
                 result: QueryResult::GetClosestPeers(results),
                 ..
-            } => match results {
-                Ok(GetClosestPeersOk { key, peers }) => {
-                    trace!(
-                        "Get closest peers query for {} yielded {} results",
-                        hex::encode(&key),
-                        peers.len(),
-                    );
+            } => {
+                if let Some(QueryResultSender::GetClosestPeers { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match results {
+                        Ok(GetClosestPeersOk { key, peers }) => {
+                            trace!(
+                                "Get closest peers query for {} yielded {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
 
-                    if peers.is_empty()
-                        && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
-                    {
-                        debug!("Random Kademlia query has yielded empty list of peers");
+                            if peers.is_empty() //TODO:
+                                && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
+                            {
+                                debug!("Random Kademlia query has yielded empty list of peers");
+                            }
+
+                            //TODO: Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(Some(peers));
+                        }
+                        Err(GetClosestPeersError::Timeout { key, peers }) => {
+                            //TODO: Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(None);
+
+                            debug!(
+                                "Get closest peers query for {} timed out with {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
+                        }
                     }
-                }
-                Err(GetClosestPeersError::Timeout { key, peers }) => {
-                    debug!(
-                        "Get closest peers query for {} timed out with {} results",
-                        hex::encode(&key),
-                        peers.len(),
-                    );
-                }
-            },
+                } // TODO: else
+            }
             KademliaEvent::OutboundQueryCompleted {
                 id,
                 result: QueryResult::GetRecord(results),
@@ -397,6 +413,24 @@ impl NodeRunner {
                         .gossipsub
                         .publish(topic, message)
                         .map(|_message_id| ()),
+                );
+            }
+            Command::GetClosestPeers { key, result_sender } => {
+                let peer_id: PeerId = PeerId::from_multihash(key).unwrap(); //TODO
+
+                println!("Peer_id: {:?}", peer_id); //TODO
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    // TODO: Will probably want something different and validate data instead.
+                    .get_closest_peers(peer_id);
+
+                self.query_id_receivers.insert(
+                    query_id,
+                    QueryResultSender::GetClosestPeers {
+                        sender: result_sender,
+                    },
                 );
             }
         }

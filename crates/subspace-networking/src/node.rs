@@ -2,13 +2,15 @@ use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
+use futures::{stream, SinkExt, Stream, StreamExt};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::{Multiaddr, PeerId};
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
 use std::sync::Arc;
+use subspace_core_primitives::{Piece, PieceIndexHash, PIECE_SIZE};
 use thiserror::Error;
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
@@ -176,5 +178,49 @@ impl Node {
         callback: Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
+    }
+
+    // TODO: comment, error, range
+    // TODO: iterate over multiple ranges
+    pub async fn get_pieces_by_range(
+        &self,
+        from: Multihash,
+        _to: Multihash,
+    ) -> Result<Pin<Box<dyn Stream<Item = Piece>>>, ()> {
+        // let key = crate::multimess::create_piece_index_fake_multihash(1);
+        // println!("Key: {:?}", key);
+        // let value = self.get_value(key).await;
+        // println!("Value: {:?}", value);
+        // let piece_bytes = self.get_value(key).await.unwrap().unwrap();
+
+        // println!("Received piece: {:?}", piece_bytes);
+
+        // let piece: Piece = Piece::try_from(piece_bytes.as_slice()).unwrap();
+
+        // return Ok(Box::pin(stream::iter(vec![piece])));
+
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        // TODO: create middle range
+        let key = from;
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::GetClosestPeers { key, result_sender })
+            .await;
+
+        //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+
+        let result = result_receiver.await;
+        //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+
+        println!("GetClosestPeers: {:?}", result);
+
+        return Err(());
+
+        let piece1 = Piece::default();
+        let piece2: Piece = [1u8; PIECE_SIZE].into();
+
+        Ok(Box::pin(stream::iter(vec![piece1, piece2])))
     }
 }
