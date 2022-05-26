@@ -789,6 +789,16 @@ fn vote_past_future_slot() {
         let archived_segment = create_archived_segment();
         let piece = extract_piece(&keypair, &archived_segment, 0);
 
+        RecordsRoot::<Test>::insert(
+            archived_segment.root_block.segment_index(),
+            archived_segment.root_block.records_root(),
+        );
+
+        // Reset so that any solution works for votes
+        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
         progress_to_block(&keypair, 3, 1);
 
         // Vote slot must be after slot of the parent block
@@ -808,9 +818,13 @@ fn vote_past_future_slot() {
                 super::check_vote::<Test>(&signed_vote, false),
                 CheckVoteError::SlotInThePast
             );
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::SlotInThePast
+            );
         }
 
-        // Vote slot must be before the slot of the new block
+        // Vote slot must be before the slot of the new block (pre-dispatch)
         {
             let signed_vote = create_signed_vote(
                 &keypair,
@@ -827,6 +841,27 @@ fn vote_past_future_slot() {
                 super::check_vote::<Test>(&signed_vote, true),
                 CheckVoteError::SlotInTheFuture
             );
+        }
+
+        // Slot is in the past comparing to current block, but it is built on top of older block and
+        // in that context it is valid
+        {
+            let keypair = Keypair::generate();
+            let piece = extract_piece(&keypair, &archived_segment, 0);
+
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                2.into(),
+                &Subspace::global_randomnesses().current,
+                Subspace::salts().current,
+                piece,
+                1,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+            assert_ok!(super::check_vote::<Test>(&signed_vote, true));
         }
     });
 }

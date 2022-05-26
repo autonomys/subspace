@@ -855,17 +855,7 @@ impl<T: Config> Pallet<T> {
             ParentBlockAuthorInfo::<T>::put((public_key, slot));
         }
 
-        let current_vote_verification_data = current_vote_verification_data::<T>(true);
-        match ParentVoteVerificationData::<T>::get() {
-            Some(parent_vote_verification_data) => {
-                if current_vote_verification_data != parent_vote_verification_data {
-                    ParentVoteVerificationData::<T>::put(current_vote_verification_data);
-                }
-            }
-            None => {
-                ParentVoteVerificationData::<T>::put(current_vote_verification_data);
-            }
-        }
+        ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
 
         ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::take().unwrap_or_default());
     }
@@ -1066,7 +1056,13 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
         total_pieces: Pallet::<T>::total_pieces(),
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
-            .map(|parent_vote_verification_data| parent_vote_verification_data.current_slot)
+            .map(|parent_vote_verification_data| {
+                if is_block_initialized {
+                    parent_vote_verification_data.current_slot
+                } else {
+                    parent_vote_verification_data.parent_slot
+                }
+            })
             .unwrap_or_else(Pallet::<T>::current_slot),
     }
 }
@@ -1172,7 +1168,7 @@ fn check_vote<T: Config>(
     if pre_dispatch {
         // New time slot is already set, whatever time slot is in the vote it must be smaller or the
         // same (for votes produced locally)
-        let current_slot = Pallet::<T>::current_slot();
+        let current_slot = current_vote_verification_data.current_slot;
         if slot > current_slot || (slot == current_slot && height != current_block_number) {
             debug!(
                 target: "runtime::subspace",
