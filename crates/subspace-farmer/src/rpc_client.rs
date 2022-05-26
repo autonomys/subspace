@@ -3,7 +3,7 @@ use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// To become error type agnostic
@@ -27,12 +27,13 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Subscribe to block signing request
-    async fn subscribe_block_signing(
+    async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, Error>;
+    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, Error>;
 
     /// Submit a block signature
-    async fn submit_block_signature(&self, block_signature: BlockSignature) -> Result<(), Error>;
+    async fn submit_reward_signature(&self, reward_signature: RewardSignature)
+        -> Result<(), Error>;
 
     /// Subscribe to archived segments
     async fn subscribe_archived_segments(

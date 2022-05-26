@@ -17,9 +17,9 @@ codec = { package = "parity-scale-codec", version = "3.1.2", default-features = 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 log = { version = "0.4.17", default-features = false }
-num-traits = { version = "0.2.15", default-features = false }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
+schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
@@ -27,13 +27,15 @@ sp-runtime = { version = "6.0.0", default-features = false, git = "https://githu
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+subspace-solving = { version = "0.1.0", default-features = false, path = "../subspace-solving" }
 
 [dev-dependencies]
+env_logger = "0.9.0"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subspace" }
-schnorrkel = "0.9.1"
+rand = { version = "0.8.5", features = ["min_const_gen"] }
 sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
+subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 
 [features]
 default = ["std"]
@@ -42,15 +44,16 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"log/std",
-	"num-traits/std",
 	"pallet-timestamp/std",
 	"scale-info/std",
+	"schnorrkel/std",
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
 	"subspace-core-primitives/std",
-	"subspace-runtime-primitives/std"
+	"subspace-runtime-primitives/std",
+	"subspace-solving/std"
 ]
 try-runtime = ["frame-support/try-runtime"]

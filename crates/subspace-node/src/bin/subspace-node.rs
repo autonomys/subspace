@@ -182,6 +182,18 @@ fn main() -> Result<(), Error> {
                 }
             }
 
+            // Delete testnet data folder
+            // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
+            //  wipe old data from disks of our users
+            if let Some(base_dir) = dirs::data_local_dir() {
+                let _ = std::fs::remove_dir_all(
+                    base_dir
+                        .join("subspace-node")
+                        .join("chains")
+                        .join("subspace_test"),
+                );
+            }
+
             let runner = cli.create_runner(&cmd.base)?;
 
             runner.sync_run(|primary_chain_config| {

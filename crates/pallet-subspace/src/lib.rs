@@ -26,6 +26,7 @@ mod mock;
 #[cfg(all(feature = "std", test))]
 mod tests;
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::{
@@ -33,28 +34,35 @@ use frame_support::{
     traits::{Get, OnTimestampSet},
     weights::{Pays, Weight},
 };
-#[cfg(not(feature = "std"))]
-use num_traits::float::FloatCore;
+use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
+use log::{debug, error, info, warn};
 pub use pallet::*;
+use scale_info::TypeInfo;
+use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, CompatibleDigestItemRef, GlobalRandomnessDescriptor, SaltDescriptor,
-    SolutionRangeDescriptor,
+    CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::offence::{OffenceDetails, OnOffenceHandler};
-use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
+use sp_consensus_subspace::verification::{
+    PieceCheckParams, VerificationError, VerifySolutionParams,
+};
+use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_io::hashing;
-use sp_runtime::generic::{DigestItem, DigestItemRef};
-use sp_runtime::traits::{BlockNumberProvider, Hash, SaturatedConversion, Saturating, Zero};
+use sp_runtime::generic::DigestItem;
+use sp_runtime::traits::{
+    BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
+};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::ConsensusEngineId;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    crypto, Randomness, RootBlock, Salt, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
+use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 
 const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
 const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
@@ -121,15 +129,32 @@ impl EonChangeTrigger for NormalEonChange {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
+struct VoteVerificationData {
+    global_randomness: Randomness,
+    solution_range: u64,
+    salt: Salt,
+    record_size: u32,
+    recorded_history_segment_size: u32,
+    max_plot_size: u64,
+    total_pieces: u64,
+    current_slot: Slot,
+    parent_slot: Slot,
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::{EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, WeightInfo};
+    use super::{
+        EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
+        WeightInfo,
+    };
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
 
@@ -142,6 +167,13 @@ mod pallet {
             sp_consensus_subspace::SolutionRanges {
                 current: T::InitialSolutionRange::get(),
                 next: None,
+                voting_current: if T::ShouldAdjustSolutionRange::get() {
+                    T::InitialSolutionRange::get()
+                        .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1)
+                } else {
+                    T::InitialSolutionRange::get()
+                },
+                voting_next: None,
             }
         }
     }
@@ -149,13 +181,14 @@ mod pallet {
     /// The Subspace Pallet
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     #[pallet::disable_frame_system_supertrait_check]
     pub trait Config: pallet_timestamp::Config {
         /// The overarching event type.
-        type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
@@ -218,6 +251,12 @@ mod pallet {
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
 
+        /// Number of votes expected per block.
+        ///
+        /// This impacts solution range for votes in consensus.
+        #[pallet::constant]
+        type ExpectedVotesPerBlock: Get<u32>;
+
         type ShouldAdjustSolutionRange: Get<bool>;
 
         /// Subspace requires periodic global randomness update.
@@ -250,9 +289,16 @@ mod pallet {
     /// Events type.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event {
+    pub enum Event<T: Config> {
         /// Root block was stored in blockchain history.
         RootBlockStored { root_block: RootBlock },
+        /// Farmer vote.
+        FarmerVote {
+            public_key: FarmerPublicKey,
+            reward_address: T::AccountId,
+            height: T::BlockNumber,
+            parent_hash: T::Hash,
+        },
     }
 
     #[pallet::error]
@@ -317,6 +363,29 @@ mod pallet {
     #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
+    /// Storage of previous vote verification data, updated on each block during finalization.
+    #[pallet::storage]
+    pub(super) type ParentVoteVerificationData<T> = StorageValue<_, VoteVerificationData>;
+
+    /// Parent block author information.
+    #[pallet::storage]
+    pub(super) type ParentBlockAuthorInfo<T: Config> = StorageValue<_, (FarmerPublicKey, Slot)>;
+
+    /// Temporary value (cleared at block finalization) with block author information.
+    #[pallet::storage]
+    pub(super) type CurrentBlockAuthorInfo<T: Config> =
+        StorageValue<_, (FarmerPublicKey, Slot, T::AccountId)>;
+
+    /// Voters in the parent block (set at the end of the block with current values).
+    #[pallet::storage]
+    pub(super) type ParentBlockVoters<T: Config> =
+        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), T::AccountId>, ValueQuery>;
+
+    /// Temporary value (cleared at block finalization) with voters in the current block thus far.
+    #[pallet::storage]
+    pub(super) type CurrentBlockVoters<T: Config> =
+        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), T::AccountId>>;
+
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
     pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
@@ -371,6 +440,37 @@ mod pallet {
         pub fn enable_solution_range_adjustment(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
             ShouldAdjustSolutionRange::<T>::put(true);
+            Ok(())
+        }
+
+        /// Farmer vote, currently only used for extra rewards to farmers.
+        // TODO: Proper weight
+        #[pallet::weight((100_000, DispatchClass::Operational, Pays::No))]
+        // Suppression because the custom syntax will also generate an enum and we need enum to have
+        // boxed value.
+        #[allow(clippy::boxed_local)]
+        pub fn vote(
+            origin: OriginFor<T>,
+            signed_vote: Box<SignedVote<T::BlockNumber, T::Hash, T::AccountId>>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+
+            let Vote::V0 {
+                height,
+                parent_hash,
+                solution,
+                ..
+            } = signed_vote.vote;
+
+            // No special handling needed here since voters are collected in `pre_dispatch`.
+
+            Self::deposit_event(Event::FarmerVote {
+                public_key: solution.public_key,
+                reward_address: solution.reward_address,
+                height,
+                parent_hash,
+            });
+
             Ok(())
         }
     }
@@ -439,6 +539,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::validate_root_block(source, root_blocks)
                 }
+                Call::vote { signed_vote } => Self::validate_vote(signed_vote),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -451,6 +552,7 @@ mod pallet {
                 Call::store_root_blocks { root_blocks } => {
                     Self::pre_dispatch_root_block(root_blocks)
                 }
+                Call::vote { signed_vote } => Self::pre_dispatch_vote(signed_vote),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -474,29 +576,26 @@ impl<T: Config> Pallet<T> {
 
     /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
+    fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
         block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
 
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_era_change(block_number: T::BlockNumber) -> bool {
+    fn should_era_change(block_number: T::BlockNumber) -> bool {
         block_number % T::EraDuration::get() == Zero::zero()
     }
 
     /// Determine whether an eon change should take place at this block.
     /// Assumes that initialization has already taken place.
-    pub fn should_eon_change(_block_number: T::BlockNumber) -> bool {
+    fn should_eon_change(_block_number: T::BlockNumber) -> bool {
         let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
         *diff >= T::EonDuration::get()
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_update_global_randomness(
-        _block_number: T::BlockNumber,
-        por_randomness: Randomness,
-    ) {
+    fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
             global_randomnesses.next = Some(por_randomness);
         });
@@ -506,37 +605,60 @@ impl<T: Config> Pallet<T> {
     /// returned `true`, and the caller is the only caller of this function.
     ///
     /// This will update solution range used in consensus.
-    pub fn enact_era_change() {
+    fn enact_era_change() {
         let slot_probability = T::SlotProbability::get();
 
         let current_slot = Self::current_slot();
 
         SolutionRanges::<T>::mutate(|solution_ranges| {
-            solution_ranges.next.replace(
-                // Check if the solution range should be adjusted for next era.
-                if ShouldAdjustSolutionRange::<T>::get() {
-                    // If Era start slot is not found it means we have just finished the first era
-                    let era_start_slot =
-                        EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-                    let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
+            let next_solution_range;
+            let next_voting_solution_range;
+            // Check if the solution range should be adjusted for next era.
+            if ShouldAdjustSolutionRange::<T>::get() {
+                // If Era start slot is not found it means we have just finished the first era
+                let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
+                let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
 
-                    // Now we need to re-calculate solution range. The idea here is to keep block production at
-                    // the same pace while space pledged on the network changes. For this we adjust previous
-                    // solution range according to actual and expected number of blocks per era.
-                    let era_duration: u64 = T::EraDuration::get()
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-                    let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-                    let expected_slots_per_block =
-                        slot_probability.1 as f64 / slot_probability.0 as f64;
-                    let adjustment_factor =
-                        (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+                // Now we need to re-calculate solution range. The idea here is to keep block production at
+                // the same pace while space pledged on the network changes. For this we adjust previous
+                // solution range according to actual and expected number of blocks per era.
+                let era_duration: u64 = T::EraDuration::get()
+                    .try_into()
+                    .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
 
-                    (solution_ranges.current as f64 * adjustment_factor).round() as u64
-                } else {
-                    solution_ranges.current
-                },
-            )
+                // Below is code analogous to the following, but without using floats:
+                // ```rust
+                // let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
+                // let expected_slots_per_block =
+                //     slot_probability.1 as f64 / slot_probability.0 as f64;
+                // let adjustment_factor =
+                //     (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
+                //
+                // next_solution_range =
+                //     (solution_ranges.current as f64 * adjustment_factor).round() as u64;
+                // ```
+                next_solution_range = u64::saturated_from(
+                    u128::from(solution_ranges.current)
+                        .saturating_mul(u128::from(era_slot_count))
+                        .saturating_mul(u128::from(slot_probability.0))
+                        / u128::from(era_duration)
+                        / u128::from(slot_probability.1),
+                )
+                .clamp(
+                    solution_ranges.current / 4,
+                    solution_ranges.current.saturating_mul(4),
+                );
+
+                next_voting_solution_range = next_solution_range
+                    .saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1);
+            } else {
+                next_solution_range = solution_ranges.current;
+                next_voting_solution_range = solution_ranges.current;
+            };
+            solution_ranges.next.replace(next_solution_range);
+            solution_ranges
+                .voting_next
+                .replace(next_voting_solution_range);
         });
 
         EraStartSlot::<T>::put(current_slot);
@@ -544,7 +666,7 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
     /// returned `true`, and the caller is the only caller of this function.
-    pub fn enact_eon_change(_block_number: T::BlockNumber) {
+    fn enact_eon_change(_block_number: T::BlockNumber) {
         let current_slot = *Self::current_slot();
         let eon_index = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
@@ -561,7 +683,7 @@ impl<T: Config> Pallet<T> {
     /// Finds the start slot of the current eon. Only guaranteed to give correct results after
     /// `do_initialize` of the first block in the chain (as its result is based off of
     /// `GenesisSlot`).
-    pub fn current_eon_start() -> Slot {
+    fn current_eon_start() -> Slot {
         Self::eon_start(EonIndex::<T>::get())
     }
 
@@ -597,6 +719,37 @@ impl<T: Config> Pallet<T> {
         // The slot number of the current block being initialized.
         CurrentSlot::<T>::put(pre_digest.slot);
 
+        {
+            let key = (pre_digest.solution.public_key, pre_digest.slot);
+            if ParentBlockVoters::<T>::get().contains_key(&key) {
+                let (public_key, slot) = key;
+
+                let offence = SubspaceEquivocationOffence {
+                    slot,
+                    offender: public_key,
+                };
+
+                // Report equivocation, we don't care about duplicate report here
+                if let Err(OffenceError::Other(code)) =
+                    T::HandleEquivocation::report_offence(offence)
+                {
+                    warn!(
+                        target: "runtime::subspace",
+                        "Failed to submit block author offence report with code {code}"
+                    );
+                }
+            } else {
+                let (public_key, slot) = key;
+
+                CurrentBlockAuthorInfo::<T>::put((
+                    public_key,
+                    slot,
+                    pre_digest.solution.reward_address,
+                ));
+            }
+        }
+        CurrentBlockVoters::<T>::put(BTreeMap::<(FarmerPublicKey, Slot), T::AccountId>::default());
+
         // If global randomness was updated in previous block, set it as current.
         if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
             GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
@@ -606,10 +759,17 @@ impl<T: Config> Pallet<T> {
         }
 
         // If solution range was updated in previous block, set it as current.
-        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+        if let sp_consensus_subspace::SolutionRanges {
+            next: Some(next),
+            voting_next: Some(voting_next),
+            ..
+        } = SolutionRanges::<T>::get()
+        {
             SolutionRanges::<T>::put(sp_consensus_subspace::SolutionRanges {
-                current: next_solution_range,
+                current: next,
                 next: None,
+                voting_current: voting_next,
+                voting_next: None,
             });
         }
 
@@ -666,7 +826,7 @@ impl<T: Config> Pallet<T> {
             Salts::<T>::mutate(|salts| {
                 if salts.next.is_none() {
                     let eon_index = Self::eon_index();
-                    log::info!(
+                    info!(
                         target: "runtime::subspace",
                         "🔃 Updating next salt on eon {} slot {}",
                         eon_index,
@@ -690,6 +850,14 @@ impl<T: Config> Pallet<T> {
 
     fn do_finalize(_block_number: T::BlockNumber) {
         PorRandomness::<T>::take();
+
+        if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
+            ParentBlockAuthorInfo::<T>::put((public_key, slot));
+        }
+
+        ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
+
+        ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::take().unwrap_or_default());
     }
 
     fn do_report_equivocation(
@@ -699,7 +867,9 @@ impl<T: Config> Pallet<T> {
         let slot = equivocation_proof.slot;
 
         // validate the equivocation proof
-        if !sp_consensus_subspace::is_equivocation_proof_valid(equivocation_proof) {
+        if !sp_consensus_subspace::is_equivocation_proof_valid::<_, T::AccountId>(
+            equivocation_proof,
+        ) {
             return Err(Error::<T>::InvalidEquivocationProof.into());
         }
 
@@ -724,16 +894,14 @@ impl<T: Config> Pallet<T> {
         eon_index: u64,
         randomness: &Randomness,
     ) -> subspace_core_primitives::Salt {
-        crypto::sha256_hash({
-            let mut input =
-                [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-            input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
-            input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
-                .copy_from_slice(randomness);
-            input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
-                .copy_from_slice(&eon_index.to_le_bytes());
-            input
-        })[..SALT_SIZE]
+        let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
+        input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
+        input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
+            .copy_from_slice(randomness);
+        input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
+            .copy_from_slice(&eon_index.to_le_bytes());
+
+        crypto::sha256_hash(&input)[..SALT_SIZE]
             .try_into()
             .expect("Slice has exactly the size needed; qed")
     }
@@ -773,6 +941,28 @@ impl<T: Config> Pallet<T> {
     }
 }
 
+impl<T> Pallet<T>
+where
+    T: Config + SendTransactionTypes<Call<T>>,
+{
+    /// Submit farmer vote vote that is essentially a header with bigger solution range than
+    /// acceptable for block authoring.
+    pub fn submit_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) {
+        let call = Call::vote {
+            signed_vote: Box::new(signed_vote),
+        };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                debug!(target: "runtime::subspace", "Submitted Subspace vote");
+            }
+            Err(()) => {
+                error!(target: "runtime::subspace", "Error submitting Subspace vote");
+            }
+        }
+    }
+}
+
 /// Methods for the `ValidateUnsigned` implementation:
 /// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include root
@@ -787,7 +977,7 @@ impl<T: Config> Pallet<T> {
             source,
             TransactionSource::Local | TransactionSource::InBlock,
         ) {
-            log::warn!(
+            warn!(
                 target: "runtime::subspace",
                 "Rejecting root block extrinsic because it is not local/in-block.",
             );
@@ -810,6 +1000,326 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_root_block(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
         check_root_blocks::<T>(root_blocks)
     }
+
+    fn validate_vote(
+        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    ) -> TransactionValidity {
+        check_vote::<T>(signed_vote, false)?;
+
+        ValidTransaction::with_tag_prefix("SubspaceVote")
+            // We assign the maximum priority for any vote.
+            .priority(TransactionPriority::MAX)
+            // Should be included in the next block or block after that, but not later
+            .longevity(1)
+            .build()
+    }
+
+    fn pre_dispatch_vote(
+        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    ) -> Result<(), TransactionValidityError> {
+        check_vote::<T>(signed_vote, true).map_err(Into::into)
+    }
+}
+
+/// Verification data retrieval depends on whether it is called from pre_dispatch (meaning block
+/// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
+/// block initialization didn't happen yet).
+fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
+    let global_randomnesses = GlobalRandomnesses::<T>::get();
+    let solution_ranges = SolutionRanges::<T>::get();
+    let salts = Salts::<T>::get();
+    VoteVerificationData {
+        global_randomness: if is_block_initialized {
+            global_randomnesses.current
+        } else {
+            global_randomnesses
+                .next
+                .unwrap_or(global_randomnesses.current)
+        },
+        solution_range: if is_block_initialized {
+            solution_ranges.voting_current
+        } else {
+            solution_ranges
+                .voting_next
+                .unwrap_or(solution_ranges.voting_current)
+        },
+        salt: if is_block_initialized || !salts.switch_next_block {
+            salts.current
+        } else {
+            salts
+                .next
+                .expect("Next salt must always be available if `switch_next_block` is true; qed")
+        },
+        record_size: T::RecordSize::get(),
+        recorded_history_segment_size: T::RecordedHistorySegmentSize::get(),
+        max_plot_size: T::MaxPlotSize::get(),
+        total_pieces: Pallet::<T>::total_pieces(),
+        current_slot: Pallet::<T>::current_slot(),
+        parent_slot: ParentVoteVerificationData::<T>::get()
+            .map(|parent_vote_verification_data| {
+                if is_block_initialized {
+                    parent_vote_verification_data.current_slot
+                } else {
+                    parent_vote_verification_data.parent_slot
+                }
+            })
+            .unwrap_or_else(Pallet::<T>::current_slot),
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CheckVoteError<Header>
+where
+    Header: HeaderT,
+{
+    BlockListed,
+    UnexpectedBeforeHeightTwo,
+    HeightInTheFuture,
+    HeightInThePast,
+    IncorrectParentHash,
+    SlotInTheFuture,
+    SlotInThePast,
+    BadRewardSignature(SignatureError),
+    UnknownRecordsRoot,
+    InvalidSolution(VerificationError<Header>),
+    Equivocated,
+}
+
+impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
+where
+    Header: HeaderT,
+{
+    fn from(error: CheckVoteError<Header>) -> Self {
+        TransactionValidityError::Invalid(match error {
+            CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
+            CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
+            CheckVoteError::HeightInTheFuture => InvalidTransaction::Future,
+            CheckVoteError::HeightInThePast => InvalidTransaction::Stale,
+            CheckVoteError::IncorrectParentHash => InvalidTransaction::Call,
+            CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
+            CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
+            CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
+            CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
+            CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
+            CheckVoteError::Equivocated => InvalidTransaction::BadSigner,
+        })
+    }
+}
+
+fn check_vote<T: Config>(
+    signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    pre_dispatch: bool,
+) -> Result<(), CheckVoteError<T::Header>> {
+    let Vote::V0 {
+        height,
+        parent_hash,
+        slot,
+        solution,
+    } = &signed_vote.vote;
+    let height = *height;
+    let slot = *slot;
+
+    if BlockList::<T>::contains_key(&solution.public_key) {
+        return Err(CheckVoteError::BlockListed);
+    }
+
+    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+    if current_block_number <= One::one() || height <= One::one() {
+        debug!(
+            target: "runtime::subspace",
+            "Votes are not expected at height below 2"
+        );
+
+        return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
+    }
+
+    // Height must be either the same as in current block or smaller by one.
+    //
+    // Subtraction will not panic due to check above.
+    if !(height == current_block_number || height == current_block_number - One::one()) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: bad height {height:?}, current block number is \
+            {current_block_number:?}"
+        );
+        return Err(if height > current_block_number {
+            CheckVoteError::HeightInTheFuture
+        } else {
+            CheckVoteError::HeightInThePast
+        });
+    }
+
+    // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
+    //
+    // Subtraction will not panic due to check above.
+    if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: parent hash {parent_hash:?}",
+        );
+        return Err(CheckVoteError::IncorrectParentHash);
+    }
+
+    let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
+    let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
+        .expect("Above check for block number ensures that this value is always present");
+
+    if pre_dispatch {
+        // New time slot is already set, whatever time slot is in the vote it must be smaller or the
+        // same (for votes produced locally)
+        let current_slot = current_vote_verification_data.current_slot;
+        if slot > current_slot || (slot == current_slot && height != current_block_number) {
+            debug!(
+                target: "runtime::subspace",
+                "Vote slot {slot:?} must be before current slot {current_slot:?}",
+            );
+            return Err(CheckVoteError::SlotInTheFuture);
+        }
+    }
+
+    let parent_slot = if pre_dispatch {
+        // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
+        // was updated in current block because initialization hook was already called) if vote is
+        // at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from parent vote verification data needs to be taken instead
+        if height == current_block_number {
+            parent_vote_verification_data.current_slot
+        } else {
+            parent_vote_verification_data.parent_slot
+        }
+    } else {
+        // Otherwise parent slot is `current_slot` if the current vote verification data (that
+        // wan't updated from parent block because initialization hook wasn't called yet) if vote
+        // is at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from current vote verification data needs to be taken instead
+        if height == current_block_number {
+            current_vote_verification_data.current_slot
+        } else {
+            current_vote_verification_data.parent_slot
+        }
+    };
+
+    if slot <= parent_slot {
+        debug!(
+            target: "runtime::subspace",
+            "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
+        );
+        return Err(CheckVoteError::SlotInThePast);
+    }
+
+    if let Err(error) = verification::check_reward_signature(
+        signed_vote.vote.hash().as_bytes(),
+        &signed_vote.signature,
+        &solution.public_key,
+        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+    ) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(CheckVoteError::BadRewardSignature(error));
+    }
+
+    let vote_verification_data = if height == current_block_number {
+        current_vote_verification_data
+    } else {
+        parent_vote_verification_data
+    };
+
+    let merkle_num_leaves = u64::from(
+        vote_verification_data.recorded_history_segment_size / vote_verification_data.record_size
+            * 2,
+    );
+    let segment_index = solution.piece_index / merkle_num_leaves;
+    let position = solution.piece_index % merkle_num_leaves;
+
+    let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
+        records_root
+    } else {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: no records root for segment index {segment_index}"
+        );
+        return Err(CheckVoteError::UnknownRecordsRoot);
+    };
+
+    if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
+        solution,
+        slot,
+        VerifySolutionParams {
+            global_randomness: &vote_verification_data.global_randomness,
+            solution_range: vote_verification_data.solution_range,
+            salt: vote_verification_data.salt,
+            piece_check_params: Some(PieceCheckParams {
+                records_root,
+                position,
+                record_size: vote_verification_data.record_size,
+                max_plot_size: vote_verification_data.max_plot_size,
+                total_pieces: vote_verification_data.total_pieces,
+            }),
+            solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
+        },
+    ) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(CheckVoteError::InvalidSolution(error));
+    }
+
+    let key = (solution.public_key.clone(), slot);
+    // Check that farmer didn't use solution from this vote yet in:
+    // * parent block
+    // * current block
+    // * parent block vote
+    // * current block vote
+    if ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
+        || CurrentBlockAuthorInfo::<T>::get()
+            .map(|(public_key, slot, _reward_address)| (public_key, slot))
+            .as_ref()
+            == Some(&key)
+        || ParentBlockVoters::<T>::get().contains_key(&key)
+        || CurrentBlockVoters::<T>::get()
+            .unwrap_or_default()
+            .contains_key(&key)
+    {
+        // Revoke reward if assigned in current block.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            if let Some(current_reward_receivers) = current_reward_receivers {
+                current_reward_receivers.remove(&key);
+            }
+        });
+
+        let (public_key, _slot) = key;
+
+        let offence = SubspaceEquivocationOffence {
+            slot,
+            offender: public_key,
+        };
+
+        // Report equivocation, we don't care about duplicate report here
+        if let Err(OffenceError::Other(code)) = T::HandleEquivocation::report_offence(offence) {
+            debug!(
+                target: "runtime::subspace",
+                "Failed to submit voter offence report with code {code}"
+            );
+        }
+
+        return Err(CheckVoteError::Equivocated);
+    }
+
+    if pre_dispatch {
+        // During `pre_dispatch` call put farmer into the list of reward receivers.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            current_reward_receivers
+                .as_mut()
+                .expect("Always set during block initialization")
+                .insert(key, solution.reward_address.clone());
+        });
+    }
+
+    Ok(())
 }
 
 fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
@@ -875,27 +1385,28 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
     }
 }
 
-impl<T: Config> frame_support::traits::FindAuthor<T::AccountId> for Pallet<T> {
-    fn find_author<'a, I>(digests: I) -> Option<T::AccountId>
-    where
-        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
-    {
-        digests
-            .into_iter()
-            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.public_key)
+impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
+    fn find_block_reward_address() -> Option<T::AccountId> {
+        CurrentBlockAuthorInfo::<T>::get().and_then(|(public_key, _slot, reward_address)| {
+            // Equivocation might have happened in this block, if so - no reward for block
+            // author
+            if BlockList::<T>::contains_key(&public_key) {
+                None
+            } else {
+                Some(reward_address)
+            }
+        })
     }
 }
 
-impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
-    fn find_block_reward_address<'a, I>(digests: I) -> Option<T::AccountId>
-    where
-        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
-    {
-        digests
-            .into_iter()
-            .find_map(|(id, data)| DigestItemRef::PreRuntime(&id, data).as_subspace_pre_digest())
-            .map(|pre_digest| pre_digest.solution.reward_address)
+impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
+    fn find_voting_reward_addresses() -> Vec<T::AccountId> {
+        // It is possible that this is called during initialization when current block voters are
+        // already moved into parent block voters, handle it accordingly
+        CurrentBlockVoters::<T>::get()
+            .unwrap_or_else(ParentBlockVoters::<T>::get)
+            .into_values()
+            .collect()
     }
 }
 

@@ -266,23 +266,6 @@ where
 			trace_root,
 		};
 
-		crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-			&*self.client,
-			header_hash,
-			header_number,
-			&execution_receipt,
-		)?;
-
-		// TODO: The applied txs can be fully removed from the transaction pool
-
-		if self.primary_network.is_major_syncing() {
-			tracing::debug!(
-				target: LOG_TARGET,
-				"Skip generating signed execution receipt as the primary node is still major syncing..."
-			);
-			return Ok(())
-		}
-
 		let best_execution_chain_number = self
 			.primary_chain_client
 			.runtime_api()
@@ -296,6 +279,23 @@ where
 			header_number > best_execution_chain_number,
 			"Consensus chain number must larger than execution chain number by at least 1"
 		);
+
+		crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+			&*self.client,
+			(header_hash, header_number),
+			best_execution_chain_number,
+			&execution_receipt,
+		)?;
+
+		// TODO: The applied txs can be fully removed from the transaction pool
+
+		if self.primary_network.is_major_syncing() {
+			tracing::debug!(
+				target: LOG_TARGET,
+				"Skip generating signed execution receipt as the primary node is still major syncing..."
+			);
+			return Ok(())
+		}
 
 		// Ideally, the receipt of current block will be included in the next block, i.e., no
 		// missing receipts.

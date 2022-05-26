@@ -269,11 +269,11 @@ impl Archiver {
     /// Create a new instance of the archiver with initial state in case of restart.
     ///
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
-    pub fn with_initial_state<B: AsRef<[u8]>>(
+    pub fn with_initial_state(
         record_size: usize,
         segment_size: usize,
         root_block: RootBlock,
-        encoded_block: B,
+        encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(record_size, segment_size)?;
@@ -288,7 +288,6 @@ impl Archiver {
             .push_back(SegmentItem::RootBlock(root_block));
 
         if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
-            let encoded_block = encoded_block.as_ref();
             let encoded_block_bytes = u32::try_from(encoded_block.len())
                 .expect("Blocks length is never bigger than u32; qed");
 
@@ -720,7 +719,7 @@ pub fn is_piece_valid(piece: &[u8], root: Sha256Hash, position: usize, record_si
             return false;
         }
     };
-    let leaf_hash = crypto::sha256_hash(&record);
+    let leaf_hash = crypto::sha256_hash(record);
 
     witness.is_valid(root, position, leaf_hash)
 }

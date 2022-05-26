@@ -139,7 +139,8 @@ pub fn retrieve_piece_from_plots(
 ) -> io::Result<Option<Piece>> {
     let piece_index_hash = PieceIndexHash::from(piece_index);
     let mut plots = plots.iter().collect::<Vec<_>>();
-    plots.sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key()));
+    plots
+        .sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key().as_ref()));
 
     plots
         .iter()
@@ -323,8 +324,7 @@ impl Plot {
     }
 
     pub fn read_piece(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Vec<u8>> {
-        self.read(index_hash)
-            .map(|piece| <[u8; PIECE_SIZE]>::from(piece).to_vec())
+        self.read(index_hash).map(Into::into)
     }
 
     pub(crate) fn read_piece_with_index(
@@ -567,7 +567,7 @@ impl IndexHashToOffsetDB {
                 subspace_core_primitives::bidirectional_distance(
                     &max_distance_key,
                     &PieceDistance::MIDDLE,
-                ) >= PieceDistance::distance(index_hash, self.address)
+                ) >= PieceDistance::distance(index_hash, self.address.as_ref())
             })
             .unwrap_or(true)
     }

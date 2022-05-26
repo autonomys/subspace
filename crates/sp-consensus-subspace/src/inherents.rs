@@ -19,7 +19,6 @@
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
-use sp_runtime::RuntimeDebug;
 use sp_std::result::Result;
 use sp_std::vec::Vec;
 use subspace_core_primitives::RootBlock;
@@ -28,7 +27,7 @@ use subspace_core_primitives::RootBlock;
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 
 /// Errors that can occur while checking root blocks.
-#[derive(Encode, RuntimeDebug)]
+#[derive(Debug, Encode)]
 #[cfg_attr(feature = "std", derive(Decode))]
 pub enum InherentError {
     /// List of root blocks is not correct.
@@ -44,7 +43,7 @@ impl IsFatalError for InherentError {
 }
 
 /// The type of the Subspace inherent data.
-#[derive(Encode, Decode, RuntimeDebug)]
+#[derive(Debug, Encode, Decode)]
 pub struct InherentType {
     /// Slot at which block was created.
     pub slot: Slot,

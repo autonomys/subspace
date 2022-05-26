@@ -104,6 +104,7 @@ async fn farming_happy_path() {
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
+        voting_solution_range: u64::MAX,
     };
     let slots = vec![slot_info];
 
@@ -121,6 +122,7 @@ async fn farming_salt_change() {
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
+        voting_solution_range: u64::MAX,
     };
     let second_slot = SlotInfo {
         slot_number: 2,
@@ -128,6 +130,7 @@ async fn farming_salt_change() {
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
+        voting_solution_range: u64::MAX,
     };
     let third_slot = SlotInfo {
         slot_number: 3,
@@ -135,6 +138,7 @@ async fn farming_salt_change() {
         salt: [1, 1, 1, 1, 1, 1, 1, 2],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: u64::MAX,
+        voting_solution_range: u64::MAX,
     };
     let slots = vec![first_slot, second_slot, third_slot];
 

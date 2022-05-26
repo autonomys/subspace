@@ -182,7 +182,7 @@ fn get_successful_calls(block: Block) -> Vec<Hash> {
 }
 
 fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
-    crypto::sha256_hash_pair(feed_id.encode(), data)
+    crypto::sha256_hash_pair(&feed_id.encode(), data)
 }
 
 #[test]

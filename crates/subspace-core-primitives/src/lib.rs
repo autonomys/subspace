@@ -198,24 +198,23 @@ impl LocalChallenge {
 /// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
-pub struct Piece(#[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; PIECE_SIZE]);
+pub struct Piece(Vec<u8>);
 
 impl Default for Piece {
     fn default() -> Self {
-        Self([0u8; PIECE_SIZE])
+        Self(vec![0u8; PIECE_SIZE])
     }
 }
 
 impl From<[u8; PIECE_SIZE]> for Piece {
-    fn from(inner: [u8; PIECE_SIZE]) -> Self {
-        Self(inner)
+    fn from(piece: [u8; PIECE_SIZE]) -> Self {
+        Self(piece.to_vec())
     }
 }
 
-impl From<Piece> for [u8; PIECE_SIZE] {
+impl From<Piece> for Vec<u8> {
     fn from(piece: Piece) -> Self {
         piece.0
     }
@@ -224,10 +223,11 @@ impl From<Piece> for [u8; PIECE_SIZE] {
 impl TryFrom<&[u8]> for Piece {
     type Error = &'static str;
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        slice
-            .try_into()
-            .map(Self)
-            .map_err(|_| "Wrong piece size, expected: 4096")
+        if slice.len() != PIECE_SIZE {
+            Err("Wrong piece size, expected: 4096")
+        } else {
+            Ok(Self(slice.to_vec()))
+        }
     }
 }
 
@@ -259,7 +259,6 @@ impl AsMut<[u8]> for Piece {
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct FlatPieces(Vec<u8>);
 
 impl FlatPieces {
@@ -476,15 +475,16 @@ impl PieceIndexHash {
     }
 }
 
+// TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
-#[derive(Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
-pub struct Solution<AccountId> {
+pub struct Solution<PublicKey, RewardAddress> {
     /// Public key of the farmer that created the solution
-    pub public_key: AccountId,
+    pub public_key: PublicKey,
     /// Address for receiving block reward
-    pub reward_address: AccountId,
+    pub reward_address: RewardAddress,
     /// Index of encoded piece
     pub piece_index: PieceIndex,
     /// Encoding
@@ -497,10 +497,44 @@ pub struct Solution<AccountId> {
     pub tag: Tag,
 }
 
-impl<AccountId: Clone> Solution<AccountId> {
+impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
+    /// Transform solution with one reward address type into solution with another compatible
+    /// reward address type.
+    pub fn into_reward_address_format<T, RewardAddressB>(
+        self,
+    ) -> Solution<PublicKey, RewardAddressB>
+    where
+        RewardAddressA: Into<T>,
+        T: Into<RewardAddressB>,
+    {
+        let Solution {
+            public_key,
+            reward_address,
+            piece_index,
+            encoding,
+            signature,
+            local_challenge,
+            tag,
+        } = self;
+        Solution {
+            public_key,
+            reward_address: Into::<T>::into(reward_address).into(),
+            piece_index,
+            encoding,
+            signature,
+            local_challenge,
+            tag,
+        }
+    }
+}
+
+impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress>
+where
+    PublicKey: Clone,
+    RewardAddress: Clone,
+{
     /// Dummy solution for the genesis block
-    pub fn genesis_solution(public_key: AccountId) -> Self {
-        let reward_address = public_key.clone();
+    pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {
             public_key,
             reward_address,

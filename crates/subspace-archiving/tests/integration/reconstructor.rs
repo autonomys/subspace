@@ -22,7 +22,7 @@ fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
-    pieces.iter().copied().map(Some).collect()
+    pieces.iter().cloned().map(Some).collect()
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn partial_data() {
                 &pieces
                     .iter()
                     .take(MERKLE_NUM_LEAVES / 2)
-                    .copied()
+                    .cloned()
                     .map(Some)
                     .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES / 2))
                     .collect::<Vec<_>>(),
@@ -267,7 +267,7 @@ fn partial_data() {
             .add_segment(
                 &iter::repeat(None)
                     .take(MERKLE_NUM_LEAVES / 2)
-                    .chain(pieces.iter().skip(MERKLE_NUM_LEAVES / 2).copied().map(Some))
+                    .chain(pieces.iter().skip(MERKLE_NUM_LEAVES / 2).cloned().map(Some))
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -330,7 +330,7 @@ fn invalid_usage() {
                 &flat_pieces_to_regular(&archived_segments[0].pieces)
                     .iter()
                     .take(MERKLE_NUM_LEAVES / 2 - 1)
-                    .copied()
+                    .cloned()
                     .map(Some)
                     .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES / 2 + 1))
                     .collect::<Vec<_>>(),

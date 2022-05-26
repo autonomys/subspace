@@ -26,7 +26,7 @@ use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPay
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, BlockSigningNotification, NewSlotNotification,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
@@ -35,6 +35,7 @@ use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_consensus_subspace::FarmerPublicKey;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
@@ -54,7 +55,7 @@ pub struct FullDeps<C, P> {
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
-    pub block_signing_notification_stream: SubspaceNotificationStream<BlockSigningNotification>,
+    pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -75,7 +76,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + sp_consensus_subspace::SubspaceApi<Block>,
+        + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
 {
     let mut module = RpcModule::new(());
@@ -85,7 +86,7 @@ where
         deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
-        block_signing_notification_stream,
+        reward_signing_notification_stream,
         archived_segment_notification_stream,
     } = deps;
 
@@ -97,7 +98,7 @@ where
             client,
             subscription_executor,
             new_slot_notification_stream,
-            block_signing_notification_stream,
+            reward_signing_notification_stream,
             archived_segment_notification_stream,
         )
         .into_rpc(),

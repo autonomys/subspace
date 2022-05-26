@@ -9,7 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    BlockSignature, BlockSigningInfo, FarmerMetadata, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// `WsClient` wrapper.
@@ -65,33 +65,33 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
-    async fn subscribe_block_signing(
+    async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = BlockSigningInfo> + Send + 'static>>, RpcError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, RpcError> {
         let subscription = self
             .client
             .subscribe(
-                "subspace_subscribeBlockSigning",
+                "subspace_subscribeRewardSigning",
                 rpc_params![],
-                "subspace_unsubscribeBlockSigning",
+                "subspace_unsubscribeRewardSigning",
             )
             .await?;
 
         Ok(Box::pin(subscription.filter_map(
-            |block_signing_info_result| async move { block_signing_info_result.ok() },
+            |reward_signing_info_result| async move { reward_signing_info_result.ok() },
         )))
     }
 
     /// Submit a block signature
-    async fn submit_block_signature(
+    async fn submit_reward_signature(
         &self,
-        block_signature: BlockSignature,
+        reward_signature: RewardSignature,
     ) -> Result<(), RpcError> {
         Ok(self
             .client
             .request(
-                "subspace_submitBlockSignature",
-                rpc_params![&block_signature],
+                "subspace_submitRewardSignature",
+                rpc_params![&reward_signature],
             )
             .await?)
     }

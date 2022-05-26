@@ -4,12 +4,10 @@ use schnorrkel::{context::SigningContext, Keypair, PublicKey, SecretKey, Signatu
 use sp_core::sr25519::Pair;
 use std::fs;
 use std::path::Path;
-use subspace_solving::SOLUTION_SIGNING_CONTEXT;
+use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
 use tracing::debug;
 use zeroize::{Zeroize, Zeroizing};
 
-/// Signing context hardcoded in Substrate implementation and used for signing blocks.
-const SUBSTRATE_SIGNING_CONTEXT: &[u8] = b"substrate";
 /// Entropy used for identity generation.
 const ENTROPY_LENGTH: usize = 32;
 
@@ -56,7 +54,7 @@ impl Identity {
                 keypair: Zeroizing::new(pair.into()),
                 entropy: Zeroizing::new(entropy),
                 farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
-                substrate_ctx: schnorrkel::context::signing_context(SUBSTRATE_SIGNING_CONTEXT),
+                substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
             }))
         } else {
             debug!("Existing keypair not found");
@@ -81,7 +79,7 @@ impl Identity {
             keypair: Zeroizing::new(pair.into()),
             entropy: Zeroizing::new(entropy),
             farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
-            substrate_ctx: schnorrkel::context::signing_context(SUBSTRATE_SIGNING_CONTEXT),
+            substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         })
     }
 
@@ -107,7 +105,7 @@ impl Identity {
             keypair: Zeroizing::new(pair.into()),
             entropy: Zeroizing::new(entropy),
             farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
-            substrate_ctx: schnorrkel::context::signing_context(SUBSTRATE_SIGNING_CONTEXT),
+            substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         })
     }
 
@@ -131,8 +129,8 @@ impl Identity {
         self.keypair.sign(self.farmer_solution_ctx.bytes(data))
     }
 
-    /// Sign substrate block.
-    pub fn sign_block_header_hash(&self, header_hash: &[u8]) -> Signature {
+    /// Sign reward hash.
+    pub fn sign_reward_hash(&self, header_hash: &[u8]) -> Signature {
         self.keypair.sign(self.substrate_ctx.bytes(header_hash))
     }
 }

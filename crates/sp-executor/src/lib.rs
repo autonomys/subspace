@@ -23,7 +23,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
-use sp_runtime::{OpaqueExtrinsic, RuntimeDebug};
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
@@ -60,7 +60,7 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
 }
 
 /// Header of transaction bundle.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader {
     /// The hash of primary block at which the bundle was created.
     pub primary_hash: PHash,
@@ -78,7 +78,7 @@ impl BundleHeader {
 }
 
 /// Transaction bundle
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic> {
     /// The bundle header.
     pub header: BundleHeader,
@@ -94,7 +94,7 @@ impl<Extrinsic> Bundle<Extrinsic> {
 }
 
 /// Signed version of [`Bundle`].
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedBundle<Extrinsic> {
     /// The bundle header.
     pub bundle: Bundle<Extrinsic>,
@@ -105,7 +105,7 @@ pub struct SignedBundle<Extrinsic> {
 }
 
 /// Bundle with opaque extrinsics.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct OpaqueBundle {
     /// The bundle header.
     pub header: BundleHeader,
@@ -138,7 +138,7 @@ impl<Extrinsic: Encode> From<Bundle<Extrinsic>> for OpaqueBundle {
 }
 
 /// Signed version of [`OpaqueBundle`].
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedOpaqueBundle {
     /// The bundle header.
     pub opaque_bundle: OpaqueBundle,
@@ -172,7 +172,7 @@ impl<Extrinsic: Encode> From<SignedBundle<Extrinsic>> for SignedOpaqueBundle {
 }
 
 /// Receipt of state execution.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, SecondaryHash> {
     /// Primary block number.
     pub primary_number: Number,
@@ -196,7 +196,7 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
 }
 
 /// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
     /// Execution receipt
     pub execution_receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
@@ -218,7 +218,7 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
 /// Execution phase along with an optional encoded call data.
 ///
 /// Each execution phase has a different method for the runtime call.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
     InitializeBlock { call_data: Vec<u8> },
@@ -284,7 +284,7 @@ impl ExecutionPhase {
 }
 
 /// Error type of fraud proof verification on primary node.
-#[derive(RuntimeDebug)]
+#[derive(Debug)]
 pub enum VerificationError {
     /// Failed to pass the execution proof check.
     BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
@@ -299,7 +299,7 @@ pub enum VerificationError {
 }
 
 /// Fraud proof for the state computation.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
     /// Parent number.
     pub parent_number: BlockNumber,
@@ -411,6 +411,7 @@ sp_api::decl_runtime_apis! {
 
 // TODO: remove once the fraud proof verification is moved into the client.
 pub mod fraud_proof_ext {
+    #[cfg(feature = "std")]
     use sp_externalities::ExternalitiesExt;
     use sp_runtime_interface::runtime_interface;
 

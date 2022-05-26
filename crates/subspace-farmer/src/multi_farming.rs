@@ -104,7 +104,7 @@ impl MultiFarming {
                     info!("Opening commitments");
                     let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
 
-                    let subspace_codec = SubspaceCodec::new(identity.public_key());
+                    let subspace_codec = SubspaceCodec::new(identity.public_key().as_ref());
 
                     // Start the farming task
                     let farming = start_farmings.then(|| {
