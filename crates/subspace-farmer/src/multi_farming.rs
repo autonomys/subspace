@@ -58,7 +58,7 @@ pub struct Options<C: RpcClient> {
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
-    pub listen_on: Option<Multiaddr>,
+    pub listen_on: Vec<Multiaddr>,
 }
 
 impl MultiFarming {
@@ -133,31 +133,24 @@ impl MultiFarming {
             .collect::<FuturesOrdered<_>>()
             .enumerate();
 
-        let starting_port = if let Some(mut starting_multiaddr) = listen_on.clone() {
-            if let Some(Protocol::Tcp(starting_port)) = starting_multiaddr.pop() {
-                Some(starting_port)
-            } else {
-                return Err(anyhow::anyhow!("Unknown protocol {}", listen_on.unwrap()));
-            }
-        } else {
-            None
-        };
-
         while let Some((i, result)) = results.next().await {
             let (identity, plot, subspace_codec, plot_commitments, farming) = result.unwrap()?;
 
-            let mut listen_on = starting_port
-                .map(|starting_port| {
-                    subspace_networking::libp2p::build_multiaddr!(Tcp(starting_port + i as u16))
-                })
-                .unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
+            let mut listen_on = listen_on.clone();
 
-            listen_on.push(Protocol::P2p(
-                PeerId::from_public_key(&identity::PublicKey::Sr25519(
-                    (*identity.public_key()).into(),
-                ))
-                .into(),
-            ));
+            for multiaddr in &mut listen_on {
+                if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
+                    multiaddr.push(Protocol::Tcp(starting_port + i as u16));
+                    multiaddr.push(Protocol::P2p(
+                        PeerId::from_public_key(&identity::PublicKey::Sr25519(
+                            (*identity.public_key()).into(),
+                        ))
+                        .into(),
+                    ));
+                } else {
+                    return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
+                }
+            }
 
             let (node, node_runner) = subspace_networking::create(Config {
                 bootstrap_nodes: bootstrap_nodes.clone(),
@@ -187,7 +180,7 @@ impl MultiFarming {
                     }
                 }),
                 allow_non_globals_in_dht: true,
-                listen_on: vec![listen_on.clone()],
+                listen_on: listen_on.clone(),
                 ..Config::with_keypair(sr25519::Keypair::from(
                     sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
                         .expect("Always valid"),
@@ -207,7 +200,7 @@ impl MultiFarming {
             }))
             .detach();
 
-            bootstrap_nodes.push(listen_on);
+            bootstrap_nodes.extend(listen_on);
             networking_node_runners.push(node_runner);
 
             plots.push(plot);
