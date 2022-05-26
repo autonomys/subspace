@@ -80,6 +80,18 @@ mod construct_uint {
             self.overflowing_sub(*other).0
         }
     }
+
+    impl From<PieceIndexHash> for PieceDistance {
+        fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
+            hash.into()
+        }
+    }
+
+    impl From<PieceDistance> for PieceIndexHash {
+        fn from(distance: PieceDistance) -> Self {
+            Self(distance.into())
+        }
+    }
 }
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
