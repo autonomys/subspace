@@ -76,7 +76,6 @@ impl MultiFarming {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
         let mut plots = Vec::with_capacity(plot_sizes.len());
-        let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
         let mut commitments = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
@@ -104,8 +103,6 @@ impl MultiFarming {
                     info!("Opening commitments");
                     let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
 
-                    let subspace_codec = SubspaceCodec::new(identity.public_key().as_ref());
-
                     // Start the farming task
                     let farming = start_farmings.then(|| {
                         Farming::start(
@@ -117,20 +114,14 @@ impl MultiFarming {
                         )
                     });
 
-                    Ok::<_, anyhow::Error>((
-                        identity,
-                        plot,
-                        subspace_codec,
-                        plot_commitments,
-                        farming,
-                    ))
+                    Ok::<_, anyhow::Error>((identity, plot, plot_commitments, farming))
                 })
             })
             .collect::<FuturesOrdered<_>>()
             .enumerate();
 
         while let Some((i, result)) = results.next().await {
-            let (identity, plot, subspace_codec, plot_commitments, farming) =
+            let (identity, plot, plot_commitments, farming) =
                 result.expect("Plot and farming never fails")?;
 
             let mut listen_on = listen_on.clone();
@@ -143,6 +134,7 @@ impl MultiFarming {
                 }
             }
 
+            let subspace_codec = SubspaceCodec::new(&plot.public_key());
             let (node, node_runner) = subspace_networking::create(Config {
                 bootstrap_nodes: bootstrap_nodes.clone(),
                 value_getter: Arc::new({
@@ -193,9 +185,7 @@ impl MultiFarming {
 
             bootstrap_nodes.extend(listen_on);
             networking_node_runners.push(node_runner);
-
             plots.push(plot);
-            subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
             if let Some(farming) = farming {
                 farmings.push(farming);
@@ -211,10 +201,13 @@ impl MultiFarming {
         let archiving = Archiving::start(farmer_metadata, object_mappings, client.clone(), {
             let mut on_pieces_to_plots = plots
                 .iter()
-                .zip(subspace_codecs)
                 .zip(&commitments)
-                .map(|((plot, subspace_codec), commitments)| {
-                    plotting::plot_pieces(subspace_codec, plot, commitments.clone())
+                .map(|(plot, commitments)| {
+                    plotting::plot_pieces(
+                        SubspaceCodec::new(&plot.public_key()),
+                        plot,
+                        commitments.clone(),
+                    )
                 })
                 .collect::<Vec<_>>();
 
