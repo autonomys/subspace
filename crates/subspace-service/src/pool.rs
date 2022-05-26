@@ -122,18 +122,24 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        // TODO: add a new runtime api `extract_fraud_proof` in ExecutorApi
-        let maybe_fraud_proof = None;
-        if let Some(fraud_proof) = maybe_fraud_proof {
-            if let Err(err) = self.verifier.verify_fraud_proof(fraud_proof) {
-                tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                return async move {
-                    Err(TxPoolError::InvalidTransaction(
-                        pallet_executor::InvalidTransactionCode::FraudProof.into(),
-                    )
-                    .into())
+        match self.client.runtime_api().extract_fraud_proof(at, &uxt) {
+            Ok(maybe_fraud_proof) => {
+                if let Some(fraud_proof) = maybe_fraud_proof {
+                    if let Err(err) = self.verifier.verify_fraud_proof(&fraud_proof) {
+                        tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
+                        return async move {
+                            Err(TxPoolError::InvalidTransaction(
+                                pallet_executor::InvalidTransactionCode::FraudProof.into(),
+                            )
+                            .into())
+                        }
+                        .boxed();
+                    }
                 }
-                .boxed();
+            }
+            Err(err) => {
+                return async move { Err(sc_transaction_pool::error::Error::Blockchain(err.into())) }
+                    .boxed();
             }
         }
 
