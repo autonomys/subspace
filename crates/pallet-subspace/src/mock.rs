@@ -22,7 +22,7 @@ use crate::{
     NormalEraChange, NormalGlobalRandomnessInterval,
 };
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU128, ConstU32, ConstU64, OnInitialize};
+use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
@@ -251,10 +251,14 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         env_logger::init_from_env(env_logger::Env::new().default_filter_or("error"));
     });
 
-    frame_system::GenesisConfig::default()
+    let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
-        .unwrap()
-        .into()
+        .unwrap();
+
+    GenesisBuild::<Test>::assimilate_storage(&pallet_subspace::GenesisConfig::default(), &mut t)
+        .unwrap();
+
+    t.into()
 }
 
 /// Creates an equivocation at the current block, by generating two headers.

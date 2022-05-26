@@ -23,7 +23,7 @@ use crate::mock::{
     INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
+    pallet, BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
     CurrentSlot, Error, ParentBlockAuthorInfo, ParentBlockVoters, RecordsRoot, WeightInfo,
 };
 use codec::Encode;
@@ -37,7 +37,7 @@ use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
 };
 use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Header;
+use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
@@ -900,7 +900,7 @@ fn vote_same_slot() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1054,7 +1054,7 @@ fn vote_invalid_solution_signature() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1107,7 +1107,7 @@ fn vote_correct_signature() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1142,7 +1142,7 @@ fn vote_randomness_update() {
         progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get(), 1);
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1183,7 +1183,7 @@ fn vote_salt_update() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1237,7 +1237,7 @@ fn vote_equivocation_current_block_plus_vote() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1284,7 +1284,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1333,7 +1333,7 @@ fn vote_equivocation_current_voters_duplicate() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1389,7 +1389,7 @@ fn vote_equivocation_parent_voters_duplicate() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1424,5 +1424,61 @@ fn vote_equivocation_parent_voters_duplicate() {
             super::check_vote::<Test>(&signed_vote, false),
             CheckVoteError::Equivocated
         );
+    });
+}
+
+#[test]
+fn enabling_block_rewards_works() {
+    fn set_block_rewards() {
+        CurrentBlockAuthorInfo::<Test>::put((
+            FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            Subspace::current_slot(),
+            1,
+        ));
+        CurrentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    Subspace::current_slot(),
+                ),
+                2,
+            );
+            map
+        });
+    }
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        progress_to_block(&keypair, 1, 1);
+
+        set_block_rewards();
+
+        // Rewards are enabled by default
+        assert_matches!(Subspace::find_block_reward_address(), Some(1));
+        assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
+
+        // Disable rewards
+        crate::EnableRewards::<Test>::take();
+        // No rewards
+        assert_matches!(Subspace::find_block_reward_address(), None);
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
+
+        // Enable since next block only rewards
+        crate::EnableRewards::<Test>::put(frame_system::Pallet::<Test>::current_block_number() + 1);
+        // No rewards yet
+        assert_matches!(Subspace::find_block_reward_address(), None);
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
+
+        // Move to the next block
+        progress_to_block(
+            &keypair,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        set_block_rewards();
+        // Rewards kick in
+        assert_matches!(Subspace::find_block_reward_address(), Some(1));
+        assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
     });
 }

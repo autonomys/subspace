@@ -154,6 +154,7 @@ mod pallet {
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
+    use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
@@ -295,6 +296,30 @@ mod pallet {
         type WeightInfo: WeightInfo;
     }
 
+    #[pallet::genesis_config]
+    pub struct GenesisConfig {
+        /// Whether rewards should be enabled.
+        pub enable_rewards: bool,
+    }
+
+    #[cfg(feature = "std")]
+    impl Default for GenesisConfig {
+        fn default() -> Self {
+            Self {
+                enable_rewards: true,
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+        fn build(&self) {
+            if self.enable_rewards {
+                EnableRewards::<T>::put::<T::BlockNumber>(One::one())
+            }
+        }
+    }
+
     /// Events type.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -318,6 +343,8 @@ mod pallet {
         DuplicateOffenceReport,
         /// Solution range adjustment already enabled.
         SolutionRangeAdjustmentAlreadyEnabled,
+        /// Rewards already active.
+        RewardsAlreadyEnabled,
     }
 
     /// Current eon index.
@@ -358,7 +385,7 @@ mod pallet {
 
     /// Override solution range during next update
     #[pallet::storage]
-    pub type NextSolutionRangeOverride<T: Config> = StorageValue<_, SolutionRangeOverride>;
+    pub type NextSolutionRangeOverride<T> = StorageValue<_, SolutionRangeOverride>;
 
     /// Salts used for challenges.
     #[pallet::storage]
@@ -384,7 +411,11 @@ mod pallet {
 
     /// Parent block author information.
     #[pallet::storage]
-    pub(super) type ParentBlockAuthorInfo<T: Config> = StorageValue<_, (FarmerPublicKey, Slot)>;
+    pub(super) type ParentBlockAuthorInfo<T> = StorageValue<_, (FarmerPublicKey, Slot)>;
+
+    /// Enable rewards since specified block number.
+    #[pallet::storage]
+    pub(super) type EnableRewards<T: Config> = StorageValue<_, T::BlockNumber>;
 
     /// Temporary value (cleared at block finalization) with block author information.
     #[pallet::storage]
@@ -494,6 +525,17 @@ mod pallet {
             });
 
             Ok(())
+        }
+
+        /// Enables rewards for blocks and votes at specified block height.
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn enable_rewards(
+            origin: OriginFor<T>,
+            height: Option<T::BlockNumber>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            Self::do_enable_rewards(height)
         }
     }
 
@@ -957,6 +999,18 @@ impl<T: Config> Pallet<T> {
                 }
             });
         }
+
+        Ok(())
+    }
+
+    fn do_enable_rewards(height: Option<T::BlockNumber>) -> DispatchResult {
+        if EnableRewards::<T>::get().is_some() {
+            return Err(Error::<T>::RewardsAlreadyEnabled.into());
+        }
+
+        // Enable rewards at a particular block height (default to the next block after this)
+        let next_block_number = frame_system::Pallet::<T>::current_block_number() + One::one();
+        EnableRewards::<T>::put(height.unwrap_or(next_block_number).max(next_block_number));
 
         Ok(())
     }
@@ -1455,23 +1509,35 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
         CurrentBlockAuthorInfo::<T>::get().and_then(|(public_key, _slot, reward_address)| {
             // Equivocation might have happened in this block, if so - no reward for block
             // author
-            if BlockList::<T>::contains_key(&public_key) {
-                None
-            } else {
-                Some(reward_address)
+            if !BlockList::<T>::contains_key(&public_key) {
+                // Rewards might be disabled, in which case no block reward either
+                if let Some(height) = EnableRewards::<T>::get() {
+                    if frame_system::Pallet::<T>::current_block_number() >= height {
+                        return Some(reward_address);
+                    }
+                }
             }
+
+            None
         })
     }
 }
 
 impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
     fn find_voting_reward_addresses() -> Vec<T::AccountId> {
-        // It is possible that this is called during initialization when current block voters are
-        // already moved into parent block voters, handle it accordingly
-        CurrentBlockVoters::<T>::get()
-            .unwrap_or_else(ParentBlockVoters::<T>::get)
-            .into_values()
-            .collect()
+        // Rewards might be disabled, in which case no voting reward
+        if let Some(height) = EnableRewards::<T>::get() {
+            if frame_system::Pallet::<T>::current_block_number() >= height {
+                // It is possible that this is called during initialization when current block
+                // voters are already moved into parent block voters, handle it accordingly
+                return CurrentBlockVoters::<T>::get()
+                    .unwrap_or_else(ParentBlockVoters::<T>::get)
+                    .into_values()
+                    .collect();
+            }
+        }
+
+        Vec::new()
     }
 }
 
