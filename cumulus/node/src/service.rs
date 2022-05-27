@@ -141,7 +141,7 @@ pub struct NewFull<C> {
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
-	mut parachain_config: Configuration,
+	mut secondary_chain_config: Configuration,
 	primary_chain_client: Arc<PClient>,
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
 	select_chain: &SC,
@@ -161,31 +161,31 @@ where
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
 	NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
 {
-	if matches!(parachain_config.role, Role::Light) {
+	if matches!(secondary_chain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
 
 	// TODO: Do we even need block announcement on secondary node?
-	// parachain_config.announce_block = false;
+	// secondary_chain_config.announce_block = false;
 
-	parachain_config
+	secondary_chain_config
 		.network
 		.extra_sets
 		.push(cirrus_client_executor_gossip::executor_gossip_peers_set_config());
 
-	let params = new_partial(&parachain_config)?;
+	let params = new_partial(&secondary_chain_config)?;
 
 	let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 
-	let validator = parachain_config.role.is_authority();
+	let validator = secondary_chain_config.role.is_authority();
 	let transaction_pool = params.transaction_pool.clone();
 	let mut task_manager = params.task_manager;
 	let (network, system_rpc_tx, network_starter) =
 		sc_service::build_network(BuildNetworkParams {
-			config: &parachain_config,
+			config: &secondary_chain_config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
@@ -215,7 +215,7 @@ where
 		client: client.clone(),
 		transaction_pool: transaction_pool.clone(),
 		task_manager: &mut task_manager,
-		config: parachain_config,
+		config: secondary_chain_config,
 		keystore: params.keystore_container.sync_keystore(),
 		backend: backend.clone(),
 		network: network.clone(),

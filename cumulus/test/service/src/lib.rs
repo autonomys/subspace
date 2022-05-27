@@ -306,8 +306,6 @@ pub struct TestNodeBuilder {
 	parachain_nodes: Vec<MultiaddrWithPeerId>,
 	parachain_nodes_exclusive: bool,
 	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
-	storage_update_func_parachain: Option<Box<dyn Fn()>>,
-	storage_update_func_relay_chain: Option<Box<dyn Fn()>>,
 }
 
 impl TestNodeBuilder {
@@ -323,8 +321,6 @@ impl TestNodeBuilder {
 			parachain_nodes: Vec::new(),
 			parachain_nodes_exclusive: false,
 			relay_chain_nodes: Vec::new(),
-			storage_update_func_parachain: None,
-			storage_update_func_relay_chain: None,
 		}
 	}
 
@@ -379,18 +375,6 @@ impl TestNodeBuilder {
 		nodes: impl IntoIterator<Item = &'a subspace_test_service::PrimaryTestNode>,
 	) -> Self {
 		self.relay_chain_nodes.extend(nodes.into_iter().map(|n| n.addr.clone()));
-		self
-	}
-
-	/// Allows accessing the parachain storage before the test node is built.
-	pub fn update_storage_parachain(mut self, updater: impl Fn() + 'static) -> Self {
-		self.storage_update_func_parachain = Some(Box::new(updater));
-		self
-	}
-
-	/// Allows accessing the relay chain storage before the test node is built.
-	pub fn update_storage_relay_chain(mut self, updater: impl Fn() + 'static) -> Self {
-		self.storage_update_func_relay_chain = Some(Box::new(updater));
 		self
 	}
 
