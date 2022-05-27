@@ -57,10 +57,12 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, SignedExtension,
+    Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
 };
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
@@ -689,6 +691,47 @@ pub type Address = sp_runtime::MultiAddress<AccountId, ()>;
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+
+/// Controls non-root access to feeds and object store
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+pub struct ControlNonRootStorageAccess;
+
+impl SignedExtension for ControlNonRootStorageAccess {
+    const IDENTIFIER: &'static str = "ControlNonRootStorageAccess";
+    type AccountId = <Runtime as frame_system::Config>::AccountId;
+    type Call = <Runtime as frame_system::Config>::Call;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(&self) -> Result<(), TransactionValidityError> {
+        Ok(())
+    }
+
+    fn validate(
+        &self,
+        who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> TransactionValidity {
+        if Subspace::is_storage_access_enabled() || Some(who) == Sudo::key().as_ref() {
+            Ok(ValidTransaction::default())
+        } else {
+            InvalidTransaction::BadSigner.into()
+        }
+    }
+
+    fn pre_dispatch(
+        self,
+        _who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+}
+
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
     frame_system::CheckNonZeroSender<Runtime>,
@@ -699,6 +742,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    ControlNonRootStorageAccess,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
