@@ -41,6 +41,11 @@ mod pallet {
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+    /// Pallet rewards for issuing rewards to block producers.
+    #[pallet::pallet]
+    #[pallet::generate_store(pub(super) trait Store)]
+    pub struct Pallet<T>(_);
+
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// `pallet-rewards` events
@@ -62,11 +67,6 @@ mod pallet {
 
         type WeightInfo: WeightInfo;
     }
-
-    /// Pallet rewards for issuing rewards to block producers.
-    #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
-    pub struct Pallet<T>(_);
 
     /// `pallet-rewards` events
     #[pallet::event]

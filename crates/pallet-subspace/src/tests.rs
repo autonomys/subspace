@@ -23,7 +23,7 @@ use crate::mock::{
     INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
+    pallet, BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
     CurrentSlot, Error, ParentBlockAuthorInfo, ParentBlockVoters, RecordsRoot, WeightInfo,
 };
 use codec::Encode;
@@ -37,7 +37,7 @@ use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
 };
 use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Header;
+use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
@@ -112,7 +112,11 @@ fn can_update_solution_range_on_era_change() {
         };
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
         // enable solution range adjustment
-        assert_ok!(Subspace::enable_solution_range_adjustment(Origin::root()));
+        assert_ok!(Subspace::enable_solution_range_adjustment(
+            Origin::root(),
+            None,
+            None
+        ));
 
         // Progress to almost era edge
         progress_to_block(&keypair, 3, 1);
@@ -159,6 +163,56 @@ fn can_update_solution_range_on_era_change() {
         );
         // This should cause solution range to increase as apparent pledged space decreased
         assert!(Subspace::solution_ranges().next.unwrap() > last_solution_range);
+    })
+}
+
+#[test]
+fn can_override_solution_range_update() {
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        assert_eq!(
+            <Test as Config>::InitialSolutionRange::get(),
+            INITIAL_SOLUTION_RANGE
+        );
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+            voting_current: INITIAL_SOLUTION_RANGE,
+            voting_next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+        // enable solution range adjustment
+        let random_solution_range = rand::random();
+        let random_voting_solution_range = random_solution_range + 5;
+        assert_ok!(Subspace::enable_solution_range_adjustment(
+            Origin::root(),
+            Some(random_solution_range),
+            Some(random_voting_solution_range),
+        ));
+
+        // Solution range must be updated instantly
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(updated_solution_ranges.current, random_solution_range);
+        assert_eq!(
+            updated_solution_ranges.voting_current,
+            random_voting_solution_range
+        );
+
+        // Era edge
+        progress_to_block(&keypair, <Test as Config>::EraDuration::get().into(), 1);
+        // Next solution range should be updated to the same value as current due to override
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(updated_solution_ranges.current, random_solution_range);
+        assert_eq!(
+            updated_solution_ranges.voting_current,
+            random_voting_solution_range
+        );
+        assert_eq!(updated_solution_ranges.next, Some(random_solution_range));
+        assert_eq!(
+            updated_solution_ranges.voting_next,
+            Some(random_voting_solution_range)
+        );
     })
 }
 
@@ -881,7 +935,7 @@ fn vote_same_slot() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1035,7 +1089,7 @@ fn vote_invalid_solution_signature() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1088,7 +1142,7 @@ fn vote_correct_signature() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1123,7 +1177,7 @@ fn vote_randomness_update() {
         progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get(), 1);
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1164,7 +1218,7 @@ fn vote_salt_update() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1218,7 +1272,7 @@ fn vote_equivocation_current_block_plus_vote() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1265,7 +1319,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1314,7 +1368,7 @@ fn vote_equivocation_current_voters_duplicate() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1370,7 +1424,7 @@ fn vote_equivocation_parent_voters_duplicate() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1405,5 +1459,61 @@ fn vote_equivocation_parent_voters_duplicate() {
             super::check_vote::<Test>(&signed_vote, false),
             CheckVoteError::Equivocated
         );
+    });
+}
+
+#[test]
+fn enabling_block_rewards_works() {
+    fn set_block_rewards() {
+        CurrentBlockAuthorInfo::<Test>::put((
+            FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            Subspace::current_slot(),
+            1,
+        ));
+        CurrentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    Subspace::current_slot(),
+                ),
+                2,
+            );
+            map
+        });
+    }
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+
+        progress_to_block(&keypair, 1, 1);
+
+        set_block_rewards();
+
+        // Rewards are enabled by default
+        assert_matches!(Subspace::find_block_reward_address(), Some(1));
+        assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
+
+        // Disable rewards
+        crate::EnableRewards::<Test>::take();
+        // No rewards
+        assert_matches!(Subspace::find_block_reward_address(), None);
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
+
+        // Enable since next block only rewards
+        crate::EnableRewards::<Test>::put(frame_system::Pallet::<Test>::current_block_number() + 1);
+        // No rewards yet
+        assert_matches!(Subspace::find_block_reward_address(), None);
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
+
+        // Move to the next block
+        progress_to_block(
+            &keypair,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        set_block_rewards();
+        // Rewards kick in
+        assert_matches!(Subspace::find_block_reward_address(), Some(1));
+        assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
     });
 }

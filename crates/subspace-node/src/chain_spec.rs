@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SudoConfig, SystemConfig, VestingConfig,
-    MILLISECS_PER_BLOCK, WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -140,6 +140,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
                     ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
                         .expect("Wrong Executor authority address"),
                 ),
+                false,
             )
         },
         // Bootnodes
@@ -190,6 +191,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec, String> {
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
+                false,
             )
         },
         // Bootnodes
@@ -242,6 +244,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
+                false,
             )
         },
         // Bootnodes
@@ -268,6 +271,7 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     executor_authority: (AccountId, ExecutorId),
+    enable_rewards: bool,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -280,6 +284,7 @@ fn subspace_genesis_config(
             // Assign network admin rights.
             key: Some(sudo_account),
         },
+        subspace: SubspaceConfig { enable_rewards },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
             executor: Some(executor_authority),

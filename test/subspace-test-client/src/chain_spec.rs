@@ -6,8 +6,8 @@ use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
-    WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, SSC, WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -89,6 +89,9 @@ fn create_genesis_config(
         sudo: SudoConfig {
             // Assign network admin rights.
             key: Some(sudo_account),
+        },
+        subspace: SubspaceConfig {
+            enable_rewards: false,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
