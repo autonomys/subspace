@@ -1,5 +1,5 @@
 use crate::{
-    dsn::{DSNSync, NoSync, PieceIndexHashNumber, SyncOptions},
+    dsn::{self, NoSync, PieceIndexHashNumber, SyncOptions},
     plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, PiecesToPlot, Plot,
     PlotError, RpcClient,
 };
@@ -81,6 +81,7 @@ impl MultiFarming {
         let mut commitments = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
+        let mut codecs = Vec::with_capacity(plot_sizes.len());
 
         let mut results = plot_sizes
             .into_iter()
@@ -189,6 +190,7 @@ impl MultiFarming {
             networking_node_runners.push(node_runner);
             plots.push(plot);
             commitments.push(plot_commitments);
+            codecs.push(subspace_codec);
             if let Some(farming) = farming {
                 farmings.push(farming);
             }
@@ -203,25 +205,24 @@ impl MultiFarming {
         tokio::spawn({
             let plots = plots.clone();
             let commitments = commitments.clone();
+            let codecs = codecs.clone();
             async move {
                 let dsn = NoSync;
 
                 let mut futures = plots
                     .into_iter()
                     .zip(commitments)
-                    .map(|(plot, commitments)| {
+                    .zip(codecs)
+                    .map(|((plot, commitments), codec)| {
                         let options = SyncOptions {
                             pieces_per_request: 100 * 1024 * 1024 / PIECE_SIZE as u64,
                             initial_range_size: (200 * 1024 * 1024 / PIECE_SIZE as u64).into(),
                             max_range_size: PieceIndexHashNumber::MAX / 8,
                             address: plot.public_key(),
                         };
-                        let mut plot_pieces = plotting::plot_pieces(
-                            SubspaceCodec::new(&plot.public_key()),
-                            &plot,
-                            commitments,
-                        );
-                        dsn.sync(options, move |pieces, piece_indexes| {
+                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+
+                        dsn::sync(dsn, options, move |pieces, piece_indexes| {
                             tracing::info!("In plot");
                             if !plot_pieces(PiecesToPlot {
                                 pieces,
@@ -250,12 +251,9 @@ impl MultiFarming {
             let mut on_pieces_to_plots = plots
                 .iter()
                 .zip(&commitments)
-                .map(|(plot, commitments)| {
-                    plotting::plot_pieces(
-                        SubspaceCodec::new(&plot.public_key()),
-                        plot,
-                        commitments.clone(),
-                    )
+                .zip(codecs.clone())
+                .map(|((plot, commitments), codec)| {
+                    plotting::plot_pieces(codec, plot, commitments.clone())
                 })
                 .collect::<Vec<_>>();
 

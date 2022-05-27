@@ -23,7 +23,7 @@
 mod codec;
 
 pub use codec::{BatchEncodeError, SubspaceCodec};
-pub use construct_uint::PieceDistance;
+pub use construct_uint::{PieceDistance, U256};
 use schnorrkel::SignatureResult;
 use subspace_core_primitives::{
     crypto, LocalChallenge, Piece, Randomness, Salt, Sha256Hash, Tag, TAG_SIZE,
@@ -43,9 +43,11 @@ mod construct_uint {
     use subspace_core_primitives::PieceIndexHash;
 
     uint::construct_uint! {
-        /// Distance to piece index hash from farmer identity
-        pub struct PieceDistance(4);
+        pub struct U256(4);
     }
+
+    /// Distance to piece index hash from farmer identity
+    pub type PieceDistance = U256;
 
     impl PieceDistance {
         /// Calculates the distance metric between piece index hash and farmer address.
@@ -81,13 +83,13 @@ mod construct_uint {
         }
     }
 
-    impl From<PieceIndexHash> for PieceDistance {
+    impl From<PieceIndexHash> for U256 {
         fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
             hash.into()
         }
     }
 
-    impl From<PieceDistance> for PieceIndexHash {
+    impl From<U256> for PieceIndexHash {
         fn from(distance: PieceDistance) -> Self {
             Self(distance.into())
         }
