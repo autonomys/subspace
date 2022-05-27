@@ -182,7 +182,7 @@ pub fn run_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
     run_farmer: bool,
-) -> (SubspaceTestNode, NetworkStarter) {
+) -> (PrimaryTestNode, NetworkStarter) {
     let config = node_config(tokio_handle, key, boot_nodes, run_farmer);
     let multiaddr = config.network.listen_addresses[0].clone();
     let (
@@ -203,7 +203,7 @@ pub fn run_validator_node(
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
     (
-        SubspaceTestNode {
+        PrimaryTestNode {
             task_manager,
             client,
             backend,
@@ -216,8 +216,8 @@ pub fn run_validator_node(
     )
 }
 
-/// A Subspace test node instance used for testing.
-pub struct SubspaceTestNode {
+/// A Subspace primary test node instance used for testing.
+pub struct PrimaryTestNode {
     /// `TaskManager`'s instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -234,7 +234,7 @@ pub struct SubspaceTestNode {
     pub transaction_pool: Arc<FullPool<Block, Client>>,
 }
 
-impl SubspaceTestNode {
+impl PrimaryTestNode {
     /// Send an extrinsic to this node.
     pub async fn send_extrinsic(
         &self,
