@@ -57,6 +57,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
@@ -153,7 +154,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
     use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
@@ -508,23 +509,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            let Vote::V0 {
-                height,
-                parent_hash,
-                solution,
-                ..
-            } = signed_vote.vote;
-
-            // No special handling needed here since voters are collected in `pre_dispatch`.
-
-            Self::deposit_event(Event::FarmerVote {
-                public_key: solution.public_key,
-                reward_address: solution.reward_address,
-                height,
-                parent_hash,
-            });
-
-            Ok(())
+            Self::do_vote(*signed_vote)
         }
 
         /// Enables rewards for blocks and votes at specified block height.
@@ -993,6 +978,28 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn do_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) -> DispatchResult {
+        let Vote::V0 {
+            height,
+            parent_hash,
+            solution,
+            ..
+        } = signed_vote.vote;
+
+        if BlockList::<T>::contains_key(&solution.public_key) {
+            Err(DispatchError::Other("Equivocated"))
+        } else {
+            Self::deposit_event(Event::FarmerVote {
+                public_key: solution.public_key,
+                reward_address: solution.reward_address,
+                height,
+                parent_hash,
+            });
+
+            Ok(())
+        }
+    }
+
     fn do_enable_rewards(height: Option<T::BlockNumber>) -> DispatchResult {
         if EnableRewards::<T>::get().is_some() {
             return Err(Error::<T>::RewardsAlreadyEnabled.into());
@@ -1132,7 +1139,24 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_vote(
         signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
-        check_vote::<T>(signed_vote, true).map_err(Into::into)
+        match check_vote::<T>(signed_vote, true) {
+            Ok(()) => Ok(()),
+            Err(CheckVoteError::Equivocated(offence)) => {
+                // Report equivocation, we don't care about duplicate report here
+                if let Err(OffenceError::Other(code)) =
+                    T::HandleEquivocation::report_offence(offence)
+                {
+                    debug!(
+                        target: "runtime::subspace",
+                        "Failed to submit voter offence report with code {code}"
+                    );
+                }
+
+                // Return Ok such that changes from this pre-dispatch are persisted
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 
@@ -1197,7 +1221,7 @@ where
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
     InvalidSolution(VerificationError<Header>),
-    Equivocated,
+    Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
 
 impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
@@ -1216,7 +1240,7 @@ where
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
-            CheckVoteError::Equivocated => InvalidTransaction::BadSigner,
+            CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
         })
     }
 }
@@ -1408,20 +1432,10 @@ fn check_vote<T: Config>(
 
         let (public_key, _slot) = key;
 
-        let offence = SubspaceEquivocationOffence {
+        return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
             offender: public_key,
-        };
-
-        // Report equivocation, we don't care about duplicate report here
-        if let Err(OffenceError::Other(code)) = T::HandleEquivocation::report_offence(offence) {
-            debug!(
-                target: "runtime::subspace",
-                "Failed to submit voter offence report with code {code}"
-            );
-        }
-
-        return Err(CheckVoteError::Equivocated);
+        }));
     }
 
     if pre_dispatch {

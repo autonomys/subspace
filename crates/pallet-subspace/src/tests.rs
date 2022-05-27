@@ -24,7 +24,8 @@ use crate::mock::{
 };
 use crate::{
     pallet, BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
-    CurrentSlot, Error, ParentBlockAuthorInfo, ParentBlockVoters, RecordsRoot, WeightInfo,
+    CurrentSlot, Error, ParentBlockAuthorInfo, ParentBlockVoters, RecordsRoot,
+    SubspaceEquivocationOffence, WeightInfo,
 };
 use codec::Encode;
 use frame_support::weights::{GetDispatchInfo, Pays};
@@ -41,6 +42,7 @@ use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
+use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
@@ -1299,7 +1301,10 @@ fn vote_equivocation_current_block_plus_vote() {
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated
+            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+                slot,
+                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+            })
         );
     });
 }
@@ -1325,7 +1330,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         // Parent block author + slot matches that of the vote
 
-        let slot = Subspace::current_slot() + 1;
+        let slot = Subspace::current_slot();
         let reward_address = 1;
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -1344,8 +1349,18 @@ fn vote_equivocation_parent_block_plus_vote() {
         );
 
         assert_err!(
-            super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated
+            super::check_vote::<Test>(&signed_vote, true),
+            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+                slot,
+                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+            })
+        );
+
+        Subspace::pre_dispatch_vote(&signed_vote).unwrap();
+
+        assert_err!(
+            Subspace::vote(Origin::none(), Box::new(signed_vote)),
+            DispatchError::Other("Equivocated"),
         );
 
         // Block author doesn't get reward after equivocation
@@ -1373,7 +1388,7 @@ fn vote_equivocation_current_voters_duplicate() {
         });
 
         // Current block author + slot matches that of the vote
-        let slot = Subspace::current_slot() + 1;
+        let slot = Subspace::current_slot();
         let reward_address = 0;
 
         CurrentBlockVoters::<Test>::put({
@@ -1400,8 +1415,18 @@ fn vote_equivocation_current_voters_duplicate() {
         );
 
         assert_err!(
-            super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated
+            super::check_vote::<Test>(&signed_vote, true),
+            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+                slot,
+                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+            })
+        );
+
+        Subspace::pre_dispatch_vote(&signed_vote).unwrap();
+
+        assert_err!(
+            Subspace::vote(Origin::none(), Box::new(signed_vote)),
+            DispatchError::Other("Equivocated"),
         );
 
         // Voter doesn't get reward after equivocation
@@ -1457,7 +1482,10 @@ fn vote_equivocation_parent_voters_duplicate() {
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated
+            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+                slot,
+                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+            })
         );
     });
 }
