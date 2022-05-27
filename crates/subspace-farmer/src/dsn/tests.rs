@@ -1,14 +1,11 @@
+use super::{sync, DSNSync, PieceIndexHashNumber, SyncOptions};
+use crate::PiecesToPlot;
 use std::{
     collections::BTreeMap,
     ops::Range,
     sync::{Arc, Mutex},
 };
-
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
-
-use crate::PiecesToPlot;
-
-use super::{DSNSync, PieceIndexHashNumber, SyncOptions};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
@@ -60,33 +57,34 @@ async fn simple_test() {
         .collect::<TestDSN>();
     let new_dsn = Arc::new(Mutex::new(BTreeMap::<PieceIndexHash, (Piece, _)>::new()));
 
-    dsn.clone()
-        .sync(
-            SyncOptions {
-                pieces_per_request: 10,
-                initial_range_size: PieceIndexHashNumber::MAX / 256,
-                max_range_size: PieceIndexHashNumber::MAX / 3,
-                address: Default::default(),
-            },
-            {
-                let new_dsn = Arc::clone(&new_dsn);
-                move |pieces, piece_indexes| {
-                    let mut new_dsn = new_dsn.lock().unwrap();
-                    new_dsn.extend(
-                        pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
-                            (index.into(), (piece.try_into().unwrap(), index))
-                        }),
-                    );
-                    if new_dsn.len() == 256 {
-                        std::ops::ControlFlow::Break(Ok(()))
-                    } else {
-                        std::ops::ControlFlow::Continue(())
-                    }
+    sync(
+        dsn.clone(),
+        SyncOptions {
+            pieces_per_request: 10,
+            initial_range_size: PieceIndexHashNumber::MAX / 256,
+            max_range_size: PieceIndexHashNumber::MAX / 3,
+            address: Default::default(),
+        },
+        {
+            let new_dsn = Arc::clone(&new_dsn);
+            move |pieces, piece_indexes| {
+                let mut new_dsn = new_dsn.lock().unwrap();
+                new_dsn.extend(
+                    pieces
+                        .as_pieces()
+                        .zip(piece_indexes)
+                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
+                );
+                if new_dsn.len() == 256 {
+                    std::ops::ControlFlow::Break(Ok(()))
+                } else {
+                    std::ops::ControlFlow::Continue(())
                 }
-            },
-        )
-        .await
-        .unwrap();
+            }
+        },
+    )
+    .await
+    .unwrap();
 
     assert_eq!(dsn, TestDSN(new_dsn.lock().unwrap().clone()));
 }
