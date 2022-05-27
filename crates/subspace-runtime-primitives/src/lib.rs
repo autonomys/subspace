@@ -57,11 +57,11 @@ pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES /
 pub const MIN_REPLICATION_FACTOR: u16 = 1;
 /// How much (ratio) of storage fees escrow should be given to farmer each block as a reward.
 // TODO: Proper value here
-pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 100);
+pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 10000);
 /// How much (ratio) of storage fees collected in a block should be put into storage fees escrow
 /// (with remaining issued to farmer immediately).
 // TODO: Proper value here
-pub const STORAGE_FEES_ESCROW_BLOCK_TAX: (u64, u64) = (1, 2);
+pub const STORAGE_FEES_ESCROW_BLOCK_TAX: (u64, u64) = (1, 10);
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;
