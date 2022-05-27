@@ -48,37 +48,6 @@ use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
-/// Create a new full node.
-#[sc_tracing::logging::prefix_logs_with(config.network.node_name.as_str())]
-pub fn new_full(
-    config: Configuration,
-    enable_rpc_extensions: bool,
-    run_farmer: bool,
-) -> (
-    NewFull<Client>,
-    NativeElseWasmExecutor<TestExecutorDispatch>,
-) {
-    let config = SubspaceConfiguration {
-        base: config,
-        force_new_slot_notifications: true,
-    };
-    let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
-        config.wasm_method,
-        config.default_heap_pages,
-        config.max_runtime_instances,
-        config.runtime_cache_size,
-    );
-    let new_full = subspace_service::new_full::<
-        subspace_test_runtime::RuntimeApi,
-        TestExecutorDispatch,
-    >(config, enable_rpc_extensions)
-    .expect("Failed to create Subspace full client");
-    if run_farmer {
-        start_farmer(&new_full);
-    }
-    (new_full, executor)
-}
-
 /// Create a Subspace `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide boot
@@ -183,21 +152,48 @@ pub fn run_validator_node(
     boot_nodes: Vec<MultiaddrWithPeerId>,
     run_farmer: bool,
 ) -> (PrimaryTestNode, NetworkStarter) {
-    let config = node_config(tokio_handle, key, boot_nodes, run_farmer);
-    let multiaddr = config.network.listen_addresses[0].clone();
-    let (
-        NewFull {
-            task_manager,
-            client,
-            backend,
-            network,
-            rpc_handlers,
-            network_starter,
-            transaction_pool,
-            ..
-        },
-        executor,
-    ) = new_full(config, false, run_farmer);
+    let primary_chain_config = node_config(tokio_handle, key, boot_nodes, run_farmer);
+    let multiaddr = primary_chain_config.network.listen_addresses[0].clone();
+    let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
+        primary_chain_config.wasm_method,
+        primary_chain_config.default_heap_pages,
+        primary_chain_config.max_runtime_instances,
+        primary_chain_config.runtime_cache_size,
+    );
+
+    let primary_chain_node = {
+        let span = sc_tracing::tracing::info_span!(
+            sc_tracing::logging::PREFIX_LOG_SPAN,
+            name = primary_chain_config.network.node_name.as_str()
+        );
+        let _enter = span.enter();
+
+        let primary_chain_config = SubspaceConfiguration {
+            base: primary_chain_config,
+            force_new_slot_notifications: true,
+        };
+
+        subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(
+            primary_chain_config,
+            false,
+        )
+        .expect("Failed to create Subspace primary node")
+    };
+
+    if run_farmer {
+        start_farmer(&primary_chain_node);
+    }
+
+    let NewFull {
+        task_manager,
+        client,
+        backend,
+        network,
+        rpc_handlers,
+        network_starter,
+        transaction_pool,
+        ..
+    } = primary_chain_node;
 
     let peer_id = *network.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
