@@ -8,6 +8,9 @@ use subspace_solving::PieceDistance;
 
 use crate::PiecesToPlot;
 
+#[cfg(test)]
+mod tests;
+
 // TODO: Should it be a distinct type which implements arithmetics operations?
 pub type PieceIndexHashNumber = PieceDistance;
 
@@ -85,8 +88,14 @@ pub trait DSNSync {
                 }
             }
 
-            range_size =
+            let new_range =
                 range_size.saturating_mul(pieces_fetched.into()) / options.pieces_per_request;
+            if new_range != PieceIndexHashNumber::zero() {
+                range_size = new_range;
+            } else {
+                range_size *= 2;
+            }
+
             if range_size > options.max_range_size {
                 // We synced all the namespace
                 return Ok(());

@@ -219,7 +219,7 @@ impl MultiFarming {
                         let mut plot_pieces = plotting::plot_pieces(
                             SubspaceCodec::new(&plot.public_key()),
                             &plot,
-                            commitments.clone(),
+                            commitments,
                         );
                         dsn.sync(options, move |pieces, piece_indexes| {
                             tracing::info!("In plot");
