@@ -141,6 +141,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
                         .expect("Wrong Executor authority address"),
                 ),
                 false,
+                false,
             )
         },
         // Bootnodes
@@ -191,6 +192,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec, String> {
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
+                false,
                 false,
             )
         },
@@ -245,6 +247,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
                 false,
+                false,
             )
         },
         // Bootnodes
@@ -272,6 +275,7 @@ fn subspace_genesis_config(
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     executor_authority: (AccountId, ExecutorId),
     enable_rewards: bool,
+    enable_storage_access: bool,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -284,7 +288,10 @@ fn subspace_genesis_config(
             // Assign network admin rights.
             key: Some(sudo_account),
         },
-        subspace: SubspaceConfig { enable_rewards },
+        subspace: SubspaceConfig {
+            enable_rewards,
+            enable_storage_access,
+        },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
             executor: Some(executor_authority),
