@@ -1,9 +1,8 @@
-use frame_support::{construct_runtime, parameter_types, weights::Weight};
-use sp_runtime::{
-    testing::{Header, H256},
-    traits::{BlakeTwo256, IdentityLookup},
-    Perbill,
-};
+use frame_support::weights::Weight;
+use frame_support::{construct_runtime, parameter_types};
+use sp_runtime::testing::{Header, H256};
+use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_runtime::Perbill;
 
 type AccountId = u64;
 pub(crate) type ChainId = u64;

@@ -12,12 +12,11 @@ use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
-use tracing_subscriber::{
-    filter::LevelFilter,
-    fmt::{self, format::FmtSpan},
-    prelude::*,
-    EnvFilter,
-};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::{self};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]

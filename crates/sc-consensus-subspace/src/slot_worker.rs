@@ -20,8 +20,7 @@ use crate::{
     find_pre_digest, verification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
     SubspaceLink,
 };
-use futures::StreamExt;
-use futures::TryFutureExt;
+use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
@@ -43,7 +42,8 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
-use std::{pin::Pin, sync::Arc};
+use std::pin::Pin;
+use std::sync::Arc;
 use subspace_core_primitives::{Randomness, Salt, Solution};
 
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {

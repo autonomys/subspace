@@ -5,3 +5,4 @@ ignore = [
     "/polkadot",
     "/substrate",
 ]
+imports_granularity = "Module"

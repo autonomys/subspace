@@ -12,18 +12,13 @@ use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
-use sp_core::{
-    traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed},
-    H256,
-};
-use sp_executor::{
-    fraud_proof_ext::FraudProofExt, ExecutionPhase, ExecutorApi, FraudProof, VerificationError,
-};
+use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
+use sp_core::H256;
+use sp_executor::fraud_proof_ext::FraudProofExt;
+use sp_executor::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
 use sp_externalities::Extensions;
-use sp_runtime::{
-    generic::BlockId,
-    traits::{BlakeTwo256, Block as BlockT, HashFor},
-};
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::{TrieBackend, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;

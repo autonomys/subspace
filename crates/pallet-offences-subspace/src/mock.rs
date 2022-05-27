@@ -22,11 +22,10 @@ use crate as pallet_offences_subspace;
 use crate::Config;
 use codec::Encode;
 use frame_support::traits::{ConstU32, ConstU64};
-use frame_support::weights::{constants::RocksDbWeight, Weight};
-use sp_consensus_subspace::{
-    offence::{self, Kind, OffenceDetails},
-    FarmerPublicKey,
-};
+use frame_support::weights::constants::RocksDbWeight;
+use frame_support::weights::Weight;
+use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};

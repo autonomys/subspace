@@ -21,19 +21,21 @@
 use futures::future::Future;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_executor::NativeElseWasmExecutor;
-use sc_network::{
-    config::{NetworkConfiguration, TransportConfig},
-    multiaddr,
+use sc_network::config::{NetworkConfiguration, TransportConfig};
+use sc_network::multiaddr;
+use sc_service::config::{
+    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
 };
 use sc_service::{
-    config::{DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod},
     BasePath, Configuration, KeepBlocks, NetworkStarter, Role, RpcHandlers, TaskManager,
 };
 use sc_transaction_pool::FullPool;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::{codec::Encode, generic, traits::IdentifyAccount, MultiSigner};
+use sp_runtime::codec::Encode;
+use sp_runtime::traits::IdentifyAccount;
+use sp_runtime::{generic, MultiSigner};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;

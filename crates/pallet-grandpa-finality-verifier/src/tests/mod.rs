@@ -2,24 +2,23 @@ mod justification;
 mod keyring;
 mod mock;
 
-use crate::chain::OpaqueExtrinsic;
+use crate::chain::{Chain, OpaqueExtrinsic};
+use crate::grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification};
 use crate::{
-    chain::Chain,
-    grandpa::{verify_justification, AuthoritySet, Error, GrandpaJustification},
     initialize, validate_finalized_block, ChainTip, CurrentAuthoritySet, Error as ErrorP,
     InitializationData, OldestKnownParent, ValidationCheckPoint,
 };
 use codec::Encode;
-use frame_support::{assert_err, assert_ok, dispatch::DispatchResult};
+use frame_support::dispatch::DispatchResult;
+use frame_support::{assert_err, assert_ok};
 use justification::*;
 use keyring::*;
 use mock::{run_test, ChainId, TestRuntime};
 use sp_core::Hasher as HasherT;
 use sp_finality_grandpa::{ConsensusLog, ScheduledChange, GRANDPA_ENGINE_ID};
-use sp_runtime::traits::{Hash, Header};
-use sp_runtime::{
-    generic, generic::SignedBlock, traits::BlakeTwo256, Digest, DigestItem, DispatchError,
-};
+use sp_runtime::generic::SignedBlock;
+use sp_runtime::traits::{BlakeTwo256, Hash, Header};
+use sp_runtime::{generic, Digest, DigestItem, DispatchError};
 
 type TestHeader = generic::Header<u32, BlakeTwo256>;
 

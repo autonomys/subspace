@@ -1,6 +1,7 @@
 use anyhow::Error;
 use parity_scale_codec::{Decode, Encode};
-use schnorrkel::{context::SigningContext, Keypair, PublicKey, SecretKey, Signature};
+use schnorrkel::context::SigningContext;
+use schnorrkel::{Keypair, PublicKey, SecretKey, Signature};
 use sp_core::sr25519::Pair;
 use std::fs;
 use std::path::Path;

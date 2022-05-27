@@ -18,7 +18,8 @@
 use crate::CallObject;
 use codec::{Compact, CompactLen, Decode, Encode};
 use sp_runtime::{DispatchError, DispatchResult};
-use sp_std::{vec, vec::Vec};
+use sp_std::vec;
+use sp_std::vec::Vec;
 use subspace_core_primitives::Sha256Hash;
 
 /// Holds the offset to some portion of data within/or the object

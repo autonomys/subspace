@@ -40,7 +40,8 @@ use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_finality_grandpa::SetId;
-use sp_std::{fmt::Debug, vec::Vec};
+use sp_std::fmt::Debug;
+use sp_std::vec::Vec;
 
 // Re-export in crate namespace for `construct_runtime!`
 pub use pallet::*;
@@ -62,11 +63,11 @@ type EncodedHeader = Vec<u8>;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use crate::{
-        chain::Chain,
-        grandpa::{find_forced_change, find_scheduled_change, verify_justification, AuthoritySet},
-        EncodedBlockHash, EncodedBlockNumber, EncodedHeader, InitializationData,
+    use crate::chain::Chain;
+    use crate::grandpa::{
+        find_forced_change, find_scheduled_change, verify_justification, AuthoritySet,
     };
+    use crate::{EncodedBlockHash, EncodedBlockNumber, EncodedHeader, InitializationData};
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
     use sp_finality_grandpa::GRANDPA_ENGINE_ID;

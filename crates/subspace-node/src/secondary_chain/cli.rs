@@ -20,8 +20,10 @@ use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd, RuntimeVersion, SharedParams, SubstrateCli,
 };
-use sc_service::{config::PrometheusConfig, BasePath};
-use std::{net::SocketAddr, path::PathBuf};
+use sc_service::config::PrometheusConfig;
+use sc_service::BasePath;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
