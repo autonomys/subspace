@@ -170,6 +170,8 @@ pub(crate) async fn bench(
             client: client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
+            bootstrap_nodes: vec![],
+            listen_on: vec![],
         },
         plot_size,
         max_plot_size,

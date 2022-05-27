@@ -26,7 +26,7 @@ struct FarmingArgs {
     #[clap(long)]
     bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-    /// multiple are supported, subspace networking is disabled when none specified
+    /// multiple are supported, subspace networking is disabled when none specified.
     #[clap(long)]
     listen_on: Vec<Multiaddr>,
     /// WebSocket RPC URL of the Subspace node to connect to
