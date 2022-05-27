@@ -694,9 +694,9 @@ pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 
 /// Controls non-root access to feeds and object store
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct ControlNonRootStorageAccess;
+pub struct CheckStorageAccess;
 
-impl SignedExtension for ControlNonRootStorageAccess {
+impl SignedExtension for CheckStorageAccess {
     const IDENTIFIER: &'static str = "ControlNonRootStorageAccess";
     type AccountId = <Runtime as frame_system::Config>::AccountId;
     type Call = <Runtime as frame_system::Config>::Call;
@@ -742,7 +742,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    ControlNonRootStorageAccess,
+    CheckStorageAccess,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
