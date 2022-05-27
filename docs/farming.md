@@ -185,6 +185,7 @@ version: "3.7"
 services:
   node:
     # Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
+    # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/subspace/node:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
@@ -221,7 +222,8 @@ services:
     depends_on:
       node:
         condition: service_healthy
-# Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
+    # Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
+    # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/subspace/farmer:snapshot-DATE
 # Un-comment following 2 lines to unlock farmer's RPC
 #    ports:

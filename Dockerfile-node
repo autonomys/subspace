@@ -2,6 +2,7 @@ FROM ubuntu:20.04
 
 ARG RUSTC_VERSION=nightly-2022-05-16
 ARG PROFILE=production
+ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 # Incremental compilation here isn't helpful
@@ -37,7 +38,7 @@ ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
 
 RUN \
     /root/.cargo/bin/cargo build --profile $PROFILE --bin subspace-node && \
-    mv target/$PROFILE/subspace-node subspace-node && \
+    mv target/*/subspace-node subspace-node && \
     rm -rf target
 
 FROM ubuntu:20.04
