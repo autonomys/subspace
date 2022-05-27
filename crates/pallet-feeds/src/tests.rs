@@ -1,7 +1,7 @@
-use crate::{
-    mock::{new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test},
-    Call as FeedsCall, Error, Object, SuccessfulPuts, TotalObjectsAndSize,
+use crate::mock::{
+    new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test,
 };
+use crate::{Call as FeedsCall, Error, Object, SuccessfulPuts, TotalObjectsAndSize};
 use codec::{Decode, Encode};
 use frame_support::{assert_noop, assert_ok};
 use sp_core::Hasher;

@@ -23,9 +23,8 @@ pub mod chain_spec;
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use sc_client_api::BlockBackend;
-use sc_consensus_subspace::{
-    notification::SubspaceNotificationStream, NewSlotNotification, RewardSigningNotification,
-};
+use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::{BlockId, ProvideRuntimeApi};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;

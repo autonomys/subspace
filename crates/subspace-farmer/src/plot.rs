@@ -10,8 +10,7 @@ use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Weak};
+use std::sync::{mpsc, Arc, Weak};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
 };

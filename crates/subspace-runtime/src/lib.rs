@@ -28,30 +28,23 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::Contains;
-use frame_support::{
-    construct_runtime, parameter_types,
-    traits::{
-        ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-        Imbalance, WithdrawReasons,
-    },
-    weights::{
-        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-        ConstantMultiplier, IdentityFee,
-    },
+use frame_support::traits::{
+    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Currency, ExistenceRequirement,
+    Get, Imbalance, WithdrawReasons,
 };
-use frame_system::{
-    limits::{BlockLength, BlockWeights},
-    EnsureNever,
-};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee};
+use frame_support::{construct_runtime, parameter_types};
+use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::EnsureNever;
 use pallet_balances::{Call as BalancesCall, NegativeImbalance};
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
+use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    digests::CompatibleDigestItem, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts,
-    SignedVote, SolutionRanges, Vote,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote, SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
@@ -68,8 +61,9 @@ use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
     Perbill,
 };
+use sp_std::borrow::Cow;
 use sp_std::iter::Peekable;
-use sp_std::{borrow::Cow, prelude::*};
+use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;

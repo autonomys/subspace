@@ -38,7 +38,8 @@ use log::{debug, info, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
-use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
+use sc_client_api::backend::AuxStore;
+use sc_client_api::{BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -72,9 +73,11 @@ use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{One, Zero};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::pin::Pin;
+use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};

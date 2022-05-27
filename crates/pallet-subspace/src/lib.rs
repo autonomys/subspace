@@ -29,11 +29,9 @@ mod tests;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
-use frame_support::{
-    dispatch::{DispatchResult, DispatchResultWithPostInfo},
-    traits::{Get, OnTimestampSet},
-    weights::{Pays, Weight},
-};
+use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
+use frame_support::traits::{Get, OnTimestampSet};
+use frame_support::weights::{Pays, Weight};
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, info, warn};
 pub use pallet::*;

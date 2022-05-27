@@ -21,7 +21,8 @@
 
 use core::mem;
 pub use pallet::*;
-use sp_std::{vec, vec::Vec};
+use sp_std::vec;
+use sp_std::vec::Vec;
 use subspace_core_primitives::{crypto, Sha256Hash};
 
 pub mod feed_processor;

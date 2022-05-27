@@ -20,11 +20,9 @@
 #![feature(try_blocks)]
 
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use jsonrpsee::{
-    core::{async_trait, Error as JsonRpseeError, RpcResult},
-    proc_macros::rpc,
-    PendingSubscription,
-};
+use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
+use jsonrpsee::proc_macros::rpc;
+use jsonrpsee::PendingSubscription;
 use log::{error, warn};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;

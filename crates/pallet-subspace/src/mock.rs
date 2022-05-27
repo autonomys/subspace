@@ -31,11 +31,9 @@ use sp_consensus_subspace::{FarmerSignature, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::sr25519::Pair;
 use sp_core::{Pair as PairTrait, H256};
-use sp_runtime::{
-    testing::{Digest, DigestItem, Header, TestXt},
-    traits::{Block as BlockT, Header as _, IdentityLookup},
-    Perbill,
-};
+use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
+use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
+use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{

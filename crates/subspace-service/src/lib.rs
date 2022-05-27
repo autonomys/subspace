@@ -28,17 +28,17 @@ use sc_basic_authorship::ProposerFactory;
 use sc_client_api::{BlockBackend, ExecutorProvider, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    notification::SubspaceNotificationStream, ArchivedSegmentNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
+    SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_service::{error::Error as ServiceError, Configuration, PartialComponents, TaskManager};
-use sc_service::{NetworkStarter, SpawnTasksParams};
+use sc_service::error::Error as ServiceError;
+use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool::FullPool;
-use sp_api::ProvideRuntimeApi;
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, TransactionFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
@@ -52,7 +52,8 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::RootBlock;
-use subspace_runtime_primitives::{opaque::Block, AccountId, Balance, Index as Nonce};
+use subspace_runtime_primitives::opaque::Block;
+use subspace_runtime_primitives::{AccountId, Balance, Index as Nonce};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]

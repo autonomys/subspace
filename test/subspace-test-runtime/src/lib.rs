@@ -32,10 +32,8 @@ use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
 };
-use frame_support::weights::{
-    constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-    ConstantMultiplier, IdentityFee,
-};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;

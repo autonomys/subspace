@@ -23,11 +23,10 @@ use sp_finality_grandpa::{
     AuthorityId, AuthorityList, AuthoritySignature, ConsensusLog, SetId, GRANDPA_ENGINE_ID,
 };
 use sp_runtime::traits::Header as HeaderT;
-use sp_std::{
-    collections::{btree_map::BTreeMap, btree_set::BTreeSet},
-    prelude::*,
-    vec::Vec,
-};
+use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
+use sp_std::prelude::*;
+use sp_std::vec::Vec;
 
 /// A GRANDPA Justification is a proof that a given header was finalized
 /// at a certain height and with a certain set of authorities.

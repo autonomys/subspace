@@ -2,18 +2,15 @@ use crate::{
     self as pallet_executor, BlockHash, Error, ExecutionChainBestNumber, ExecutionReceiptError,
     OldestReceiptNumber, Receipts,
 };
-use frame_support::{
-    assert_noop, assert_ok, parameter_types,
-    traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks},
-};
-use sp_core::{crypto::Pair, H256, U256};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
+use frame_support::{assert_noop, assert_ok, parameter_types};
+use sp_core::crypto::Pair;
+use sp_core::{H256, U256};
 use sp_executor::{
     ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
 };
-use sp_runtime::{
-    testing::Header,
-    traits::{BlakeTwo256, IdentityLookup},
-};
+use sp_runtime::testing::Header;
+use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
