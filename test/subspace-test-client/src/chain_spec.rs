@@ -92,6 +92,7 @@ fn create_genesis_config(
         },
         subspace: SubspaceConfig {
             enable_rewards: false,
+            enable_storage_access: false,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
