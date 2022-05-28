@@ -29,8 +29,8 @@ use sc_service::{
 		DatabaseSource, KeepBlocks, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
 		OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 	},
-	BasePath, ChainSpec, Configuration, Error as ServiceError, NetworkStarter, PartialComponents,
-	Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
+	BasePath, Configuration, Error as ServiceError, NetworkStarter, PartialComponents, Role,
+	RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -145,12 +145,12 @@ pub fn new_partial(
 	Ok(params)
 }
 
-/// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
+/// Start a node with the given secondary chain `Configuration` and primary chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
-async fn start_node_impl(
-	parachain_config: Configuration,
+#[sc_tracing::logging::prefix_logs_with(secondary_chain_config.network.node_name.as_str())]
+async fn start_secondary_node(
+	secondary_chain_config: Configuration,
 	primary_chain_config: Configuration,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -161,7 +161,7 @@ async fn start_node_impl(
 	RpcHandlers,
 	Executor,
 )> {
-	if matches!(parachain_config.role, Role::Light) {
+	if matches!(secondary_chain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
 
@@ -190,7 +190,7 @@ async fn start_node_impl(
 		cirrus_test_runtime::RuntimeApi,
 		RuntimeExecutor,
 	>(
-		parachain_config,
+		secondary_chain_config,
 		primary_chain_full_node.client.clone(),
 		primary_chain_full_node.network.clone(),
 		&primary_chain_full_node.select_chain,
@@ -330,14 +330,14 @@ impl TestNodeBuilder {
 
 	/// Build the [`TestNode`].
 	pub async fn build(self, role: Role) -> TestNode {
-		let parachain_config = node_config(
+		let secondary_chain_config = node_config(
 			self.tokio_handle.clone(),
 			self.key,
 			self.parachain_nodes,
 			self.parachain_nodes_exclusive,
 			role,
 		)
-		.expect("could not generate Configuration");
+		.expect("could not generate secondary chain node Configuration");
 
 		let mut primary_chain_config = subspace_test_service::node_config(
 			self.tokio_handle,
@@ -347,13 +347,13 @@ impl TestNodeBuilder {
 		);
 
 		primary_chain_config.network.node_name =
-			format!("{} (primary chain)", primary_chain_config.network.node_name);
+			format!("{} (PrimaryChain)", primary_chain_config.network.node_name);
 
-		let multiaddr = parachain_config.network.listen_addresses[0].clone();
+		let multiaddr = secondary_chain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(parachain_config, primary_chain_config)
+			start_secondary_node(secondary_chain_config, primary_chain_config)
 				.await
-				.expect("could not create Cumulus test service");
+				.expect("could not start secondary chain node");
 
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
@@ -371,12 +371,11 @@ impl TestNodeBuilder {
 	}
 }
 
-/// Create a Cumulus `Configuration`.
+/// Create a secondary chain node `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
-/// to the given `nodes` and not to any other node. The `storage_update_func` can be used to make
-/// adjustments to the runtime genesis.
+/// to the given `nodes` and not to any other node.
 pub fn node_config(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
@@ -388,14 +387,10 @@ pub fn node_config(
 	let root = base_path.path().to_path_buf();
 	let key_seed = key.to_seed();
 
-	let mut spec = Box::new(chain_spec::get_chain_spec());
-
-	let storage = spec.as_storage_builder().build_storage().expect("could not build storage");
-	// BasicExternalities::execute_with_storage(&mut storage, storage_update_func);
-	spec.set_storage(storage);
+	let spec = Box::new(chain_spec::get_chain_spec());
 
 	let mut network_config = NetworkConfiguration::new(
-		format!("{} (parachain)", key_seed),
+		format!("{} (SecondaryChain)", key_seed),
 		"network/test/0.1",
 		Default::default(),
 		None,
