@@ -172,10 +172,16 @@ async fn start_secondary_node(
 		);
 		let _enter = span.enter();
 
+		let primary_chain_config = subspace_service::SubspaceConfiguration {
+			base: primary_chain_config,
+			// Always enable the slot notification.
+			force_new_slot_notifications: true,
+		};
+
 		subspace_service::new_full::<
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
-		>(primary_chain_config.into(), false)
+		>(primary_chain_config, false)
 		.map_err(|e| {
 			sc_service::Error::Other(format!("Failed to build a full subspace node: {e}"))
 		})?
