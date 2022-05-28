@@ -42,6 +42,8 @@ impl NativeExecutionDispatch for CirrusRuntimeExecutor {
 pub type FullClient<RuntimeApi, ExecutorDispatch> =
 	TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
+pub type FullBackend = sc_service::TFullBackend<Block>;
+
 /// Starts a `ServiceBuilder` for a full service.
 ///
 /// Use this macro if you don't actually need the full service, but just the builder in order to
@@ -128,11 +130,19 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<C> {
+pub struct NewFull<C, CodeExecutor> {
 	/// Task manager.
 	pub task_manager: TaskManager,
 	/// Full client.
 	pub client: C,
+	/// Backend.
+	pub backend: Arc<FullBackend>,
+	/// Code executor.
+	pub code_executor: Arc<CodeExecutor>,
+	/// Network.
+	pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+	/// RPCHandlers to make RPC queries.
+	pub rpc_handlers: sc_service::RpcHandlers,
 	/// Network starter.
 	pub network_starter: NetworkStarter,
 }
@@ -147,7 +157,12 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
 	select_chain: &SC,
 	imported_block_notification_stream: IBNS,
 	new_slot_notification_stream: NSNS,
-) -> sc_service::error::Result<NewFull<Arc<FullClient<RuntimeApi, CirrusRuntimeExecutor>>>>
+) -> sc_service::error::Result<
+	NewFull<
+		Arc<FullClient<RuntimeApi, CirrusRuntimeExecutor>>,
+		NativeElseWasmExecutor<CirrusRuntimeExecutor>,
+	>,
+>
 where
 	PBlock: BlockT,
 	PClient: HeaderBackend<PBlock>
@@ -210,7 +225,7 @@ where
 		})
 	};
 
-	sc_service::spawn_tasks(SpawnTasksParams {
+	let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
 		rpc_builder,
 		client: client.clone(),
 		transaction_pool: transaction_pool.clone(),
@@ -222,6 +237,8 @@ where
 		system_rpc_tx,
 		telemetry: telemetry.as_mut(),
 	})?;
+
+	let code_executor = Arc::new(code_executor);
 
 	{
 		let spawn_essential = task_manager.spawn_essential_handle();
@@ -241,8 +258,8 @@ where
 			transaction_pool,
 			Arc::new(bundle_sender),
 			Arc::new(execution_receipt_sender),
-			backend,
-			Arc::new(code_executor),
+			backend.clone(),
+			code_executor.clone(),
 			validator,
 			params.keystore_container.sync_keystore(),
 		)
@@ -250,7 +267,7 @@ where
 
 		let executor_gossip =
 			cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-				network,
+				network: network.clone(),
 				executor,
 				bundle_receiver,
 				execution_receipt_receiver,
@@ -258,5 +275,13 @@ where
 		spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
 	}
 
-	Ok(NewFull { task_manager, client, network_starter })
+	Ok(NewFull {
+		task_manager,
+		client,
+		backend,
+		code_executor,
+		network,
+		rpc_handlers,
+		network_starter,
+	})
 }
