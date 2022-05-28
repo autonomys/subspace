@@ -20,10 +20,8 @@
 
 pub mod chain_spec;
 
-use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
 use futures::StreamExt;
-use jsonrpsee::RpcModule;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -34,10 +32,9 @@ use sc_service::{
 	BasePath, ChainSpec, Configuration, Error as ServiceError, NetworkStarter, PartialComponents,
 	Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
-use sc_utils::mpsc::tracing_unbounded;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{traits::SpawnEssentialNamed, H256};
+use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
 use sp_trie::PrefixedMemoryDB;
@@ -153,7 +150,7 @@ pub fn new_partial(
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
 async fn start_node_impl(
-	mut parachain_config: Configuration,
+	parachain_config: Configuration,
 	primary_chain_config: Configuration,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -167,16 +164,6 @@ async fn start_node_impl(
 	if matches!(parachain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
-
-	// TODO: Do we even need block announcement on secondary node?
-	// parachain_config.announce_block = false;
-
-	let params = new_partial(&mut parachain_config)?;
-	let code_executor = params.other;
-
-	let validator = parachain_config.role.is_authority();
-	let transaction_pool = params.transaction_pool.clone();
-	let mut task_manager = params.task_manager;
 
 	let primary_chain_full_node = {
 		let span = tracing::info_span!(
@@ -194,84 +181,47 @@ async fn start_node_impl(
 		})?
 	};
 
-	let client = params.client.clone();
-	let backend = params.backend.clone();
+	let (secondary_chain_node, executor) = cirrus_node::service::new_full::<
+		_,
+		_,
+		_,
+		_,
+		_,
+		cirrus_test_runtime::RuntimeApi,
+		RuntimeExecutor,
+	>(
+		parachain_config,
+		primary_chain_full_node.client.clone(),
+		primary_chain_full_node.network.clone(),
+		&primary_chain_full_node.select_chain,
+		primary_chain_full_node
+			.imported_block_notification_stream
+			.subscribe()
+			.then(|(block_number, _)| async move { block_number }),
+		primary_chain_full_node.new_slot_notification_stream.subscribe().then(
+			|slot_notification| async move {
+				(
+					slot_notification.new_slot_info.slot,
+					slot_notification.new_slot_info.global_challenge,
+				)
+			},
+		),
+	)
+	.await?;
 
-	let (network, system_rpc_tx, start_network) =
-		sc_service::build_network(sc_service::BuildNetworkParams {
-			config: &parachain_config,
-			client: client.clone(),
-			transaction_pool: transaction_pool.clone(),
-			spawn_handle: task_manager.spawn_handle(),
-			import_queue: params.import_queue,
-			block_announce_validator_builder: None,
-			warp_sync: None,
-		})?;
-
-	let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-		rpc_builder: Box::new(|_, _| Ok(RpcModule::new(()))),
-		client: client.clone(),
-		transaction_pool: transaction_pool.clone(),
-		task_manager: &mut task_manager,
-		config: parachain_config,
-		keystore: params.keystore_container.sync_keystore(),
-		backend: backend.clone(),
-		network: network.clone(),
-		system_rpc_tx,
-		telemetry: None,
-	})?;
-
-	let code_executor = Arc::new(code_executor);
-
-	let executor = {
-		let spawn_essential = task_manager.spawn_essential_handle();
-		let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-		let (execution_receipt_sender, execution_receipt_receiver) =
-			tracing_unbounded("execution_receipt_stream");
-
-		let executor = Executor::new(
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.network.clone(),
-			&spawn_essential,
-			&primary_chain_full_node.select_chain,
-			primary_chain_full_node
-				.imported_block_notification_stream
-				.subscribe()
-				.then(|(block_number, _)| async move { block_number }),
-			primary_chain_full_node.new_slot_notification_stream.subscribe().then(
-				|slot_notification| async move {
-					let slot_info = slot_notification.new_slot_info;
-
-					(slot_info.slot, slot_info.global_challenge)
-				},
-			),
-			client.clone(),
-			Box::new(task_manager.spawn_handle()),
-			transaction_pool,
-			Arc::new(bundle_sender),
-			Arc::new(execution_receipt_sender),
-			backend.clone(),
-			Arc::clone(&code_executor),
-			validator,
-			params.keystore_container.sync_keystore(),
-		)
-		.await?;
-
-		let executor_gossip =
-			cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-				network: network.clone(),
-				executor: executor.clone(),
-				bundle_receiver,
-				execution_receipt_receiver,
-			});
-		spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
-
-		executor
-	};
+	let cirrus_node::service::NewFull {
+		mut task_manager,
+		client,
+		backend,
+		code_executor,
+		network,
+		network_starter,
+		rpc_handlers,
+	} = secondary_chain_node;
 
 	task_manager.add_child(primary_chain_full_node.task_manager);
 
-	start_network.start_network();
+	network_starter.start_network();
 
 	primary_chain_full_node.network_starter.start_network();
 
