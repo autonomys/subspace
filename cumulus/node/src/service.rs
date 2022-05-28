@@ -51,6 +51,11 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 
+pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool<
+	sc_transaction_pool::FullChainApi<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+	Block,
+>;
+
 /// Starts a `ServiceBuilder` for a full service.
 ///
 /// Use this macro if you don't actually need the full service, but just the builder in order to
@@ -164,12 +169,21 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
 	select_chain: &SC,
 	imported_block_notification_stream: IBNS,
 	new_slot_notification_stream: NSNS,
-) -> sc_service::error::Result<
+) -> sc_service::error::Result<(
 	NewFull<
 		Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
 		NativeElseWasmExecutor<ExecutorDispatch>,
 	>,
->
+	Executor<
+		Block,
+		PBlock,
+		FullClient<RuntimeApi, ExecutorDispatch>,
+		PClient,
+		FullPool<RuntimeApi, ExecutorDispatch>,
+		FullBackend,
+		NativeElseWasmExecutor<ExecutorDispatch>,
+	>,
+)>
 where
 	PBlock: BlockT,
 	PClient: HeaderBackend<PBlock>
@@ -261,42 +275,40 @@ where
 
 	let code_executor = Arc::new(code_executor);
 
-	{
-		let spawn_essential = task_manager.spawn_essential_handle();
-		let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-		let (execution_receipt_sender, execution_receipt_receiver) =
-			tracing_unbounded("execution_receipt_stream");
+	let spawn_essential = task_manager.spawn_essential_handle();
+	let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
+	let (execution_receipt_sender, execution_receipt_receiver) =
+		tracing_unbounded("execution_receipt_stream");
 
-		let executor = Executor::new(
-			primary_chain_client,
-			primary_network,
-			&spawn_essential,
-			select_chain,
-			imported_block_notification_stream,
-			new_slot_notification_stream,
-			client.clone(),
-			Box::new(task_manager.spawn_handle()),
-			transaction_pool,
-			Arc::new(bundle_sender),
-			Arc::new(execution_receipt_sender),
-			backend.clone(),
-			code_executor.clone(),
-			validator,
-			params.keystore_container.sync_keystore(),
-		)
-		.await?;
+	let executor = Executor::new(
+		primary_chain_client,
+		primary_network,
+		&spawn_essential,
+		select_chain,
+		imported_block_notification_stream,
+		new_slot_notification_stream,
+		client.clone(),
+		Box::new(task_manager.spawn_handle()),
+		transaction_pool,
+		Arc::new(bundle_sender),
+		Arc::new(execution_receipt_sender),
+		backend.clone(),
+		code_executor.clone(),
+		validator,
+		params.keystore_container.sync_keystore(),
+	)
+	.await?;
 
-		let executor_gossip =
-			cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-				network: network.clone(),
-				executor,
-				bundle_receiver,
-				execution_receipt_receiver,
-			});
-		spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
-	}
+	let executor_gossip =
+		cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
+			network: network.clone(),
+			executor: executor.clone(),
+			bundle_receiver,
+			execution_receipt_receiver,
+		});
+	spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
 
-	Ok(NewFull {
+	let new_full = NewFull {
 		task_manager,
 		client,
 		backend,
@@ -304,5 +316,7 @@ where
 		network,
 		rpc_handlers,
 		network_starter,
-	})
+	};
+
+	Ok((new_full, executor))
 }
