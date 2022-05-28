@@ -69,7 +69,8 @@ pub type BlockNumber = u32;
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 
-const PUBLIC_KEY_LENGTH: usize = 32;
+/// Length of public key in bytes.
+pub const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
