@@ -187,7 +187,7 @@ impl Contains<Call> for CallFilter {
                 BalancesCall::transfer { .. }
                     | BalancesCall::transfer_keep_alive { .. }
                     | BalancesCall::transfer_all { .. }
-            ) | Call::Executor(_)
+            )
         )
     }
 }
@@ -691,13 +691,13 @@ pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 pub struct CheckStorageAccess;
 
 impl SignedExtension for CheckStorageAccess {
-    const IDENTIFIER: &'static str = "ControlNonRootStorageAccess";
+    const IDENTIFIER: &'static str = "CheckStorageAccess";
     type AccountId = <Runtime as frame_system::Config>::AccountId;
     type Call = <Runtime as frame_system::Config>::Call;
     type AdditionalSigned = ();
     type Pre = ();
 
-    fn additional_signed(&self) -> Result<(), TransactionValidityError> {
+    fn additional_signed(&self) -> Result<Self::Pre, TransactionValidityError> {
         Ok(())
     }
 
@@ -726,6 +726,44 @@ impl SignedExtension for CheckStorageAccess {
     }
 }
 
+/// Disable specific pallets.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+pub struct DisablePallets;
+
+impl SignedExtension for DisablePallets {
+    const IDENTIFIER: &'static str = "DisablePallets";
+    type AccountId = <Runtime as frame_system::Config>::AccountId;
+    type Call = <Runtime as frame_system::Config>::Call;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(&self) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn pre_dispatch(
+        self,
+        _who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn validate_unsigned(
+        call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> TransactionValidity {
+        if matches!(call, Call::Executor(_)) {
+            InvalidTransaction::Call.into()
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+}
+
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
     frame_system::CheckNonZeroSender<Runtime>,
@@ -737,6 +775,7 @@ pub type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckStorageAccess,
+    DisablePallets,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
