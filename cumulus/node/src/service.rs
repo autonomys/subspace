@@ -2,8 +2,10 @@
 
 use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
-use cirrus_runtime::{opaque::Block, Hash, RuntimeApi};
+use cirrus_primitives::SecondaryApi;
+use cirrus_runtime::{opaque::Block, AccountId, Balance, Hash};
 use futures::Stream;
+use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -13,15 +15,20 @@ use sc_service::{
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
-use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
+use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_executor::ExecutorApi;
+use sp_offchain::OffchainWorkerApi;
+use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Sha256Hash;
+use subspace_runtime_primitives::Index as Nonce;
+use substrate_frame_rpc_system::AccountNonceApi;
 
 /// Native executor instance.
 pub struct CirrusRuntimeExecutor;
@@ -150,7 +157,7 @@ pub struct NewFull<C, CodeExecutor> {
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
+pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
 	mut secondary_chain_config: Configuration,
 	primary_chain_client: Arc<PClient>,
 	primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
@@ -159,8 +166,8 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS>(
 	new_slot_notification_stream: NSNS,
 ) -> sc_service::error::Result<
 	NewFull<
-		Arc<FullClient<RuntimeApi, CirrusRuntimeExecutor>>,
-		NativeElseWasmExecutor<CirrusRuntimeExecutor>,
+		Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+		NativeElseWasmExecutor<ExecutorDispatch>,
 	>,
 >
 where
@@ -175,6 +182,20 @@ where
 	SC: SelectChain<PBlock>,
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
 	NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
+	RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+		+ Send
+		+ Sync
+		+ 'static,
+	RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+		+ Metadata<Block>
+		+ BlockBuilder<Block>
+		+ OffchainWorkerApi<Block>
+		+ SessionKeys<Block>
+		+ SecondaryApi<Block, AccountId>
+		+ TaggedTransactionQueue<Block>
+		+ AccountNonceApi<Block, AccountId, Nonce>
+		+ TransactionPaymentRuntimeApi<Block, Balance>,
+	ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
 	if matches!(secondary_chain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())

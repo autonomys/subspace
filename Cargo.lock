@@ -902,6 +902,7 @@ dependencies = [
  "sp-session",
  "sp-transaction-pool",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
 ]
