@@ -126,9 +126,8 @@ pub fn node_config(
         network: network_config,
         keystore: KeystoreConfig::InMemory,
         keystore_remote: Default::default(),
-        database: DatabaseSource::RocksDb {
-            path: root.join("db"),
-            cache_size: 128,
+        database: DatabaseSource::ParityDb {
+            path: root.join("paritydb"),
         },
         state_cache_size: 16777216,
         state_cache_child_ratio: None,
