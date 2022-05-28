@@ -20,7 +20,7 @@
 
 pub mod chain_spec;
 
-use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
+use cirrus_test_runtime::{opaque::Block, Hash};
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
@@ -29,15 +29,14 @@ use sc_service::{
 		DatabaseSource, KeepBlocks, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
 		OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 	},
-	BasePath, Configuration, Error as ServiceError, NetworkStarter, PartialComponents, Role,
-	RpcHandlers, TFullBackend, TFullClient, TaskManager,
+	BasePath, Configuration, Error as ServiceError, NetworkStarter, Role, RpcHandlers,
+	TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
-use sp_trie::PrefixedMemoryDB;
+use sp_runtime::{codec::Encode, generic, OpaqueExtrinsic};
 use std::{future::Future, sync::Arc};
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use substrate_test_client::{
@@ -85,65 +84,6 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
 /// The client type being used by the test service.
 pub type Client =
 	TFullClient<Block, runtime::RuntimeApi, sc_executor::NativeElseWasmExecutor<RuntimeExecutor>>;
-
-/// Starts a `ServiceBuilder` for a full service.
-///
-/// Use this macro if you don't actually need the full service, but just the builder in order to
-/// be able to perform chain operations.
-#[allow(clippy::type_complexity)]
-pub fn new_partial(
-	config: &mut Configuration,
-) -> Result<
-	PartialComponents<
-		Client,
-		TFullBackend<Block>,
-		(),
-		sc_consensus::import_queue::BasicQueue<Block, PrefixedMemoryDB<BlakeTwo256>>,
-		sc_transaction_pool::FullPool<Block, Client>,
-		CodeExecutor,
-	>,
-	sc_service::Error,
-> {
-	let executor = sc_executor::NativeElseWasmExecutor::<RuntimeExecutor>::new(
-		config.wasm_method,
-		config.default_heap_pages,
-		config.max_runtime_instances,
-		config.runtime_cache_size,
-	);
-
-	let (client, backend, keystore_container, task_manager) =
-		sc_service::new_full_parts::<Block, RuntimeApi, _>(config, None, executor.clone())?;
-	let client = Arc::new(client);
-
-	let registry = config.prometheus_registry();
-
-	let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-		config.transaction_pool.clone(),
-		config.role.is_authority().into(),
-		config.prometheus_registry(),
-		task_manager.spawn_essential_handle(),
-		client.clone(),
-	);
-
-	let import_queue = cumulus_client_consensus_relay_chain::import_queue(
-		client.clone(),
-		&task_manager.spawn_essential_handle(),
-		registry,
-	)?;
-
-	let params = PartialComponents {
-		backend,
-		client,
-		import_queue,
-		keystore_container,
-		task_manager,
-		transaction_pool,
-		select_chain: (),
-		other: (executor),
-	};
-
-	Ok(params)
-}
 
 /// Start a node with the given secondary chain `Configuration` and primary chain `Configuration`.
 ///
