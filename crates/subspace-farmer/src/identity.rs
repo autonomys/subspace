@@ -4,7 +4,10 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::path::Path;
-use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_core_primitives::{LocalChallenge, Sha256Hash, Tag, TagSignature};
+use subspace_solving::{
+    create_tag_signature, derive_local_challenge_and_target, REWARD_SIGNING_CONTEXT,
+};
 use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
 use zeroize::Zeroizing;
@@ -31,7 +34,6 @@ fn keypair_from_entropy(entropy: &[u8]) -> Keypair {
 pub struct Identity {
     keypair: Zeroizing<Keypair>,
     entropy: Zeroizing<Vec<u8>>,
-    farmer_solution_ctx: SigningContext,
     substrate_ctx: SigningContext,
 }
 
@@ -57,7 +59,6 @@ impl Identity {
             Ok(Some(Self {
                 keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
                 entropy: Zeroizing::new(entropy),
-                farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
                 substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
             }))
         } else {
@@ -80,7 +81,6 @@ impl Identity {
         Ok(Self {
             keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
             entropy: Zeroizing::new(entropy),
-            farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
             substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         })
     }
@@ -104,7 +104,6 @@ impl Identity {
         Ok(Self {
             keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
             entropy: Zeroizing::new(entropy),
-            farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
             substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         })
     }
@@ -124,9 +123,15 @@ impl Identity {
         &self.entropy
     }
 
-    /// Sign farmer solution.
-    pub fn sign_farmer_solution(&self, data: &[u8]) -> Signature {
-        self.keypair.sign(self.farmer_solution_ctx.bytes(data))
+    pub fn create_tag_signature(&self, tag: Tag) -> TagSignature {
+        create_tag_signature(&self.keypair, tag)
+    }
+
+    pub fn derive_local_challenge_and_target(
+        &self,
+        global_challenge: Sha256Hash,
+    ) -> (LocalChallenge, Tag) {
+        derive_local_challenge_and_target(&self.keypair, global_challenge)
     }
 
     /// Sign reward hash.

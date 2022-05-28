@@ -8361,6 +8361,7 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
+ "merlin",
  "num-traits",
  "num_cpus",
  "rand 0.8.5",

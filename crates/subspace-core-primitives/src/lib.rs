@@ -72,6 +72,10 @@ pub type SlotNumber = u64;
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
+const REWARD_SIGNATURE_LENGTH: usize = 64;
+const VRF_OUTPUT_LENGTH: usize = 32;
+const VRF_PROOF_LENGTH: usize = 64;
+
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
     Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
@@ -105,34 +109,26 @@ impl AsRef<[u8]> for PublicKey {
     }
 }
 
-const SIGNATURE_LENGTH: usize = 64;
-
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Signature(
-    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
+pub struct RewardSignature(
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
 );
 
-impl Default for Signature {
-    fn default() -> Self {
-        Self([0u8; SIGNATURE_LENGTH])
-    }
-}
-
-impl From<[u8; SIGNATURE_LENGTH]> for Signature {
-    fn from(bytes: [u8; SIGNATURE_LENGTH]) -> Self {
+impl From<[u8; REWARD_SIGNATURE_LENGTH]> for RewardSignature {
+    fn from(bytes: [u8; REWARD_SIGNATURE_LENGTH]) -> Self {
         Self(bytes)
     }
 }
 
-impl From<Signature> for [u8; SIGNATURE_LENGTH] {
-    fn from(signature: Signature) -> Self {
+impl From<RewardSignature> for [u8; REWARD_SIGNATURE_LENGTH] {
+    fn from(signature: RewardSignature) -> Self {
         signature.0
     }
 }
 
-impl Deref for Signature {
+impl Deref for RewardSignature {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -140,58 +136,32 @@ impl Deref for Signature {
     }
 }
 
-impl AsRef<[u8]> for Signature {
+impl AsRef<[u8]> for RewardSignature {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-/// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
+/// VRF signature output and proof as produced by `schnorrkel` crate.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct LocalChallenge(
-    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; SIGNATURE_LENGTH],
-);
-
-impl Default for LocalChallenge {
-    fn default() -> Self {
-        Self([0u8; SIGNATURE_LENGTH])
-    }
+pub struct TagSignature {
+    /// VRF output bytes.
+    pub output: [u8; VRF_OUTPUT_LENGTH],
+    /// VRF proof bytes.
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))]
+    pub proof: [u8; VRF_PROOF_LENGTH],
 }
 
-impl From<[u8; SIGNATURE_LENGTH]> for LocalChallenge {
-    fn from(bytes: [u8; SIGNATURE_LENGTH]) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<LocalChallenge> for [u8; SIGNATURE_LENGTH] {
-    fn from(signature: LocalChallenge) -> Self {
-        signature.0
-    }
-}
-
-impl Deref for LocalChallenge {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<[u8]> for LocalChallenge {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl LocalChallenge {
-    /// Derive tags search target from local challenge.
-    pub fn derive_target(&self) -> Tag {
-        crypto::sha256_hash(&self.0)[..TAG_SIZE]
-            .try_into()
-            .expect("Signature is always bigger than tag; qed")
-    }
+/// VRF signature output and proof as produced by `schnorrkel` crate.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct LocalChallenge {
+    /// VRF output bytes.
+    pub output: [u8; VRF_OUTPUT_LENGTH],
+    /// VRF proof bytes.
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))]
+    pub proof: [u8; VRF_PROOF_LENGTH],
 }
 
 /// A piece of archival history in Subspace Network.
@@ -490,8 +460,8 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub piece_index: PieceIndex,
     /// Encoding
     pub encoding: Piece,
-    /// Signature of the tag
-    pub signature: Signature,
+    /// VRF signature of the tag
+    pub tag_signature: TagSignature,
     /// Local challenge derived from global challenge using farmer's identity.
     pub local_challenge: LocalChallenge,
     /// Tag (hmac of encoding and salt)
@@ -513,7 +483,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             reward_address,
             piece_index,
             encoding,
-            signature,
+            tag_signature,
             local_challenge,
             tag,
         } = self;
@@ -522,7 +492,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             reward_address: Into::<T>::into(reward_address).into(),
             piece_index,
             encoding,
-            signature,
+            tag_signature,
             local_challenge,
             tag,
         }
@@ -541,8 +511,14 @@ where
             reward_address,
             piece_index: 0,
             encoding: Piece::default(),
-            signature: Signature::default(),
-            local_challenge: LocalChallenge::default(),
+            tag_signature: TagSignature {
+                output: [0; 32],
+                proof: [0; 64],
+            },
+            local_challenge: LocalChallenge {
+                output: [0; 32],
+                proof: [0; 64],
+            },
             tag: Tag::default(),
         }
     }

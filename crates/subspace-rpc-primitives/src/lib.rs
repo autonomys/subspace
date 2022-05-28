@@ -17,7 +17,9 @@
 
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
-use subspace_core_primitives::{PublicKey, Salt, Sha256Hash, Signature, SlotNumber, Solution};
+use subspace_core_primitives::{
+    PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
+};
 
 /// Metadata necessary for farmer operation
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -77,10 +79,10 @@ pub struct RewardSigningInfo {
 /// Signature in response to reward hash signing request.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RewardSignature {
+pub struct RewardSignatureResponse {
     /// Hash that was signed.
     #[serde(with = "HexForm")]
     pub hash: [u8; 32],
     /// Pre-header or vote hash signature.
-    pub signature: Option<Signature>,
+    pub signature: Option<RewardSignature>,
 }

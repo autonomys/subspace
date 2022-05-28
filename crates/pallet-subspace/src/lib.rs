@@ -45,8 +45,9 @@ use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHand
 use sp_consensus_subspace::verification::{
     PieceCheckParams, VerificationError, VerifySolutionParams,
 };
-use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
-use sp_io::hashing;
+use sp_consensus_subspace::{
+    derive_randomness, verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote,
+};
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{
     BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
@@ -59,12 +60,10 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Salt, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
-use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 
-const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
-const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
 const SALT_HASHING_PREFIX: &[u8] = b"salt";
 const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
@@ -789,7 +788,7 @@ impl<T: Config> Pallet<T> {
         CurrentSlot::<T>::put(pre_digest.slot);
 
         {
-            let key = (pre_digest.solution.public_key, pre_digest.slot);
+            let key = (pre_digest.solution.public_key.clone(), pre_digest.slot);
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, slot) = key;
 
@@ -857,16 +856,13 @@ impl<T: Config> Pallet<T> {
         }
 
         // Extract PoR randomness from pre-digest.
-        let por_randomness: Randomness = hashing::blake2_256(&{
-            let mut input =
-                [0u8; GLOBAL_CHALLENGE_HASHING_PREFIX_LEN + mem::size_of::<Signature>()];
-            input[..GLOBAL_CHALLENGE_HASHING_PREFIX_LEN]
-                .copy_from_slice(GLOBAL_CHALLENGE_HASHING_PREFIX);
-            input[GLOBAL_CHALLENGE_HASHING_PREFIX_LEN..]
-                .copy_from_slice(&pre_digest.solution.signature);
-
-            input
-        });
+        // Tag signature is validated by the client and is always valid here.
+        let por_randomness: Randomness = derive_randomness(
+            &pre_digest.solution.public_key,
+            pre_digest.solution.tag,
+            &pre_digest.solution.tag_signature,
+        )
+        .expect("Tag signature is verified by the client and is always valid; qed");
         // Store PoR randomness for block duration as it might be useful.
         PorRandomness::<T>::put(por_randomness);
 
@@ -1414,7 +1410,6 @@ fn check_vote<T: Config>(
                 max_plot_size: vote_verification_data.max_plot_size,
                 total_pieces: vote_verification_data.total_pieces,
             }),
-            solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
         },
     ) {
         debug!(
@@ -1571,7 +1566,6 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
 impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();
-        subject.reserve(RANDOMNESS_LENGTH);
         subject.extend_from_slice(
             PorRandomness::<T>::get()
                 .expect("PoR randomness is always set in block initialization; qed")

@@ -23,12 +23,12 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::{PublicKey, Signature};
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
-use sp_core::crypto::ByteArray;
 use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
-use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution, Tag};
 use subspace_solving::{
-    derive_global_challenge, is_local_challenge_valid, PieceDistance, SubspaceCodec,
+    derive_global_challenge, derive_target, verify_local_challenge, verify_tag_signature,
+    PieceDistance, SubspaceCodec,
 };
 
 /// Errors encountered by the Subspace authorship task.
@@ -192,19 +192,9 @@ pub fn check_reward_signature(
     public_key: &FarmerPublicKey,
     reward_signing_context: &SigningContext,
 ) -> Result<(), schnorrkel::SignatureError> {
-    let public_key = PublicKey::from_bytes(public_key.as_slice())?;
+    let public_key = PublicKey::from_bytes(public_key.as_ref())?;
     let signature = Signature::from_bytes(signature)?;
     public_key.verify(reward_signing_context.bytes(hash), &signature)
-}
-
-/// Check the solution signature validity.
-fn check_solution_signature<RewardAddress>(
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-    solution_signing_context: &SigningContext,
-) -> Result<(), schnorrkel::SignatureError> {
-    let public_key = PublicKey::from_bytes(solution.public_key.as_slice())?;
-    let signature = Signature::from_bytes(&solution.signature)?;
-    public_key.verify(solution_signing_context.bytes(&solution.tag), &signature)
 }
 
 /// Check if the tag of a solution's piece is valid.
@@ -257,16 +247,11 @@ where
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-pub fn is_within_solution_range<RewardAddress>(
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-    solution_range: u64,
-) -> bool {
-    let solution_tag = u64::from_be_bytes(solution.tag);
-    let target = u64::from_be_bytes(solution.local_challenge.derive_target());
+pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> bool {
+    let target = u64::from_be_bytes(target);
+    let tag = u64::from_be_bytes(tag);
 
-    let distance = subspace_core_primitives::bidirectional_distance(&target, &solution_tag);
-
-    distance <= solution_range / 2
+    subspace_core_primitives::bidirectional_distance(&target, &tag) <= solution_range / 2
 }
 
 /// Returns true if piece index is within farmer sector
@@ -309,8 +294,6 @@ pub struct VerifySolutionParams<'a> {
     ///
     /// If `None`, piece validity check will be skipped.
     pub piece_check_params: Option<PieceCheckParams>,
-    /// Signing context for solution signature
-    pub solution_signing_context: &'a SigningContext,
 }
 
 /// Solution verification
@@ -327,23 +310,38 @@ where
         solution_range,
         salt,
         piece_check_params,
-        solution_signing_context,
     } = params;
 
-    if let Err(error) = is_local_challenge_valid(
+    let public_key =
+        PublicKey::from_bytes(solution.public_key.as_ref()).expect("Always correct length; qed");
+
+    if let Err(error) = verify_local_challenge(
+        &public_key,
         derive_global_challenge(global_randomness, slot.into()),
         &solution.local_challenge,
-        solution.public_key.as_ref(),
     ) {
         return Err(VerificationError::BadLocalChallenge(slot, error));
     }
 
-    if !is_within_solution_range(solution, solution_range) {
+    // Verification of the local challenge was done above
+    let target = match derive_target(
+        &public_key,
+        derive_global_challenge(global_randomness, slot.into()),
+        &solution.local_challenge,
+    ) {
+        Ok(target) => target,
+        Err(error) => {
+            return Err(VerificationError::BadLocalChallenge(slot, error));
+        }
+    };
+
+    if !is_within_solution_range(solution.tag, target, solution_range) {
         return Err(VerificationError::OutsideOfSolutionRange(slot));
     }
 
-    check_solution_signature(solution, solution_signing_context)
-        .map_err(|e| VerificationError::BadSolutionSignature(slot, e))?;
+    if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &public_key) {
+        return Err(VerificationError::BadSolutionSignature(slot, error));
+    }
 
     check_piece_tag(slot, salt, solution)?;
 
