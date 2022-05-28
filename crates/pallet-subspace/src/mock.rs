@@ -41,7 +41,8 @@ use subspace_core_primitives::{
     Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
 use subspace_solving::{
-    create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
+    SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -195,7 +196,7 @@ pub fn go_to_block(
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_codec.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&encoding, {
+    let tag: Tag = create_tag(&encoding, {
         let salts = Subspace::salts();
         if salts.switch_next_block {
             salts.next.unwrap()
@@ -388,10 +389,9 @@ pub fn create_signed_vote(
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
 
-    let global_challenge =
-        subspace_solving::derive_global_challenge(global_randomnesses, slot.into());
+    let global_challenge = derive_global_challenge(global_randomnesses, slot.into());
 
-    let tag = subspace_solving::create_tag(&encoding, salt);
+    let tag = create_tag(&encoding, salt);
 
     let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
         height,

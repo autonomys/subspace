@@ -11,7 +11,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::FarmerMetadata;
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
@@ -181,7 +181,7 @@ async fn plotting_piece_eviction() {
                 //  allow `None` and not errors once that is the case
                 if let Ok(mut read_piece) = plot.read_piece(PieceIndexHash::from_index(piece_index))
                 {
-                    let correct_tag = subspace_solving::create_tag(&read_piece, salt);
+                    let correct_tag = create_tag(&read_piece, salt);
 
                     subspace_codec.decode(&mut read_piece, piece_index).unwrap();
 

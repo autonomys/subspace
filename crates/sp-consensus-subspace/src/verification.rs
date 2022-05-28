@@ -27,8 +27,8 @@ use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution, Tag};
 use subspace_solving::{
-    derive_global_challenge, derive_target, verify_local_challenge, verify_tag_signature,
-    PieceDistance, SubspaceCodec,
+    derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
+    verify_tag_signature, PieceDistance, SubspaceCodec,
 };
 
 /// Errors encountered by the Subspace authorship task.
@@ -206,7 +206,7 @@ fn check_piece_tag<Header, RewardAddress>(
 where
     Header: HeaderT,
 {
-    if !subspace_solving::is_tag_valid(&solution.encoding, salt, solution.tag) {
+    if !is_tag_valid(&solution.encoding, salt, solution.tag) {
         return Err(VerificationError::InvalidTag(slot));
     }
 

@@ -72,7 +72,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature};
 use subspace_solving::{
-    create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
@@ -589,7 +589,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = subspace_solving::create_tag(&encoding, new_slot_info.salt);
+                    let tag: Tag = create_tag(&encoding, new_slot_info.salt);
 
                     let _ = solution_sender
                         .send(Solution {

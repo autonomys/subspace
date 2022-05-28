@@ -35,7 +35,7 @@ use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::{
-    create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 use zeroize::Zeroizing;
 
@@ -161,7 +161,7 @@ async fn start_farming<Client>(
     }) = new_slot_notification_stream.next().await
     {
         if Into::<u64>::into(new_slot_info.slot) % 2 == 0 {
-            let tag: Tag = subspace_solving::create_tag(&encoding, new_slot_info.salt);
+            let tag: Tag = create_tag(&encoding, new_slot_info.salt);
 
             let _ = solution_sender
                 .send(Solution {
