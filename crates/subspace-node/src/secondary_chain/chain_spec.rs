@@ -93,7 +93,7 @@ pub fn gemini_config() -> ExecutionChainSpec {
         // Name
         "Subspace Gemini Execution 1",
         // ID
-        "subspace_gemini_execution_1",
+        "subspace_gemini_1a_execution",
         ChainType::Local,
         move || {
             testnet_genesis(vec![
@@ -107,7 +107,7 @@ pub fn gemini_config() -> ExecutionChainSpec {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-execution-1"),
+        Some("subspace-gemini-1a-execution"),
         None,
         // Properties
         Some(chain_spec_properties()),
