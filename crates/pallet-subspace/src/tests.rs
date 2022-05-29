@@ -1108,7 +1108,7 @@ fn vote_invalid_solution_signature() {
         );
 
         let Vote::V0 { solution, .. } = &mut signed_vote.vote;
-        solution.signature = rand::random::<[u8; 64]>().into();
+        solution.tag_signature.output = rand::random();
 
         // Fix signed vote signature after changed contents
         signed_vote.signature = FarmerSignature::unchecked_from(

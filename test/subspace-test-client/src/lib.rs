@@ -34,7 +34,9 @@ use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{
+    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+};
 use zeroize::Zeroizing;
 
 /// Subspace native executor instance.
@@ -107,10 +109,10 @@ pub fn start_farmer(new_full: &NewFull<Client>) {
             }) = reward_signing_notification_stream.next().await
             {
                 let header_hash: [u8; 32] = header_hash.into();
-                let reward_signature: schnorrkel::Signature =
-                    signing_pair.sign(substrate_ctx.bytes(&header_hash));
-                let signature: subspace_core_primitives::Signature =
-                    reward_signature.to_bytes().into();
+                let signature: subspace_core_primitives::RewardSignature = signing_pair
+                    .sign(substrate_ctx.bytes(&header_hash))
+                    .to_bytes()
+                    .into();
                 signature_sender
                     .send(
                         FarmerSignature::decode(&mut signature.encode().as_ref())
@@ -140,7 +142,6 @@ async fn start_farming<Client>(
     });
 
     let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
-    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let (piece_index, mut encoding) = archived_pieces_receiver
         .await
         .unwrap()
@@ -160,7 +161,7 @@ async fn start_farming<Client>(
     }) = new_slot_notification_stream.next().await
     {
         if Into::<u64>::into(new_slot_info.slot) % 2 == 0 {
-            let tag: Tag = subspace_solving::create_tag(&encoding, new_slot_info.salt);
+            let tag: Tag = create_tag(&encoding, new_slot_info.salt);
 
             let _ = solution_sender
                 .send(Solution {
@@ -168,11 +169,11 @@ async fn start_farming<Client>(
                     reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     piece_index,
                     encoding: encoding.clone(),
-                    signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
-                    local_challenge: keypair
-                        .sign(ctx.bytes(&new_slot_info.global_challenge))
-                        .to_bytes()
-                        .into(),
+                    tag_signature: create_tag_signature(&keypair, tag),
+                    local_challenge: derive_local_challenge(
+                        &keypair,
+                        new_slot_info.global_challenge,
+                    ),
                     tag,
                 })
                 .await;

@@ -16,9 +16,7 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{
-    ConsensusLog, FarmerPublicKey, FarmerSignature, SubspaceBlockWeight, SUBSPACE_ENGINE_ID,
-};
+use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
@@ -32,17 +30,6 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
-}
-
-impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
-    /// Returns the weight _added_ by this digest, not the cumulative weight
-    /// of the chain.
-    pub fn added_weight(&self) -> SubspaceBlockWeight {
-        let target = u64::from_be_bytes(self.solution.local_challenge.derive_target());
-        let tag = u64::from_be_bytes(self.solution.tag);
-
-        u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
-    }
 }
 
 /// Information about the global randomness for the block.

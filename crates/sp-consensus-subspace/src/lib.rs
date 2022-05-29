@@ -31,6 +31,8 @@ use crate::digests::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
+use schnorrkel::vrf::VRFOutput;
+use schnorrkel::{PublicKey, SignatureResult};
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
@@ -38,7 +40,10 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, RuntimeAppPublic};
 use sp_std::vec::Vec;
-use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{
+    Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
+};
+use subspace_solving::create_tag_signature_transcript;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -61,14 +66,10 @@ pub type FarmerPublicKey = app::Public;
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
+const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
+
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
-
-/// The cumulative weight of a Subspace block, i.e. sum of block weights starting
-/// at this block until the genesis block.
-///
-/// The closer solution's tag is to the target, the heavier it is.
-pub type SubspaceBlockWeight = u128;
 
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
@@ -239,6 +240,23 @@ impl Default for SolutionRanges {
             voting_next: None,
         }
     }
+}
+
+/// Derive on-chain randomness from tag signature.
+///
+/// NOTE: If you are not the signer then you must verify the local challenge before calling this
+/// function.
+pub fn derive_randomness(
+    public_key: &FarmerPublicKey,
+    tag: Tag,
+    tag_signature: &TagSignature,
+) -> SignatureResult<Randomness> {
+    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
+        &PublicKey::from_bytes(public_key.as_ref())?,
+        create_tag_signature_transcript(tag),
+    )?;
+
+    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
 }
 
 /// Subspace salts used for challenges.

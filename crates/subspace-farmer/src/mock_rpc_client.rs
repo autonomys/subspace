@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 
@@ -28,10 +28,10 @@ pub struct Inner {
     #[allow(dead_code)]
     reward_signing_info_sender: Mutex<Option<mpsc::Sender<RewardSigningInfo>>>,
     reward_signing_info_receiver: Arc<Mutex<mpsc::Receiver<RewardSigningInfo>>>,
-    reward_signature_sender: mpsc::Sender<RewardSignature>,
+    reward_signature_sender: mpsc::Sender<RewardSignatureResponse>,
     // TODO: Use this
     #[allow(dead_code)]
-    reward_signature_receiver: Arc<Mutex<mpsc::Receiver<RewardSignature>>>,
+    reward_signature_receiver: Arc<Mutex<mpsc::Receiver<RewardSignatureResponse>>>,
     archived_segments_sender: Mutex<Option<mpsc::Sender<ArchivedSegment>>>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
@@ -193,7 +193,10 @@ impl RpcClient for MockRpcClient {
         Ok(Box::pin(receiver))
     }
 
-    async fn submit_reward_signature(&self, signature: RewardSignature) -> Result<(), MockError> {
+    async fn submit_reward_signature(
+        &self,
+        signature: RewardSignatureResponse,
+    ) -> Result<(), MockError> {
         self.inner
             .reward_signature_sender
             .clone()

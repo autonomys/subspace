@@ -40,7 +40,10 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
     Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
-use subspace_solving::{SubspaceCodec, REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{
+    create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
+    SubspaceCodec, REWARD_SIGNING_CONTEXT,
+};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -190,11 +193,10 @@ pub fn go_to_block(
     };
 
     let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
-    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_codec.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = subspace_solving::create_tag(&encoding, {
+    let tag: Tag = create_tag(&encoding, {
         let salts = Subspace::salts();
         if salts.switch_next_block {
             salts.next.unwrap()
@@ -210,8 +212,11 @@ pub fn go_to_block(
             reward_address,
             piece_index: 0,
             encoding,
-            signature: keypair.sign(ctx.bytes(&tag)).to_bytes().into(),
-            local_challenge: LocalChallenge::default(),
+            tag_signature: create_tag_signature(keypair, tag),
+            local_challenge: LocalChallenge {
+                output: [0; 32],
+                proof: [0; 64],
+            },
             tag,
         },
     );
@@ -267,12 +272,10 @@ pub fn generate_equivocation_proof(
     let current_block = System::block_number();
     let current_slot = CurrentSlot::<Test>::get();
 
-    let ctx = schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT);
     let encoding = Piece::default();
     let tag: Tag = [(current_block % 8) as u8; 8];
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-    let signature = keypair.sign(ctx.bytes(&tag)).to_bytes();
 
     let make_header = |piece_index, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
@@ -283,8 +286,11 @@ pub fn generate_equivocation_proof(
                 reward_address,
                 piece_index,
                 encoding: encoding.clone(),
-                signature: signature.into(),
-                local_challenge: LocalChallenge::default(),
+                tag_signature: create_tag_signature(keypair, tag),
+                local_challenge: LocalChallenge {
+                    output: [0; 32],
+                    proof: [0; 64],
+                },
                 tag,
             },
         );
@@ -381,17 +387,11 @@ pub fn create_signed_vote(
     encoding: Piece,
     reward_address: <Test as frame_system::Config>::AccountId,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
-    let solution_signing_context = schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT);
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
 
-    let global_challenge =
-        subspace_solving::derive_global_challenge(global_randomnesses, slot.into());
-    let local_challenge = keypair
-        .sign(solution_signing_context.bytes(&global_challenge))
-        .to_bytes()
-        .into();
+    let global_challenge = derive_global_challenge(global_randomnesses, slot.into());
 
-    let tag = subspace_solving::create_tag(&encoding, salt);
+    let tag = create_tag(&encoding, salt);
 
     let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
         height,
@@ -402,11 +402,8 @@ pub fn create_signed_vote(
             reward_address,
             piece_index: 0,
             encoding,
-            signature: keypair
-                .sign(solution_signing_context.bytes(&tag))
-                .to_bytes()
-                .into(),
-            local_challenge,
+            tag_signature: create_tag_signature(keypair, tag),
+            local_challenge: derive_local_challenge(keypair, global_challenge),
             tag,
         },
     };
