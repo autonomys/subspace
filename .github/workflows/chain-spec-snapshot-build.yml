@@ -9,7 +9,7 @@ on:
   push:
     tags:
       - 'chain-spec-snapshot-*'
-      - 'gemini-*'
+      - 'chain-spec-gemini-*'
 
 jobs:
   chains-spec:
