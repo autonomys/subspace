@@ -1,13 +1,13 @@
 use anyhow::Error;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::context::SigningContext;
-use schnorrkel::{Keypair, PublicKey, SecretKey, Signature};
-use sp_core::sr25519::Pair;
+use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::path::Path;
 use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 /// Entropy used for identity generation.
 const ENTROPY_LENGTH: usize = 32;
@@ -15,6 +15,12 @@ const ENTROPY_LENGTH: usize = 32;
 #[derive(Debug, Encode, Decode)]
 struct IdentityFileContents {
     entropy: Vec<u8>,
+}
+
+fn keypair_from_entropy(entropy: &[u8]) -> Keypair {
+    mini_secret_from_entropy(entropy, "")
+        .expect("32 bytes can always build a key; qed")
+        .expand_to_keypair(ExpansionMode::Ed25519)
 }
 
 /// `Identity` struct is an abstraction of public & secret key related operations.
@@ -48,11 +54,8 @@ impl Identity {
             let IdentityFileContents { entropy } =
                 IdentityFileContents::decode(&mut bytes.as_ref())?;
 
-            let (pair, mut seed) = Pair::from_entropy(&entropy, None);
-            seed.zeroize();
-
             Ok(Some(Self {
-                keypair: Zeroizing::new(pair.into()),
+                keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
                 entropy: Zeroizing::new(entropy),
                 farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
                 substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
@@ -73,11 +76,9 @@ impl Identity {
         fs::write(identity_file, identity_file_contents.encode())?;
 
         let IdentityFileContents { entropy } = identity_file_contents;
-        let (pair, mut seed) = Pair::from_entropy(&entropy, None);
-        seed.zeroize();
 
         Ok(Self {
-            keypair: Zeroizing::new(pair.into()),
+            keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
             entropy: Zeroizing::new(entropy),
             farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
             substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
@@ -99,11 +100,9 @@ impl Identity {
         fs::write(identity_file, identity_file_contents.encode())?;
 
         let IdentityFileContents { entropy } = identity_file_contents;
-        let (pair, mut seed) = Pair::from_entropy(&entropy, None);
-        seed.zeroize();
 
         Ok(Self {
-            keypair: Zeroizing::new(pair.into()),
+            keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
             entropy: Zeroizing::new(entropy),
             farmer_solution_ctx: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
             substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
