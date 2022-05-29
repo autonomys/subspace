@@ -19,7 +19,7 @@
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
-use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, Database, SubstrateCli};
 use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
@@ -74,7 +74,13 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 fn main() -> Result<(), Error> {
-    let cli = Cli::from_args();
+    let mut cli = Cli::from_args();
+
+    cli.run
+        .import_params
+        .database_params
+        .database
+        .replace(Database::ParityDb);
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -204,7 +210,7 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let secondary_chain_cli = SecondaryChainCli::new(
+                let mut secondary_chain_cli = SecondaryChainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
@@ -213,6 +219,13 @@ fn main() -> Result<(), Error> {
                     })?,
                     cli.secondary_chain_args.iter(),
                 );
+                secondary_chain_cli
+                    .run
+                    .import_params
+                    .database_params
+                    .database
+                    .replace(Database::ParityDb);
+
                 let secondary_chain_config = SubstrateCli::create_configuration(
                     &secondary_chain_cli,
                     &secondary_chain_cli,
@@ -348,7 +361,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let secondary_chain_cli = SecondaryChainCli::new(
+                    let mut secondary_chain_cli = SecondaryChainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -357,6 +370,13 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.iter(),
                     );
+                    secondary_chain_cli
+                        .run
+                        .import_params
+                        .database_params
+                        .database
+                        .replace(Database::ParityDb);
+
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
                         &secondary_chain_cli,
