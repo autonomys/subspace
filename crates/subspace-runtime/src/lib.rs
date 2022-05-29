@@ -697,7 +697,7 @@ impl SignedExtension for CheckStorageAccess {
     type AdditionalSigned = ();
     type Pre = ();
 
-    fn additional_signed(&self) -> Result<Self::Pre, TransactionValidityError> {
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
         Ok(())
     }
 
@@ -737,7 +737,7 @@ impl SignedExtension for DisablePallets {
     type AdditionalSigned = ();
     type Pre = ();
 
-    fn additional_signed(&self) -> Result<Self::Pre, TransactionValidityError> {
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
         Ok(())
     }
 
