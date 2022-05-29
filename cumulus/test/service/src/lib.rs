@@ -400,7 +400,8 @@ pub fn node_config(
 		offchain_worker: OffchainWorkerConfig { enabled: true, indexing_enabled: false },
 		force_authoring: false,
 		disable_grandpa: false,
-		dev_key_seed: Some(key_seed),
+		// Force using Alice as the dev seed as the specified executor authority in primary chain spec is Alice.
+		dev_key_seed: Some(Keyring::Alice.to_seed()),
 		tracing_targets: None,
 		tracing_receiver: Default::default(),
 		max_runtime_instances: 8,
