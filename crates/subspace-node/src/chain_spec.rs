@@ -85,7 +85,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
         // Name
         "Subspace Gemini 1",
         // ID
-        "subspace_gemini_1",
+        "subspace_gemini_1a",
         ChainType::Custom("Subspace Gemini 1".to_string()),
         || {
             let sudo_account =
@@ -155,7 +155,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
             .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-1"),
+        Some("subspace-gemini-1a"),
         None,
         // Properties
         Some(chain_spec_properties()),
