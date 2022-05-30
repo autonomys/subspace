@@ -19,6 +19,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod feed_processor;
 mod fees;
 mod object_mapping;
 mod signed_extensions;
@@ -30,6 +31,8 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use crate::feed_processor::feed_processor;
+pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
@@ -41,9 +44,7 @@ use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
-use pallet_grandpa_finality_verifier::chain::Chain;
-use scale_info::TypeInfo;
+use pallet_feeds::feed_processor::FeedProcessor;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
@@ -51,13 +52,12 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::{Hasher, OpaqueMetadata};
+use sp_core::OpaqueMetadata;
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
-    Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, OpaqueExtrinsic, Perbill,
 };
 use sp_std::borrow::Cow;
 use sp_std::prelude::*;
@@ -408,95 +408,7 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
-/// Polkadot-like chain.
-pub struct PolkadotLike;
-impl Chain for PolkadotLike {
-    type BlockNumber = u32;
-    type Hash = <BlakeTwo256 as Hasher>::Out;
-    type Header = generic::Header<u32, BlakeTwo256>;
-    type Hasher = BlakeTwo256;
-}
-
-/// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
-pub struct GrandpaValidator<C>(C);
-
-impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
-    fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::initialize::<Runtime, C>(feed_id, data)
-    }
-
-    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        Ok(Some(
-            pallet_grandpa_finality_verifier::validate_finalized_block::<Runtime, C>(
-                feed_id, object,
-            )?
-            .encode(),
-        ))
-    }
-
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        extract_substrate_object_mapping::<C>(object)
-    }
-
-    fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::purge::<Runtime>(feed_id)
-    }
-}
-
-pub struct ParachainImporter<C>(C);
-
-impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
-    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        let block = C::decode_block::<Runtime>(object)?;
-        Ok(Some(
-            (block.block.header.hash(), *block.block.header.number()).encode(),
-        ))
-    }
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        extract_substrate_object_mapping::<C>(object)
-    }
-}
-
-fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMapping> {
-    let block = match C::decode_block::<Runtime>(object) {
-        Ok(block) => block,
-        // we just return empty if we failed to decode as this is not called in runtime
-        Err(_) => return vec![],
-    };
-
-    // we send two mappings pointed to the same object
-    // block height and block hash
-    // this would be easier for sync client to crawl through the descendents by block height
-    // if you already have a block hash, you can fetch the same block with it as well
-    vec![
-        FeedObjectMapping::Custom {
-            key: block.block.header.number().encode(),
-            offset: 0,
-        },
-        FeedObjectMapping::Custom {
-            key: block.block.header.hash().as_ref().to_vec(),
-            offset: 0,
-        },
-    ]
-}
-
-/// FeedProcessorId represents the available FeedProcessor impls
-#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
-pub enum FeedProcessorKind {
-    /// Content addressable Feed processor,
-    ContentAddressable,
-    /// Polkadot like relay chain Feed processor that validates grandpa justifications and indexes the entire block
-    PolkadotLike,
-    /// Parachain Feed processor that just indexes the entire block
-    ParachainLike,
-}
-
-impl Default for FeedProcessorKind {
-    fn default() -> Self {
-        FeedProcessorKind::ContentAddressable
-    }
-}
 
 parameter_types! {
     // Limit maximum number of feeds per account
@@ -510,13 +422,9 @@ impl pallet_feeds::Config for Runtime {
     type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
-        feed_processor_kind: FeedProcessorKind,
+        feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessor<Self::FeedId>> {
-        match feed_processor_kind {
-            FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
-            FeedProcessorKind::ContentAddressable => Box::new(()),
-            FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
-        }
+        feed_processor(feed_processor_kind)
     }
 }
 
