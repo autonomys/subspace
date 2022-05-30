@@ -20,6 +20,7 @@
 #![recursion_limit = "256"]
 
 mod object_mapping;
+mod signed_extensions;
 
 // Make execution WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
@@ -28,6 +29,8 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use crate::object_mapping::extract_block_object_mapping;
+use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode};
 use core::time::Duration;
 use frame_support::traits::{
@@ -39,7 +42,6 @@ use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use object_mapping::extract_block_object_mapping;
 use pallet_balances::{Call as BalancesCall, NegativeImbalance};
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
@@ -54,12 +56,10 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, SignedExtension,
-    Zero,
+    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-    ValidTransaction,
 };
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
@@ -686,84 +686,6 @@ pub type Address = sp_runtime::MultiAddress<AccountId, ()>;
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-
-/// Controls non-root access to feeds and object store
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct CheckStorageAccess;
-
-impl SignedExtension for CheckStorageAccess {
-    const IDENTIFIER: &'static str = "CheckStorageAccess";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate(
-        &self,
-        who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        if Subspace::is_storage_access_enabled() || Some(who) == Sudo::key().as_ref() {
-            Ok(ValidTransaction::default())
-        } else {
-            InvalidTransaction::BadSigner.into()
-        }
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-}
-
-/// Disable specific pallets.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct DisablePallets;
-
-impl SignedExtension for DisablePallets {
-    const IDENTIFIER: &'static str = "DisablePallets";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate_unsigned(
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        if matches!(call, Call::Executor(_)) {
-            InvalidTransaction::Call.into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-}
 
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
