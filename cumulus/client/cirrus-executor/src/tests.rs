@@ -11,10 +11,13 @@ use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::{traits::FetchRuntimeCode, Pair};
-use sp_executor::{ExecutionPhase, ExecutorPair, FraudProof, SignedExecutionReceipt};
+use sp_executor::{
+	BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, OpaqueBundle, SignedExecutionReceipt,
+};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{BlakeTwo256, Hash as HashT, Header as HeaderT},
+	OpaqueExtrinsic,
 };
 use std::collections::HashSet;
 
@@ -133,8 +136,35 @@ async fn execution_proof_creation_and_verification_should_work() {
 		charlie.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
 	}
 
-	// Wait until the test txs are included in the next block.
-	charlie.wait_for_blocks(1).await;
+	// Ideally we just need to wait one block and the test txs should be all included
+	// in the next block, but the txs are probably unable to be included if the machine
+	// is overloaded, hence we manually mock the bundles processing to avoid the occasional
+	// test failure (https://github.com/subspace/subspace/runs/5663241460?check_suite_focus=true).
+	//
+	// charlie.wait_for_blocks(1).await;
+
+	let bundles = vec![OpaqueBundle {
+		header: BundleHeader {
+			primary_hash: alice.client.info().best_hash,
+			slot_number: Default::default(),
+			extrinsics_root: Default::default(),
+		},
+		opaque_extrinsics: test_txs
+			.iter()
+			.map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
+			.collect(),
+	}];
+
+	charlie
+		.executor
+		.clone()
+		.process_bundles(
+			(alice.client.info().best_hash, alice.client.info().best_number),
+			bundles,
+			BlakeTwo256::hash_of(&[1u8; 64]).into(),
+			None,
+		)
+		.await;
 
 	let best_hash = charlie.client.info().best_hash;
 	let header = charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
@@ -164,14 +194,11 @@ async fn execution_proof_creation_and_verification_should_work() {
 		intermediate_roots.clone().into_iter().map(Hash::from).collect::<Vec<_>>()
 	);
 
-	// TODO: Fix the failed test https://github.com/subspace/subspace/runs/5663241460?check_suite_focus=true
-	// Somehow the runtime api `intermediate_roots()` occasionally returns an unexpected number of roots.
-	// Haven't figured it out hence we simply ignore the rest of test so that it won't randomly interrupt
-	// the process of other PRs.
-	if intermediate_roots.len() != test_txs.len() + 1 {
-		println!("🐛 ERROR: runtime API `intermediate_roots()` returned a wrong result");
-		return
-	}
+	assert_eq!(
+		intermediate_roots.len(),
+		test_txs.len() + 1,
+		"🐛 ERROR: runtime API `intermediate_roots()` obviously returned a wrong result"
+	);
 
 	let new_header = Header::new(
 		*header.number(),
