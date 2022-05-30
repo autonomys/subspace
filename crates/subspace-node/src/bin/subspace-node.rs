@@ -19,7 +19,7 @@
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
-use sc_cli::{ChainSpec, CliConfiguration, Database, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, Database, RunCmd, SubstrateCli};
 use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
@@ -73,14 +73,18 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
-
-    cli.run
-        .import_params
+// TODO: Remove once paritydb is the default option, ref https://github.com/paritytech/substrate/pull/11537
+fn force_use_parity_db(run: &mut RunCmd) {
+    run.import_params
         .database_params
         .database
         .replace(Database::ParityDb);
+}
+
+fn main() -> Result<(), Error> {
+    let mut cli = Cli::from_args();
+
+    force_use_parity_db(&mut cli.run);
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -219,12 +223,7 @@ fn main() -> Result<(), Error> {
                     })?,
                     cli.secondary_chain_args.iter(),
                 );
-                secondary_chain_cli
-                    .run
-                    .import_params
-                    .database_params
-                    .database
-                    .replace(Database::ParityDb);
+                force_use_parity_db(&mut secondary_chain_cli.run);
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
                     &secondary_chain_cli,
@@ -370,12 +369,7 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.iter(),
                     );
-                    secondary_chain_cli
-                        .run
-                        .import_params
-                        .database_params
-                        .database
-                        .replace(Database::ParityDb);
+                    force_use_parity_db(&mut secondary_chain_cli.run);
 
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
