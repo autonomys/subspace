@@ -19,6 +19,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod fees;
 mod object_mapping;
 mod signed_extensions;
 
@@ -29,20 +30,17 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Currency, ExistenceRequirement,
-    Get, Imbalance, WithdrawReasons,
-};
+use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use pallet_balances::{Call as BalancesCall, NegativeImbalance};
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 use scale_info::TypeInfo;
@@ -55,12 +53,8 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
-};
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
+use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
     Perbill,
@@ -185,9 +179,9 @@ impl Contains<Call> for CallFilter {
         !matches!(
             c,
             Call::Balances(
-                BalancesCall::transfer { .. }
-                    | BalancesCall::transfer_keep_alive { .. }
-                    | BalancesCall::transfer_all { .. }
+                pallet_balances::Call::transfer { .. }
+                    | pallet_balances::Call::transfer_keep_alive { .. }
+                    | pallet_balances::Call::transfer_all { .. }
             )
         )
     }
@@ -352,107 +346,6 @@ impl pallet_transaction_fees::Config for Runtime {
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
     type WeightInfo = ();
-}
-
-pub struct TransactionByteFee;
-
-impl Get<Balance> for TransactionByteFee {
-    fn get() -> Balance {
-        if cfg!(feature = "do-not-enforce-cost-of-storage") {
-            1
-        } else {
-            TransactionFees::transaction_byte_fee()
-        }
-    }
-}
-
-pub struct LiquidityInfo {
-    storage_fee: Balance,
-    imbalance: NegativeImbalance<Runtime>,
-}
-
-/// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges transaction
-/// fees and distributes storage/compute fees and tip separately.
-pub struct OnChargeTransaction;
-
-impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
-    type LiquidityInfo = Option<LiquidityInfo>;
-    type Balance = Balance;
-
-    fn withdraw_fee(
-        who: &AccountId,
-        call: &Call,
-        _info: &DispatchInfoOf<Call>,
-        fee: Self::Balance,
-        tip: Self::Balance,
-    ) -> Result<Self::LiquidityInfo, TransactionValidityError> {
-        if fee.is_zero() {
-            return Ok(None);
-        }
-
-        let withdraw_reason = if tip.is_zero() {
-            WithdrawReasons::TRANSACTION_PAYMENT
-        } else {
-            WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
-        };
-
-        let withdraw_result = <Balances as Currency<AccountId>>::withdraw(
-            who,
-            fee,
-            withdraw_reason,
-            ExistenceRequirement::KeepAlive,
-        );
-        let imbalance = withdraw_result.map_err(|_error| InvalidTransaction::Payment)?;
-
-        // Separate storage fee while we have access to the call data structure to calculate it.
-        let storage_fee = TransactionByteFee::get()
-            * Balance::try_from(call.encoded_size())
-                .expect("Size of the call never exceeds balance units; qed");
-
-        Ok(Some(LiquidityInfo {
-            storage_fee,
-            imbalance,
-        }))
-    }
-
-    fn correct_and_deposit_fee(
-        who: &AccountId,
-        _dispatch_info: &DispatchInfoOf<Call>,
-        _post_info: &PostDispatchInfoOf<Call>,
-        corrected_fee: Self::Balance,
-        tip: Self::Balance,
-        liquidity_info: Self::LiquidityInfo,
-    ) -> Result<(), TransactionValidityError> {
-        if let Some(LiquidityInfo {
-            storage_fee,
-            imbalance,
-        }) = liquidity_info
-        {
-            // Calculate how much refund we should return
-            let refund_amount = imbalance.peek().saturating_sub(corrected_fee);
-            // Refund to the the account that paid the fees. If this fails, the account might have
-            // dropped below the existential balance. In that case we don't refund anything.
-            let refund_imbalance = Balances::deposit_into_existing(who, refund_amount)
-                .unwrap_or_else(|_| <Balances as Currency<AccountId>>::PositiveImbalance::zero());
-            // Merge the imbalance caused by paying the fees and refunding parts of it again.
-            let adjusted_paid = imbalance
-                .offset(refund_imbalance)
-                .same()
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
-
-            // Split the tip from the total fee that ended up being paid.
-            let (tip, fee) = adjusted_paid.split(tip);
-            // Split paid storage and compute fees so that they can be distributed separately.
-            let (paid_storage_fee, paid_compute_fee) = fee.split(storage_fee);
-
-            TransactionFees::note_transaction_fees(
-                paid_storage_fee.peek(),
-                paid_compute_fee.peek(),
-                tip.peek(),
-            );
-        }
-        Ok(())
-    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
