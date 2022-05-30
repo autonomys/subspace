@@ -26,10 +26,10 @@ mod tests;
 
 use codec::{Decode, Encode};
 pub use pallet::*;
-use sp_consensus_subspace::{
-    offence::{Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence},
-    FarmerPublicKey,
+use sp_consensus_subspace::offence::{
+    Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence,
 };
+use sp_consensus_subspace::FarmerPublicKey;
 use sp_runtime::traits::Hash;
 use sp_std::prelude::*;
 

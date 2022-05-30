@@ -2,6 +2,7 @@ FROM ubuntu:22.04
 
 ARG RUSTC_VERSION=nightly-2022-05-16
 ARG PROFILE=production
+ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 # Incremental compilation here isn't helpful
@@ -39,7 +40,7 @@ RUN \
         --package subspace-runtime \
         --features=subspace-runtime/do-not-enforce-cost-of-storage && \
     mv \
-      target/$PROFILE/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
+      target/*/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
       subspace_runtime.compact.compressed.wasm && \
     rm -rf target
 

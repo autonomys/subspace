@@ -7,11 +7,14 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use futures::{future, future::Either, StreamExt};
+use futures::future::Either;
+use futures::{future, StreamExt};
 use std::sync::mpsc;
 use std::time::Instant;
-use subspace_core_primitives::{LocalChallenge, PublicKey, Salt, Solution};
-use subspace_rpc_primitives::{RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse};
+use subspace_core_primitives::{PublicKey, Salt, Solution};
+use subspace_rpc_primitives::{
+    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
@@ -150,7 +153,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 let signature = identity.sign_reward_hash(&hash);
 
                 match client
-                    .submit_reward_signature(RewardSignature {
+                    .submit_reward_signature(RewardSignatureResponse {
                         hash,
                         signature: Some(signature.to_bytes().into()),
                     })
@@ -184,21 +187,19 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             let plot = plot.clone();
 
             move || {
-                let local_challenge = derive_local_challenge(slot_info.global_challenge, &identity);
+                let (local_challenge, target) =
+                    identity.derive_local_challenge_and_target(slot_info.global_challenge);
+
                 // Try to first find a block authoring solution, then if not found try to find a vote
                 let maybe_tag = commitments
-                    .find_by_range(
-                        local_challenge.derive_target(),
-                        slot_info.solution_range,
-                        slot_info.salt,
-                    )
+                    .find_by_range(target, slot_info.solution_range, slot_info.salt)
                     .or_else(|| {
                         if slot_info.solution_range == slot_info.voting_solution_range {
                             return None;
                         }
 
                         commitments.find_by_range(
-                            local_challenge.derive_target(),
+                            target,
                             slot_info.voting_solution_range,
                             slot_info.salt,
                         )
@@ -213,7 +214,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             reward_address,
                             piece_index,
                             encoding,
-                            signature: identity.sign_farmer_solution(&tag).to_bytes().into(),
+                            tag_signature: identity.create_tag_signature(tag),
                             local_challenge,
                             tag,
                         };
@@ -329,15 +330,4 @@ fn update_commitments(
             });
         }
     }
-}
-
-/// Derive local challenge for farmer's identity from the global challenge.
-fn derive_local_challenge<C: AsRef<[u8]>>(
-    global_challenge: C,
-    identity: &Identity,
-) -> LocalChallenge {
-    identity
-        .sign_farmer_solution(global_challenge.as_ref())
-        .to_bytes()
-        .into()
 }

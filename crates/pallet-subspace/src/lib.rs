@@ -29,11 +29,9 @@ mod tests;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
-use frame_support::{
-    dispatch::{DispatchResult, DispatchResultWithPostInfo},
-    traits::{Get, OnTimestampSet},
-    weights::{Pays, Weight},
-};
+use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
+use frame_support::traits::{Get, OnTimestampSet};
+use frame_support::weights::{Pays, Weight};
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, info, warn};
 pub use pallet::*;
@@ -47,8 +45,9 @@ use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHand
 use sp_consensus_subspace::verification::{
     PieceCheckParams, VerificationError, VerifySolutionParams,
 };
-use sp_consensus_subspace::{verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote};
-use sp_io::hashing;
+use sp_consensus_subspace::{
+    derive_randomness, verification, EquivocationProof, FarmerPublicKey, SignedVote, Vote,
+};
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{
     BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
@@ -57,15 +56,14 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Salt, Signature, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
-use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 
-const GLOBAL_CHALLENGE_HASHING_PREFIX: &[u8] = b"global_challenge";
-const GLOBAL_CHALLENGE_HASHING_PREFIX_LEN: usize = GLOBAL_CHALLENGE_HASHING_PREFIX.len();
 const SALT_HASHING_PREFIX: &[u8] = b"salt";
 const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
@@ -153,7 +151,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
+    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote};
     use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
@@ -300,6 +298,8 @@ mod pallet {
     pub struct GenesisConfig {
         /// Whether rewards should be enabled.
         pub enable_rewards: bool,
+        /// Whether storage access should be enabled.
+        pub enable_storage_access: bool,
     }
 
     #[cfg(feature = "std")]
@@ -307,6 +307,7 @@ mod pallet {
         fn default() -> Self {
             Self {
                 enable_rewards: true,
+                enable_storage_access: true,
             }
         }
     }
@@ -315,8 +316,9 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             if self.enable_rewards {
-                EnableRewards::<T>::put::<T::BlockNumber>(One::one())
+                EnableRewards::<T>::put::<T::BlockNumber>(One::one());
             }
+            IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
         }
     }
 
@@ -436,6 +438,11 @@ mod pallet {
     #[pallet::storage]
     pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
 
+    /// Enable storage access for all users.
+    #[pallet::storage]
+    #[pallet::getter(fn is_storage_access_enabled)]
+    pub(super) type IsStorageAccessEnabled<T> = StorageValue<_, bool, ValueQuery>;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -480,7 +487,7 @@ mod pallet {
             Self::do_store_root_blocks(root_blocks)
         }
 
-        /// Enables solution range adjustment after every era.
+        /// Enable solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_solution_range_adjustment(
@@ -508,26 +515,10 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            let Vote::V0 {
-                height,
-                parent_hash,
-                solution,
-                ..
-            } = signed_vote.vote;
-
-            // No special handling needed here since voters are collected in `pre_dispatch`.
-
-            Self::deposit_event(Event::FarmerVote {
-                public_key: solution.public_key,
-                reward_address: solution.reward_address,
-                height,
-                parent_hash,
-            });
-
-            Ok(())
+            Self::do_vote(*signed_vote)
         }
 
-        /// Enables rewards for blocks and votes at specified block height.
+        /// Enable rewards for blocks and votes at specified block height.
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_rewards(
             origin: OriginFor<T>,
@@ -536,6 +527,16 @@ mod pallet {
             ensure_root(origin)?;
 
             Self::do_enable_rewards(height)
+        }
+
+        /// Enable storage access for all users.
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn enable_storage_access(origin: OriginFor<T>) -> DispatchResult {
+            ensure_root(origin)?;
+
+            IsStorageAccessEnabled::<T>::put(true);
+
+            Ok(())
         }
     }
 
@@ -787,7 +788,7 @@ impl<T: Config> Pallet<T> {
         CurrentSlot::<T>::put(pre_digest.slot);
 
         {
-            let key = (pre_digest.solution.public_key, pre_digest.slot);
+            let key = (pre_digest.solution.public_key.clone(), pre_digest.slot);
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, slot) = key;
 
@@ -855,16 +856,13 @@ impl<T: Config> Pallet<T> {
         }
 
         // Extract PoR randomness from pre-digest.
-        let por_randomness: Randomness = hashing::blake2_256(&{
-            let mut input =
-                [0u8; GLOBAL_CHALLENGE_HASHING_PREFIX_LEN + mem::size_of::<Signature>()];
-            input[..GLOBAL_CHALLENGE_HASHING_PREFIX_LEN]
-                .copy_from_slice(GLOBAL_CHALLENGE_HASHING_PREFIX);
-            input[GLOBAL_CHALLENGE_HASHING_PREFIX_LEN..]
-                .copy_from_slice(&pre_digest.solution.signature);
-
-            input
-        });
+        // Tag signature is validated by the client and is always valid here.
+        let por_randomness: Randomness = derive_randomness(
+            &pre_digest.solution.public_key,
+            pre_digest.solution.tag,
+            &pre_digest.solution.tag_signature,
+        )
+        .expect("Tag signature is verified by the client and is always valid; qed");
         // Store PoR randomness for block duration as it might be useful.
         PorRandomness::<T>::put(por_randomness);
 
@@ -991,6 +989,28 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(())
+    }
+
+    fn do_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) -> DispatchResult {
+        let Vote::V0 {
+            height,
+            parent_hash,
+            solution,
+            ..
+        } = signed_vote.vote;
+
+        if BlockList::<T>::contains_key(&solution.public_key) {
+            Err(DispatchError::Other("Equivocated"))
+        } else {
+            Self::deposit_event(Event::FarmerVote {
+                public_key: solution.public_key,
+                reward_address: solution.reward_address,
+                height,
+                parent_hash,
+            });
+
+            Ok(())
+        }
     }
 
     fn do_enable_rewards(height: Option<T::BlockNumber>) -> DispatchResult {
@@ -1132,7 +1152,24 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_vote(
         signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
-        check_vote::<T>(signed_vote, true).map_err(Into::into)
+        match check_vote::<T>(signed_vote, true) {
+            Ok(()) => Ok(()),
+            Err(CheckVoteError::Equivocated(offence)) => {
+                // Report equivocation, we don't care about duplicate report here
+                if let Err(OffenceError::Other(code)) =
+                    T::HandleEquivocation::report_offence(offence)
+                {
+                    debug!(
+                        target: "runtime::subspace",
+                        "Failed to submit voter offence report with code {code}"
+                    );
+                }
+
+                // Return Ok such that changes from this pre-dispatch are persisted
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 
@@ -1197,7 +1234,7 @@ where
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
     InvalidSolution(VerificationError<Header>),
-    Equivocated,
+    Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
 
 impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
@@ -1216,7 +1253,7 @@ where
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
-            CheckVoteError::Equivocated => InvalidTransaction::BadSigner,
+            CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
         })
     }
 }
@@ -1373,7 +1410,6 @@ fn check_vote<T: Config>(
                 max_plot_size: vote_verification_data.max_plot_size,
                 total_pieces: vote_verification_data.total_pieces,
             }),
-            solution_signing_context: &schnorrkel::signing_context(SOLUTION_SIGNING_CONTEXT),
         },
     ) {
         debug!(
@@ -1408,20 +1444,10 @@ fn check_vote<T: Config>(
 
         let (public_key, _slot) = key;
 
-        let offence = SubspaceEquivocationOffence {
+        return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
             offender: public_key,
-        };
-
-        // Report equivocation, we don't care about duplicate report here
-        if let Err(OffenceError::Other(code)) = T::HandleEquivocation::report_offence(offence) {
-            debug!(
-                target: "runtime::subspace",
-                "Failed to submit voter offence report with code {code}"
-            );
-        }
-
-        return Err(CheckVoteError::Equivocated);
+        }));
     }
 
     if pre_dispatch {
@@ -1540,7 +1566,6 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
 impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();
-        subject.reserve(RANDOMNESS_LENGTH);
         subject.extend_from_slice(
             PorRandomness::<T>::get()
                 .expect("PoR randomness is always set in block initialization; qed")

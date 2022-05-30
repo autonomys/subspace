@@ -1,15 +1,16 @@
-use crate::{grandpa::GrandpaJustification, Config, EncodedBlockHash, EncodedBlockNumber, Error};
+use crate::grandpa::GrandpaJustification;
+use crate::{Config, EncodedBlockHash, EncodedBlockNumber, Error};
 use codec::Decode;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
-use sp_runtime::{
-    generic,
-    traits::{
-        AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
-        MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
-    },
+use sp_runtime::generic;
+use sp_runtime::traits::{
+    AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
+    MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
 };
-use sp_std::{hash::Hash, str::FromStr, vec::Vec};
+use sp_std::hash::Hash;
+use sp_std::str::FromStr;
+use sp_std::vec::Vec;
 
 pub(crate) type OpaqueExtrinsic = Vec<u8>;
 pub type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;

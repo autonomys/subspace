@@ -1,15 +1,14 @@
+use crate::object_mappings::ObjectMappings;
+use crate::plot;
 use crate::plot::Plot;
-use crate::{object_mappings::ObjectMappings, plot};
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, Sha256Hash};
 use tracing::{debug, error};

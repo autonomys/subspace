@@ -3,7 +3,8 @@ use frame_support::sp_io;
 use hex_literal::hex;
 use sp_objects::runtime_decl_for_ObjectsApi::ObjectsApi;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
-use subspace_core_primitives::{crypto, objects::BlockObjectMapping, Sha256Hash};
+use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::{crypto, Sha256Hash};
 use subspace_runtime::{
     Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
 };

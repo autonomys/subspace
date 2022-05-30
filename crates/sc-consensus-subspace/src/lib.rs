@@ -38,7 +38,8 @@ use log::{debug, info, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
-use sc_client_api::{backend::AuxStore, BlockchainEvents, ProvideUncles, UsageProvider};
+use sc_client_api::backend::AuxStore;
+use sc_client_api::{BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -52,6 +53,7 @@ use sc_consensus_slots::{
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
+use schnorrkel::PublicKey;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
@@ -72,12 +74,14 @@ use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{One, Zero};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::pin::Pin;
+use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
-use subspace_solving::{REWARD_SIGNING_CONTEXT, SOLUTION_SIGNING_CONTEXT};
+use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -412,7 +416,6 @@ where
         force_authoring,
         backoff_authoring_blocks,
         subspace_link: subspace_link.clone(),
-        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
@@ -615,7 +618,6 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     select_chain: SelectChain,
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
-    solution_signing_context: SigningContext,
     reward_signing_context: SigningContext,
     block: PhantomData<Block>,
 }
@@ -773,7 +775,6 @@ where
                         solution_range,
                         salt,
                         piece_check_params: None,
-                        solution_signing_context: &self.solution_signing_context,
                     },
                     reward_signing_context: &self.reward_signing_context,
                 },
@@ -1132,7 +1133,29 @@ where
                 })?
         };
 
-        let total_weight = parent_weight + pre_digest.added_weight();
+        let added_weight = {
+            let global_randomness = find_global_randomness_descriptor(&block.header)
+                .expect("Verification of the header was done before this; qed")
+                .expect("Verification of the header was done before this; qed")
+                .global_randomness;
+            let global_challenge =
+                derive_global_challenge(&global_randomness, pre_digest.slot.into());
+
+            // Verification of the local challenge was done before this
+            let target = u64::from_be_bytes(
+                derive_target(
+                    &PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
+                        .expect("Always correct length; qed"),
+                    global_challenge,
+                    &pre_digest.solution.local_challenge,
+                )
+                .expect("Verification of the local challenge was done before this; qed"),
+            );
+            let tag = u64::from_be_bytes(pre_digest.solution.tag);
+
+            u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
+        };
+        let total_weight = parent_weight + added_weight;
 
         let info = self.client.info();
 
@@ -1308,7 +1331,6 @@ where
         slot_now,
         telemetry,
         client,
-        solution_signing_context: schnorrkel::context::signing_context(SOLUTION_SIGNING_CONTEXT),
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block: PhantomData::default(),
     };

@@ -32,10 +32,8 @@ use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
 };
-use frame_support::weights::{
-    constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-    ConstantMultiplier, IdentityFee,
-};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
@@ -45,7 +43,8 @@ use pallet_grandpa_finality_verifier::chain::Chain;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote, SolutionRanges, Vote,
+    derive_randomness, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
+    SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
@@ -858,7 +857,18 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
 
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
-        BlakeTwo256::hash_of(&pre_digest.solution.signature).into()
+        let seed: &[u8] = b"extrinsics-shuffling-seed";
+        let randomness = derive_randomness(
+            &pre_digest.solution.public_key,
+            pre_digest.solution.tag,
+            &pre_digest.solution.tag_signature,
+        )
+        .expect("Tag signature is verified by the client and must always be valid; qed");
+        let mut data = Vec::with_capacity(seed.len() + randomness.len());
+        data.extend_from_slice(seed);
+        data.extend_from_slice(&randomness);
+
+        BlakeTwo256::hash_of(&data).into()
     }
 }
 

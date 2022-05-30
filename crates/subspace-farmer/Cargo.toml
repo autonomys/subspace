@@ -16,6 +16,8 @@ anyhow = "1.0.57"
 arc-swap = "1.5.0"
 async-oneshot = "0.5.0"
 async-trait = "0.1.53"
+base58 = "0.2.0"
+blake2-rfc = "0.2.18"
 clap = { version = "3.1.18", features = ["color", "derive"] }
 dirs = "4.0.0"
 event-listener-primitives = "2.0.1"
@@ -35,13 +37,13 @@ rayon = "1.5.3"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
-sp-core = { version = "6.0.0", git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 ss58-registry = "1.18.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread"] }

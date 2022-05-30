@@ -28,46 +28,43 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::Contains;
-use frame_support::{
-    construct_runtime, parameter_types,
-    traits::{
-        ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-        Imbalance, WithdrawReasons,
-    },
-    weights::{
-        constants::{RocksDbWeight, WEIGHT_PER_SECOND},
-        ConstantMultiplier, IdentityFee,
-    },
+use frame_support::traits::{
+    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Currency, ExistenceRequirement,
+    Get, Imbalance, WithdrawReasons,
 };
-use frame_system::{
-    limits::{BlockLength, BlockWeights},
-    EnsureNever,
-};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee};
+use frame_support::{construct_runtime, parameter_types};
+use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::EnsureNever;
 use pallet_balances::{Call as BalancesCall, NegativeImbalance};
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
+use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    digests::CompatibleDigestItem, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts,
-    SignedVote, SolutionRanges, Vote,
+    derive_randomness, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
+    SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{FraudProof, OpaqueBundle};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, SignedExtension,
+    Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
 };
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
     Perbill,
 };
+use sp_std::borrow::Cow;
 use sp_std::iter::Peekable;
-use sp_std::{borrow::Cow, prelude::*};
+use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -191,7 +188,7 @@ impl Contains<Call> for CallFilter {
                 BalancesCall::transfer { .. }
                     | BalancesCall::transfer_keep_alive { .. }
                     | BalancesCall::transfer_all { .. }
-            ) | Call::Executor(_)
+            )
         )
     }
 }
@@ -689,6 +686,85 @@ pub type Address = sp_runtime::MultiAddress<AccountId, ()>;
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+
+/// Controls non-root access to feeds and object store
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+pub struct CheckStorageAccess;
+
+impl SignedExtension for CheckStorageAccess {
+    const IDENTIFIER: &'static str = "CheckStorageAccess";
+    type AccountId = <Runtime as frame_system::Config>::AccountId;
+    type Call = <Runtime as frame_system::Config>::Call;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn validate(
+        &self,
+        who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> TransactionValidity {
+        if Subspace::is_storage_access_enabled() || Some(who) == Sudo::key().as_ref() {
+            Ok(ValidTransaction::default())
+        } else {
+            InvalidTransaction::BadSigner.into()
+        }
+    }
+
+    fn pre_dispatch(
+        self,
+        _who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+}
+
+/// Disable specific pallets.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+pub struct DisablePallets;
+
+impl SignedExtension for DisablePallets {
+    const IDENTIFIER: &'static str = "DisablePallets";
+    type AccountId = <Runtime as frame_system::Config>::AccountId;
+    type Call = <Runtime as frame_system::Config>::Call;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn pre_dispatch(
+        self,
+        _who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn validate_unsigned(
+        call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> TransactionValidity {
+        if matches!(call, Call::Executor(_)) {
+            InvalidTransaction::Call.into()
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+}
+
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
     frame_system::CheckNonZeroSender<Runtime>,
@@ -699,6 +775,8 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    CheckStorageAccess,
+    DisablePallets,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
@@ -927,7 +1005,18 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
 
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
-        BlakeTwo256::hash_of(&pre_digest.solution.signature).into()
+        let seed: &[u8] = b"extrinsics-shuffling-seed";
+        let randomness = derive_randomness(
+            &pre_digest.solution.public_key,
+            pre_digest.solution.tag,
+            &pre_digest.solution.tag_signature,
+        )
+        .expect("Tag signature is verified by the client and must always be valid; qed");
+        let mut data = Vec::with_capacity(seed.len() + randomness.len());
+        data.extend_from_slice(seed);
+        data.extend_from_slice(&randomness);
+
+        BlakeTwo256::hash_of(&data).into()
     }
 }
 

@@ -9,11 +9,11 @@ use rayon::prelude::*;
 use std::sync::Arc;
 use std::{ops::ControlFlow, path::PathBuf};
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
-use subspace_networking::{
-    libp2p::{identity::sr25519, multiaddr::Protocol, Multiaddr},
-    multimess::MultihashCode,
-    Config,
-};
+use subspace_networking::libp2p::identity::sr25519;
+use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::multimess::MultihashCode;
+use subspace_networking::Config;
 use subspace_solving::SubspaceCodec;
 use tracing::info;
 

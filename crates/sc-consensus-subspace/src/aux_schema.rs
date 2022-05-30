@@ -21,7 +21,12 @@ use codec::{Decode, Encode};
 
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use sp_consensus_subspace::SubspaceBlockWeight;
+
+/// The cumulative weight of a Subspace block, i.e. sum of block weights starting
+/// at this block until the genesis block.
+///
+/// The closer solution's tag is to the target, the heavier it is.
+type SubspaceBlockWeight = u128;
 
 /// The aux storage key used to store the block weight of the given block hash.
 fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {

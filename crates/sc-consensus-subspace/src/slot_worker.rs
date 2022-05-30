@@ -20,8 +20,7 @@ use crate::{
     find_pre_digest, verification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
     SubspaceLink,
 };
-use futures::StreamExt;
-use futures::TryFutureExt;
+use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
@@ -31,6 +30,7 @@ use sc_consensus_slots::{
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
+use schnorrkel::PublicKey;
 use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
@@ -43,8 +43,10 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
-use std::{pin::Pin, sync::Arc};
+use std::pin::Pin;
+use std::sync::Arc;
 use subspace_core_primitives::{Randomness, Salt, Solution};
+use subspace_solving::{derive_global_challenge, derive_target};
 
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
@@ -55,7 +57,6 @@ pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) force_authoring: bool,
     pub(super) backoff_authoring_blocks: Option<BS>,
     pub(super) subspace_link: SubspaceLink<Block>,
-    pub(super) solution_signing_context: SigningContext,
     pub(super) reward_signing_context: SigningContext,
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
@@ -129,13 +130,11 @@ where
             extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let (salt, next_salt) =
             extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+        let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge: subspace_solving::derive_global_challenge(
-                &global_randomness,
-                slot.into(),
-            ),
+            global_challenge,
             salt,
             next_salt,
             solution_range,
@@ -227,17 +226,24 @@ where
                             max_plot_size,
                             total_pieces,
                         }),
-                        solution_signing_context: &self.solution_signing_context,
                     },
                 );
 
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
             } else {
+                // Verification of the local challenge was done before this
+                let target = derive_target(
+                    &PublicKey::from_bytes(solution.public_key.as_ref())
+                        .expect("Always correct length; qed"),
+                    global_challenge,
+                    &solution.local_challenge,
+                )
+                .expect("Verification of the local challenge was done before this; qed");
                 // If solution is of high enough quality and block pre-digest wasn't produced yet,
                 // block reward is claimed
                 if maybe_pre_digest.is_none()
-                    && verification::is_within_solution_range(&solution, solution_range)
+                    && verification::is_within_solution_range(target, solution.tag, solution_range)
                 {
                     info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 

@@ -1,7 +1,6 @@
 use libp2p::kad::record::Key;
-use libp2p::kad::store;
 use libp2p::kad::store::{Error, RecordStore};
-use libp2p::kad::{ProviderRecord, Record};
+use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use std::borrow::Cow;

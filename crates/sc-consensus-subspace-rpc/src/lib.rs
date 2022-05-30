@@ -20,11 +20,9 @@
 #![feature(try_blocks)]
 
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use jsonrpsee::{
-    core::{async_trait, Error as JsonRpseeError, RpcResult},
-    proc_macros::rpc,
-    PendingSubscription,
-};
+use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
+use jsonrpsee::proc_macros::rpc;
+use jsonrpsee::PendingSubscription;
 use log::{error, warn};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -49,7 +47,7 @@ use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::Solution;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -82,7 +80,7 @@ pub trait SubspaceRpcApi {
     fn subscribe_reward_signing(&self);
 
     #[method(name = "subspace_submitRewardSignature")]
-    fn submit_reward_signature(&self, reward_signature: RewardSignature) -> RpcResult<()>;
+    fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()>;
 
     /// Archived segment subscription
     #[subscription(
@@ -105,7 +103,7 @@ struct SolutionResponseSenders {
 #[derive(Default)]
 struct BlockSignatureSenders {
     current_hash: H256,
-    senders: Vec<async_oneshot::Sender<RewardSignature>>,
+    senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
 #[derive(Default)]
@@ -250,35 +248,18 @@ where
                     let forward_solution_fut = async move {
                         if let Ok(solution_response) = response_receiver.await {
                             if let Some(solution) = solution_response.maybe_solution {
-                                let public_key =
-                                    match FarmerPublicKey::from_slice(&solution.public_key) {
-                                        Ok(public_key) => public_key,
-                                        Err(()) => {
-                                            warn!(
-                                                "Failed to convert public key: {:?}",
-                                                solution.public_key
-                                            );
-                                            return;
-                                        }
-                                    };
+                                let public_key = FarmerPublicKey::from_slice(&solution.public_key)
+                                    .expect("Always correct length; qed");
                                 let reward_address =
-                                    match FarmerPublicKey::from_slice(&solution.reward_address) {
-                                        Ok(public_key) => public_key,
-                                        Err(()) => {
-                                            warn!(
-                                                "Failed to convert reward address: {:?}",
-                                                solution.reward_address,
-                                            );
-                                            return;
-                                        }
-                                    };
+                                    FarmerPublicKey::from_slice(&solution.reward_address)
+                                        .expect("Always correct length; qed");
 
                                 let solution = Solution {
                                     public_key,
                                     reward_address,
                                     piece_index: solution.piece_index,
                                     encoding: solution.encoding,
-                                    signature: solution.signature,
+                                    tag_signature: solution.tag_signature,
                                     local_challenge: solution.local_challenge,
                                     tag: solution.tag,
                                 };
@@ -405,7 +386,7 @@ where
         );
     }
 
-    fn submit_reward_signature(&self, reward_signature: RewardSignature) -> RpcResult<()> {
+    fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()> {
         let reward_signature_senders = self.reward_signature_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send

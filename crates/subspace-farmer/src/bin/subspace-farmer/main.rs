@@ -1,10 +1,11 @@
 mod bench_rpc_client;
 mod commands;
+mod ss58;
 mod utils;
 
 use anyhow::Result;
 use clap::{ArgEnum, Parser, ValueHint};
-use sp_core::crypto::PublicError;
+use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -12,12 +13,11 @@ use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
-use tracing_subscriber::{
-    filter::LevelFilter,
-    fmt::{self, format::FmtSpan},
-    prelude::*,
-    EnvFilter,
-};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::{self};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]
@@ -36,7 +36,7 @@ struct FarmingArgs {
     #[clap(long, short, default_value = "127.0.0.1:9955")]
     ws_server_listen_addr: SocketAddr,
     /// Address for farming rewards
-    #[clap(long, parse(try_from_str = parse_reward_address))]
+    #[clap(long, parse(try_from_str = parse_ss58_reward_address))]
     reward_address: PublicKey,
     /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
     ///
@@ -126,11 +126,6 @@ fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
         .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
         .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
         .unwrap_or_else(|| s.parse::<u64>())
-}
-
-fn parse_reward_address(s: &str) -> Result<PublicKey, PublicError> {
-    s.parse::<sp_core::sr25519::Public>()
-        .map(|key| PublicKey::from(key.0))
 }
 
 // TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted

@@ -9,7 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignature, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// `WsClient` wrapper.
@@ -85,7 +85,7 @@ impl RpcClient for NodeRpcClient {
     /// Submit a block signature
     async fn submit_reward_signature(
         &self,
-        reward_signature: RewardSignature,
+        reward_signature: RewardSignatureResponse,
     ) -> Result<(), RpcError> {
         Ok(self
             .client
