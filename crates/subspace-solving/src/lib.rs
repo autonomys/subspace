@@ -93,7 +93,7 @@ mod construct_uint {
     }
 
     impl From<U256> for PieceIndexHash {
-        fn from(distance: PieceDistance) -> Self {
+        fn from(distance: U256) -> Self {
             Self(distance.into())
         }
     }
