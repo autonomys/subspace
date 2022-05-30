@@ -10,7 +10,7 @@ use crate::rpc_client::RpcClient;
 use futures::future::Either;
 use futures::{future, StreamExt};
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::{PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -18,6 +18,8 @@ use subspace_rpc_primitives::{
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
+
+const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -142,9 +144,21 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         let client = client.clone();
 
         async move {
-            while let Some(RewardSigningInfo { hash, public_key }) =
-                reward_signing_info_notifications.next().await
+            while let Some(reward_signing_info_result) = tokio::time::timeout(
+                REWARD_SIGNING_TIMEOUT,
+                reward_signing_info_notifications.next(),
+            )
+            .await
+            .transpose()
             {
+                let RewardSigningInfo { hash, public_key } = match reward_signing_info_result {
+                    Ok(reward_signing_info) => reward_signing_info,
+                    Err(_) => {
+                        error!("Timeout while waiting reward signing info");
+                        break;
+                    }
+                };
+
                 // Multiple plots might have solved, only sign with correct one
                 if identity.public_key().to_bytes() != public_key {
                     continue;
