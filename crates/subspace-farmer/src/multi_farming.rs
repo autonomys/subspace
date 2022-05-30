@@ -216,9 +216,7 @@ impl MultiFarming {
                     .zip(codecs)
                     .map(|((plot, commitments), codec)| {
                         let options = SyncOptions {
-                            pieces_per_request: 100 * 1024 * 1024 / PIECE_SIZE as u64,
-                            initial_range_size: (200 * 1024 * 1024 / PIECE_SIZE as u64).into(),
-                            max_range_size: PieceIndexHashNumber::MAX / 8,
+                            range_size: PieceIndexHashNumber::MAX / 1024,
                             address: plot.public_key(),
                         };
                         let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);

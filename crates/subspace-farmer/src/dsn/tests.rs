@@ -42,7 +42,7 @@ async fn simple_test() {
     init();
 
     let source = (0u8..=255u8)
-        .map(|i| ([i; PIECE_SIZE].into(), i as PieceIndex))
+        .map(|i| (rand::random::<[u8; PIECE_SIZE]>().into(), i as PieceIndex))
         .map(|(piece, index)| (index.into(), (piece, index)))
         .collect::<BTreeMap<_, _>>();
     let result = Arc::new(Mutex::new(BTreeMap::new()));
@@ -50,9 +50,7 @@ async fn simple_test() {
     sync(
         TestDSN(source.clone()),
         SyncOptions {
-            pieces_per_request: 10,
-            initial_range_size: PieceIndexHashNumber::MAX / 256,
-            max_range_size: PieceIndexHashNumber::MAX / 3,
+            range_size: PieceIndexHashNumber::MAX / 1024,
             address: Default::default(),
         },
         {
