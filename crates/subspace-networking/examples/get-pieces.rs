@@ -1,10 +1,10 @@
-use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use libp2p::{build_multiaddr, multiaddr, multihash::Multihash, Multiaddr};
+use libp2p::Multiaddr;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{str::FromStr, sync::Arc};
-use subspace_core_primitives::{PieceIndexHash, SHA256_HASH_SIZE};
+use subspace_core_primitives::{crypto, U256};
 use subspace_networking::Config;
 
 #[tokio::main]
@@ -14,11 +14,16 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         value_getter: Arc::new(|_| None),
-        //TODO:
-        bootstrap_nodes: vec![Multiaddr::from_str(
-            "/ip4/192.168.1.215/tcp/10001/p2p/12D3KooWBWJzbLjFej9o86XhwJBXVuqFBfs2VWi6tYARkVoQjy9a",
+        //TODO: command
+        bootstrap_nodes: vec![
+            Multiaddr::from_str(
+            "/ip4/192.168.1.215/tcp/10001/p2p/12D3KooWCShS9xyPw1tgpjEjUML9CTtY8J5Uy2MMKUFsUDui9u56",
         )
-        .unwrap()],
+        .unwrap(),
+            Multiaddr::from_str(
+            "/ip4/192.168.1.215/tcp/10002/p2p/12D3KooWPwfKhaCqPPKFEN9qFxiP9z8VWW7AXV3NoemoC68QK6t9",
+        ).unwrap()
+        ],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
@@ -40,11 +45,15 @@ async fn main() {
     });
 
     // TODO: correct node_id parsing
-    let node_id_bytes = node_1.id().to_bytes();
-    let multihash = Multihash::from_bytes(&node_id_bytes).unwrap();
+    //let node_id_bytes = node_1.id().to_bytes();
+    let raw_hashed_peer_id = crypto::sha256_hash(&node_1.id().to_bytes());
+    let hashed_peer_id = U256::from_big_endian(&raw_hashed_peer_id);
+
+    // let multihash = Multihash::from_bytes(&node_id_bytes).unwrap();
+    // println!("Hash len: {:?}", multihash.digest().len());
     //let piece_index_hash = PieceIndexHash(node_id_bytes.as_slice()[0..SHA256_HASH_SIZE].try_into().unwrap());
 
-    let stream_future = node_1.get_pieces_by_range(multihash.clone(), multihash);
+    let stream_future = node_1.get_pieces_by_range(hashed_peer_id, hashed_peer_id);
     if let Ok(mut stream) = stream_future.await {
         while let Some(value) = stream.next().await {
             println!("Piece found: {:?}", value);

@@ -416,15 +416,7 @@ impl NodeRunner {
                 );
             }
             Command::GetClosestPeers { key, result_sender } => {
-                let peer_id: PeerId = PeerId::from_multihash(key).unwrap(); //TODO
-
-                println!("Peer_id: {:?}", peer_id); //TODO
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    // TODO: Will probably want something different and validate data instead.
-                    .get_closest_peers(peer_id);
+                let query_id = self.swarm.behaviour_mut().kademlia.get_closest_peers(key);
 
                 self.query_id_receivers.insert(
                     query_id,
