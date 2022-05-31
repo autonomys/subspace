@@ -330,5 +330,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns `Vec<RootBlock>` if a given extrinsic has them.
         fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;
+
+        /// Returns root plot public key in case block authoring is restricted.
+        fn root_plot_public_key() -> Option<FarmerPublicKey>;
     }
 }

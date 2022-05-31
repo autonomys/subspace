@@ -142,6 +142,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                false,
             )
         },
         // Bootnodes
@@ -194,6 +195,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                true,
             )
         },
         // Bootnodes
@@ -248,6 +250,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                true,
             )
         },
         // Bootnodes
@@ -267,6 +270,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
 }
 
 /// Configure initial storage state for FRAME modules.
+#[allow(clippy::too_many_arguments)]
 fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
@@ -276,6 +280,7 @@ fn subspace_genesis_config(
     executor_authority: (AccountId, ExecutorId),
     enable_rewards: bool,
     enable_storage_access: bool,
+    allow_authoring_by_anyone: bool,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -291,6 +296,7 @@ fn subspace_genesis_config(
         subspace: SubspaceConfig {
             enable_rewards,
             enable_storage_access,
+            allow_authoring_by_anyone,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

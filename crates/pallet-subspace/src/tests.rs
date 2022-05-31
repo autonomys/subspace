@@ -23,9 +23,9 @@ use crate::mock::{
     INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    pallet, BlockList, Call, CheckVoteError, Config, CurrentBlockAuthorInfo, CurrentBlockVoters,
-    CurrentSlot, Error, ParentBlockAuthorInfo, ParentBlockVoters, RecordsRoot,
-    SubspaceEquivocationOffence, WeightInfo,
+    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
+    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
+    ParentBlockVoters, RecordsRoot, SubspaceEquivocationOffence, WeightInfo,
 };
 use codec::Encode;
 use frame_support::weights::{GetDispatchInfo, Pays};
@@ -1543,5 +1543,66 @@ fn enabling_block_rewards_works() {
         // Rewards kick in
         assert_matches!(Subspace::find_block_reward_address(), Some(1));
         assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
+    });
+}
+
+#[test]
+fn allow_authoring_by_anyone_works() {
+    new_test_ext().execute_with(|| {
+        let keypair1 = Keypair::generate();
+        let keypair2 = Keypair::generate();
+
+        // By default block authoring is allowed by the pallet
+        progress_to_block(
+            &keypair1,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        progress_to_block(
+            &keypair2,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+
+        // Disable default behavior
+        AllowAuthoringByAnyone::<Test>::put(false);
+        // First author can produce blocks
+        progress_to_block(
+            &keypair1,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        progress_to_block(
+            &keypair1,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        // However authoring with a different public key panics (client error)
+        assert!(std::panic::catch_unwind(|| {
+            progress_to_block(
+                &keypair2,
+                frame_system::Pallet::<Test>::current_block_number() + 1,
+                1,
+            );
+        })
+        .is_err());
+
+        // Unlock authoring by anyone
+        assert_err!(
+            Subspace::enable_authoring_by_anyone(Origin::signed(1)),
+            DispatchError::BadOrigin
+        );
+        Subspace::enable_authoring_by_anyone(Origin::root()).unwrap();
+        // Both must be able to create blocks again
+        progress_to_block(
+            &keypair1,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
+        progress_to_block(
+            &keypair2,
+            frame_system::Pallet::<Test>::current_block_number() + 1,
+            1,
+        );
     });
 }

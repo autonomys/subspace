@@ -132,6 +132,12 @@ where
             extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
+        let maybe_root_plot_public_key = self
+            .client
+            .runtime_api()
+            .root_plot_public_key(&parent_block_id)
+            .ok()?;
+
         let new_slot_info = NewSlotInfo {
             slot,
             global_challenge,
@@ -153,6 +159,14 @@ where
         let mut maybe_pre_digest = None;
 
         while let Some(solution) = solution_receiver.next().await {
+            if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
+                if &solution.public_key != root_plot_public_key {
+                    // Only root plot public key is allowed, no need to even try to claim block or
+                    // vote.
+                    continue;
+                }
+            }
+
             // TODO: We need also need to check for equivocation of farmers connected to *this node*
             //  during block import, currently farmers connected to this node are considered trusted
             if runtime_api
