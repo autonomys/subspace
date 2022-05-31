@@ -4,6 +4,7 @@ use std::ops::{ControlFlow, Range};
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash};
 use subspace_solving::U256;
+use num_traits::WrappingAdd;
 
 #[cfg(test)]
 mod tests;
@@ -57,8 +58,10 @@ where
     let mut decreasing_cursor = increasing_cursor;
     let mut increasing = true;
     let on_pieces = Arc::new(Mutex::new(on_pieces));
+    let stop_at = increasing_cursor
+        .wrapping_add(&(PieceIndexHashNumber::MAX / 2));
 
-    loop {
+    while increasing_cursor < stop_at || decreasing_cursor > stop_at {
         let mut stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = if increasing {
             let start = increasing_cursor;
             let (end, is_overflow) = start.overflowing_add(range_size);
@@ -143,4 +146,6 @@ where
 
         increasing = !increasing;
     }
+
+    Ok(())
 }

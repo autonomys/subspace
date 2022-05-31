@@ -1,9 +1,10 @@
-use super::{sync, DSNSync, PieceIndexHashNumber, SyncOptions};
+use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::PiecesToPlot;
+use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
@@ -42,7 +43,11 @@ async fn simple_test() {
     init();
 
     let source = (0u8..=255u8)
-        .map(|i| (rand::random::<[u8; PIECE_SIZE]>().into(), i as PieceIndex))
+        .map(|i| {
+            let mut piece = Piece::default();
+            rand::thread_rng().fill(&mut piece[..]);
+            (piece, i as PieceIndex)
+        })
         .map(|(piece, index)| (index.into(), (piece, index)))
         .collect::<BTreeMap<_, _>>();
     let result = Arc::new(Mutex::new(BTreeMap::new()));
@@ -75,4 +80,38 @@ async fn simple_test() {
     .unwrap();
 
     assert_eq!(source, *result.lock().unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_sync_test() {
+    init();
+
+    let result = Arc::new(Mutex::new(
+        BTreeMap::<PieceIndexHash, (Piece, PieceIndex)>::new(),
+    ));
+
+    sync(
+        NoSync,
+        SyncOptions {
+            range_size: PieceIndexHashNumber::MAX / 1024,
+            address: Default::default(),
+        },
+        {
+            let result = Arc::clone(&result);
+            move |pieces, piece_indexes| {
+                let mut result = result.lock().unwrap();
+                result.extend(
+                    pieces
+                        .as_pieces()
+                        .zip(piece_indexes)
+                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
+                );
+                std::ops::ControlFlow::Continue(())
+            }
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(result.lock().unwrap().is_empty())
 }
