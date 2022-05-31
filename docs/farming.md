@@ -24,6 +24,14 @@ Before running anything you need to have a wallet where you'll receive testnet c
 Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your browser and create a new account there.
 The address of your account will be necessary at the last step.
 
+## Required ports
+Currently, TCP port `30333` needs to be exposed for node to work properly.
+
+If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP port `30333` for incoming connections.
+
+On the desktop side if you have a router in front of your computer, you'll need to forward TCP port `30333` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
+If you're connected directly without any router, then again nothing needs to be done in such case.
+
 ## 🖼️ Windows Instructions
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
