@@ -29,6 +29,7 @@ COPY rust-toolchain.toml /code/rust-toolchain.toml
 
 COPY crates /code/crates
 COPY cumulus /code/cumulus
+COPY orml /code/orml
 COPY substrate /code/substrate
 COPY test /code/test
 

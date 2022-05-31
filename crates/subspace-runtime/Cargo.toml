@@ -23,7 +23,7 @@ frame-executive = { version = "4.0.0-dev", default-features = false, git = "http
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 hex-literal = { version = "0.3.3", optional = true }
-orml-vesting = { version = "0.4.1-dev", default-features = false, git = "https://github.com/subspace/open-runtime-module-library", rev = "7d20439b9db3f870e65f2747bdac85e0b5d5ab03" }
+orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", rev = "5d3e7c4ee9f5c8e370022d5f3fa9723185710831" }
 pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
