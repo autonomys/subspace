@@ -19,7 +19,7 @@
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
-use sc_cli::{ChainSpec, CliConfiguration, Database, RunCmd, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, Database, DatabaseParams, SubstrateCli};
 use sc_service::PartialComponents;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
@@ -74,17 +74,14 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 // TODO: Remove once paritydb is the default option, ref https://github.com/paritytech/substrate/pull/11537
-fn force_use_parity_db(run: &mut RunCmd) {
-    run.import_params
-        .database_params
-        .database
-        .replace(Database::ParityDb);
+fn force_use_parity_db(database_params: &mut DatabaseParams) {
+    database_params.database.replace(Database::ParityDb);
 }
 
 fn main() -> Result<(), Error> {
     let mut cli = Cli::from_args();
 
-    force_use_parity_db(&mut cli.run);
+    force_use_parity_db(&mut cli.run.import_params.database_params);
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -173,6 +170,9 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
+            let mut cmd = cmd.clone();
+            force_use_parity_db(&mut cmd.base.database_params);
+
             // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
             //  wipe old data from disks of our users
             if cmd.base.shared_params.base_path().is_none() {
@@ -223,7 +223,7 @@ fn main() -> Result<(), Error> {
                     })?,
                     cli.secondary_chain_args.iter(),
                 );
-                force_use_parity_db(&mut secondary_chain_cli.run);
+                force_use_parity_db(&mut secondary_chain_cli.run.import_params.database_params);
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
                     &secondary_chain_cli,
@@ -369,7 +369,7 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.iter(),
                     );
-                    force_use_parity_db(&mut secondary_chain_cli.run);
+                    force_use_parity_db(&mut secondary_chain_cli.run.import_params.database_params);
 
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
