@@ -34,10 +34,9 @@ pub fn create_runtime_bundle_inclusion_file(
         env::set_var("SUBSPACE_WASM_TARGET_DIRECTORY", &target_dir);
     }
 
-    // Make correct profile accessible in child processes.
     env::set_var(
-        "SUBSPACE_WASM_BUILD_PROFILE",
-        env::var("SUBSPACE_WASM_BUILD_PROFILE").unwrap_or_else(|_| {
+        "SUBSPACE_WASM_BUNDLE_PATH",
+        env::var("SUBSPACE_WASM_BUNDLE_PATH").unwrap_or_else(|_| {
             // The tricky situation, Cargo doesn't put custom profiles like `production` in
             // `PROFILE` environment variable, so we need to find the actual profile ourselves by
             // extracting the first component of `OUT_DIR` that comes after `CARGO_TARGET_DIR`.
@@ -47,30 +46,42 @@ pub fn create_runtime_bundle_inclusion_file(
                 out_components.next();
             }
 
-            if let Component::Normal(profile) = out_components
-                .next()
-                .expect("OUT_DIR has CARGO_TARGET_DIR as prefix")
-            {
-                profile
-                    .to_str()
-                    .expect("Profile is always a utf-8 string")
-                    .to_string()
-            } else {
-                unreachable!("OUT_DIR has CARGO_TARGET_DIR as prefix")
-            }
+            let mut path = target_dir;
+
+            let profile = loop {
+                if let Component::Normal(profile_or_target) = out_components
+                    .next()
+                    .expect("OUT_DIR has CARGO_TARGET_DIR as prefix")
+                {
+                    let profile_or_target = profile_or_target
+                        .to_str()
+                        .expect("Profile is always a utf-8 string");
+
+                    // Custom target was specified with `--target`
+                    if profile_or_target == env::var("TARGET").expect("Always set by cargo") {
+                        path = path.join(profile_or_target);
+                    } else {
+                        break profile_or_target;
+                    }
+                } else {
+                    unreachable!("OUT_DIR has CARGO_TARGET_DIR as prefix")
+                }
+            };
+
+            path.join(profile)
+                .join("wbuild")
+                .join(runtime_crate_name)
+                .join(format!(
+                    "{}.compact.wasm",
+                    runtime_crate_name.replace('-', "_")
+                ))
+                .to_string_lossy()
+                .to_string()
         }),
     );
 
     // Create a file that will include execution runtime into consensus runtime
-    let profile = env::var("SUBSPACE_WASM_BUILD_PROFILE").expect("Set above; qed");
-    let execution_wasm_bundle_path = target_dir
-        .join(profile)
-        .join("wbuild")
-        .join(runtime_crate_name)
-        .join(format!(
-            "{}.compact.wasm",
-            runtime_crate_name.replace('-', "_")
-        ));
+    let execution_wasm_bundle_path = env::var("SUBSPACE_WASM_BUNDLE_PATH").expect("Set above; qed");
 
     let execution_wasm_bundle_rs_path =
         env::var("OUT_DIR").expect("Set by cargo; qed") + "/" + target_file_name;
@@ -78,9 +89,7 @@ pub fn create_runtime_bundle_inclusion_file(
         r#"
             pub const {bundle_const_name}: &[u8] = include_bytes!("{}");
         "#,
-        execution_wasm_bundle_path
-            .to_string_lossy()
-            .escape_default()
+        execution_wasm_bundle_path.escape_default()
     );
 
     fs::write(

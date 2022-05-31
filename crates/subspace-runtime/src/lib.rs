@@ -19,6 +19,11 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod feed_processor;
+mod fees;
+mod object_mapping;
+mod signed_extensions;
+
 // Make execution WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 
@@ -26,21 +31,20 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Decode, Encode};
+use crate::feed_processor::feed_processor;
+pub use crate::feed_processor::FeedProcessorKind;
+use crate::fees::{OnChargeTransaction, TransactionByteFee};
+use crate::object_mapping::extract_block_object_mapping;
+use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+use codec::{Decode, Encode};
 use core::time::Duration;
-use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Currency, ExistenceRequirement,
-    Get, Imbalance, WithdrawReasons,
-};
+use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use pallet_balances::{Call as BalancesCall, NegativeImbalance};
-use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
-use pallet_grandpa_finality_verifier::chain::Chain;
-use scale_info::TypeInfo;
+use pallet_feeds::feed_processor::FeedProcessor;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
@@ -48,27 +52,19 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::{Hasher, OpaqueMetadata};
+use sp_core::OpaqueMetadata;
 use sp_executor::{FraudProof, OpaqueBundle};
-use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, SignedExtension,
-    Zero,
-};
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-    ValidTransaction,
-};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
+use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
-    Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, OpaqueExtrinsic, Perbill,
 };
 use sp_std::borrow::Cow;
-use sp_std::iter::Peekable;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -162,8 +158,6 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
-const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
-
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
@@ -185,9 +179,9 @@ impl Contains<Call> for CallFilter {
         !matches!(
             c,
             Call::Balances(
-                BalancesCall::transfer { .. }
-                    | BalancesCall::transfer_keep_alive { .. }
-                    | BalancesCall::transfer_all { .. }
+                pallet_balances::Call::transfer { .. }
+                    | pallet_balances::Call::transfer_keep_alive { .. }
+                    | pallet_balances::Call::transfer_all { .. }
             )
         )
     }
@@ -354,107 +348,6 @@ impl pallet_transaction_fees::Config for Runtime {
     type WeightInfo = ();
 }
 
-pub struct TransactionByteFee;
-
-impl Get<Balance> for TransactionByteFee {
-    fn get() -> Balance {
-        if cfg!(feature = "do-not-enforce-cost-of-storage") {
-            1
-        } else {
-            TransactionFees::transaction_byte_fee()
-        }
-    }
-}
-
-pub struct LiquidityInfo {
-    storage_fee: Balance,
-    imbalance: NegativeImbalance<Runtime>,
-}
-
-/// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges transaction
-/// fees and distributes storage/compute fees and tip separately.
-pub struct OnChargeTransaction;
-
-impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
-    type LiquidityInfo = Option<LiquidityInfo>;
-    type Balance = Balance;
-
-    fn withdraw_fee(
-        who: &AccountId,
-        call: &Call,
-        _info: &DispatchInfoOf<Call>,
-        fee: Self::Balance,
-        tip: Self::Balance,
-    ) -> Result<Self::LiquidityInfo, TransactionValidityError> {
-        if fee.is_zero() {
-            return Ok(None);
-        }
-
-        let withdraw_reason = if tip.is_zero() {
-            WithdrawReasons::TRANSACTION_PAYMENT
-        } else {
-            WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
-        };
-
-        let withdraw_result = <Balances as Currency<AccountId>>::withdraw(
-            who,
-            fee,
-            withdraw_reason,
-            ExistenceRequirement::KeepAlive,
-        );
-        let imbalance = withdraw_result.map_err(|_error| InvalidTransaction::Payment)?;
-
-        // Separate storage fee while we have access to the call data structure to calculate it.
-        let storage_fee = TransactionByteFee::get()
-            * Balance::try_from(call.encoded_size())
-                .expect("Size of the call never exceeds balance units; qed");
-
-        Ok(Some(LiquidityInfo {
-            storage_fee,
-            imbalance,
-        }))
-    }
-
-    fn correct_and_deposit_fee(
-        who: &AccountId,
-        _dispatch_info: &DispatchInfoOf<Call>,
-        _post_info: &PostDispatchInfoOf<Call>,
-        corrected_fee: Self::Balance,
-        tip: Self::Balance,
-        liquidity_info: Self::LiquidityInfo,
-    ) -> Result<(), TransactionValidityError> {
-        if let Some(LiquidityInfo {
-            storage_fee,
-            imbalance,
-        }) = liquidity_info
-        {
-            // Calculate how much refund we should return
-            let refund_amount = imbalance.peek().saturating_sub(corrected_fee);
-            // Refund to the the account that paid the fees. If this fails, the account might have
-            // dropped below the existential balance. In that case we don't refund anything.
-            let refund_imbalance = Balances::deposit_into_existing(who, refund_amount)
-                .unwrap_or_else(|_| <Balances as Currency<AccountId>>::PositiveImbalance::zero());
-            // Merge the imbalance caused by paying the fees and refunding parts of it again.
-            let adjusted_paid = imbalance
-                .offset(refund_imbalance)
-                .same()
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
-
-            // Split the tip from the total fee that ended up being paid.
-            let (tip, fee) = adjusted_paid.split(tip);
-            // Split paid storage and compute fees so that they can be distributed separately.
-            let (paid_storage_fee, paid_compute_fee) = fee.split(storage_fee);
-
-            TransactionFees::note_transaction_fees(
-                paid_storage_fee.peek(),
-                paid_compute_fee.peek(),
-                tip.peek(),
-            );
-        }
-        Ok(())
-    }
-}
-
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
@@ -515,95 +408,7 @@ impl pallet_rewards::Config for Runtime {
     type WeightInfo = ();
 }
 
-/// Polkadot-like chain.
-pub struct PolkadotLike;
-impl Chain for PolkadotLike {
-    type BlockNumber = u32;
-    type Hash = <BlakeTwo256 as Hasher>::Out;
-    type Header = generic::Header<u32, BlakeTwo256>;
-    type Hasher = BlakeTwo256;
-}
-
-/// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
-pub struct GrandpaValidator<C>(C);
-
-impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
-    fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::initialize::<Runtime, C>(feed_id, data)
-    }
-
-    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        Ok(Some(
-            pallet_grandpa_finality_verifier::validate_finalized_block::<Runtime, C>(
-                feed_id, object,
-            )?
-            .encode(),
-        ))
-    }
-
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        extract_substrate_object_mapping::<C>(object)
-    }
-
-    fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::purge::<Runtime>(feed_id)
-    }
-}
-
-pub struct ParachainImporter<C>(C);
-
-impl<C: Chain> FeedProcessor<FeedId> for ParachainImporter<C> {
-    fn put(&self, _feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        let block = C::decode_block::<Runtime>(object)?;
-        Ok(Some(
-            (block.block.header.hash(), *block.block.header.number()).encode(),
-        ))
-    }
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        extract_substrate_object_mapping::<C>(object)
-    }
-}
-
-fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMapping> {
-    let block = match C::decode_block::<Runtime>(object) {
-        Ok(block) => block,
-        // we just return empty if we failed to decode as this is not called in runtime
-        Err(_) => return vec![],
-    };
-
-    // we send two mappings pointed to the same object
-    // block height and block hash
-    // this would be easier for sync client to crawl through the descendents by block height
-    // if you already have a block hash, you can fetch the same block with it as well
-    vec![
-        FeedObjectMapping::Custom {
-            key: block.block.header.number().encode(),
-            offset: 0,
-        },
-        FeedObjectMapping::Custom {
-            key: block.block.header.hash().as_ref().to_vec(),
-            offset: 0,
-        },
-    ]
-}
-
-/// FeedProcessorId represents the available FeedProcessor impls
-#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
-pub enum FeedProcessorKind {
-    /// Content addressable Feed processor,
-    ContentAddressable,
-    /// Polkadot like relay chain Feed processor that validates grandpa justifications and indexes the entire block
-    PolkadotLike,
-    /// Parachain Feed processor that just indexes the entire block
-    ParachainLike,
-}
-
-impl Default for FeedProcessorKind {
-    fn default() -> Self {
-        FeedProcessorKind::ContentAddressable
-    }
-}
 
 parameter_types! {
     // Limit maximum number of feeds per account
@@ -617,13 +422,9 @@ impl pallet_feeds::Config for Runtime {
     type MaxFeeds = MaxFeeds;
 
     fn feed_processor(
-        feed_processor_kind: FeedProcessorKind,
+        feed_processor_kind: Self::FeedProcessorKind,
     ) -> Box<dyn FeedProcessor<Self::FeedId>> {
-        match feed_processor_kind {
-            FeedProcessorKind::PolkadotLike => Box::new(GrandpaValidator(PolkadotLike)),
-            FeedProcessorKind::ContentAddressable => Box::new(()),
-            FeedProcessorKind::ParachainLike => Box::new(ParachainImporter(PolkadotLike)),
-        }
+        feed_processor(feed_processor_kind)
     }
 }
 
@@ -687,84 +488,6 @@ pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 
-/// Controls non-root access to feeds and object store
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct CheckStorageAccess;
-
-impl SignedExtension for CheckStorageAccess {
-    const IDENTIFIER: &'static str = "CheckStorageAccess";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate(
-        &self,
-        who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        if Subspace::is_storage_access_enabled() || Some(who) == Sudo::key().as_ref() {
-            Ok(ValidTransaction::default())
-        } else {
-            InvalidTransaction::BadSigner.into()
-        }
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-}
-
-/// Disable specific pallets.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct DisablePallets;
-
-impl SignedExtension for DisablePallets {
-    const IDENTIFIER: &'static str = "DisablePallets";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate_unsigned(
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        if matches!(call, Call::Executor(_)) {
-            InvalidTransaction::Call.into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-}
-
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
     frame_system::CheckNonZeroSender<Runtime>,
@@ -796,174 +519,6 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
         }
         _ => None,
     }
-}
-
-fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_feeds::Call<Runtime>,
-    successful_calls: &mut Peekable<I>,
-) {
-    let call_hash = successful_calls.peek();
-    match call_hash {
-        Some(hash) => {
-            if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
-                return;
-            }
-
-            // remove the hash and fetch the object mapping for this call
-            successful_calls.next();
-        }
-        None => return,
-    }
-
-    call.extract_call_objects()
-        .into_iter()
-        .for_each(|object_map| {
-            objects.push(BlockObject::V0 {
-                hash: object_map.key,
-                offset: base_offset + object_map.offset,
-            })
-        })
-}
-
-fn extract_object_store_block_object_mapping(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_object_store::Call<Runtime>,
-) {
-    if let Some(call_object) = call.extract_call_object() {
-        objects.push(BlockObject::V0 {
-            hash: call_object.hash,
-            offset: base_offset + call_object.offset,
-        });
-    }
-}
-
-fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
-    mut base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_utility::Call<Runtime>,
-    mut recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
-) {
-    if recursion_depth_left == 0 {
-        return;
-    }
-
-    recursion_depth_left -= 1;
-
-    // Add enum variant to the base offset.
-    base_offset += 1;
-
-    match call {
-        pallet_utility::Call::batch { calls }
-        | pallet_utility::Call::batch_all { calls }
-        | pallet_utility::Call::force_batch { calls } => {
-            base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
-
-            for call in calls {
-                extract_call_block_object_mapping(
-                    base_offset,
-                    objects,
-                    call,
-                    recursion_depth_left,
-                    successful_calls,
-                );
-
-                base_offset += call.encoded_size() as u32;
-            }
-        }
-        pallet_utility::Call::as_derivative { index, call } => {
-            base_offset += index.encoded_size() as u32;
-
-            extract_call_block_object_mapping(
-                base_offset,
-                objects,
-                call.as_ref(),
-                recursion_depth_left,
-                successful_calls,
-            );
-        }
-        pallet_utility::Call::dispatch_as { as_origin, call } => {
-            base_offset += as_origin.encoded_size() as u32;
-
-            extract_call_block_object_mapping(
-                base_offset,
-                objects,
-                call.as_ref(),
-                recursion_depth_left,
-                successful_calls,
-            );
-        }
-        pallet_utility::Call::__Ignore(_, _) => {
-            // Ignore.
-        }
-    }
-}
-
-fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
-    mut base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &Call,
-    recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
-) {
-    // Add enum variant to the base offset.
-    base_offset += 1;
-
-    match call {
-        Call::Feeds(call) => {
-            extract_feeds_block_object_mapping(base_offset, objects, call, successful_calls);
-        }
-        Call::ObjectStore(call) => {
-            extract_object_store_block_object_mapping(base_offset, objects, call);
-        }
-        Call::Utility(call) => {
-            extract_utility_block_object_mapping(
-                base_offset,
-                objects,
-                call,
-                recursion_depth_left,
-                successful_calls,
-            );
-        }
-        _ => {}
-    }
-}
-
-fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-    let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = successful_calls.into_iter().peekable();
-    let mut base_offset =
-        block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
-    for extrinsic in block.extrinsics {
-        let signature_size = extrinsic
-            .signature
-            .as_ref()
-            .map(|s| s.encoded_size())
-            .unwrap_or_default();
-        // Extrinsic starts with vector length and version byte, followed by optional signature and
-        // `function` encoding.
-        let base_extrinsic_offset = base_offset
-            + Compact::compact_len(
-                &((1 + signature_size + extrinsic.function.encoded_size()) as u32),
-            )
-            + 1
-            + signature_size;
-
-        extract_call_block_object_mapping(
-            base_extrinsic_offset as u32,
-            &mut block_object_mapping.objects,
-            &extrinsic.function,
-            MAX_OBJECT_MAPPING_RECURSION_DEPTH,
-            &mut successful_calls,
-        );
-
-        base_offset += extrinsic.encoded_size();
-    }
-
-    block_object_mapping
 }
 
 fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
