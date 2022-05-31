@@ -16,18 +16,14 @@
 
 //! Secondary chain configurations.
 
-use crate::chain_spec_utils::{
-    chain_spec_properties, get_account_id_from_seed, SerializableChainSpec,
-};
-use cirrus_runtime::AccountId;
+use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use cirrus_runtime::{AccountId, BalancesConfig, GenesisConfig, SystemConfig, WASM_BINARY};
 use sc_service::ChainType;
+use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
 use subspace_runtime_primitives::SSC;
 
-/// Specialized `ChainSpec` for the normal parachain runtime.
-pub type ExecutionChainSpec = SerializableChainSpec<cirrus_runtime::GenesisConfig>;
-
-pub fn development_config() -> ExecutionChainSpec {
+pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Development",
@@ -51,7 +47,7 @@ pub fn development_config() -> ExecutionChainSpec {
     )
 }
 
-pub fn local_testnet_config() -> ExecutionChainSpec {
+pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Local Testnet",
@@ -88,7 +84,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec {
     )
 }
 
-pub fn gemini_config() -> ExecutionChainSpec {
+pub fn gemini_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Subspace Gemini 1 Execution",
@@ -116,15 +112,15 @@ pub fn gemini_config() -> ExecutionChainSpec {
     )
 }
 
-fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> cirrus_runtime::GenesisConfig {
-    cirrus_runtime::GenesisConfig {
-        system: cirrus_runtime::SystemConfig {
-            code: cirrus_runtime::WASM_BINARY
+fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
+    GenesisConfig {
+        system: SystemConfig {
+            code: WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
         },
         transaction_payment: Default::default(),
-        balances: cirrus_runtime::BalancesConfig {
+        balances: BalancesConfig {
             balances: endowed_accounts
                 .iter()
                 .cloned()

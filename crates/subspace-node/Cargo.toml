@@ -29,10 +29,10 @@ frame-support = { version = "4.0.0-dev", git = "https://github.com/paritytech/su
 futures = "0.3.21"
 log = "0.4.17"
 parity-scale-codec = "3.1.2"
-sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd", features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd", features = ["wasmtime"] }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd", features = ["wasmtime"] }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }

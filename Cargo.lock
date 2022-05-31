@@ -6607,6 +6607,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-subspace-chain-specs"
+version = "0.1.0"
+dependencies = [
+ "sc-chain-spec",
+ "sc-service",
+ "sc-telemetry",
+ "serde",
+ "sp-core",
+ "sp-runtime",
+]
+
+[[package]]
 name = "sc-sysinfo"
 version = "6.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?rev=24bea4c3cba7479e2cf2976a21e8111dfda6b1cd#24bea4c3cba7479e2cf2976a21e8111dfda6b1cd"
@@ -8098,12 +8110,12 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "parity-scale-codec",
- "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
  "sc-service",
+ "sc-subspace-chain-specs",
  "sc-telemetry",
  "sc-tracing",
  "serde",
