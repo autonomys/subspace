@@ -76,7 +76,7 @@ If you're connected directly without any router, then again nothing needs to be 
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```PowerShell
-# Replace `FARMER_FILE_NAME.exe` with the name of the node file you downloaded from releases
+# Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
@@ -125,7 +125,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
-# Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
@@ -178,7 +178,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
-# Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
