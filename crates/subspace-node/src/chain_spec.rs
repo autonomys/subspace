@@ -36,7 +36,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-// const TESTNET_BOOTSTRAP_NODE: &str = "/dns/farm-rpc.subspace.network/tcp/30333/p2p/12D3KooWPjMZuSYj35ehced2MTJFf95upwpHKgKUrFRfHwohzJXr";
+const GEMINI_1_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-1.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -77,7 +77,7 @@ pub struct ChainSpecExtensions {
 pub type ConsensusChainSpec = SerializableChainSpec<GenesisConfig, ChainSpecExtensions>;
 
 pub fn gemini_config() -> Result<ConsensusChainSpec, String> {
-    todo!("Distribute the gemini ChainSpec once finalized")
+    ConsensusChainSpec::from_json_bytes(GEMINI_1_CHAIN_SPEC)
 }
 
 pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
