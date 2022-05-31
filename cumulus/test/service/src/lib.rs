@@ -199,9 +199,9 @@ pub struct TestNode {
 pub struct TestNodeBuilder {
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
-	parachain_nodes: Vec<MultiaddrWithPeerId>,
-	parachain_nodes_exclusive: bool,
-	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
+	secondary_nodes: Vec<MultiaddrWithPeerId>,
+	secondary_nodes_exclusive: bool,
+	primary_nodes: Vec<MultiaddrWithPeerId>,
 }
 
 impl TestNodeBuilder {
@@ -209,14 +209,14 @@ impl TestNodeBuilder {
 	///
 	/// `para_id` - The parachain id this node is running for.
 	/// `tokio_handle` - The tokio handler to use.
-	/// `key` - The key that will be used to generate the name and that will be passed as `dev_seed`.
+	/// `key` - The key that will be used to generate the name.
 	pub fn new(tokio_handle: tokio::runtime::Handle, key: Sr25519Keyring) -> Self {
 		TestNodeBuilder {
 			key,
 			tokio_handle,
-			parachain_nodes: Vec::new(),
-			parachain_nodes_exclusive: false,
-			relay_chain_nodes: Vec::new(),
+			secondary_nodes: Vec::new(),
+			secondary_nodes_exclusive: false,
+			primary_nodes: Vec::new(),
 		}
 	}
 
@@ -225,52 +225,52 @@ impl TestNodeBuilder {
 	/// Parachain nodes can be registered using [`Self::connect_to_parachain_node`] and
 	/// [`Self::connect_to_parachain_nodes`].
 	pub fn exclusively_connect_to_registered_parachain_nodes(mut self) -> Self {
-		self.parachain_nodes_exclusive = true;
+		self.secondary_nodes_exclusive = true;
 		self
 	}
 
-	/// Make the node connect to the given parachain node.
+	/// Make the node connect to the given secondary chain node.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_parachain_node(mut self, node: &TestNode) -> Self {
-		self.parachain_nodes.push(node.addr.clone());
+	pub fn connect_to_secondary_chain_node(mut self, node: &TestNode) -> Self {
+		self.secondary_nodes.push(node.addr.clone());
 		self
 	}
 
-	/// Make the node connect to the given parachain nodes.
+	/// Make the node connect to the given secondary chain nodes.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_parachain_nodes<'a>(
+	pub fn connect_to_secondary_chain_nodes<'a>(
 		mut self,
 		nodes: impl Iterator<Item = &'a TestNode>,
 	) -> Self {
-		self.parachain_nodes.extend(nodes.map(|n| n.addr.clone()));
+		self.secondary_nodes.extend(nodes.map(|n| n.addr.clone()));
 		self
 	}
 
-	/// Make the node connect to the given relay chain node.
+	/// Make the node connect to the given primary chain node.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_relay_chain_node(
+	pub fn connect_to_primary_chain_node(
 		mut self,
 		node: &subspace_test_service::PrimaryTestNode,
 	) -> Self {
-		self.relay_chain_nodes.push(node.addr.clone());
+		self.primary_nodes.push(node.addr.clone());
 		self
 	}
 
-	/// Make the node connect to the given relay chain nodes.
+	/// Make the node connect to the given primary chain nodes.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_relay_chain_nodes<'a>(
+	pub fn connect_to_primary_chain_nodes<'a>(
 		mut self,
 		nodes: impl IntoIterator<Item = &'a subspace_test_service::PrimaryTestNode>,
 	) -> Self {
-		self.relay_chain_nodes.extend(nodes.into_iter().map(|n| n.addr.clone()));
+		self.primary_nodes.extend(nodes.into_iter().map(|n| n.addr.clone()));
 		self
 	}
 
@@ -279,8 +279,8 @@ impl TestNodeBuilder {
 		let secondary_chain_config = node_config(
 			self.tokio_handle.clone(),
 			self.key,
-			self.parachain_nodes,
-			self.parachain_nodes_exclusive,
+			self.secondary_nodes,
+			self.secondary_nodes_exclusive,
 			role,
 		)
 		.expect("could not generate secondary chain node Configuration");
@@ -288,7 +288,7 @@ impl TestNodeBuilder {
 		let mut primary_chain_config = subspace_test_service::node_config(
 			self.tokio_handle,
 			self.key,
-			self.relay_chain_nodes,
+			self.primary_nodes,
 			false,
 		);
 

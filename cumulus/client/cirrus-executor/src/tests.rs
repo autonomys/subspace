@@ -37,13 +37,13 @@ async fn test_executor_full_node_catching_up() {
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Full)
 		.await;
 
@@ -82,13 +82,13 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Full)
 		.await;
 
@@ -366,13 +366,13 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Authority)
 		.await;
 
 	// run cirrus dave (a secondary chain full node)
 	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Full)
 		.await;
 
@@ -533,7 +533,7 @@ async fn set_new_code_should_work() {
 
 	// run cirrus charlie (a secondary chain authority node)
 	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Authority)
 		.await;
 
@@ -582,7 +582,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	// Run a full node deliberately in order to control the executoin chain by
 	// submitting the receipts manually later.
 	let alice_executor = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-		.connect_to_relay_chain_node(&alice)
+		.connect_to_primary_chain_node(&alice)
 		.build(Role::Full)
 		.await;
 
