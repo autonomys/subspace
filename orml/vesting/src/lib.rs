@@ -32,7 +32,7 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{Currency, EnsureOrigin, ExistenceRequirement, Get, LockIdentifier, LockableCurrency, WithdrawReasons},
-	BoundedVec,
+	transactional, BoundedVec,
 };
 use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
 use scale_info::TypeInfo;
@@ -300,6 +300,8 @@ pub mod module {
 	}
 }
 
+// TODO: Remove this with ORML upgrade, without `transactional` macro test fails
+#[allow(deprecated)]
 impl<T: Config> Pallet<T> {
 	fn do_claim(who: &T::AccountId) -> BalanceOf<T> {
 		let locked = Self::locked_balance(who);
@@ -335,6 +337,7 @@ impl<T: Config> Pallet<T> {
 		})
 	}
 
+	#[transactional]
 	fn do_vested_transfer(from: &T::AccountId, to: &T::AccountId, schedule: VestingScheduleOf<T>) -> DispatchResult {
 		let schedule_amount = ensure_valid_vesting_schedule::<T>(&schedule)?;
 
