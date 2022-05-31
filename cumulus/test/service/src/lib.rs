@@ -85,11 +85,12 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
 pub type Client =
 	TFullClient<Block, runtime::RuntimeApi, sc_executor::NativeElseWasmExecutor<RuntimeExecutor>>;
 
-/// Start a node with the given secondary chain `Configuration` and primary chain `Configuration`.
+/// Start an executor with the given secondary chain `Configuration` and primary chain `Configuration`.
 ///
-/// This is the actual implementation that is abstract over the executor and the runtime api.
+/// A primary chain full node and secondary chain node will be started, similar to the behaviour in
+/// the production.
 #[sc_tracing::logging::prefix_logs_with(secondary_chain_config.network.node_name.as_str())]
-async fn start_secondary_node(
+async fn run_executor(
 	secondary_chain_config: Configuration,
 	primary_chain_config: Configuration,
 ) -> sc_service::error::Result<(
@@ -222,8 +223,8 @@ impl TestNodeBuilder {
 
 	/// Instruct the node to exclusively connect to registered parachain nodes.
 	///
-	/// Parachain nodes can be registered using [`Self::connect_to_parachain_node`] and
-	/// [`Self::connect_to_parachain_nodes`].
+	/// Parachain nodes can be registered using [`Self::connect_to_secondary_chain_node`] and
+	/// [`Self::connect_to_secondary_chain_nodes`].
 	pub fn exclusively_connect_to_registered_parachain_nodes(mut self) -> Self {
 		self.secondary_nodes_exclusive = true;
 		self
@@ -297,7 +298,7 @@ impl TestNodeBuilder {
 
 		let multiaddr = secondary_chain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_secondary_node(secondary_chain_config, primary_chain_config)
+			run_executor(secondary_chain_config, primary_chain_config)
 				.await
 				.expect("could not start secondary chain node");
 
