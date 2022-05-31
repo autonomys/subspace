@@ -57,7 +57,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
 }
 
 /// This `purge-chain` command used to remove both primary and secondary chains.
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
