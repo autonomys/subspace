@@ -3,7 +3,7 @@ use cirrus_primitives::{BlockNumber, Hash, SecondaryApi};
 use cirrus_test_service::{
 	run_primary_chain_validator_node,
 	runtime::Header,
-	Keyring::{Alice, Charlie, Dave},
+	Keyring::{Alice, Bob, Charlie, Dave, Ferdie},
 };
 use codec::Encode;
 use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProof};
@@ -29,39 +29,36 @@ async fn test_executor_full_node_catching_up() {
 
 	let tokio_handle = tokio::runtime::Handle::current();
 
-	// start alice
-	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
 
-	alice_network_starter.start_network();
-
-	// run cirrus charlie (a secondary chain authority node)
-	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_primary_chain_node(&alice)
+	// Run Alice (a secondary chain authority node)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Authority)
 		.await;
 
-	// run cirrus dave (a secondary chain full node)
-	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_primary_chain_node(&alice)
+	// Run Bob (a secondary chain full node)
+	let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Full)
 		.await;
 
-	// dave is able to sync blocks.
-	futures::future::join(charlie.wait_for_blocks(10), dave.wait_for_blocks(10)).await;
+	// Bob is able to sync blocks.
+	futures::future::join(alice.wait_for_blocks(10), bob.wait_for_blocks(10)).await;
 
 	assert_eq!(
+		ferdie.client.info().best_number,
 		alice.client.info().best_number,
-		charlie.client.info().best_number,
 		"Primary chain and secondary chain must be on the same best height"
 	);
 
-	let charlie_block_hash = charlie.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
-
-	let dave_block_hash = dave.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
-
+	let alice_block_hash = alice.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
+	let bob_block_hash = bob.client.expect_block_hash_from_id(&BlockId::Number(8)).unwrap();
 	assert_eq!(
-		charlie_block_hash, dave_block_hash,
+		alice_block_hash, bob_block_hash,
 		"Executor authority node and full node must have the same state"
 	);
 }
@@ -74,29 +71,28 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	let tokio_handle = tokio::runtime::Handle::current();
 
-	// start alice
-	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
 
-	alice_network_starter.start_network();
-
-	// run cirrus charlie (a secondary chain authority node)
-	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_primary_chain_node(&alice)
+	// Run Alice (a secondary chain authority node)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Authority)
 		.await;
 
-	// run cirrus dave (a secondary chain full node)
-	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_primary_chain_node(&alice)
+	// Run Bob (a secondary chain full node)
+	let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Full)
 		.await;
 
-	// dave is able to sync blocks.
-	futures::future::join(charlie.wait_for_blocks(3), dave.wait_for_blocks(3)).await;
+	// Bob is able to sync blocks.
+	futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
 
 	let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
-		&charlie.client,
+		&alice.client,
 		pallet_balances::Call::transfer {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
@@ -106,7 +102,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		0,
 	);
 	let transfer_to_dave = cirrus_test_service::construct_extrinsic(
-		&charlie.client,
+		&alice.client,
 		pallet_balances::Call::transfer {
 			dest: cirrus_test_service::runtime::Address::Id(Dave.public().into()),
 			value: 8,
@@ -116,7 +112,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 		1,
 	);
 	let transfer_to_charlie_again = cirrus_test_service::construct_extrinsic(
-		&charlie.client,
+		&alice.client,
 		pallet_balances::Call::transfer {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 88,
@@ -133,7 +129,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 	];
 
 	for tx in test_txs.iter() {
-		charlie.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
+		alice.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
 	}
 
 	// Ideally we just need to wait one block and the test txs should be all included
@@ -141,11 +137,11 @@ async fn execution_proof_creation_and_verification_should_work() {
 	// is overloaded, hence we manually mock the bundles processing to avoid the occasional
 	// test failure (https://github.com/subspace/subspace/runs/5663241460?check_suite_focus=true).
 	//
-	// charlie.wait_for_blocks(1).await;
+	// alice.wait_for_blocks(1).await;
 
 	let bundles = vec![OpaqueBundle {
 		header: BundleHeader {
-			primary_hash: alice.client.info().best_hash,
+			primary_hash: ferdie.client.info().best_hash,
 			slot_number: Default::default(),
 			extrinsics_root: Default::default(),
 		},
@@ -155,36 +151,36 @@ async fn execution_proof_creation_and_verification_should_work() {
 			.collect(),
 	}];
 
-	charlie
+	alice
 		.executor
 		.clone()
 		.process_bundles(
-			(alice.client.info().best_hash, alice.client.info().best_number),
+			(ferdie.client.info().best_hash, ferdie.client.info().best_number),
 			bundles,
 			BlakeTwo256::hash_of(&[1u8; 64]).into(),
 			None,
 		)
 		.await;
 
-	let best_hash = charlie.client.info().best_hash;
-	let header = charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
+	let best_hash = alice.client.info().best_hash;
+	let header = alice.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
 	let parent_header =
-		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
+		alice.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
 		BlockBuilder::new(
-			&*charlie.client,
+			&*alice.client,
 			parent_header.hash(),
 			*parent_header.number(),
 			RecordProof::No,
 			Default::default(),
-			&*charlie.backend,
+			&*alice.backend,
 			test_txs.clone().into_iter().map(Into::into).collect(),
 		)
 		.unwrap()
 	};
 
-	let intermediate_roots = charlie
+	let intermediate_roots = alice
 		.client
 		.runtime_api()
 		.intermediate_roots(&BlockId::Hash(best_hash))
@@ -210,9 +206,9 @@ async fn execution_proof_creation_and_verification_should_work() {
 	let execution_phase = ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
 
 	let prover = subspace_fraud_proof::ExecutionProver::new(
-		charlie.backend.clone(),
-		charlie.code_executor.clone(),
-		Box::new(charlie.task_manager.spawn_handle()),
+		alice.backend.clone(),
+		alice.code_executor.clone(),
+		Box::new(alice.task_manager.spawn_handle()),
 	);
 
 	// Test `initialize_block`.
@@ -238,15 +234,15 @@ async fn execution_proof_creation_and_verification_should_work() {
 	assert_eq!(post_execution_root, intermediate_roots[0].into());
 
 	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-		alice.client.clone(),
-		alice.backend.clone(),
-		alice.executor.clone(),
-		alice.task_manager.spawn_handle(),
+		ferdie.client.clone(),
+		ferdie.backend.clone(),
+		ferdie.executor.clone(),
+		ferdie.task_manager.spawn_handle(),
 	);
 
 	// Incorrect but it's fine for the test purpose.
-	let parent_hash_alice = alice.client.info().best_hash;
-	let parent_number_alice = alice.client.info().best_number;
+	let parent_hash_alice = ferdie.client.info().best_hash;
+	let parent_number_alice = ferdie.client.info().best_number;
 
 	let fraud_proof = FraudProof {
 		parent_number: parent_number_alice,
@@ -358,29 +354,28 @@ async fn invalid_execution_proof_should_not_work() {
 
 	let tokio_handle = tokio::runtime::Handle::current();
 
-	// start alice
-	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
 
-	alice_network_starter.start_network();
-
-	// run cirrus charlie (a secondary chain authority node)
-	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_primary_chain_node(&alice)
+	// Run Alice (a secondary chain authority node)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Authority)
 		.await;
 
-	// run cirrus dave (a secondary chain full node)
-	let dave = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Dave)
-		.connect_to_primary_chain_node(&alice)
+	// Run Bob (a secondary chain full node)
+	let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Full)
 		.await;
 
-	// dave is able to sync blocks.
-	futures::future::join(charlie.wait_for_blocks(3), dave.wait_for_blocks(3)).await;
+	// Bob is able to sync blocks.
+	futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
 
 	let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
-		&charlie.client,
+		&alice.client,
 		pallet_balances::Call::transfer {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
@@ -391,7 +386,7 @@ async fn invalid_execution_proof_should_not_work() {
 	);
 
 	let transfer_to_charlie_again = cirrus_test_service::construct_extrinsic(
-		&charlie.client,
+		&alice.client,
 		pallet_balances::Call::transfer {
 			dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
 			value: 8,
@@ -404,34 +399,34 @@ async fn invalid_execution_proof_should_not_work() {
 	let test_txs = vec![transfer_to_charlie.clone(), transfer_to_charlie_again.clone()];
 
 	for tx in test_txs.iter() {
-		charlie.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
+		alice.send_extrinsic(tx.clone()).await.expect("Failed to send extrinsic");
 	}
 
 	// Wait until the test txs are included in the next block.
-	charlie.wait_for_blocks(1).await;
+	alice.wait_for_blocks(1).await;
 
-	let best_hash = charlie.client.info().best_hash;
-	let header = charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
+	let best_hash = alice.client.info().best_hash;
+	let header = alice.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap();
 	let parent_header =
-		charlie.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
+		alice.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
 
 	let create_block_builder = || {
 		BlockBuilder::new(
-			&*charlie.client,
+			&*alice.client,
 			parent_header.hash(),
 			*parent_header.number(),
 			RecordProof::No,
 			Default::default(),
-			&*charlie.backend,
+			&*alice.backend,
 			test_txs.clone().into_iter().map(Into::into).collect(),
 		)
 		.unwrap()
 	};
 
 	let prover = subspace_fraud_proof::ExecutionProver::new(
-		charlie.backend.clone(),
-		charlie.code_executor.clone(),
-		Box::new(charlie.task_manager.spawn_handle()),
+		alice.backend.clone(),
+		alice.code_executor.clone(),
+		Box::new(alice.task_manager.spawn_handle()),
 	);
 
 	let create_extrinsic_proof = |extrinsic_index: usize| {
@@ -476,15 +471,15 @@ async fn invalid_execution_proof_should_not_work() {
 	assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
 	let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-		alice.client.clone(),
-		alice.backend.clone(),
-		alice.executor.clone(),
-		alice.task_manager.spawn_handle(),
+		ferdie.client.clone(),
+		ferdie.backend.clone(),
+		ferdie.executor.clone(),
+		ferdie.task_manager.spawn_handle(),
 	);
 
 	// Incorrect but it's fine for the test purpose.
-	let parent_hash_alice = alice.client.info().best_hash;
-	let parent_number_alice = alice.client.info().best_number;
+	let parent_hash_alice = ferdie.client.info().best_hash;
+	let parent_number_alice = ferdie.client.info().best_number;
 
 	let fraud_proof = FraudProof {
 		parent_number: parent_number_alice,
@@ -525,23 +520,22 @@ async fn set_new_code_should_work() {
 
 	let tokio_handle = tokio::runtime::Handle::current();
 
-	// start alice
-	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
 
-	alice_network_starter.start_network();
-
-	// run cirrus charlie (a secondary chain authority node)
-	let charlie = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Charlie)
-		.connect_to_primary_chain_node(&alice)
+	// Run Alice (a secondary chain authority node)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Authority)
 		.await;
 
-	charlie.wait_for_blocks(3).await;
+	alice.wait_for_blocks(3).await;
 
 	let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
-	charlie
+	alice
 		.executor
 		.clone()
 		.process_bundles(
@@ -552,14 +546,14 @@ async fn set_new_code_should_work() {
 		)
 		.await;
 
-	let best_hash = charlie.client.info().best_hash;
-	let state = charlie.backend.state_at(BlockId::Hash(best_hash)).expect("Get state");
+	let best_hash = alice.client.info().best_hash;
+	let state = alice.backend.state_at(BlockId::Hash(best_hash)).expect("Get state");
 	let trie_backend = state.as_trie_backend().unwrap();
 	let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
 	let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
 	assert_eq!(runtime_code, new_runtime_wasm_blob);
 	assert_eq!(
-		charlie.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
+		alice.client.header(&BlockId::Hash(best_hash)).unwrap().unwrap().digest.logs,
 		vec![DigestItem::RuntimeEnvironmentUpdated]
 	);
 }
@@ -572,47 +566,50 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
 	let tokio_handle = tokio::runtime::Handle::current();
 
-	// start alice
-	let (alice, alice_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Alice, vec![]);
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
 
-	alice_network_starter.start_network();
-
-	// run cirrus alice (a secondary chain full node)
+	// Run Alice (a secondary chain full node)
 	// Run a full node deliberately in order to control the executoin chain by
 	// submitting the receipts manually later.
-	let alice_executor = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-		.connect_to_primary_chain_node(&alice)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
 		.build(Role::Full)
 		.await;
 
-	alice_executor.wait_for_blocks(3).await;
+	alice.wait_for_blocks(3).await;
 
 	let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
-		let pool = alice.transaction_pool.pool();
-		let backend = alice_executor.backend.clone();
-		let alice_best_hash = alice.client.info().best_hash;
+		let execution_receipt = crate::aux_schema::load_execution_receipt(
+			&*alice.backend,
+			alice.client.hash(primary_number).unwrap().unwrap(),
+		)
+		.expect("Failed to load execution receipt from the local aux_db")
+		.expect("The requested execution receipt must exist");
 
-		let block_hash = alice_executor.client.hash(primary_number).unwrap().unwrap();
+		let pair = ExecutorPair::from_string("//Alice", None).unwrap();
+		let signature = pair.sign(execution_receipt.hash().as_ref());
+		let signer = pair.public();
+
+		let signed_execution_receipt =
+			SignedExecutionReceipt { execution_receipt, signature, signer };
+
+		let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+			pallet_executor::Call::submit_execution_receipt { signed_execution_receipt }.into(),
+		);
+
+		let pool = ferdie.transaction_pool.pool();
+		let ferdie_best_hash = ferdie.client.info().best_hash;
+
 		async move {
-			let execution_receipt =
-				crate::aux_schema::load_execution_receipt(&*backend, block_hash)
-					.unwrap()
-					.unwrap();
-
-			let pair = ExecutorPair::from_string("//Alice", None).unwrap();
-			let signer = pair.public();
-			let signature = pair.sign(execution_receipt.hash().as_ref());
-
-			let signed_execution_receipt =
-				SignedExecutionReceipt { execution_receipt, signature, signer };
-
-			let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-				pallet_executor::Call::submit_execution_receipt { signed_execution_receipt }.into(),
-			);
-
-			pool.submit_one(&BlockId::Hash(alice_best_hash), TransactionSource::External, tx.into())
-				.await
+			pool.submit_one(
+				&BlockId::Hash(ferdie_best_hash),
+				TransactionSource::External,
+				tx.into(),
+			)
+			.await
 		}
 	};
 
@@ -627,7 +624,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 		.expect("Best block receipt must be able to be included in the next block");
 
 	let ready_txs = || {
-		alice
+		ferdie
 			.transaction_pool
 			.pool()
 			.validated_pool()
@@ -639,13 +636,13 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	assert_eq!(vec![tx1, tx2, tx3], ready_txs());
 
 	// Wait for a few more blocks to ensure the ready txs can be consumed.
-	alice_executor.wait_for_blocks(5).await;
+	alice.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 
-	alice_executor.wait_for_blocks(4).await;
+	alice.wait_for_blocks(4).await;
 
 	let future_txs = || {
-		alice
+		ferdie
 			.transaction_pool
 			.pool()
 			.validated_pool()
@@ -679,7 +676,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	}
 
 	// Wait for a few more blocks to ensure the ready txs can be consumed.
-	alice_executor.wait_for_blocks(5).await;
+	alice.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 	assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
 
@@ -691,6 +688,6 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	assert!(future_txs().is_empty());
 
 	// Wait for a few more blocks to ensure the ready txs can be consumed.
-	alice_executor.wait_for_blocks(5).await;
+	alice.wait_for_blocks(5).await;
 	assert!(ready_txs().is_empty());
 }
