@@ -16,14 +16,16 @@
 
 //! Subspace node implementation.
 
+use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, Database, DatabaseParams, SubstrateCli};
 use sc_service::PartialComponents;
+use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
-use subspace_node::{Cli, ExecutionChainSpec, ExecutorDispatch, SecondaryChainCli, Subcommand};
+use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::SubspaceConfiguration;
 
@@ -210,7 +212,7 @@ fn main() -> Result<(), Error> {
                 let maybe_secondary_chain_spec = primary_chain_config
                     .chain_spec
                     .extensions()
-                    .get_any(TypeId::of::<ExecutionChainSpec>())
+                    .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
                     .downcast_ref()
                     .cloned();
 
@@ -323,7 +325,7 @@ fn main() -> Result<(), Error> {
                 let maybe_secondary_chain_spec = primary_chain_config
                     .chain_spec
                     .extensions()
-                    .get_any(TypeId::of::<ExecutionChainSpec>())
+                    .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
                     .downcast_ref()
                     .cloned();
 
