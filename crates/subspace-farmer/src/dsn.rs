@@ -1,10 +1,10 @@
 use crate::PiecesToPlot;
 use futures::{Stream, StreamExt};
+use num_traits::WrappingAdd;
 use std::ops::{ControlFlow, Range};
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash};
 use subspace_solving::U256;
-use num_traits::WrappingAdd;
 
 #[cfg(test)]
 mod tests;
@@ -40,9 +40,11 @@ impl DSNSync for NoSync {
     }
 }
 
-/// Syncs pieces from the provided DSN.
+/// Syncs the closest pieces to the public key from the provided DSN.
 ///
-/// It would query pieces going upwards and downwards from the address provided in options.
+/// It would sync piece with ranges providing in the `options`. It would go concurently upwards and
+/// downwards from address and will either ask all available pieces and end at `options.address -
+/// PieceIndexHashNumber::MAX / 2` or if `on_pieces` callback decides to break with any result.
 pub async fn sync<DSN, OP>(mut dsn: DSN, options: SyncOptions, on_pieces: OP) -> anyhow::Result<()>
 where
     DSN: DSNSync + Send + Sized,
@@ -58,8 +60,7 @@ where
     let mut decreasing_cursor = increasing_cursor;
     let mut increasing = true;
     let on_pieces = Arc::new(Mutex::new(on_pieces));
-    let stop_at = increasing_cursor
-        .wrapping_add(&(PieceIndexHashNumber::MAX / 2));
+    let stop_at = increasing_cursor.wrapping_add(&(PieceIndexHashNumber::MAX / 2));
 
     while increasing_cursor < stop_at || decreasing_cursor > stop_at {
         let mut stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = if increasing {
