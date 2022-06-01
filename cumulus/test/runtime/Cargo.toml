@@ -12,7 +12,7 @@ edition = "2021"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [build-dependencies]
-substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 [dependencies]
 hex-literal = { version = '0.3.1', optional = true }
@@ -22,29 +22,29 @@ scale-info = { version = "2.1.1", default-features = false, features = ["derive"
 
 # Substrate Dependencies
 ## Substrate Primitive Dependencies
-sp-api = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-block-builder = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-core = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-inherents = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-io = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-offchain = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-session = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-std = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-transaction-pool = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-version = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-block-builder = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-core = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-inherents = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-io = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-offchain = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-session = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-std = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-transaction-pool = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-version = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 ## Substrate FRAME Dependencies
-frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-frame-support = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-frame-system = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-frame-system-benchmarking = { default-features = false, optional = true, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-support = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-system = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-system-benchmarking = { default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 ## Substrate Pallet Dependencies
-pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-pallet-transaction-payment = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+pallet-balances = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 cirrus-pallet-executive = { path = "../../pallets/executive", default-features = false }
 cirrus-primitives = { path = "../../primitives", default-features = false }
