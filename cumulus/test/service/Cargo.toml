@@ -28,7 +28,6 @@ sc-network = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3c
 sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sc-service = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-utils = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sp-arithmetic = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
@@ -37,14 +36,10 @@ sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3c
 sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 sp-timestamp = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-trie = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 substrate-test-client = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
-# RPC related dependencies
-jsonrpsee = { version = "0.13.1", features = ["server"] }
-
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
-cirrus-client-executor-gossip = { path = "../../client/executor-gossip" }
+cirrus-node = { path = "../../node" }
 cirrus-test-runtime = { path = "../runtime" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
 

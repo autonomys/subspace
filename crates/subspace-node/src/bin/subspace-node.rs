@@ -21,6 +21,7 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, Database, DatabaseParams, SubstrateCli};
+use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
@@ -28,6 +29,24 @@ use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::SubspaceConfiguration;
+
+/// Secondary executor instance.
+pub struct SecondaryExecutorDispatch;
+
+impl NativeExecutionDispatch for SecondaryExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        cirrus_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        cirrus_runtime::native_version()
+    }
+}
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -385,7 +404,15 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_node_fut = cirrus_node::service::new_full(
+                    let secondary_chain_node_fut = cirrus_node::service::new_full::<
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        cirrus_runtime::RuntimeApi,
+                        SecondaryExecutorDispatch,
+                    >(
                         secondary_chain_config,
                         primary_chain_node.client.clone(),
                         primary_chain_node.network.clone(),
