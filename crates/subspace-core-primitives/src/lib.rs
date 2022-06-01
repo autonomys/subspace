@@ -434,7 +434,8 @@ impl RootBlock {
 pub type PieceIndex = u64;
 
 /// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(pub Sha256Hash);
 
 impl From<PieceIndex> for PieceIndexHash {
