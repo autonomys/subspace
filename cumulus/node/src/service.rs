@@ -141,6 +141,16 @@ where
 	Ok(params)
 }
 
+type CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Executor<
+	Block,
+	PBlock,
+	FullClient<RuntimeApi, ExecutorDispatch>,
+	PClient,
+	FullPool<RuntimeApi, ExecutorDispatch>,
+	FullBackend,
+	NativeElseWasmExecutor<ExecutorDispatch>,
+>;
+
 /// Full node along with some other components.
 pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
 where
@@ -175,15 +185,7 @@ where
 	/// Network starter.
 	pub network_starter: NetworkStarter,
 	/// Executor.
-	pub executor: Executor<
-		Block,
-		PBlock,
-		FullClient<RuntimeApi, ExecutorDispatch>,
-		PClient,
-		FullPool<RuntimeApi, ExecutorDispatch>,
-		FullBackend,
-		NativeElseWasmExecutor<ExecutorDispatch>,
-	>,
+	pub executor: CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
