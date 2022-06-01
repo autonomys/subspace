@@ -1010,6 +1010,10 @@ cfg_if! {
                 ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
                 }
+
+                fn root_plot_public_key() -> Option<FarmerPublicKey> {
+                    <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
+                }
             }
 
             impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
@@ -1347,6 +1351,10 @@ cfg_if! {
                     _ext: &<Block as BlockT>::Extrinsic
                 ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
                     panic!("Not needed in tests")
+                }
+
+                fn root_plot_public_key() -> Option<FarmerPublicKey> {
+                    <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
                 }
             }
 

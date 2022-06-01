@@ -1037,6 +1037,10 @@ impl_runtime_apis! {
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
             extract_root_blocks(ext)
         }
+
+        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+            Subspace::root_plot_public_key()
+        }
     }
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {

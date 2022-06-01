@@ -218,6 +218,9 @@ pub enum Error<Header: HeaderT> {
     /// Merkle Root not found
     #[error("Records Root for segment index {0} not found")]
     RecordsRootNotFound(u64),
+    /// Only root plot public key is allowed
+    #[error("Only root plot public key is allowed")]
+    OnlyRootPlotPublicKeyAllowed,
     /// Check inherents error
     #[error("Checking inherents failed: {0}")]
     CheckInherents(sp_inherents::Error),
@@ -911,6 +914,18 @@ where
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
+
+        let maybe_root_plot_public_key = self
+            .client
+            .runtime_api()
+            .root_plot_public_key(&parent_block_id)?;
+
+        if let Some(root_plot_public_key) = maybe_root_plot_public_key {
+            if pre_digest.solution.public_key != root_plot_public_key {
+                // Only root plot public key is allowed.
+                return Err(Error::OnlyRootPlotPublicKeyAllowed);
+            }
+        }
 
         // Check if farmer's plot is burned.
         if self

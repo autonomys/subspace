@@ -300,6 +300,8 @@ mod pallet {
         pub enable_rewards: bool,
         /// Whether storage access should be enabled.
         pub enable_storage_access: bool,
+        /// Allow block authoring by anyone or just root.
+        pub allow_authoring_by_anyone: bool,
     }
 
     #[cfg(feature = "std")]
@@ -308,6 +310,7 @@ mod pallet {
             Self {
                 enable_rewards: true,
                 enable_storage_access: true,
+                allow_authoring_by_anyone: true,
             }
         }
     }
@@ -319,6 +322,7 @@ mod pallet {
                 EnableRewards::<T>::put::<T::BlockNumber>(One::one());
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
+            AllowAuthoringByAnyone::<T>::put(self.allow_authoring_by_anyone);
         }
     }
 
@@ -443,6 +447,17 @@ mod pallet {
     #[pallet::getter(fn is_storage_access_enabled)]
     pub(super) type IsStorageAccessEnabled<T> = StorageValue<_, bool, ValueQuery>;
 
+    /// Allow block authoring by anyone or just root.
+    #[pallet::storage]
+    pub(super) type AllowAuthoringByAnyone<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Root plot public key.
+    ///
+    /// Set just once to make sure no one else can author blocks until allowed for anyone.
+    #[pallet::storage]
+    #[pallet::getter(fn root_plot_public_key)]
+    pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -535,6 +550,17 @@ mod pallet {
             ensure_root(origin)?;
 
             IsStorageAccessEnabled::<T>::put(true);
+
+            Ok(())
+        }
+
+        /// Enable storage access for all users.
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
+            ensure_root(origin)?;
+
+            AllowAuthoringByAnyone::<T>::put(true);
+            RootPlotPublicKey::<T>::take();
 
             Ok(())
         }
@@ -788,7 +814,22 @@ impl<T: Config> Pallet<T> {
         CurrentSlot::<T>::put(pre_digest.slot);
 
         {
-            let key = (pre_digest.solution.public_key.clone(), pre_digest.slot);
+            let farmer_public_key = pre_digest.solution.public_key.clone();
+
+            // Optional restriction for block authoring to the root user
+            if !AllowAuthoringByAnyone::<T>::get() {
+                RootPlotPublicKey::<T>::mutate(|maybe_root_plot_public_key| {
+                    if let Some(root_plot_public_key) = maybe_root_plot_public_key {
+                        if root_plot_public_key != &farmer_public_key {
+                            panic!("Client bug, authoring must be only done by the root user");
+                        }
+                    } else {
+                        maybe_root_plot_public_key.replace(farmer_public_key.clone());
+                    }
+                });
+            }
+
+            let key = (farmer_public_key, pre_digest.slot);
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, slot) = key;
 
