@@ -22,7 +22,7 @@
 #![warn(missing_docs)]
 
 use jsonrpsee::RpcModule;
-use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPaymentRpc};
+use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
@@ -39,7 +39,7 @@ use sp_consensus_subspace::FarmerPublicKey;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
-use substrate_frame_rpc_system::{SystemApiServer, SystemRpc};
+use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
@@ -90,8 +90,8 @@ where
         archived_segment_notification_stream,
     } = deps;
 
-    module.merge(SystemRpc::new(client.clone(), pool, deny_unsafe).into_rpc())?;
-    module.merge(TransactionPaymentRpc::new(client.clone()).into_rpc())?;
+    module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(TransactionPayment::new(client.clone()).into_rpc())?;
 
     module.merge(
         SubspaceRpc::new(

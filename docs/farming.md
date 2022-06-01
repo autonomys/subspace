@@ -45,7 +45,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
 --chain gemini-1 `
---execution native `
+--execution wasm `
 --pruning 1024 `
 --keep-blocks 1024 `
 --validator `
