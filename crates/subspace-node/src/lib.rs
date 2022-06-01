@@ -21,14 +21,13 @@ mod chain_spec_utils;
 mod import_blocks_from_dsn;
 mod secondary_chain;
 
-pub use crate::chain_spec::{ChainSpecExtensions, ConsensusChainSpec};
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::secondary_chain::chain_spec::ExecutionChainSpec;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
+use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use std::io::Write;
 use std::{fs, io};
@@ -57,7 +56,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
 }
 
 /// This `purge-chain` command used to remove both primary and secondary chains.
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]

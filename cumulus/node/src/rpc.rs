@@ -7,7 +7,7 @@
 
 use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce};
 use jsonrpsee::RpcModule;
-use pallet_transaction_payment_rpc::{TransactionPaymentApiServer, TransactionPaymentRpc};
+use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::AuxStore;
 use sc_rpc::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -15,7 +15,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
-use substrate_frame_rpc_system::{SystemApiServer, SystemRpc};
+use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies
 pub struct FullDeps<C, P> {
@@ -47,8 +47,8 @@ where
 	let mut module = RpcModule::new(());
 	let FullDeps { client, pool, deny_unsafe } = deps;
 
-	module.merge(SystemRpc::new(client.clone(), pool, deny_unsafe).into_rpc())?;
-	module.merge(TransactionPaymentRpc::new(client).into_rpc())?;
+	module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+	module.merge(TransactionPayment::new(client).into_rpc())?;
 
 	Ok(module)
 }

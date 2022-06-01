@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::ExecutionChainSpec;
+use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -22,6 +22,7 @@ use sc_cli::{
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
+use sc_subspace_chain_specs::ExecutionChainSpec;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -47,7 +48,7 @@ pub struct SecondaryChainCli {
     pub base_path: Option<PathBuf>,
 
     /// Specification of the secondary chain derived from primary chain spec.
-    pub chain_spec: ExecutionChainSpec,
+    pub chain_spec: ExecutionChainSpec<ExecutionGenesisConfig>,
 }
 
 impl SecondaryChainCli {
@@ -56,7 +57,7 @@ impl SecondaryChainCli {
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
         base_path: Option<PathBuf>,
-        chain_spec: ExecutionChainSpec,
+        chain_spec: ExecutionChainSpec<ExecutionGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
         Self {

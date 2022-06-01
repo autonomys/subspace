@@ -18,14 +18,12 @@
 
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
-    SerializableChainSpec,
 };
 use crate::secondary_chain;
-use crate::secondary_chain::chain_spec::ExecutionChainSpec;
-use sc_chain_spec::ChainSpecExtension;
+use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use sc_service::ChainType;
+use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
 use sc_telemetry::TelemetryEndpoints;
-use serde::{Deserialize, Serialize};
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
@@ -65,27 +63,18 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
-/// The extensions for the [`ConsensusChainSpec`].
-#[derive(Clone, Serialize, Deserialize, ChainSpecExtension)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct ChainSpecExtensions {
-    /// Chain spec of execution chain.
-    pub execution_chain_spec: ExecutionChainSpec,
-}
-
-/// The `ChainSpec` parameterized for the consensus runtime.
-pub type ConsensusChainSpec = SerializableChainSpec<GenesisConfig, ChainSpecExtensions>;
-
-pub fn gemini_config() -> Result<ConsensusChainSpec, String> {
+pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
+{
     ConsensusChainSpec::from_json_bytes(GEMINI_1_CHAIN_SPEC)
 }
 
-pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
+pub fn gemini_config_compiled(
+) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Gemini 1",
         // ID
-        "subspace_gemini_1a",
+        "subspace_gemini_1b",
         ChainType::Custom("Subspace Gemini 1".to_string()),
         || {
             let sudo_account =
@@ -142,6 +131,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                false,
             )
         },
         // Bootnodes
@@ -155,7 +145,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
             .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-1a"),
+        Some("subspace-gemini-1b"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -166,7 +156,7 @@ pub fn gemini_config_compiled() -> Result<ConsensusChainSpec, String> {
     ))
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec, String> {
+pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -194,6 +184,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                true,
             )
         },
         // Bootnodes
@@ -212,7 +203,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec, String> {
     ))
 }
 
-pub fn local_config() -> Result<ConsensusChainSpec, String> {
+pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -248,6 +239,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
                 ),
                 false,
                 false,
+                true,
             )
         },
         // Bootnodes
@@ -267,6 +259,7 @@ pub fn local_config() -> Result<ConsensusChainSpec, String> {
 }
 
 /// Configure initial storage state for FRAME modules.
+#[allow(clippy::too_many_arguments)]
 fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
@@ -276,6 +269,7 @@ fn subspace_genesis_config(
     executor_authority: (AccountId, ExecutorId),
     enable_rewards: bool,
     enable_storage_access: bool,
+    allow_authoring_by_anyone: bool,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -291,6 +285,7 @@ fn subspace_genesis_config(
         subspace: SubspaceConfig {
             enable_rewards,
             enable_storage_access,
+            allow_authoring_by_anyone,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

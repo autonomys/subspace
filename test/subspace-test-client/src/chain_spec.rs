@@ -93,6 +93,7 @@ fn create_genesis_config(
         subspace: SubspaceConfig {
             enable_rewards: false,
             enable_storage_access: false,
+            allow_authoring_by_anyone: true,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

@@ -1,6 +1,7 @@
 *
 !/crates
 !/cumulus
+!/orml
 !/substrate
 !/test
 !/Cargo.lock
