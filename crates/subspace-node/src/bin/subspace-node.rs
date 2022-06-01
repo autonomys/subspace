@@ -432,7 +432,7 @@ fn main() -> Result<(), Error> {
                             }),
                     );
 
-                    let (secondary_chain_node, _executor) = secondary_chain_node_fut.await?;
+                    let secondary_chain_node = secondary_chain_node_fut.await?;
 
                     primary_chain_node
                         .task_manager

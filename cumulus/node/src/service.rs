@@ -142,7 +142,24 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<C, CodeExecutor> {
+pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
+where
+	PBlock: BlockT,
+	ExecutorDispatch: NativeExecutionDispatch + 'static,
+	RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+		+ Send
+		+ Sync
+		+ 'static,
+	RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+		+ Metadata<Block>
+		+ BlockBuilder<Block>
+		+ OffchainWorkerApi<Block>
+		+ SessionKeys<Block>
+		+ SecondaryApi<Block, AccountId>
+		+ TaggedTransactionQueue<Block>
+		+ AccountNonceApi<Block, AccountId, Nonce>
+		+ TransactionPaymentRuntimeApi<Block, Balance>,
+{
 	/// Task manager.
 	pub task_manager: TaskManager,
 	/// Full client.
@@ -157,6 +174,16 @@ pub struct NewFull<C, CodeExecutor> {
 	pub rpc_handlers: sc_service::RpcHandlers,
 	/// Network starter.
 	pub network_starter: NetworkStarter,
+	/// Executor.
+	pub executor: Executor<
+		Block,
+		PBlock,
+		FullClient<RuntimeApi, ExecutorDispatch>,
+		PClient,
+		FullPool<RuntimeApi, ExecutorDispatch>,
+		FullBackend,
+		NativeElseWasmExecutor<ExecutorDispatch>,
+	>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -169,29 +196,24 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
 	select_chain: &SC,
 	imported_block_notification_stream: IBNS,
 	new_slot_notification_stream: NSNS,
-) -> sc_service::error::Result<(
+) -> sc_service::error::Result<
 	NewFull<
 		Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
 		NativeElseWasmExecutor<ExecutorDispatch>,
-	>,
-	Executor<
-		Block,
 		PBlock,
-		FullClient<RuntimeApi, ExecutorDispatch>,
 		PClient,
-		FullPool<RuntimeApi, ExecutorDispatch>,
-		FullBackend,
-		NativeElseWasmExecutor<ExecutorDispatch>,
+		RuntimeApi,
+		ExecutorDispatch,
 	>,
-)>
+>
 where
 	PBlock: BlockT,
 	PClient: HeaderBackend<PBlock>
 		+ BlockBackend<PBlock>
 		+ ProvideRuntimeApi<PBlock>
 		+ Send
-		+ 'static
-		+ Sync,
+		+ Sync
+		+ 'static,
 	PClient::Api: ExecutorApi<PBlock, Hash>,
 	SC: SelectChain<PBlock>,
 	IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
@@ -316,7 +338,8 @@ where
 		network,
 		rpc_handlers,
 		network_starter,
+		executor,
 	};
 
-	Ok((new_full, executor))
+	Ok(new_full)
 }

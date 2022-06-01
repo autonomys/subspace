@@ -128,7 +128,7 @@ async fn run_executor(
 		})?
 	};
 
-	let (secondary_chain_node, executor) = cirrus_node::service::new_full::<
+	let secondary_chain_node = cirrus_node::service::new_full::<
 		_,
 		_,
 		_,
@@ -164,6 +164,7 @@ async fn run_executor(
 		network,
 		network_starter,
 		rpc_handlers,
+		executor,
 	} = secondary_chain_node;
 
 	task_manager.add_child(primary_chain_full_node.task_manager);
