@@ -1,4 +1,5 @@
 use crate::behavior::{Behavior, Event};
+use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
 use bytes::Bytes;
@@ -119,6 +120,9 @@ impl NodeRunner {
             }
             SwarmEvent::Behaviour(Event::Gossipsub(event)) => {
                 self.handle_gossipsub_event(event).await;
+            }
+            SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
+                self.handle_request_response_event(event).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
@@ -314,6 +318,10 @@ impl NodeRunner {
         }
     }
 
+    async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
+        println!("Request response event: {:?}", event);
+    }
+
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::GetValue { key, result_sender } => {
@@ -423,6 +431,19 @@ impl NodeRunner {
                     QueryResultSender::GetClosestPeers {
                         sender: result_sender,
                     },
+                );
+            }
+            Command::Request {
+                peer_id,
+                result_sender,
+            } => {
+                //TODO:
+                self.swarm.behaviour_mut().request_response.send_request(
+                    &peer_id,
+                    &crate::request_response_handler::generate_protocol_name(),
+                    vec![1, 2, 3],
+                    result_sender,
+                    IfDisconnected::TryConnect,
                 );
             }
         }

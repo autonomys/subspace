@@ -2,6 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
+use crate::request_response_handler::RequestResponseHandler;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
@@ -188,6 +189,12 @@ pub async fn create(
             })
             .collect::<Result<_, CreationError>>()?;
 
+        let (reqeust_response_handler, request_response) = RequestResponseHandler::new();
+
+        tokio::spawn(async move {
+            reqeust_response_handler.run().await;
+        });
+
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
             bootstrap_nodes,
@@ -195,6 +202,7 @@ pub async fn create(
             kademlia,
             gossipsub,
             value_getter,
+            request_response,
         });
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)

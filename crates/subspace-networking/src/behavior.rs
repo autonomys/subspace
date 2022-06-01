@@ -1,5 +1,9 @@
 pub(crate) mod custom_record_store;
 
+use super::request_responses::{
+    Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
+    RequestResponsesBehaviour,
+};
 use crate::create::ValueGetter;
 use custom_record_store::CustomRecordStore;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
@@ -21,6 +25,8 @@ pub(crate) struct BehaviorConfig {
     pub(crate) gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub(crate) value_getter: ValueGetter,
+    /// The configuration for the [`RequestResponsesBehaviour`].
+    pub(crate) request_response: RequestResponseConfig,
 }
 
 #[derive(NetworkBehaviour)]
@@ -31,6 +37,7 @@ pub(crate) struct Behavior {
     pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) gossipsub: Gossipsub,
     pub(crate) ping: Ping,
+    pub(crate) request_response: RequestResponsesBehaviour,
 }
 
 impl Behavior {
@@ -58,6 +65,10 @@ impl Behavior {
             kademlia,
             gossipsub,
             ping: Ping::default(),
+            request_response: RequestResponsesBehaviour::new(
+                vec![config.request_response].into_iter(),
+            )
+            .unwrap(), //TODO
         }
     }
 }
@@ -68,6 +79,7 @@ pub(crate) enum Event {
     Kademlia(KademliaEvent),
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
+    RequestResponse(RequestResponseEvent),
 }
 
 impl From<IdentifyEvent> for Event {
@@ -91,5 +103,11 @@ impl From<GossipsubEvent> for Event {
 impl From<PingEvent> for Event {
     fn from(event: PingEvent) -> Self {
         Event::Ping(event)
+    }
+}
+
+impl From<RequestResponseEvent> for Event {
+    fn from(event: RequestResponseEvent) -> Self {
+        Event::RequestResponse(event)
     }
 }

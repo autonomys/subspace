@@ -8114,6 +8114,7 @@ name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "clap 3.1.18",
  "env_logger",
@@ -8123,11 +8124,13 @@ dependencies = [
  "libp2p",
  "nohash-hasher",
  "parking_lot 0.12.0",
+ "sc-peerset",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber 0.2.25",
+ "unsigned-varint",
 ]
 
 [[package]]

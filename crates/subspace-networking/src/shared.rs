@@ -1,6 +1,7 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
+use crate::request_responses::RequestFailure;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -45,6 +46,10 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: ExactKademliaKey,
         result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
+    },
+    Request {
+        peer_id: PeerId,
+        result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>, //TODO: error
     },
 }
 

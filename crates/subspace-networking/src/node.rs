@@ -168,6 +168,31 @@ impl Node {
             .map_err(PublishError::Publish)
     }
 
+    pub async fn send_request(&self, peer_id: PeerId) -> Result<(), PublishError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::Request {
+                result_sender,
+                peer_id,
+            })
+            .await
+            .map_err(|_error| PublishError::NodeRunnerDropped)?;
+
+        println!("Request sent");
+
+        let result = result_receiver
+            .await
+            .map_err(|_error| PublishError::NodeRunnerDropped)?;
+        //.map_err(PublishError::Publish); TODO:?
+
+        println!("Result: {:?}", result);
+
+        Ok(())
+    }
+
     /// Node's own addresses where it listens for incoming requests.
     pub fn listeners(&self) -> Vec<Multiaddr> {
         self.shared.listeners.lock().clone()
