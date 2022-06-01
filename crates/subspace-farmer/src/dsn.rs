@@ -58,12 +58,11 @@ where
     } = options;
     let mut increasing_cursor = PieceIndexHashNumber::from(Sha256Hash::from(address));
     let mut decreasing_cursor = increasing_cursor;
-    let mut increasing = true;
     let on_pieces = Arc::new(Mutex::new(on_pieces));
     let stop_at = increasing_cursor.wrapping_add(&(PieceIndexHashNumber::MAX / 2));
 
     while increasing_cursor < stop_at || decreasing_cursor > stop_at {
-        let mut stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = if increasing {
+        let increasing_stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = {
             let start = increasing_cursor;
             let (end, is_overflow) = start.overflowing_add(range_size);
             increasing_cursor = end;
@@ -92,7 +91,8 @@ where
                     );
                 Box::new(stream)
             }
-        } else {
+        };
+        let decreasing_stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = {
             let end = decreasing_cursor;
             let (start, is_underflow) = end.overflowing_sub(range_size);
             decreasing_cursor = start;
@@ -122,6 +122,7 @@ where
                 Box::new(stream)
             }
         };
+        let mut stream = increasing_stream.chain(decreasing_stream);
 
         while let Some(PiecesToPlot {
             piece_indexes,
@@ -144,8 +145,6 @@ where
                 return result;
             }
         }
-
-        increasing = !increasing;
     }
 
     Ok(())
