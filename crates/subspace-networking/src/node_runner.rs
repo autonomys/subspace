@@ -318,6 +318,7 @@ impl NodeRunner {
         }
     }
 
+    //TODO
     async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
         println!("Request response event: {:?}", event);
     }
@@ -435,13 +436,14 @@ impl NodeRunner {
             }
             Command::Request {
                 peer_id,
+                request,
                 result_sender,
             } => {
                 //TODO:
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
                     &crate::request_response_handler::generate_protocol_name(),
-                    vec![1, 2, 3],
+                    request.into(),
                     result_sender,
                     IfDisconnected::TryConnect,
                 );

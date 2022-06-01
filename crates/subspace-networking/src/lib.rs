@@ -31,3 +31,4 @@ pub use crate::node::{Node, TopicSubscription};
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};
 pub use libp2p;
+pub use request_response_handler::{Request, Response};

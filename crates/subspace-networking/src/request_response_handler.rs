@@ -22,10 +22,13 @@
 //! `crate::request_responses::RequestResponsesBehaviour` with
 //! [`LightClientRequestHandler`](handler::LightClientRequestHandler).
 
-//use codec::{self, Decode, Encode};
-use futures::{channel::mpsc, prelude::*};
+use futures::channel::mpsc;
+use futures::prelude::*;
 use libp2p::PeerId;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::{debug, trace};
 // use sc_network_common::{
 // 	config::ProtocolId,
@@ -39,14 +42,45 @@ use sc_peerset::ReputationChange;
 use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 const LOG_TARGET: &str = "request-response-handler";
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Request {
+    pub start: PieceIndexHash,
+}
+
+impl From<Vec<u8>> for Request {
+    fn from(data: Vec<u8>) -> Request {
+        bincode::deserialize(&data).unwrap() // TODO
+    }
+}
+
+impl Into<Vec<u8>> for Request {
+    fn into(self) -> Vec<u8> {
+        bincode::serialize(&self).unwrap() //TODO
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response {
+    pub pieces: Vec<Piece>,
+}
+
+impl Into<Vec<u8>> for Response {
+    fn into(self) -> Vec<u8> {
+        bincode::serialize(&self).unwrap() //TODO
+    }
+}
+
+pub type RequestHandler = Arc<dyn (Fn(&Request) -> Option<Response>) + Send + Sync + 'static>;
+
 pub struct RequestResponseHandler {
     request_receiver: mpsc::Receiver<IncomingRequest>,
+    request_handler: RequestHandler,
 }
 
 impl RequestResponseHandler {
     /// Create a new [`RequestResponseHandler`].
     /// TODO: protocol_id: &ProtocolId
-    pub fn new() -> (Self, ProtocolConfig) {
+    pub fn new(request_handler: RequestHandler) -> (Self, ProtocolConfig) {
         // For now due to lack of data on light client request handling in production systems, this
         // value is chosen to match the block request limit.
         let (tx, request_receiver) = mpsc::channel(20);
@@ -54,10 +88,16 @@ impl RequestResponseHandler {
         let mut protocol_config = generate_protocol_config();
         protocol_config.inbound_queue = Some(tx);
 
-        (Self { request_receiver }, protocol_config)
+        (
+            Self {
+                request_receiver,
+                request_handler,
+            },
+            protocol_config,
+        )
     }
 
-    /// Run [`LightClientRequestHandler`].
+    /// Run [`RequestResponseHandler`].
     pub async fn run(mut self) {
         while let Some(request) = self.request_receiver.next().await {
             let IncomingRequest {
@@ -126,6 +166,8 @@ impl RequestResponseHandler {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, HandleRequestError> {
         println!("Handled request from {:?}. Data: {:?}", peer, payload);
+        let request: Request = payload.into();
+        let response = (self.request_handler)(&request);
         // let request = schema::v1::light::Request::decode(&payload[..])?;
 
         // let response = match &request.request {
@@ -143,10 +185,10 @@ impl RequestResponseHandler {
         // 		return Err(HandleRequestError::BadRequest("Remote request without request data.")),
         // };
 
-        let mut data = vec![38];
+        //let mut data = vec![38];
         // response.encode(&mut data)?;
 
-        Ok(data)
+        Ok(response.unwrap().into()) // TODO
     }
 
     // fn on_remote_call_request(

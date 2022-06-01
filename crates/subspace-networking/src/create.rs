@@ -2,7 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
-use crate::request_response_handler::RequestResponseHandler;
+use crate::request_response_handler::{RequestHandler, RequestResponseHandler};
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
@@ -57,6 +57,9 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
+
+    // TODO
+    pub request_handler: RequestHandler,
 }
 
 impl fmt::Debug for Config {
@@ -111,6 +114,7 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
+            request_handler: Arc::new(|_| None),
         }
     }
 }
@@ -144,6 +148,7 @@ pub async fn create(
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
+        request_handler,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let local_peer_id = keypair.public().to_peer_id();
@@ -189,7 +194,8 @@ pub async fn create(
             })
             .collect::<Result<_, CreationError>>()?;
 
-        let (reqeust_response_handler, request_response) = RequestResponseHandler::new();
+        let (reqeust_response_handler, request_response) =
+            RequestResponseHandler::new(request_handler);
 
         tokio::spawn(async move {
             reqeust_response_handler.run().await;

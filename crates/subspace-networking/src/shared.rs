@@ -2,6 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::request_responses::RequestFailure;
+use crate::Request;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -49,6 +50,7 @@ pub(crate) enum Command {
     },
     Request {
         peer_id: PeerId,
+        request: Request,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>, //TODO: error
     },
 }

@@ -14,13 +14,15 @@ include = [
 
 [dependencies]
 async-trait = "0.1.53"
-event-listener-primitives = "2.0.1"
+bincode = "1.3.3"
 bytes = "1.1.0"
+event-listener-primitives = "2.0.1"
 futures = "0.3.21"
 hex = "0.4.3"
 nohash-hasher = "0.2.0"
 parking_lot = "0.12.0"
 sc-peerset = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+serde = "1.0.137"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }

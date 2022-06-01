@@ -1,4 +1,5 @@
 use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
+use crate::Request;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
@@ -168,13 +169,18 @@ impl Node {
             .map_err(PublishError::Publish)
     }
 
-    pub async fn send_request(&self, peer_id: PeerId) -> Result<(), PublishError> {
+    pub async fn send_request(
+        &self,
+        peer_id: PeerId,
+        request: Request,
+    ) -> Result<(), PublishError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
             .command_sender
             .clone()
             .send(Command::Request {
+                request,
                 result_sender,
                 peer_id,
             })
