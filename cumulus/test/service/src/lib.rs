@@ -20,10 +20,8 @@
 
 pub mod chain_spec;
 
-use cirrus_client_executor_gossip::ExecutorGossipParams;
-use cirrus_test_runtime::{opaque::Block, Hash, RuntimeApi};
+use cirrus_test_runtime::{opaque::Block, Hash};
 use futures::StreamExt;
-use jsonrpsee::RpcModule;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::{config::TransportConfig, multiaddr, NetworkService};
 use sc_service::{
@@ -31,16 +29,14 @@ use sc_service::{
 		DatabaseSource, KeepBlocks, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
 		OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 	},
-	BasePath, ChainSpec, Configuration, Error as ServiceError, NetworkStarter, PartialComponents,
-	Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
+	BasePath, Configuration, Error as ServiceError, NetworkStarter, Role, RpcHandlers,
+	TFullBackend, TFullClient, TaskManager,
 };
-use sc_utils::mpsc::tracing_unbounded;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{traits::SpawnEssentialNamed, H256};
+use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::{codec::Encode, generic, traits::BlakeTwo256, OpaqueExtrinsic};
-use sp_trie::PrefixedMemoryDB;
+use sp_runtime::{codec::Encode, generic, OpaqueExtrinsic};
 use std::{future::Future, sync::Arc};
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use substrate_test_client::{
@@ -89,71 +85,13 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
 pub type Client =
 	TFullClient<Block, runtime::RuntimeApi, sc_executor::NativeElseWasmExecutor<RuntimeExecutor>>;
 
-/// Starts a `ServiceBuilder` for a full service.
+/// Start an executor with the given secondary chain `Configuration` and primary chain `Configuration`.
 ///
-/// Use this macro if you don't actually need the full service, but just the builder in order to
-/// be able to perform chain operations.
-#[allow(clippy::type_complexity)]
-pub fn new_partial(
-	config: &mut Configuration,
-) -> Result<
-	PartialComponents<
-		Client,
-		TFullBackend<Block>,
-		(),
-		sc_consensus::import_queue::BasicQueue<Block, PrefixedMemoryDB<BlakeTwo256>>,
-		sc_transaction_pool::FullPool<Block, Client>,
-		CodeExecutor,
-	>,
-	sc_service::Error,
-> {
-	let executor = sc_executor::NativeElseWasmExecutor::<RuntimeExecutor>::new(
-		config.wasm_method,
-		config.default_heap_pages,
-		config.max_runtime_instances,
-		config.runtime_cache_size,
-	);
-
-	let (client, backend, keystore_container, task_manager) =
-		sc_service::new_full_parts::<Block, RuntimeApi, _>(config, None, executor.clone())?;
-	let client = Arc::new(client);
-
-	let registry = config.prometheus_registry();
-
-	let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-		config.transaction_pool.clone(),
-		config.role.is_authority().into(),
-		config.prometheus_registry(),
-		task_manager.spawn_essential_handle(),
-		client.clone(),
-	);
-
-	let import_queue = cumulus_client_consensus_relay_chain::import_queue(
-		client.clone(),
-		&task_manager.spawn_essential_handle(),
-		registry,
-	)?;
-
-	let params = PartialComponents {
-		backend,
-		client,
-		import_queue,
-		keystore_container,
-		task_manager,
-		transaction_pool,
-		select_chain: (),
-		other: (executor),
-	};
-
-	Ok(params)
-}
-
-/// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
-///
-/// This is the actual implementation that is abstract over the executor and the runtime api.
-#[sc_tracing::logging::prefix_logs_with(parachain_config.network.node_name.as_str())]
-async fn start_node_impl(
-	mut parachain_config: Configuration,
+/// A primary chain full node and secondary chain node will be started, similar to the behaviour in
+/// the production.
+#[sc_tracing::logging::prefix_logs_with(secondary_chain_config.network.node_name.as_str())]
+async fn run_executor(
+	secondary_chain_config: Configuration,
 	primary_chain_config: Configuration,
 ) -> sc_service::error::Result<(
 	TaskManager,
@@ -164,19 +102,9 @@ async fn start_node_impl(
 	RpcHandlers,
 	Executor,
 )> {
-	if matches!(parachain_config.role, Role::Light) {
+	if matches!(secondary_chain_config.role, Role::Light) {
 		return Err("Light client not supported!".into())
 	}
-
-	// TODO: Do we even need block announcement on secondary node?
-	// parachain_config.announce_block = false;
-
-	let params = new_partial(&mut parachain_config)?;
-	let code_executor = params.other;
-
-	let validator = parachain_config.role.is_authority();
-	let transaction_pool = params.transaction_pool.clone();
-	let mut task_manager = params.task_manager;
 
 	let primary_chain_full_node = {
 		let span = tracing::info_span!(
@@ -185,93 +113,63 @@ async fn start_node_impl(
 		);
 		let _enter = span.enter();
 
+		let primary_chain_config = subspace_service::SubspaceConfiguration {
+			base: primary_chain_config,
+			// Always enable the slot notification.
+			force_new_slot_notifications: true,
+		};
+
 		subspace_service::new_full::<
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
-		>(primary_chain_config.into(), false)
+		>(primary_chain_config, false)
 		.map_err(|e| {
 			sc_service::Error::Other(format!("Failed to build a full subspace node: {e}"))
 		})?
 	};
 
-	let client = params.client.clone();
-	let backend = params.backend.clone();
+	let secondary_chain_node = cirrus_node::service::new_full::<
+		_,
+		_,
+		_,
+		_,
+		_,
+		cirrus_test_runtime::RuntimeApi,
+		RuntimeExecutor,
+	>(
+		secondary_chain_config,
+		primary_chain_full_node.client.clone(),
+		primary_chain_full_node.network.clone(),
+		&primary_chain_full_node.select_chain,
+		primary_chain_full_node
+			.imported_block_notification_stream
+			.subscribe()
+			.then(|(block_number, _)| async move { block_number }),
+		primary_chain_full_node.new_slot_notification_stream.subscribe().then(
+			|slot_notification| async move {
+				(
+					slot_notification.new_slot_info.slot,
+					slot_notification.new_slot_info.global_challenge,
+				)
+			},
+		),
+	)
+	.await?;
 
-	let (network, system_rpc_tx, start_network) =
-		sc_service::build_network(sc_service::BuildNetworkParams {
-			config: &parachain_config,
-			client: client.clone(),
-			transaction_pool: transaction_pool.clone(),
-			spawn_handle: task_manager.spawn_handle(),
-			import_queue: params.import_queue,
-			block_announce_validator_builder: None,
-			warp_sync: None,
-		})?;
-
-	let rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-		rpc_builder: Box::new(|_, _| Ok(RpcModule::new(()))),
-		client: client.clone(),
-		transaction_pool: transaction_pool.clone(),
-		task_manager: &mut task_manager,
-		config: parachain_config,
-		keystore: params.keystore_container.sync_keystore(),
-		backend: backend.clone(),
-		network: network.clone(),
-		system_rpc_tx,
-		telemetry: None,
-	})?;
-
-	let code_executor = Arc::new(code_executor);
-
-	let executor = {
-		let spawn_essential = task_manager.spawn_essential_handle();
-		let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-		let (execution_receipt_sender, execution_receipt_receiver) =
-			tracing_unbounded("execution_receipt_stream");
-
-		let executor = Executor::new(
-			primary_chain_full_node.client.clone(),
-			primary_chain_full_node.network.clone(),
-			&spawn_essential,
-			&primary_chain_full_node.select_chain,
-			primary_chain_full_node
-				.imported_block_notification_stream
-				.subscribe()
-				.then(|(block_number, _)| async move { block_number }),
-			primary_chain_full_node.new_slot_notification_stream.subscribe().then(
-				|slot_notification| async move {
-					let slot_info = slot_notification.new_slot_info;
-
-					(slot_info.slot, slot_info.global_challenge)
-				},
-			),
-			client.clone(),
-			Box::new(task_manager.spawn_handle()),
-			transaction_pool,
-			Arc::new(bundle_sender),
-			Arc::new(execution_receipt_sender),
-			backend.clone(),
-			Arc::clone(&code_executor),
-			validator,
-			params.keystore_container.sync_keystore(),
-		)
-		.await?;
-
-		let executor_gossip =
-			cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-				network: network.clone(),
-				executor: executor.clone(),
-				bundle_receiver,
-				execution_receipt_receiver,
-			});
-		spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
-
-		executor
-	};
+	let cirrus_node::service::NewFull {
+		mut task_manager,
+		client,
+		backend,
+		code_executor,
+		network,
+		network_starter,
+		rpc_handlers,
+		executor,
+	} = secondary_chain_node;
 
 	task_manager.add_child(primary_chain_full_node.task_manager);
 
-	start_network.start_network();
+	network_starter.start_network();
 
 	primary_chain_full_node.network_starter.start_network();
 
@@ -303,11 +201,9 @@ pub struct TestNode {
 pub struct TestNodeBuilder {
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
-	parachain_nodes: Vec<MultiaddrWithPeerId>,
-	parachain_nodes_exclusive: bool,
-	relay_chain_nodes: Vec<MultiaddrWithPeerId>,
-	storage_update_func_parachain: Option<Box<dyn Fn()>>,
-	storage_update_func_relay_chain: Option<Box<dyn Fn()>>,
+	secondary_nodes: Vec<MultiaddrWithPeerId>,
+	secondary_nodes_exclusive: bool,
+	primary_nodes: Vec<MultiaddrWithPeerId>,
 }
 
 impl TestNodeBuilder {
@@ -315,111 +211,97 @@ impl TestNodeBuilder {
 	///
 	/// `para_id` - The parachain id this node is running for.
 	/// `tokio_handle` - The tokio handler to use.
-	/// `key` - The key that will be used to generate the name and that will be passed as `dev_seed`.
+	/// `key` - The key that will be used to generate the name.
 	pub fn new(tokio_handle: tokio::runtime::Handle, key: Sr25519Keyring) -> Self {
 		TestNodeBuilder {
 			key,
 			tokio_handle,
-			parachain_nodes: Vec::new(),
-			parachain_nodes_exclusive: false,
-			relay_chain_nodes: Vec::new(),
-			storage_update_func_parachain: None,
-			storage_update_func_relay_chain: None,
+			secondary_nodes: Vec::new(),
+			secondary_nodes_exclusive: false,
+			primary_nodes: Vec::new(),
 		}
 	}
 
 	/// Instruct the node to exclusively connect to registered parachain nodes.
 	///
-	/// Parachain nodes can be registered using [`Self::connect_to_parachain_node`] and
-	/// [`Self::connect_to_parachain_nodes`].
+	/// Parachain nodes can be registered using [`Self::connect_to_secondary_chain_node`] and
+	/// [`Self::connect_to_secondary_chain_nodes`].
 	pub fn exclusively_connect_to_registered_parachain_nodes(mut self) -> Self {
-		self.parachain_nodes_exclusive = true;
+		self.secondary_nodes_exclusive = true;
 		self
 	}
 
-	/// Make the node connect to the given parachain node.
+	/// Make the node connect to the given secondary chain node.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_parachain_node(mut self, node: &TestNode) -> Self {
-		self.parachain_nodes.push(node.addr.clone());
+	pub fn connect_to_secondary_chain_node(mut self, node: &TestNode) -> Self {
+		self.secondary_nodes.push(node.addr.clone());
 		self
 	}
 
-	/// Make the node connect to the given parachain nodes.
+	/// Make the node connect to the given secondary chain nodes.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_parachain_nodes<'a>(
+	pub fn connect_to_secondary_chain_nodes<'a>(
 		mut self,
 		nodes: impl Iterator<Item = &'a TestNode>,
 	) -> Self {
-		self.parachain_nodes.extend(nodes.map(|n| n.addr.clone()));
+		self.secondary_nodes.extend(nodes.map(|n| n.addr.clone()));
 		self
 	}
 
-	/// Make the node connect to the given relay chain node.
+	/// Make the node connect to the given primary chain node.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_relay_chain_node(
+	pub fn connect_to_primary_chain_node(
 		mut self,
-		node: &subspace_test_service::SubspaceTestNode,
+		node: &subspace_test_service::PrimaryTestNode,
 	) -> Self {
-		self.relay_chain_nodes.push(node.addr.clone());
+		self.primary_nodes.push(node.addr.clone());
 		self
 	}
 
-	/// Make the node connect to the given relay chain nodes.
+	/// Make the node connect to the given primary chain nodes.
 	///
 	/// By default the node will not be connected to any node or will be able to discover any other
 	/// node.
-	pub fn connect_to_relay_chain_nodes<'a>(
+	pub fn connect_to_primary_chain_nodes<'a>(
 		mut self,
-		nodes: impl IntoIterator<Item = &'a subspace_test_service::SubspaceTestNode>,
+		nodes: impl IntoIterator<Item = &'a subspace_test_service::PrimaryTestNode>,
 	) -> Self {
-		self.relay_chain_nodes.extend(nodes.into_iter().map(|n| n.addr.clone()));
-		self
-	}
-
-	/// Allows accessing the parachain storage before the test node is built.
-	pub fn update_storage_parachain(mut self, updater: impl Fn() + 'static) -> Self {
-		self.storage_update_func_parachain = Some(Box::new(updater));
-		self
-	}
-
-	/// Allows accessing the relay chain storage before the test node is built.
-	pub fn update_storage_relay_chain(mut self, updater: impl Fn() + 'static) -> Self {
-		self.storage_update_func_relay_chain = Some(Box::new(updater));
+		self.primary_nodes.extend(nodes.into_iter().map(|n| n.addr.clone()));
 		self
 	}
 
 	/// Build the [`TestNode`].
 	pub async fn build(self, role: Role) -> TestNode {
-		let parachain_config = node_config(
+		let secondary_chain_config = node_config(
 			self.tokio_handle.clone(),
 			self.key,
-			self.parachain_nodes,
-			self.parachain_nodes_exclusive,
+			self.secondary_nodes,
+			self.secondary_nodes_exclusive,
 			role,
 		)
-		.expect("could not generate Configuration");
+		.expect("could not generate secondary chain node Configuration");
 
 		let mut primary_chain_config = subspace_test_service::node_config(
 			self.tokio_handle,
 			self.key,
-			self.relay_chain_nodes,
+			self.primary_nodes,
 			false,
 		);
 
 		primary_chain_config.network.node_name =
-			format!("{} (primary chain)", primary_chain_config.network.node_name);
+			format!("{} (PrimaryChain)", primary_chain_config.network.node_name);
 
-		let multiaddr = parachain_config.network.listen_addresses[0].clone();
+		let multiaddr = secondary_chain_config.network.listen_addresses[0].clone();
 		let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-			start_node_impl(parachain_config, primary_chain_config)
+			run_executor(secondary_chain_config, primary_chain_config)
 				.await
-				.expect("could not create Cumulus test service");
+				.expect("could not start secondary chain node");
 
 		let peer_id = *network.local_peer_id();
 		let addr = MultiaddrWithPeerId { multiaddr, peer_id };
@@ -437,12 +319,11 @@ impl TestNodeBuilder {
 	}
 }
 
-/// Create a Cumulus `Configuration`.
+/// Create a secondary chain node `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
-/// to the given `nodes` and not to any other node. The `storage_update_func` can be used to make
-/// adjustments to the runtime genesis.
+/// to the given `nodes` and not to any other node.
 pub fn node_config(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
@@ -454,14 +335,10 @@ pub fn node_config(
 	let root = base_path.path().to_path_buf();
 	let key_seed = key.to_seed();
 
-	let mut spec = Box::new(chain_spec::get_chain_spec());
-
-	let storage = spec.as_storage_builder().build_storage().expect("could not build storage");
-	// BasicExternalities::execute_with_storage(&mut storage, storage_update_func);
-	spec.set_storage(storage);
+	let spec = Box::new(chain_spec::get_chain_spec());
 
 	let mut network_config = NetworkConfiguration::new(
-		format!("{} (parachain)", key_seed),
+		format!("{} (SecondaryChain)", key_seed),
 		"network/test/0.1",
 		Default::default(),
 		None,
@@ -629,6 +506,6 @@ pub fn run_primary_chain_validator_node(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
 	boot_nodes: Vec<MultiaddrWithPeerId>,
-) -> (subspace_test_service::SubspaceTestNode, NetworkStarter) {
+) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
 	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true)
 }
