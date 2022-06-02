@@ -104,6 +104,9 @@ pub enum SendPiecesByRangeRequestError {
     /// Node runner was dropped, impossible to send 'pieces-by-range' request.
     #[error("Node runner was dropped, impossible to send 'pieces-by-range' request")]
     NodeRunnerDropped,
+    /// Underlying protocol returned an error, impossible to get 'pieces-by-range' response.
+    #[error("Underlying protocol returned an error, impossible to get 'pieces-by-range' response")]
+    ProtocolFailure,
 }
 
 /// Implementation of a network node on Subspace Network.
@@ -208,8 +211,9 @@ impl Node {
         self.shared.handlers.new_listener.add(callback)
     }
 
-    // TODO: comment, error, range
+    // TODO: comment,
     // TODO: timeouts
+    // TODO: tracing
     pub async fn get_pieces_by_range(
         &self,
         from: PieceIndexHash,
@@ -236,16 +240,23 @@ impl Node {
             .await
             .map_err(|_| GetPiecesByRangeError::NodeRunnerDropped)?;
 
-        let peers = result_receiver.await.unwrap().unwrap(); // TODO: errors
+        let peers = result_receiver
+            .await
+            .map_err(|_| GetPiecesByRangeError::NodeRunnerDropped)?
+            .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
+
         trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
 
+        // select first peer for the piece-by-range protocol
         let peer_id = *peers
             .first()
             .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
 
-        const BUFFER_SIZE: usize = 10; //TODO
+        // prepare stream channel
+        const BUFFER_SIZE: usize = 1000; // approximately 4MB
         let (mut tx, rx) = mpsc::channel::<Piece>(BUFFER_SIZE);
 
+        // populate resulting stream in the separate async task
         let shared = self.shared.clone();
         tokio::spawn(async move {
             // indicates the next starting point for a request, initially None
@@ -317,8 +328,9 @@ impl Node {
 
         let result = result_receiver
             .await
-            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
+            .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
 
-        Ok(result.unwrap().into()) // TODO
+        Ok(result.into())
     }
 }

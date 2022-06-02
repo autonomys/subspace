@@ -970,7 +970,6 @@ impl RequestResponseCodec for GenericCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        // TODO: check the length?
         // Write the length.
         {
             let mut buffer = unsigned_varint::encode::usize_buffer();
@@ -996,7 +995,6 @@ impl RequestResponseCodec for GenericCodec {
     {
         // If `res` is an `Err`, we jump to closing the substream without writing anything on it.
         if let Ok(res) = res {
-            // TODO: check the length?
             // Write the length.
             {
                 let mut buffer = unsigned_varint::encode::usize_buffer();
@@ -1013,6 +1011,17 @@ impl RequestResponseCodec for GenericCodec {
     }
 }
 
+/// Creates request-response protocol config.
+pub fn generate_protocol_config(protocol_name: String) -> ProtocolConfig {
+    ProtocolConfig {
+        name: protocol_name.into(),
+        max_request_size: 1 * 1024 * 1024,
+        max_response_size: 16 * 1024 * 1024,
+        request_timeout: Duration::from_secs(15),
+        inbound_queue: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1025,13 +1034,12 @@ mod tests {
     use libp2p::identity::Keypair;
     use libp2p::swarm::{Swarm, SwarmEvent};
     use libp2p::{noise, Multiaddr};
-    use sc_peerset::{Peerset, PeersetConfig, SetConfig};
     use std::iter;
     use std::time::Duration;
 
     fn build_swarm(
         list: impl Iterator<Item = ProtocolConfig>,
-    ) -> (Swarm<RequestResponsesBehaviour>, Multiaddr, Peerset) {
+    ) -> (Swarm<RequestResponsesBehaviour>, Multiaddr) {
         let keypair = Keypair::generate_ed25519();
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -1044,19 +1052,7 @@ mod tests {
             .multiplex(libp2p::yamux::YamuxConfig::default())
             .boxed();
 
-        let config = PeersetConfig {
-            sets: vec![SetConfig {
-                in_peers: u32::max_value(),
-                out_peers: u32::max_value(),
-                bootnodes: vec![],
-                reserved_nodes: Default::default(),
-                reserved_only: false,
-            }],
-        };
-
-        let (peerset, handle) = Peerset::from_config(config);
-
-        let behaviour = RequestResponsesBehaviour::new(list, handle).unwrap();
+        let behaviour = RequestResponsesBehaviour::new(list).unwrap();
 
         let mut swarm = Swarm::new(transport, behaviour, keypair.public().to_peer_id());
         let listen_addr: Multiaddr = format!("/memory/{}", rand::random::<u64>())
@@ -1064,11 +1060,7 @@ mod tests {
             .unwrap();
 
         swarm.listen_on(listen_addr.clone()).unwrap();
-        (swarm, listen_addr, peerset)
-    }
-
-    async fn loop_peerset(peerset: Peerset) {
-        let _: Vec<_> = peerset.collect().await;
+        (swarm, listen_addr)
     }
 
     #[test]
@@ -1089,7 +1081,6 @@ mod tests {
                                 assert_eq!(rq.payload, b"this is a request");
                                 let _ = rq.pending_response.send(super::OutgoingResponse {
                                     result: Ok(b"this is a response".to_vec()),
-                                    reputation_changes: Vec::new(),
                                     sent_feedback: Some(fb_tx),
                                 });
                                 fb_rx.await.unwrap();
@@ -1119,11 +1110,8 @@ mod tests {
             Swarm::dial(&mut swarms[0].0, dial_addr).unwrap();
         }
 
-        let (mut swarm, _, peerset) = swarms.remove(0);
-        // Process every peerset event in the background.
-        pool.spawner()
-            .spawn_obj(loop_peerset(peerset).boxed().into())
-            .unwrap();
+        let (mut swarm, _) = swarms.remove(0);
+
         // Running `swarm[0]` in the background.
         pool.spawner()
             .spawn_obj({
@@ -1142,11 +1130,8 @@ mod tests {
             .unwrap();
 
         // Remove and run the remaining swarm.
-        let (mut swarm, _, peerset) = swarms.remove(0);
-        // Process every peerset event in the background.
-        pool.spawner()
-            .spawn_obj(loop_peerset(peerset).boxed().into())
-            .unwrap();
+        let (mut swarm, _) = swarms.remove(0);
+
         pool.run_until(async move {
             let mut response_receiver = None;
 
@@ -1196,7 +1181,6 @@ mod tests {
                                 assert_eq!(rq.payload, b"this is a request");
                                 let _ = rq.pending_response.send(super::OutgoingResponse {
                                     result: Ok(b"this response exceeds the limit".to_vec()),
-                                    reputation_changes: Vec::new(),
                                     sent_feedback: None,
                                 });
                             }
@@ -1227,11 +1211,8 @@ mod tests {
 
         // Running `swarm[0]` in the background until a `InboundRequest` event happens,
         // which is a hint about the test having ended.
-        let (mut swarm, _, peerset) = swarms.remove(0);
-        // Process every peerset event in the background.
-        pool.spawner()
-            .spawn_obj(loop_peerset(peerset).boxed().into())
-            .unwrap();
+        let (mut swarm, _) = swarms.remove(0);
+
         pool.spawner()
             .spawn_obj({
                 async move {
@@ -1250,11 +1231,8 @@ mod tests {
             .unwrap();
 
         // Remove and run the remaining swarm.
-        let (mut swarm, _, peerset) = swarms.remove(0);
-        // Process every peerset event in the background.
-        pool.spawner()
-            .spawn_obj(loop_peerset(peerset).boxed().into())
-            .unwrap();
+        let (mut swarm, _) = swarms.remove(0);
+
         pool.run_until(async move {
             let mut response_receiver = None;
 
@@ -1324,7 +1302,7 @@ mod tests {
             build_swarm(protocol_configs.into_iter()).0
         };
 
-        let (mut swarm_2, mut swarm_2_handler_1, mut swarm_2_handler_2, listen_add_2, peerset) = {
+        let (mut swarm_2, mut swarm_2_handler_1, mut swarm_2_handler_2, listen_add_2) = {
             let (tx_1, rx_1) = mpsc::channel(64);
             let (tx_2, rx_2) = mpsc::channel(64);
 
@@ -1345,14 +1323,10 @@ mod tests {
                 },
             ];
 
-            let (swarm, listen_addr, peerset) = build_swarm(protocol_configs.into_iter());
+            let (swarm, listen_addr) = build_swarm(protocol_configs.into_iter());
 
-            (swarm, rx_1, rx_2, listen_addr, peerset)
+            (swarm, rx_1, rx_2, listen_addr)
         };
-        // Process every peerset event in the background.
-        pool.spawner()
-            .spawn_obj(loop_peerset(peerset).boxed().into())
-            .unwrap();
 
         // Ask swarm 1 to dial swarm 2. There isn't any discovery mechanism in place in this test,
         // so they wouldn't connect to each other.
@@ -1390,7 +1364,6 @@ mod tests {
                         .pending_response
                         .send(OutgoingResponse {
                             result: Ok(b"this is a response".to_vec()),
-                            reputation_changes: Vec::new(),
                             sent_feedback: None,
                         })
                         .unwrap();
@@ -1399,7 +1372,6 @@ mod tests {
                         .pending_response
                         .send(OutgoingResponse {
                             result: Ok(b"this is a response".to_vec()),
-                            reputation_changes: Vec::new(),
                             sent_feedback: None,
                         })
                         .unwrap();

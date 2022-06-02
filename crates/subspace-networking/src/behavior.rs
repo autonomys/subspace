@@ -68,7 +68,7 @@ impl Behavior {
             request_response: RequestResponsesBehaviour::new(
                 vec![config.request_response].into_iter(),
             )
-            .unwrap(), //TODO
+            .expect("RequestResponse protocols registration failed."),
         }
     }
 }

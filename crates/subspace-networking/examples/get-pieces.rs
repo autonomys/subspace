@@ -17,7 +17,7 @@ async fn main() {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
         }),
-        request_handler: Arc::new(|req| {
+        pieces_by_range_request_handler: Arc::new(|req| {
             println!("Request handler for request: {:?}", req);
             let response = Some(PiecesByRangeResponse {
                 pieces: vec![Piece::default()],

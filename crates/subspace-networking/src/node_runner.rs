@@ -318,9 +318,9 @@ impl NodeRunner {
         }
     }
 
-    //TODO
     async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
-        println!("Request response event: {:?}", event);
+        // No actions on statistics events.
+        trace!("Request response event: {:?}", event);
     }
 
     async fn handle_command(&mut self, command: Command) {
@@ -442,7 +442,7 @@ impl NodeRunner {
                 //TODO:
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    &crate::pieces_by_range_handler::generate_protocol_name(),
+                    &crate::pieces_by_range_handler::protocol_name(),
                     request.into(),
                     result_sender,
                     IfDisconnected::TryConnect,

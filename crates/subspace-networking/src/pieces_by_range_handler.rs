@@ -16,28 +16,33 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//TODO: fix comment
-//! Helper for incoming light client requests.
+//! Helper for incoming pieces-by-range requests.
 //!
-//! Handle (i.e. answer) incoming light client requests from a remote peer received via
+//! Handle (i.e. answer) incoming pieces-by-range requests from a remote peer received via
 //! `crate::request_responses::RequestResponsesBehaviour` with
-//! [`RequestResponseHandler`](handler::RequestResponseHandler).
+//! [`PiecesByRangeRequestHandler`](PiecesByRangeRequestHandler).
 
-use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
+use crate::request_responses::{
+    generate_protocol_config, IncomingRequest, OutgoingResponse, ProtocolConfig,
+};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::{debug, trace};
 const LOG_TARGET: &str = "request-response-handler";
 
+/// Pieces-by-range protocol request. Assumes requests with paging.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PiecesByRangeRequest {
+    /// Start of the requested range
     pub from: PieceIndexHash,
+    /// End of the requested range
     pub to: PieceIndexHash,
+    /// Defines starting point of the subsequent requests. Serves like a cursor.
+    /// None means starting from the beginning.
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
@@ -54,9 +59,13 @@ impl Into<Vec<u8>> for PiecesByRangeRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+/// Pieces-by-range protocol response. Assumes requests with paging.
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct PiecesByRangeResponse {
+    /// Returned data.
     pub pieces: Vec<Piece>,
+    /// Defines starting point (cursor) of the next request.
+    /// None means no further data avalaible.
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
@@ -72,24 +81,24 @@ impl From<Vec<u8>> for PiecesByRangeResponse {
     }
 }
 
-pub type RequestHandler =
+/// Type alias for the actual external request handler.
+pub type ExternalPiecesByRangeRequestHandler =
     Arc<dyn (Fn(&PiecesByRangeRequest) -> Option<PiecesByRangeResponse>) + Send + Sync + 'static>;
 
+/// Contains pieces-by-range request handler structure
 pub struct PiecesByRangeRequestHandler {
     request_receiver: mpsc::Receiver<IncomingRequest>,
-    request_handler: RequestHandler,
+    request_handler: ExternalPiecesByRangeRequestHandler,
 }
 
 impl PiecesByRangeRequestHandler {
-    /// Create a new [`RequestResponseHandler`].
-    /// TODO: protocol_id: &ProtocolId
-    pub fn new(request_handler: RequestHandler) -> (Self, ProtocolConfig) {
-        //TODO
-        // For now due to lack of data on light client request handling in production systems, this
-        // value is chosen to match the block request limit.
-        let (tx, request_receiver) = mpsc::channel(20);
+    /// Create a new [`PiecesByRangeRequestHandler`].
+    pub fn new(request_handler: ExternalPiecesByRangeRequestHandler) -> (Self, ProtocolConfig) {
+        // Could be changed after the production feedback.
+        const BUFFER_SIZE: usize = 50;
+        let (tx, request_receiver) = mpsc::channel(BUFFER_SIZE);
 
-        let mut protocol_config = generate_protocol_config();
+        let mut protocol_config = generate_protocol_config(protocol_name());
         protocol_config.inbound_queue = Some(tx);
 
         (
@@ -118,19 +127,16 @@ impl PiecesByRangeRequestHandler {
                     };
 
                     match pending_response.send(response) {
-                        Ok(()) => trace!(
-                            target: LOG_TARGET,
-                            "Handled light client request from {}.",
-                            peer,
-                        ),
+                        Ok(()) => trace!(target: LOG_TARGET, "Handled request from {}.", peer,),
                         Err(_) => debug!(
                             target: LOG_TARGET,
-                            "Failed to handle light client request from {}: {}",
+                            "Failed to handle request from {}: {}",
                             peer,
                             HandleRequestError::SendResponse,
                         ),
                     };
                 }
+                //TODO???
                 Err(e) => {
                     debug!(
                         target: LOG_TARGET,
@@ -145,7 +151,7 @@ impl PiecesByRangeRequestHandler {
                     if pending_response.send(response).is_err() {
                         debug!(
                             target: LOG_TARGET,
-                            "Failed to handle light client request from {}: {}",
+                            "Failed to handle request from {}: {}",
                             peer,
                             HandleRequestError::SendResponse,
                         );
@@ -160,11 +166,12 @@ impl PiecesByRangeRequestHandler {
         peer: PeerId,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, HandleRequestError> {
-        println!("Handled request from {:?}. Data: {:?}", peer, payload);
+        trace!("Handling request from {:?}.", peer);
         let request: PiecesByRangeRequest = payload.into();
         let response = (self.request_handler)(&request);
 
-        Ok(response.unwrap().into()) // TODO
+        // Return the result with treating None as an empty(default) response.
+        Ok(response.unwrap_or_default().into())
     }
 }
 
@@ -174,19 +181,7 @@ enum HandleRequestError {
     SendResponse,
 }
 
-/// TODO
-pub fn generate_protocol_config() -> ProtocolConfig {
-    ProtocolConfig {
-        name: generate_protocol_name().into(),
-        max_request_size: 1 * 1024 * 1024,
-        max_response_size: 16 * 1024 * 1024,
-        request_timeout: Duration::from_secs(15),
-        inbound_queue: None,
-    }
-}
-
-//TODO: pub struct ProtocolId(smallvec::SmallVec<[u8; 6]>);
-/// Generate the light client protocol name from chain specific protocol identifier.
-pub fn generate_protocol_name() -> String {
-    format!("/sync/v1")
+/// Pieces-by-range-protocol name.
+pub fn protocol_name() -> String {
+    format!("/sync/pieces-by-rangev1")
 }

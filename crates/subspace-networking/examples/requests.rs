@@ -18,7 +18,7 @@ async fn main() {
             Some(key.digest().iter().copied().rev().collect())
         }),
         allow_non_globals_in_dht: true,
-        request_handler: Arc::new(|req| {
+        pieces_by_range_request_handler: Arc::new(|req| {
             println!("Request handler for request: {:?}", req);
             Some(PiecesByRangeResponse {
                 pieces: vec![Piece::default()],

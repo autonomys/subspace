@@ -2,7 +2,9 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
-use crate::pieces_by_range_handler::{PiecesByRangeRequestHandler, RequestHandler};
+use crate::pieces_by_range_handler::{
+    ExternalPiecesByRangeRequestHandler, PiecesByRangeRequestHandler,
+};
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
@@ -57,9 +59,8 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-
-    // TODO
-    pub request_handler: RequestHandler,
+    /// Defines a handler for the pieces-by-range protocol.
+    pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
 }
 
 impl fmt::Debug for Config {
@@ -114,7 +115,7 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            request_handler: Arc::new(|_| None),
+            pieces_by_range_request_handler: Arc::new(|_| None),
         }
     }
 }
@@ -148,7 +149,7 @@ pub async fn create(
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        request_handler,
+        pieces_by_range_request_handler: request_handler,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let local_peer_id = keypair.public().to_peer_id();
@@ -238,7 +239,7 @@ pub async fn create(
         Ok::<_, CreationError>(swarm)
     });
 
-    let swarm = create_swarm_fut.await.unwrap()?;
+    let swarm = create_swarm_fut.await.expect("Swarm future failed.")?;
 
     let (command_sender, command_receiver) = mpsc::channel(1);
 
