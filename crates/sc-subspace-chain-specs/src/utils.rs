@@ -15,6 +15,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+/// Serializes chain spec to a string, note that when serialized with `serde_json` it'll end up
+/// being serialized twice, hence it will be JSON-encoded string.
 pub struct SerializableChainSpec<GenesisConfig, Extensions = NoExtension> {
     chain_spec: GenericChainSpec<GenesisConfig, Extensions>,
 }
