@@ -124,7 +124,7 @@ async fn run_executor(
 			subspace_test_client::TestExecutorDispatch,
 		>(primary_chain_config, false)
 		.map_err(|e| {
-			sc_service::Error::Other(format!("Failed to build a full subspace node: {e}"))
+			sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
 		})?
 	};
 
