@@ -1,9 +1,12 @@
+use crate::dsn::{self, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, PiecesToPlot, Plot,
+    PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
@@ -48,7 +51,7 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
 }
 
 /// Options for `MultiFarming` creation
-pub struct Options<C: RpcClient> {
+pub struct Options<C> {
     pub base_directory: PathBuf,
     pub client: C,
     pub object_mappings: ObjectMappings,
@@ -76,10 +79,10 @@ impl MultiFarming {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
         let mut plots = Vec::with_capacity(plot_sizes.len());
-        let mut subspace_codecs = Vec::with_capacity(plot_sizes.len());
         let mut commitments = Vec::with_capacity(plot_sizes.len());
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
+        let mut codecs = Vec::with_capacity(plot_sizes.len());
 
         let mut results = plot_sizes
             .into_iter()
@@ -104,8 +107,6 @@ impl MultiFarming {
                     info!("Opening commitments");
                     let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
 
-                    let subspace_codec = SubspaceCodec::new(identity.public_key().as_ref());
-
                     // Start the farming task
                     let farming = start_farmings.then(|| {
                         Farming::start(
@@ -117,20 +118,14 @@ impl MultiFarming {
                         )
                     });
 
-                    Ok::<_, anyhow::Error>((
-                        identity,
-                        plot,
-                        subspace_codec,
-                        plot_commitments,
-                        farming,
-                    ))
+                    Ok::<_, anyhow::Error>((identity, plot, plot_commitments, farming))
                 })
             })
             .collect::<FuturesOrdered<_>>()
             .enumerate();
 
         while let Some((i, result)) = results.next().await {
-            let (identity, plot, subspace_codec, plot_commitments, farming) =
+            let (identity, plot, plot_commitments, farming) =
                 result.expect("Plot and farming never fails")?;
 
             let mut listen_on = listen_on.clone();
@@ -143,6 +138,7 @@ impl MultiFarming {
                 }
             }
 
+            let subspace_codec = SubspaceCodec::new(&plot.public_key());
             let (node, node_runner) = subspace_networking::create(Config {
                 bootstrap_nodes: bootstrap_nodes.clone(),
                 value_getter: Arc::new({
@@ -193,10 +189,9 @@ impl MultiFarming {
 
             bootstrap_nodes.extend(listen_on);
             networking_node_runners.push(node_runner);
-
             plots.push(plot);
-            subspace_codecs.push(subspace_codec);
             commitments.push(plot_commitments);
+            codecs.push(subspace_codec);
             if let Some(farming) = farming {
                 farmings.push(farming);
             }
@@ -207,14 +202,57 @@ impl MultiFarming {
             .await
             .map_err(|error| anyhow!(error))?;
 
+        // Start syncing
+        tokio::spawn({
+            let plots = plots.clone();
+            let commitments = commitments.clone();
+            let codecs = codecs.clone();
+            async move {
+                let dsn = NoSync;
+
+                let mut futures = plots
+                    .into_iter()
+                    .zip(commitments)
+                    .zip(codecs)
+                    .map(|((plot, commitments), codec)| {
+                        let options = SyncOptions {
+                            range_size: PieceIndexHashNumber::MAX / 1024,
+                            address: plot.public_key(),
+                        };
+                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+
+                        dsn::sync(dsn, options, move |pieces, piece_indexes| {
+                            tracing::info!("In plot");
+                            if !plot_pieces(PiecesToPlot {
+                                pieces,
+                                piece_indexes,
+                            }) {
+                                return ControlFlow::Break(Err(anyhow::anyhow!(
+                                    "Failed to plot pieces in archiving"
+                                )));
+                            }
+                            ControlFlow::Continue(())
+                        })
+                    })
+                    .collect::<FuturesUnordered<_>>();
+                while let Some(result) = futures.next().await {
+                    result?;
+                }
+
+                tracing::info!("Sync done");
+
+                Ok::<_, anyhow::Error>(())
+            }
+        });
+
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, client.clone(), {
             let mut on_pieces_to_plots = plots
                 .iter()
-                .zip(subspace_codecs)
                 .zip(&commitments)
-                .map(|((plot, subspace_codec), commitments)| {
-                    plotting::plot_pieces(subspace_codec, plot, commitments.clone())
+                .zip(codecs.clone())
+                .map(|((plot, commitments), codec)| {
+                    plotting::plot_pieces(codec, plot, commitments.clone())
                 })
                 .collect::<Vec<_>>();
 

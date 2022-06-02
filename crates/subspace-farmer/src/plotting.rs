@@ -10,7 +10,6 @@ use crate::commitments::Commitments;
 use crate::plot::Plot;
 use crate::PiecesToPlot;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, PieceIndex};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use tracing::error;
 
@@ -24,13 +23,9 @@ pub fn plot_pieces(
 
     move |pieces_to_plot| {
         if let Some(plot) = weak_plot.upgrade() {
-            if let Err(error) = plot_pieces_internal(
-                &mut subspace_codec,
-                &plot,
-                &commitments,
-                pieces_to_plot.piece_index_offset,
-                pieces_to_plot.pieces,
-            ) {
+            if let Err(error) =
+                plot_pieces_internal(&mut subspace_codec, &plot, &commitments, pieces_to_plot)
+            {
                 error!(%error, "Failed to encode a piece");
                 return false;
             }
@@ -47,13 +42,11 @@ fn plot_pieces_internal(
     subspace_codec: &mut SubspaceCodec,
     plot: &Plot,
     commitments: &Commitments,
-    piece_index_offset: u64,
-    mut pieces: FlatPieces,
+    PiecesToPlot {
+        piece_indexes,
+        mut pieces,
+    }: PiecesToPlot,
 ) -> Result<(), BatchEncodeError> {
-    let piece_indexes = (piece_index_offset..)
-        .take(pieces.count())
-        .collect::<Vec<PieceIndex>>();
-
     subspace_codec.batch_encode(&mut pieces, &piece_indexes)?;
 
     let pieces = Arc::new(pieces);

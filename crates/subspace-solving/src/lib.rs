@@ -23,7 +23,7 @@
 mod codec;
 
 pub use codec::{BatchEncodeError, SubspaceCodec};
-pub use construct_uint::PieceDistance;
+pub use construct_uint::{PieceDistance, U256};
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
@@ -46,13 +46,15 @@ mod construct_uint {
     use subspace_core_primitives::PieceIndexHash;
 
     uint::construct_uint! {
-        /// Distance to piece index hash from farmer identity
-        pub struct PieceDistance(4);
+        pub struct U256(4);
     }
 
-    impl PieceDistance {
+    /// Distance to piece index hash from farmer identity
+    pub type PieceDistance = U256;
+
+    impl U256 {
         /// Calculates the distance metric between piece index hash and farmer address.
-        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> Self {
+        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> PieceDistance {
             let piece = Self::from_big_endian(piece);
             let address = Self::from_big_endian(address);
             subspace_core_primitives::bidirectional_distance(&piece, &address)
@@ -72,15 +74,27 @@ mod construct_uint {
         };
     }
 
-    impl WrappingAdd for PieceDistance {
+    impl WrappingAdd for U256 {
         fn wrapping_add(&self, other: &Self) -> Self {
             self.overflowing_add(*other).0
         }
     }
 
-    impl WrappingSub for PieceDistance {
+    impl WrappingSub for U256 {
         fn wrapping_sub(&self, other: &Self) -> Self {
             self.overflowing_sub(*other).0
+        }
+    }
+
+    impl From<PieceIndexHash> for U256 {
+        fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
+            hash.into()
+        }
+    }
+
+    impl From<U256> for PieceIndexHash {
+        fn from(distance: U256) -> Self {
+            Self(distance.into())
         }
     }
 }
