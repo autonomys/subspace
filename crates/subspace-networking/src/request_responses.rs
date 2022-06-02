@@ -139,11 +139,11 @@ pub struct OutgoingResponse {
     /// If provided, the `oneshot::Sender` will be notified when the request has been sent to the
     /// peer.
     ///
-    /// > **Note**: Operating systems typically maintain a buffer of a few dozen kilobytes of
-    /// >			outgoing data for each TCP socket, and it is not possible for a user
-    /// >			application to inspect this buffer. This channel here is not actually notified
-    /// >			when the response has been fully sent out, but rather when it has fully been
-    /// >			written to the buffer managed by the operating system.
+    /// Note: Operating systems typically maintain a buffer of a few dozen kilobytes of
+    /// outgoing data for each TCP socket, and it is not possible for a user
+    /// application to inspect this buffer. This channel here is not actually notified
+    /// when the response has been fully sent out, but rather when it has fully been
+    /// written to the buffer managed by the operating system.
     pub sent_feedback: Option<oneshot::Sender<()>>,
 }
 
@@ -224,6 +224,7 @@ impl IfDisconnected {
 }
 
 /// Implementation of `NetworkBehaviour` that provides support for request-response protocols.
+#[allow(clippy::type_complexity)] // to preserve compatibility with copied implementation
 pub struct RequestResponsesBehaviour {
     /// The multiple sub-protocols, by name.
     /// Contains the underlying libp2p `RequestResponse` behaviour, plus an optional
@@ -1012,6 +1013,7 @@ impl RequestResponseCodec for GenericCodec {
 }
 
 /// Creates request-response protocol config.
+#[allow(clippy::identity_op)] // for clarity
 pub fn generate_protocol_config(protocol_name: String) -> ProtocolConfig {
     ProtocolConfig {
         name: protocol_name.into(),

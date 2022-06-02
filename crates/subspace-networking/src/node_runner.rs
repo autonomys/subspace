@@ -1,4 +1,5 @@
 use crate::behavior::{Behavior, Event};
+use crate::pieces_by_range_handler::protocol_name as pieces_by_range_protocol_name;
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
@@ -221,18 +222,20 @@ impl NodeRunner {
                                 peers.len(),
                             );
 
-                            if peers.is_empty() //TODO:
+                            if peers.is_empty()
                                 && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
                             {
                                 debug!("Random Kademlia query has yielded empty list of peers");
                             }
 
-                            //TODO: Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(Some(peers));
+                            if sender.send(Some(peers)).is_err() {
+                                debug!("GetClosestPeersOk channel was dropped");
+                            }
                         }
                         Err(GetClosestPeersError::Timeout { key, peers }) => {
-                            //TODO: Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(None);
+                            if sender.send(None).is_err() {
+                                debug!("GetClosestPeersOk channel was dropped");
+                            }
 
                             debug!(
                                 "Get closest peers query for {} timed out with {} results",
@@ -241,7 +244,9 @@ impl NodeRunner {
                             );
                         }
                     }
-                } // TODO: else
+                } else {
+                    error!("GetClosestPeers has no receivers for QueryId={:?}", id);
+                }
             }
             KademliaEvent::OutboundQueryCompleted {
                 id,
@@ -300,7 +305,7 @@ impl NodeRunner {
                 }
             }
             _ => {
-                // TODO
+                // Ignore other events.
             }
         }
     }
@@ -330,7 +335,6 @@ impl NodeRunner {
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    // TODO: Will probably want something different and validate data instead.
                     .get_record(key.to_bytes().into(), Quorum::One);
 
                 self.query_id_receivers.insert(
@@ -439,10 +443,9 @@ impl NodeRunner {
                 request,
                 result_sender,
             } => {
-                //TODO:
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    &crate::pieces_by_range_handler::protocol_name(),
+                    &pieces_by_range_protocol_name(),
                     request.into(),
                     result_sender,
                     IfDisconnected::TryConnect,

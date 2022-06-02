@@ -31,8 +31,7 @@ const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
 /// [`Node`] configuration.
-// TODO: Restore derive after https://github.com/libp2p/rust-libp2p/pull/2495 is released
-// #[derive(Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,

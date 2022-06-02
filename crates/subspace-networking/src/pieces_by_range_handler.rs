@@ -46,16 +46,18 @@ pub struct PiecesByRangeRequest {
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl From<Vec<u8>> for PiecesByRangeRequest {
-    fn from(data: Vec<u8>) -> PiecesByRangeRequest {
+impl TryFrom<Vec<u8>> for PiecesByRangeRequest {
+    type Error = &'static str;
+
+    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
         bincode::deserialize(&data)
-            .expect("Invalid format: cannot deserialize PiecesByRangeRequest")
+            .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeRequest")
     }
 }
 
-impl Into<Vec<u8>> for PiecesByRangeRequest {
-    fn into(self) -> Vec<u8> {
-        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeRequest")
+impl From<PiecesByRangeRequest> for Vec<u8> {
+    fn from(data: PiecesByRangeRequest) -> Self {
+        bincode::serialize(&data).expect("Invalid format: cannot serialize PiecesByRangeRequest")
     }
 }
 
@@ -69,15 +71,18 @@ pub struct PiecesByRangeResponse {
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl Into<Vec<u8>> for PiecesByRangeResponse {
-    fn into(self) -> Vec<u8> {
-        bincode::serialize(&self).expect("Invalid format: cannot deserialize PiecesByRangeResponse")
+impl From<PiecesByRangeResponse> for Vec<u8> {
+    fn from(data: PiecesByRangeResponse) -> Self {
+        bincode::serialize(&data).expect("Invalid format: cannot serialize PiecesByRangeResponse")
     }
 }
 
-impl From<Vec<u8>> for PiecesByRangeResponse {
-    fn from(data: Vec<u8>) -> PiecesByRangeResponse {
-        bincode::deserialize(&data).expect("Invalid format: cannot serialize PiecesByRangeResponse")
+impl TryFrom<Vec<u8>> for PiecesByRangeResponse {
+    type Error = &'static str;
+
+    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
+        bincode::deserialize(&data)
+            .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeResponse")
     }
 }
 
@@ -132,11 +137,10 @@ impl PiecesByRangeRequestHandler {
                             target: LOG_TARGET,
                             "Failed to handle request from {}: {}",
                             peer,
-                            HandleRequestError::SendResponse,
+                            PieceByRangeHandleRequestError::SendResponse,
                         ),
                     };
                 }
-                //TODO???
                 Err(e) => {
                     debug!(
                         target: LOG_TARGET,
@@ -153,7 +157,7 @@ impl PiecesByRangeRequestHandler {
                             target: LOG_TARGET,
                             "Failed to handle request from {}: {}",
                             peer,
-                            HandleRequestError::SendResponse,
+                            PieceByRangeHandleRequestError::SendResponse,
                         );
                     };
                 }
@@ -161,13 +165,16 @@ impl PiecesByRangeRequestHandler {
         }
     }
 
+    // Invokes external piece-by-range protocol handler.
     fn handle_request(
         &mut self,
         peer: PeerId,
         payload: Vec<u8>,
-    ) -> Result<Vec<u8>, HandleRequestError> {
+    ) -> Result<Vec<u8>, PieceByRangeHandleRequestError> {
         trace!("Handling request from {:?}.", peer);
-        let request: PiecesByRangeRequest = payload.into();
+        let request: PiecesByRangeRequest = payload
+            .try_into()
+            .map_err(|_| PieceByRangeHandleRequestError::InvalidRequestFormat)?;
         let response = (self.request_handler)(&request);
 
         // Return the result with treating None as an empty(default) response.
@@ -176,12 +183,15 @@ impl PiecesByRangeRequestHandler {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum HandleRequestError {
+enum PieceByRangeHandleRequestError {
     #[error("Failed to send response.")]
     SendResponse,
+
+    #[error("Incorret request format.")]
+    InvalidRequestFormat,
 }
 
 /// Pieces-by-range-protocol name.
 pub fn protocol_name() -> String {
-    format!("/sync/pieces-by-rangev1")
+    "/sync/pieces-by-rangev1".into()
 }

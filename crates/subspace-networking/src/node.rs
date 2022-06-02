@@ -107,6 +107,10 @@ pub enum SendPiecesByRangeRequestError {
     /// Underlying protocol returned an error, impossible to get 'pieces-by-range' response.
     #[error("Underlying protocol returned an error, impossible to get 'pieces-by-range' response")]
     ProtocolFailure,
+
+    /// Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response.
+    #[error("Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response")]
+    IncorrectResponseFormat,
 }
 
 /// Implementation of a network node on Subspace Network.
@@ -211,9 +215,15 @@ impl Node {
         self.shared.handlers.new_listener.add(callback)
     }
 
-    // TODO: comment,
-    // TODO: timeouts
+    // TODO: timeouts?
     // TODO: tracing
+    /// The method accesses the DSN and returns a stream with `Piece` items.
+    /// It looks for the suitable peer for the provided `PieceIndexHash` range by
+    /// searching the underlying Kademlia network for the PeerId closest
+    /// (by XOR-metric) to the middle of the range. After that it requests the
+    /// peer for data in portions. The portion size must be defined by the peer,
+    /// however it's indirectly limited by the response size of the underlying
+    /// protocol.
     pub async fn get_pieces_by_range(
         &self,
         from: PieceIndexHash,
@@ -331,6 +341,8 @@ impl Node {
             .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
             .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
 
-        Ok(result.into())
+        result
+            .try_into()
+            .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
     }
 }
