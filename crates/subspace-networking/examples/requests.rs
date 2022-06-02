@@ -22,6 +22,7 @@ async fn main() {
             println!("Request handler for request: {:?}", req);
             Some(Response {
                 pieces: vec![Piece::default()],
+                next_piece_hash_index: None,
             })
         }),
         ..Config::with_generated_keypair()
@@ -69,7 +70,9 @@ async fn main() {
             .send_request(
                 node_1.id(),
                 Request {
-                    start: PieceIndexHash([1u8; 32]),
+                    from: PieceIndexHash([1u8; 32]),
+                    to: PieceIndexHash([1u8; 32]),
+                    next_piece_hash_index: None,
                 },
             )
             .await

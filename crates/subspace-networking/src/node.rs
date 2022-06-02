@@ -1,9 +1,9 @@
 use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
-use crate::Request;
+use crate::{Request, Response};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, Stream};
+use futures::{stream, SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
@@ -173,7 +173,7 @@ impl Node {
         &self,
         peer_id: PeerId,
         request: Request,
-    ) -> Result<(), PublishError> {
+    ) -> Result<Response, PublishError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -196,7 +196,7 @@ impl Node {
 
         println!("Result: {:?}", result);
 
-        Ok(())
+        Ok(result.unwrap().into()) // TODO
     }
 
     /// Node's own addresses where it listens for incoming requests.
@@ -217,13 +217,16 @@ impl Node {
     // TODO: timeouts
     pub async fn get_pieces_by_range(
         &self,
-        from: U256, //TODO: ref?
-        to: U256,
+        from: PieceIndexHash,
+        to: PieceIndexHash,
     ) -> Result<Pin<Box<dyn Stream<Item = Piece>>>, ()> {
         let (result_sender, result_receiver) = oneshot::channel();
 
+        let f = U256::from_big_endian(&from.0);
+        let t = U256::from_big_endian(&to.0);
+
         // min + (max - min) / 2
-        let middle = ((from.max(to) - from.min(to)).div(2)).add(from.min(to));
+        let middle = ((f.max(t) - f.min(t)).div(2)).add(f.min(t));
         let mut buf: [u8; 32] = [0; 32]; // 32 of hash + 32 of preimage
         middle.to_big_endian(&mut buf);
 
@@ -238,17 +241,77 @@ impl Node {
 
         //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
 
-        let result = result_receiver.await;
-        //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+        let peers = result_receiver.await.unwrap().unwrap(); // TODO: errors
+        println!("GetClosestPeers: {:?}", peers);
 
-        println!("GetClosestPeers: {:?}", result);
+        let peer_id = *peers.first().unwrap(); //TODO
 
-        return Err(());
+        const BUFFER_SIZE: usize = 10; //TODO
+        let (mut tx, rx) = mpsc::channel::<Piece>(BUFFER_SIZE);
+
+        let shared = self.shared.clone();
+        tokio::spawn(async move {
+            loop {
+                let response = Node::send_request_inner(
+                    shared.clone(),
+                    peer_id,
+                    Request {
+                        from,
+                        to,
+                        next_piece_hash_index: None,
+                    },
+                )
+                .await
+                .unwrap(); //  TODO
+                           //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+
+                let mut chunk_stream = stream::iter(response.pieces.into_iter().map(Ok));
+
+                tx.send_all(&mut chunk_stream).await; //TODO
+
+                if response.next_piece_hash_index.is_none() {
+                    break;
+                }
+            }
+        });
+
+        // return Ok(Box::pin(stream::iter(response.pieces)));
+        return Ok(Box::pin(rx));
 
         //TODO: results
         // let piece1 = Piece::default();
         // let piece2: Piece = [1u8; PIECE_SIZE].into();
 
         // Ok(Box::pin(stream::iter(vec![piece1, piece2])))
+    }
+
+    async fn send_request_inner(
+        shared: Arc<Shared>,
+        peer_id: PeerId,
+        request: Request,
+    ) -> Result<Response, PublishError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        shared
+            .command_sender
+            .clone()
+            .send(Command::Request {
+                request,
+                result_sender,
+                peer_id,
+            })
+            .await
+            .map_err(|_error| PublishError::NodeRunnerDropped)?;
+
+        println!("Request sent");
+
+        let result = result_receiver
+            .await
+            .map_err(|_error| PublishError::NodeRunnerDropped)?;
+        //.map_err(PublishError::Publish); TODO:?
+
+        println!("Result: {:?}", result);
+
+        Ok(result.unwrap().into()) // TODO
     }
 }

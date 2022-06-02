@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//TODO: fix comment
 //! Helper for incoming light client requests.
 //!
 //! Handle (i.e. answer) incoming light client requests from a remote peer received via
@@ -44,7 +45,9 @@ const LOG_TARGET: &str = "request-response-handler";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Request {
-    pub start: PieceIndexHash,
+    pub from: PieceIndexHash,
+    pub to: PieceIndexHash,
+    pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
 impl From<Vec<u8>> for Request {
@@ -62,11 +65,18 @@ impl Into<Vec<u8>> for Request {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Response {
     pub pieces: Vec<Piece>,
+    pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
 impl Into<Vec<u8>> for Response {
     fn into(self) -> Vec<u8> {
         bincode::serialize(&self).unwrap() //TODO
+    }
+}
+
+impl From<Vec<u8>> for Response {
+    fn from(data: Vec<u8>) -> Response {
+        bincode::deserialize(&data).unwrap() // TODO
     }
 }
 
