@@ -6,11 +6,11 @@ edition = "2021"
 
 [dependencies]
 # Substrate dependencies
-sc-network = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-network-gossip = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-utils = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-network = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-network-gossip = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-utils = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 futures = "0.3.21"
 parity-scale-codec = { version = "3.1.2", features = ["derive"] }

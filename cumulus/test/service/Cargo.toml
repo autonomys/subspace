@@ -19,24 +19,24 @@ tokio = { version = "1.18.2", features = ["macros"] }
 tracing = "0.1.34"
 
 # Substrate
-frame-system = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-pallet-transaction-payment = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-consensus = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-executor = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-network = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-rpc = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-service = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sc-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-arithmetic = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-keyring = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-sp-timestamp = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
-substrate-test-client = { git = "https://github.com/paritytech/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+frame-system = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-client-api = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-consensus = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-executor = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-network = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-rpc = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-service = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-tracing = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sc-transaction-pool = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-keyring = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-inherents = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-runtime = { git = "https://github.com/subspace/substrate", default-features = false, rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+sp-timestamp = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
+substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "24bea4c3cba7479e2cf2976a21e8111dfda6b1cd" }
 
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
 cirrus-node = { path = "../../node" }
