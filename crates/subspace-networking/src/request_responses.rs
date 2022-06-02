@@ -219,6 +219,7 @@ pub enum IfDisconnected {
     /// Try to connect to the peer.
     TryConnect,
     /// Just fail if the destination is not yet connected.
+    #[allow(dead_code)] // reserved for the future logic or config change
     ImmediateError,
 }
 

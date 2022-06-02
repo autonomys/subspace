@@ -5,7 +5,7 @@ use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndexHash};
-use subspace_networking::{Config, Request, Response};
+use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse};
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +20,7 @@ async fn main() {
         allow_non_globals_in_dht: true,
         request_handler: Arc::new(|req| {
             println!("Request handler for request: {:?}", req);
-            Some(Response {
+            Some(PiecesByRangeResponse {
                 pieces: vec![Piece::default()],
                 next_piece_hash_index: None,
             })
@@ -67,9 +67,9 @@ async fn main() {
 
     tokio::spawn(async move {
         node_2
-            .send_request(
+            .send_pieces_by_range_request(
                 node_1.id(),
-                Request {
+                PiecesByRangeRequest {
                     from: PieceIndexHash([1u8; 32]),
                     to: PieceIndexHash([1u8; 32]),
                     next_piece_hash_index: None,

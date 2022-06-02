@@ -2,7 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
-use crate::request_response_handler::{RequestHandler, RequestResponseHandler};
+use crate::pieces_by_range_handler::{PiecesByRangeRequestHandler, RequestHandler};
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
@@ -195,7 +195,7 @@ pub async fn create(
             .collect::<Result<_, CreationError>>()?;
 
         let (reqeust_response_handler, request_response) =
-            RequestResponseHandler::new(request_handler);
+            PiecesByRangeRequestHandler::new(request_handler);
 
         tokio::spawn(async move {
             reqeust_response_handler.run().await;

@@ -1,5 +1,5 @@
 use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
-use crate::{Request, Response};
+use crate::{PiecesByRangeRequest, PiecesByRangeResponse};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
@@ -13,7 +13,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndexHash, U256};
 use thiserror::Error;
-use tracing::{debug, error, trace, warn};
+use tracing::{error, trace, warn};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -87,6 +87,23 @@ pub enum PublishError {
     /// Failed to publish message.
     #[error("Failed to publish message: {0}")]
     Publish(#[from] libp2p::gossipsub::error::PublishError),
+}
+
+#[derive(Debug, Error)]
+pub enum GetPiecesByRangeError {
+    /// Cannot find closest pieces by range.
+    #[error("Cannot find closest pieces by range")]
+    NoClosestPiecesFound,
+
+    /// Node runner was dropped, impossible to get pieces by range.
+    #[error("Node runner was dropped, impossible to get pieces by range")]
+    NodeRunnerDropped,
+}
+#[derive(Debug, Error)]
+pub enum SendPiecesByRangeRequestError {
+    /// Node runner was dropped, impossible to send 'pieces-by-range' request.
+    #[error("Node runner was dropped, impossible to send 'pieces-by-range' request")]
+    NodeRunnerDropped,
 }
 
 /// Implementation of a network node on Subspace Network.
@@ -169,34 +186,13 @@ impl Node {
             .map_err(PublishError::Publish)
     }
 
-    pub async fn send_request(
+    // Sends the request to the peer and awaits the result.
+    pub async fn send_pieces_by_range_request(
         &self,
         peer_id: PeerId,
-        request: Request,
-    ) -> Result<Response, PublishError> {
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::Request {
-                request,
-                result_sender,
-                peer_id,
-            })
-            .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?;
-
-        println!("Request sent");
-
-        let result = result_receiver
-            .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?;
-        //.map_err(PublishError::Publish); TODO:?
-
-        println!("Result: {:?}", result);
-
-        Ok(result.unwrap().into()) // TODO
+        request: PiecesByRangeRequest,
+    ) -> Result<PiecesByRangeResponse, SendPiecesByRangeRequestError> {
+        Node::send_pieces_by_range_request_inner(self.shared.clone(), peer_id, request).await
     }
 
     /// Node's own addresses where it listens for incoming requests.
@@ -213,23 +209,23 @@ impl Node {
     }
 
     // TODO: comment, error, range
-    // TODO: iterate over multiple ranges
     // TODO: timeouts
     pub async fn get_pieces_by_range(
         &self,
         from: PieceIndexHash,
         to: PieceIndexHash,
-    ) -> Result<Pin<Box<dyn Stream<Item = Piece>>>, ()> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Piece>>>, GetPiecesByRangeError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
+        // calculate the middle of the range
         let f = U256::from_big_endian(&from.0);
         let t = U256::from_big_endian(&to.0);
-
         // min + (max - min) / 2
         let middle = ((f.max(t) - f.min(t)).div(2)).add(f.min(t));
         let mut buf: [u8; 32] = [0; 32]; // 32 of hash + 32 of preimage
         middle.to_big_endian(&mut buf);
 
+        // obtain closest peers to the middle of the range
         self.shared
             .command_sender
             .clone()
@@ -237,80 +233,91 @@ impl Node {
                 key: ExactKademliaKey::new(buf),
                 result_sender,
             })
-            .await;
-
-        //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+            .await
+            .map_err(|_| GetPiecesByRangeError::NodeRunnerDropped)?;
 
         let peers = result_receiver.await.unwrap().unwrap(); // TODO: errors
-        println!("GetClosestPeers: {:?}", peers);
+        trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
 
-        let peer_id = *peers.first().unwrap(); //TODO
+        let peer_id = *peers
+            .first()
+            .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
 
         const BUFFER_SIZE: usize = 10; //TODO
         let (mut tx, rx) = mpsc::channel::<Piece>(BUFFER_SIZE);
 
         let shared = self.shared.clone();
         tokio::spawn(async move {
+            // indicates the next starting point for a request, initially None
+            let mut next_piece_hash_index = None;
             loop {
-                let response = Node::send_request_inner(
+                // request data by range and starting point
+                let response = Node::send_pieces_by_range_request_inner(
                     shared.clone(),
                     peer_id,
-                    Request {
+                    PiecesByRangeRequest {
                         from,
                         to,
-                        next_piece_hash_index: None,
+                        next_piece_hash_index,
                     },
                 )
                 .await
-                .unwrap(); //  TODO
-                           //.map_err(|_error| GetValueError::NodeRunnerDropped)?; // TODO: errors
+                .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
 
-                let mut chunk_stream = stream::iter(response.pieces.into_iter().map(Ok));
+                // send the result to the stream and exit on any error
+                match response {
+                    Ok(response) => {
+                        // convert response data to the stream
+                        let mut chunk_stream = stream::iter(response.pieces.into_iter().map(Ok));
 
-                tx.send_all(&mut chunk_stream).await; //TODO
+                        // send last response data stream to the result stream
+                        if tx.send_all(&mut chunk_stream).await.is_err() {
+                            warn!("Piece-by-range request channel was closed.");
+                            break;
+                        }
 
-                if response.next_piece_hash_index.is_none() {
+                        // prepare next starting point for data
+                        next_piece_hash_index = response.next_piece_hash_index
+                    }
+                    Err(err) => {
+                        warn!("Piece-by-range request returned an error: {}", err);
+                        break;
+                    }
+                }
+
+                // exit loop if the last response showed no remaining data
+                if next_piece_hash_index.is_none() {
                     break;
                 }
             }
         });
 
-        // return Ok(Box::pin(stream::iter(response.pieces)));
-        return Ok(Box::pin(rx));
-
-        //TODO: results
-        // let piece1 = Piece::default();
-        // let piece2: Piece = [1u8; PIECE_SIZE].into();
-
-        // Ok(Box::pin(stream::iter(vec![piece1, piece2])))
+        Ok(Box::pin(rx))
     }
 
-    async fn send_request_inner(
+    // Sends the request to the peer and awaits the result.
+    // Actual pieces-by-range implementation.
+    async fn send_pieces_by_range_request_inner(
         shared: Arc<Shared>,
         peer_id: PeerId,
-        request: Request,
-    ) -> Result<Response, PublishError> {
+        request: PiecesByRangeRequest,
+    ) -> Result<PiecesByRangeResponse, SendPiecesByRangeRequestError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         shared
             .command_sender
             .clone()
-            .send(Command::Request {
+            .send(Command::PiecesByRangeRequest {
                 request,
                 result_sender,
                 peer_id,
             })
             .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?;
-
-        println!("Request sent");
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
 
         let result = result_receiver
             .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?;
-        //.map_err(PublishError::Publish); TODO:?
-
-        println!("Result: {:?}", result);
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
 
         Ok(result.unwrap().into()) // TODO
     }

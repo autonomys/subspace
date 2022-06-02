@@ -2,7 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::request_responses::RequestFailure;
-use crate::Request;
+use crate::PiecesByRangeRequest;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -48,9 +48,9 @@ pub(crate) enum Command {
         key: ExactKademliaKey,
         result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
     },
-    Request {
+    PiecesByRangeRequest {
         peer_id: PeerId,
-        request: Request,
+        request: PiecesByRangeRequest,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>, //TODO: error
     },
 }

@@ -21,8 +21,9 @@
 //!
 //! Handle (i.e. answer) incoming light client requests from a remote peer received via
 //! `crate::request_responses::RequestResponsesBehaviour` with
-//! [`LightClientRequestHandler`](handler::LightClientRequestHandler).
+//! [`RequestResponseHandler`](handler::RequestResponseHandler).
 
+use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
@@ -31,66 +32,59 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::{debug, trace};
-// use sc_network_common::{
-// 	config::ProtocolId,
-// 	request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig},
-// };
-use sc_peerset::ReputationChange;
-// use sp_core::{
-// 	hexdisplay::HexDisplay,
-// 	storage::{ChildInfo, ChildType, PrefixedStorageKey},
-// };
-use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 const LOG_TARGET: &str = "request-response-handler";
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Request {
+pub struct PiecesByRangeRequest {
     pub from: PieceIndexHash,
     pub to: PieceIndexHash,
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl From<Vec<u8>> for Request {
-    fn from(data: Vec<u8>) -> Request {
-        bincode::deserialize(&data).unwrap() // TODO
+impl From<Vec<u8>> for PiecesByRangeRequest {
+    fn from(data: Vec<u8>) -> PiecesByRangeRequest {
+        bincode::deserialize(&data)
+            .expect("Invalid format: cannot deserialize PiecesByRangeRequest")
     }
 }
 
-impl Into<Vec<u8>> for Request {
+impl Into<Vec<u8>> for PiecesByRangeRequest {
     fn into(self) -> Vec<u8> {
-        bincode::serialize(&self).unwrap() //TODO
+        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeRequest")
     }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Response {
+pub struct PiecesByRangeResponse {
     pub pieces: Vec<Piece>,
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl Into<Vec<u8>> for Response {
+impl Into<Vec<u8>> for PiecesByRangeResponse {
     fn into(self) -> Vec<u8> {
-        bincode::serialize(&self).unwrap() //TODO
+        bincode::serialize(&self).expect("Invalid format: cannot deserialize PiecesByRangeResponse")
     }
 }
 
-impl From<Vec<u8>> for Response {
-    fn from(data: Vec<u8>) -> Response {
-        bincode::deserialize(&data).unwrap() // TODO
+impl From<Vec<u8>> for PiecesByRangeResponse {
+    fn from(data: Vec<u8>) -> PiecesByRangeResponse {
+        bincode::deserialize(&data).expect("Invalid format: cannot serialize PiecesByRangeResponse")
     }
 }
 
-pub type RequestHandler = Arc<dyn (Fn(&Request) -> Option<Response>) + Send + Sync + 'static>;
+pub type RequestHandler =
+    Arc<dyn (Fn(&PiecesByRangeRequest) -> Option<PiecesByRangeResponse>) + Send + Sync + 'static>;
 
-pub struct RequestResponseHandler {
+pub struct PiecesByRangeRequestHandler {
     request_receiver: mpsc::Receiver<IncomingRequest>,
     request_handler: RequestHandler,
 }
 
-impl RequestResponseHandler {
+impl PiecesByRangeRequestHandler {
     /// Create a new [`RequestResponseHandler`].
     /// TODO: protocol_id: &ProtocolId
     pub fn new(request_handler: RequestHandler) -> (Self, ProtocolConfig) {
+        //TODO
         // For now due to lack of data on light client request handling in production systems, this
         // value is chosen to match the block request limit.
         let (tx, request_receiver) = mpsc::channel(20);
@@ -141,19 +135,12 @@ impl RequestResponseHandler {
                 Err(e) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Failed to handle light client request from {}: {}", peer, e,
+                        "Failed to handle request from {}: {}", peer, e,
                     );
-
-                    let reputation_changes = match e {
-                        HandleRequestError::BadRequest(_) => {
-                            vec![ReputationChange::new(-(1 << 12), "bad request")]
-                        }
-                        _ => Vec::new(),
-                    };
 
                     let response = OutgoingResponse {
                         result: Err(()),
-                        reputation_changes,
+                        reputation_changes: Vec::new(),
                         sent_feedback: None,
                     };
 
@@ -176,95 +163,18 @@ impl RequestResponseHandler {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, HandleRequestError> {
         println!("Handled request from {:?}. Data: {:?}", peer, payload);
-        let request: Request = payload.into();
+        let request: PiecesByRangeRequest = payload.into();
         let response = (self.request_handler)(&request);
-        // let request = schema::v1::light::Request::decode(&payload[..])?;
-
-        // let response = match &request.request {
-        // 	Some(schema::v1::light::request::Request::RemoteCallRequest(r)) =>
-        // 		self.on_remote_call_request(&peer, r)?,
-        // 	Some(schema::v1::light::request::Request::RemoteReadRequest(r)) =>
-        // 		self.on_remote_read_request(&peer, r)?,
-        // 	Some(schema::v1::light::request::Request::RemoteHeaderRequest(_r)) =>
-        // 		return Err(HandleRequestError::BadRequest("Not supported.")),
-        // 	Some(schema::v1::light::request::Request::RemoteReadChildRequest(r)) =>
-        // 		self.on_remote_read_child_request(&peer, r)?,
-        // 	Some(schema::v1::light::request::Request::RemoteChangesRequest(_r)) =>
-        // 		return Err(HandleRequestError::BadRequest("Not supported.")),
-        // 	None =>
-        // 		return Err(HandleRequestError::BadRequest("Remote request without request data.")),
-        // };
-
-        //let mut data = vec![38];
-        // response.encode(&mut data)?;
 
         Ok(response.unwrap().into()) // TODO
     }
-
-    // fn on_remote_call_request(
-    // 	&mut self,
-    // 	peer: &PeerId,
-    // 	request: &schema::v1::light::RemoteCallRequest,
-    // ) -> Result<schema::v1::light::Response, HandleRequestError> {
-    // 	trace!("Remote call request from {} ({} at {:?}).", peer, request.method, request.block,);
-
-    // 	let block = Decode::decode(&mut request.block.as_ref())?;
-
-    // 	let proof =
-    // 		match self
-    // 			.client
-    // 			.execution_proof(&BlockId::Hash(block), &request.method, &request.data)
-    // 		{
-    // 			Ok((_, proof)) => proof,
-    // 			Err(e) => {
-    // 				trace!(
-    // 					"remote call request from {} ({} at {:?}) failed with: {}",
-    // 					peer,
-    // 					request.method,
-    // 					request.block,
-    // 					e,
-    // 				);
-    // 				StorageProof::empty()
-    // 			},
-    // 		};
-
-    // 	let response = {
-    // 		let r = schema::v1::light::RemoteCallResponse { proof: proof.encode() };
-    // 		schema::v1::light::response::Response::RemoteCallResponse(r)
-    // 	};
-
-    // 	Ok(schema::v1::light::Response { response: Some(response) })
-    // }
 }
 
 #[derive(Debug, thiserror::Error)]
 enum HandleRequestError {
-    //TODO:
-    // #[error("Failed to decode request: {0}.")]
-    // DecodeProto(#[from] prost::DecodeError),
-    // #[error("Failed to encode response: {0}.")]
-    // EncodeProto(#[from] prost::EncodeError),
     #[error("Failed to send response.")]
     SendResponse,
-    /// A bad request has been received.
-    #[error("bad request: {0}")]
-    BadRequest(&'static str),
-    // /// Encoding or decoding of some data failed.
-    // #[error("codec error: {0}")]
-    // Codec(#[from] codec::Error),
 }
-
-// fn fmt_keys(first: Option<&Vec<u8>>, last: Option<&Vec<u8>>) -> String {
-//     if let (Some(first), Some(last)) = (first, last) {
-//         if first == last {
-//             HexDisplay::from(first).to_string()
-//         } else {
-//             format!("{}..{}", HexDisplay::from(first), HexDisplay::from(last))
-//         }
-//     } else {
-//         String::from("n/a")
-//     }
-// }
 
 /// TODO
 pub fn generate_protocol_config() -> ProtocolConfig {

@@ -434,7 +434,7 @@ impl NodeRunner {
                     },
                 );
             }
-            Command::Request {
+            Command::PiecesByRangeRequest {
                 peer_id,
                 request,
                 result_sender,
@@ -442,7 +442,7 @@ impl NodeRunner {
                 //TODO:
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    &crate::request_response_handler::generate_protocol_name(),
+                    &crate::pieces_by_range_handler::generate_protocol_name(),
                     request.into(),
                     result_sender,
                     IfDisconnected::TryConnect,
