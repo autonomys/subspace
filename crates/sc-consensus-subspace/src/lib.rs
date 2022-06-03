@@ -83,6 +83,12 @@ use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 
+// TODO: Hack for Gemini 1b launch.
+const GEMINI_1B_GENESIS_HASH: &[u8] = &[
+    158, 232, 110, 239, 195, 204, 97, 199, 26, 119, 81, 187, 167, 242, 94, 68, 45, 162, 81, 47, 64,
+    142, 98, 134, 21, 59, 60, 204, 5, 93, 204, 240,
+];
+
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
 pub struct NewSlotInfo {
@@ -363,9 +369,6 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
 
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
-
-    /// Chain ID from chain specification, needed to work around Gemini 1b launch issues.
-    pub chain_id: String,
 }
 
 /// Start the Subspace worker.
@@ -385,7 +388,6 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-        chain_id,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, CAW>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -427,7 +429,6 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-        chain_id,
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
@@ -627,8 +628,6 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     reward_signing_context: SigningContext,
-    /// Chain ID from chain specification, needed to work around Gemini 1b launch issues.
-    chain_id: String,
     block: PhantomData<Block>,
 }
 
@@ -732,7 +731,7 @@ where
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
         if *block.header.number() <= 33_671_u32.into()
-            && self.chain_id.as_str() == "subspace_gemini_1b"
+            && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
             && pre_digest.solution.public_key.as_slice()
                 != [
                     0x54, 0x26, 0x37, 0xb0, 0xd4, 0x43, 0x08, 0x7a, 0x34, 0x08, 0x08, 0xbb, 0x02,
@@ -1348,7 +1347,6 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
     telemetry: Option<TelemetryHandle>,
-    chain_id: String,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
     Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
@@ -1372,7 +1370,6 @@ where
         telemetry,
         client,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        chain_id,
         block: PhantomData::default(),
     };
 
