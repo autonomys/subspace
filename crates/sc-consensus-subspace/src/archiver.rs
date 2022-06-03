@@ -28,7 +28,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::{BlockId, SignedBlock};
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Saturating, Zero};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -117,7 +117,8 @@ where
 }
 
 fn initialize_archiver<Block, Client>(
-    best_block_id: &BlockId<Block>,
+    best_block_hash: Block::Hash,
+    best_block_number: NumberFor<Block>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
 ) -> (BlockNumber, Archiver, Vec<ArchivedSegment>)
@@ -131,10 +132,11 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
+    let best_block_id = BlockId::Hash(best_block_hash);
     let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
         client
             .runtime_api()
-            .confirmation_depth_k(best_block_id)
+            .confirmation_depth_k(&best_block_id)
             .expect("Failed to get `confirmation_depth_k` from runtime API"),
     )
     .unwrap_or_else(|_| {
@@ -142,14 +144,14 @@ where
     });
     let record_size = client
         .runtime_api()
-        .record_size(best_block_id)
+        .record_size(&best_block_id)
         .expect("Failed to get `record_size` from runtime API");
     let recorded_history_segment_size = client
         .runtime_api()
-        .recorded_history_segment_size(best_block_id)
+        .recorded_history_segment_size(&best_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
-    let maybe_last_archived_block = find_last_archived_block(client, *best_block_id);
+    let maybe_last_archived_block = find_last_archived_block(client, best_block_id);
     let have_last_root_block = maybe_last_archived_block.is_some();
 
     let mut archiver = if let Some((last_root_block, last_archived_block, block_object_mappings)) =
@@ -186,12 +188,11 @@ where
             .last_archived_block_number()
             .map(|n| n + 1)
             .unwrap_or_default();
-        let best_number = client.info().best_number;
-        let blocks_to_archive_to = TryInto::<BlockNumber>::try_into(best_number)
+        let blocks_to_archive_to = TryInto::<BlockNumber>::try_into(best_block_number)
             .unwrap_or_else(|_| {
                 panic!(
                     "Best block number {} can't be converted into BlockNumber",
-                    best_number,
+                    best_block_number,
                 );
             })
             .checked_sub(confirmation_depth_k)
@@ -284,10 +285,16 @@ pub fn start_subspace_archiver<Block, Client>(
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
-    let best_block_id = BlockId::Hash(client.info().best_hash);
+    let client_info = client.info();
+    let best_block_hash = client_info.best_hash;
+    let best_block_number = client_info.best_number;
 
-    let (confirmation_depth_k, mut archiver, older_archived_segments) =
-        initialize_archiver(&best_block_id, subspace_link, client.as_ref());
+    let (confirmation_depth_k, mut archiver, older_archived_segments) = initialize_archiver(
+        best_block_hash,
+        best_block_number,
+        subspace_link,
+        client.as_ref(),
+    );
 
     spawner.spawn_essential_blocking(
         "subspace-archiver",
