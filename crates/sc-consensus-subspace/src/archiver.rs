@@ -116,20 +116,55 @@ where
     Some((last_root_block, last_archived_block, block_object_mappings))
 }
 
+fn block_hashes_to_archive<Block, Client>(
+    client: &Client,
+    best_block_hash: Block::Hash,
+    blocks_to_archive_from: NumberFor<Block>,
+    blocks_to_archive_to: NumberFor<Block>,
+) -> Vec<Block::Hash>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+{
+    let block_range = blocks_to_archive_from..=blocks_to_archive_to;
+    let mut block_hashes = Vec::new();
+    let mut block_hash_to_check = best_block_hash;
+
+    loop {
+        let header = client
+            .header(BlockId::Hash(block_hash_to_check))
+            .expect("Parent block must exist; qed")
+            .expect("Parent block must exist; qed");
+
+        if block_range.contains(header.number()) {
+            block_hashes.push(block_hash_to_check);
+        }
+
+        if *header.number() == blocks_to_archive_from {
+            break;
+        }
+
+        block_hash_to_check = *header.parent_hash();
+    }
+
+    block_hashes
+}
+
+struct InitializedArchiver {
+    confirmation_depth_k: BlockNumber,
+    archiver: Archiver,
+    older_archived_segments: Vec<ArchivedSegment>,
+}
+
 fn initialize_archiver<Block, Client>(
     best_block_hash: Block::Hash,
     best_block_number: NumberFor<Block>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-) -> (BlockNumber, Archiver, Vec<ArchivedSegment>)
+) -> InitializedArchiver
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block>
-        + BlockBackend<Block>
-        + HeaderBackend<Block>
-        + Send
-        + Sync
-        + 'static,
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
     let best_block_id = BlockId::Hash(best_block_hash);
@@ -213,30 +248,12 @@ where
                 blocks_to_archive_to,
             );
 
-            let block_hashes_to_archive = {
-                let block_range = blocks_to_archive_from.into()..=blocks_to_archive_to.into();
-                let mut block_hashes_to_archive = Vec::new();
-                let mut block_hash_to_check = best_block_hash;
-
-                loop {
-                    let header = client
-                        .header(BlockId::Hash(block_hash_to_check))
-                        .expect("Parent block must exist; qed")
-                        .expect("Parent block must exist; qed");
-
-                    if block_range.contains(header.number()) {
-                        block_hashes_to_archive.push(block_hash_to_check);
-                    }
-
-                    if *header.number() == blocks_to_archive_from.into() {
-                        break;
-                    }
-
-                    block_hash_to_check = *header.parent_hash();
-                }
-
-                block_hashes_to_archive
-            };
+            let block_hashes_to_archive = block_hashes_to_archive(
+                client,
+                best_block_hash,
+                blocks_to_archive_from.into(),
+                blocks_to_archive_to.into(),
+            );
 
             for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
                 let block_id_to_archive = BlockId::Hash(block_hash_to_archive);
@@ -292,7 +309,11 @@ where
         }
     }
 
-    (confirmation_depth_k, archiver, older_archived_segments)
+    InitializedArchiver {
+        confirmation_depth_k,
+        archiver,
+        older_archived_segments,
+    }
 }
 
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
@@ -317,7 +338,11 @@ pub fn start_subspace_archiver<Block, Client>(
     let best_block_hash = client_info.best_hash;
     let best_block_number = client_info.best_number;
 
-    let (confirmation_depth_k, mut archiver, older_archived_segments) = initialize_archiver(
+    let InitializedArchiver {
+        confirmation_depth_k,
+        mut archiver,
+        older_archived_segments,
+    } = initialize_archiver(
         best_block_hash,
         best_block_number,
         subspace_link,
