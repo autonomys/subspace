@@ -20,7 +20,7 @@ use crate::{
 };
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
-use log::{debug, error, info};
+use log::{debug, info};
 use sc_client_api::BlockBackend;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -66,7 +66,10 @@ where
                 }
                 Err(error) => {
                     // TODO: Probably light client, can this even happen?
-                    error!(target: "subspace", "Failed to make runtime API call: {:?}", error);
+                    panic!(
+                        "Failed to make runtime API call during last archived block search: {:?}",
+                        error
+                    );
                 }
             }
         }
