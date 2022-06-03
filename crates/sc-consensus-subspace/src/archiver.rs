@@ -212,18 +212,46 @@ where
                 blocks_to_archive_from,
                 blocks_to_archive_to,
             );
-            for block_to_archive in blocks_to_archive_from..=blocks_to_archive_to {
+
+            let block_hashes_to_archive = {
+                let block_range = blocks_to_archive_from.into()..=blocks_to_archive_to.into();
+                let mut block_hashes_to_archive = Vec::new();
+                let mut block_hash_to_check = best_block_hash;
+
+                loop {
+                    let header = client
+                        .header(BlockId::Hash(block_hash_to_check))
+                        .expect("Parent block must exist; qed")
+                        .expect("Parent block must exist; qed");
+
+                    if block_range.contains(header.number()) {
+                        block_hashes_to_archive.push(block_hash_to_check);
+                    }
+
+                    if *header.number() == blocks_to_archive_from.into() {
+                        break;
+                    }
+
+                    block_hash_to_check = *header.parent_hash();
+                }
+
+                block_hashes_to_archive
+            };
+
+            for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
+                let block_id_to_archive = BlockId::Hash(block_hash_to_archive);
                 let block = client
-                    .block(&BlockId::Number(block_to_archive.into()))
+                    .block(&block_id_to_archive)
                     .expect("Older block by number must always exist")
                     .expect("Older block by number must always exist");
+                let block_number_to_archive = *block.block.header().number();
 
                 let block_object_mappings = client
                     .runtime_api()
-                    .validated_object_call_hashes(&BlockId::Number(block_to_archive.into()))
+                    .validated_object_call_hashes(&block_id_to_archive)
                     .and_then(|calls| {
                         client.runtime_api().extract_block_object_mapping(
-                            &BlockId::Number(block_to_archive.saturating_sub(1).into()),
+                            &BlockId::Hash(*block.block.header().parent_hash()),
                             block.block.clone(),
                             calls,
                         )
@@ -234,7 +262,7 @@ where
                 debug!(
                     target: "subspace",
                     "Encoded block {} has size of {:.2} kiB",
-                    block_to_archive,
+                    block_number_to_archive,
                     encoded_block.len() as f32 / 1024.0
                 );
 
@@ -250,12 +278,12 @@ where
                     // Set list of expected root blocks for the block where we expect root block
                     // extrinsic to be included
                     subspace_link.root_blocks.lock().put(
-                        if block_to_archive.is_zero() {
+                        if block_number_to_archive.is_zero() {
                             // Special case for genesis block whose root block should be included in
                             // the first block in order for further validation to work properly.
                             One::one()
                         } else {
-                            (block_to_archive + confirmation_depth_k + 1).into()
+                            block_number_to_archive + confirmation_depth_k.into() + One::one()
                         },
                         new_root_blocks,
                     );
