@@ -86,17 +86,27 @@ where
 
     let last_archived_block_number = last_root_block.last_archived_block().number;
 
-    let last_archived_block = client
-        .block(&BlockId::Number(last_archived_block_number.into()))
-        .expect("Older blocks must always exist")
-        .expect("Older blocks must always exist");
+    let last_archived_block = loop {
+        let block = client
+            .block(&block_to_check)
+            .expect("Older blocks must always exist")
+            .expect("Older blocks must always exist");
+
+        if *block.block.header().number() == last_archived_block_number.into() {
+            break block;
+        }
+
+        block_to_check = BlockId::Hash(*block.block.header().parent_hash());
+    };
+
+    let last_archived_block_hash = block_to_check;
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(&BlockId::Number(last_archived_block_number.into()))
+        .validated_object_call_hashes(&last_archived_block_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
+                &BlockId::Hash(*last_archived_block.block.header().parent_hash()),
                 last_archived_block.block.clone(),
                 calls,
             )
