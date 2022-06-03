@@ -139,6 +139,18 @@ where
             extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
+        // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
+        if *parent_header.number() >= 33_671_u32.into()
+            && self.client.info().genesis_hash.as_ref() == crate::GEMINI_1B_GENESIS_HASH
+            && solution_range == 12_009_599_006_321_322_u64
+        {
+            error!(
+                target: "subspace",
+                "Node is running on non-canonical fork, full node and farmer reset is required"
+            );
+            return None;
+        }
+
         let maybe_root_plot_public_key = self
             .client
             .runtime_api()
