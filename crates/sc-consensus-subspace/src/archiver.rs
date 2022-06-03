@@ -75,15 +75,12 @@ where
     }
 }
 
-/// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
-/// producing pieces and root blocks (root blocks are then added back to the blockchain as
-/// `store_root_block` extrinsic).
-pub fn start_subspace_archiver<Block, Client>(
+fn initialize_archiver<Block, Client>(
+    best_block_id: &BlockId<Block>,
     subspace_link: &SubspaceLink<Block>,
-    client: Arc<Client>,
-    spawner: &impl sp_core::traits::SpawnEssentialNamed,
-    is_authoring_blocks: bool,
-) where
+    client: &Client,
+) -> (BlockNumber, Archiver, Vec<ArchivedSegment>)
+where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -93,12 +90,10 @@ pub fn start_subspace_archiver<Block, Client>(
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
-    let best_block_id = BlockId::Hash(client.info().best_hash);
-
     let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
         client
             .runtime_api()
-            .confirmation_depth_k(&best_block_id)
+            .confirmation_depth_k(best_block_id)
             .expect("Failed to get `confirmation_depth_k` from runtime API"),
     )
     .unwrap_or_else(|_| {
@@ -106,14 +101,14 @@ pub fn start_subspace_archiver<Block, Client>(
     });
     let record_size = client
         .runtime_api()
-        .record_size(&best_block_id)
+        .record_size(best_block_id)
         .expect("Failed to get `record_size` from runtime API");
     let recorded_history_segment_size = client
         .runtime_api()
-        .recorded_history_segment_size(&best_block_id)
+        .recorded_history_segment_size(best_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
-    let maybe_last_root_block = find_last_root_block(client.as_ref());
+    let maybe_last_root_block = find_last_root_block(client);
 
     let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
         // Continuing from existing initial state
@@ -239,6 +234,32 @@ pub fn start_subspace_archiver<Block, Client>(
             }
         }
     }
+
+    (confirmation_depth_k, archiver, older_archived_segments)
+}
+
+/// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
+/// producing pieces and root blocks (root blocks are then added back to the blockchain as
+/// `store_root_block` extrinsic).
+pub fn start_subspace_archiver<Block, Client>(
+    subspace_link: &SubspaceLink<Block>,
+    client: Arc<Client>,
+    spawner: &impl sp_core::traits::SpawnEssentialNamed,
+    is_authoring_blocks: bool,
+) where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+{
+    let best_block_id = BlockId::Hash(client.info().best_hash);
+
+    let (confirmation_depth_k, mut archiver, older_archived_segments) =
+        initialize_archiver(&best_block_id, subspace_link, client.as_ref());
 
     spawner.spawn_essential_blocking(
         "subspace-archiver",
