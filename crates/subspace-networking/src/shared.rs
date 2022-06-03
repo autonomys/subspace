@@ -54,6 +54,9 @@ pub(crate) enum Command {
     },
 }
 
+/// Kademlia Key provider without hashing. It holds the 32-bytes hash and
+/// returns the Kademlia key without double hashing. It uses the unsafe rust
+/// code to transmute types.
 #[derive(Debug, Clone)]
 pub(crate) struct ExactKademliaKey {
     hash: [u8; 32],
@@ -71,6 +74,7 @@ impl Borrow<[u8]> for ExactKademliaKey {
     }
 }
 
+// !!! unsafe rust code
 impl From<ExactKademliaKey> for Key<ExactKademliaKey> {
     fn from(key: ExactKademliaKey) -> Key<ExactKademliaKey> {
         let mut data = [0u8; 64];

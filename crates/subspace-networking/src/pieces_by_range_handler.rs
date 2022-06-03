@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::{debug, trace};
-const LOG_TARGET: &str = "request-response-handler";
+const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
 
 /// Pieces-by-range protocol request. Assumes requests with paging.
 #[derive(Serialize, Deserialize, Debug)]

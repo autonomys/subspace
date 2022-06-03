@@ -60,6 +60,7 @@ use std::{io, iter};
 
 pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use tracing::{debug, error, warn};
+const LOG_TARGET: &str = "request-response-protocols";
 
 /// Configuration for a single request-response protocol.
 #[derive(Debug, Clone)]
@@ -260,7 +261,6 @@ pub struct RequestResponsesBehaviour {
 }
 
 // This is a state of processing incoming request Message.
-// The main reason of this struct is to hold `get_peer_reputation` as a Future state.
 struct MessageRequest {
     peer: PeerId,
     request_id: RequestId,
@@ -348,7 +348,7 @@ impl RequestResponsesBehaviour {
                 .is_err()
             {
                 debug!(
-                    target: "sub-libp2p",
+                    target: LOG_TARGET,
                     "Not connected to peer {:?}. At the same time local \
                      node is no longer interested in the result.",
                     target,
@@ -359,7 +359,7 @@ impl RequestResponsesBehaviour {
             .is_err()
         {
             debug!(
-                target: "sub-libp2p",
+                target: LOG_TARGET,
                 "Unknown protocol {:?}. At the same time local \
                  node is no longer interested in the result.",
                 protocol_name,
@@ -451,7 +451,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                 )
             } else {
                 error!(
-                    target: "sub-libp2p",
+                    target: LOG_TARGET,
                     "inject_connection_closed: no request-response instance registered for protocol {:?}",
                     p_name,
                 )
@@ -469,9 +469,10 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
             return proto.inject_event(peer_id, connection, event);
         }
 
-        warn!(target: "sub-libp2p",
-			"inject_node_event: no request-response instance registered for protocol {:?}",
-			p_name)
+        warn!(
+            target: LOG_TARGET,
+            "inject_node_event: no request-response instance registered for protocol {:?}", p_name
+        )
     }
 
     fn inject_new_external_addr(&mut self, addr: &Multiaddr) {
@@ -608,11 +609,12 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                             // Note: Failure is handled further below when receiving
                             // `InboundFailure` event from `RequestResponse` behaviour.
                             debug!(
-                                target: "sub-libp2p",
+                                target: LOG_TARGET,
                                 "Failed to send response for {:?} on protocol {:?} due to a \
                                  timeout or due to the connection to the peer being closed. \
                                  Dropping response",
-                                request_id, protocol_name,
+                                request_id,
+                                protocol_name,
                             );
                         } else if let Some(sent_feedback) = sent_feedback {
                             self.send_feedback
@@ -723,7 +725,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 }
                                 None => {
                                     warn!(
-                                        target: "sub-libp2p",
+                                        target: LOG_TARGET,
                                         "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
                                         request_id,
                                     );
@@ -759,7 +761,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                         .is_err()
                                     {
                                         debug!(
-                                            target: "sub-libp2p",
+                                            target: LOG_TARGET,
                                             "Request with id {:?} failed. At the same time local \
                                              node is no longer interested in the result.",
                                             request_id,
@@ -769,7 +771,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 }
                                 None => {
                                     warn!(
-                                        target: "sub-libp2p",
+                                        target: LOG_TARGET,
                                         "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
                                         request_id,
                                     );
