@@ -417,7 +417,9 @@ fn main() -> Result<(), Error> {
                         primary_chain_node
                             .imported_block_notification_stream
                             .subscribe()
-                            .then(|(block_number, _)| async move { block_number }),
+                            .then(|imported_block_notification| async move {
+                                imported_block_notification.block_number
+                            }),
                         primary_chain_node
                             .new_slot_notification_stream
                             .subscribe()

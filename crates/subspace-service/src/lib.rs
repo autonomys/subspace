@@ -21,7 +21,6 @@ pub mod rpc;
 use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use frame_system_rpc_runtime_api::AccountNonceApi;
-use futures::channel::mpsc;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
@@ -30,15 +29,15 @@ use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
-    SubspaceParams,
+    ArchivedSegmentNotification, ImportedBlockNotification, NewSlotNotification,
+    RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool::FullPool;
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
 use sp_consensus_slots::Slot;
@@ -51,7 +50,6 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_core_primitives::RootBlock;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index as Nonce};
 
@@ -303,7 +301,7 @@ where
     pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     /// Imported block stream.
     pub imported_block_notification_stream:
-        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+        SubspaceNotificationStream<ImportedBlockNotification<Block>>,
     /// Archived segment stream.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,

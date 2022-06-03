@@ -141,10 +141,9 @@ async fn run_executor(
 		primary_chain_full_node.client.clone(),
 		primary_chain_full_node.network.clone(),
 		&primary_chain_full_node.select_chain,
-		primary_chain_full_node
-			.imported_block_notification_stream
-			.subscribe()
-			.then(|(block_number, _)| async move { block_number }),
+		primary_chain_full_node.imported_block_notification_stream.subscribe().then(
+			|imported_block_notification| async move { imported_block_notification.block_number },
+		),
 		primary_chain_full_node.new_slot_notification_stream.subscribe().then(
 			|slot_notification| async move {
 				(

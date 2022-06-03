@@ -131,6 +131,19 @@ pub struct ArchivedSegmentNotification {
     pub acknowledgement_sender: TracingUnboundedSender<()>,
 }
 
+/// Notification with imported block header hash that needs to be archived and sender for
+/// root blocks.
+#[derive(Debug, Clone)]
+pub struct ImportedBlockNotification<Block>
+where
+    Block: BlockT,
+{
+    /// Block number
+    pub block_number: NumberFor<Block>,
+    /// Sender for archived root blocks
+    pub root_block_sender: mpsc::Sender<RootBlock>,
+}
+
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
 pub enum Error<Header: HeaderT> {
@@ -571,7 +584,7 @@ pub struct SubspaceLink<Block: BlockT> {
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
-        SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+        SubspaceNotificationStream<ImportedBlockNotification<Block>>,
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
     /// validation
     root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
@@ -606,7 +619,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
     /// Get stream with notifications about each imported block.
     pub fn imported_block_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<(NumberFor<Block>, mpsc::Sender<RootBlock>)> {
+    ) -> SubspaceNotificationStream<ImportedBlockNotification<Block>> {
         self.imported_block_notification_stream.clone()
     }
 
@@ -874,7 +887,7 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     inner: I,
     client: Arc<Client>,
     imported_block_notification_sender:
-        SubspaceNotificationSender<(NumberFor<Block>, mpsc::Sender<RootBlock>)>,
+        SubspaceNotificationSender<ImportedBlockNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
@@ -910,10 +923,9 @@ where
     fn new(
         client: Arc<Client>,
         block_import: I,
-        imported_block_notification_sender: SubspaceNotificationSender<(
-            NumberFor<Block>,
-            mpsc::Sender<RootBlock>,
-        )>,
+        imported_block_notification_sender: SubspaceNotificationSender<
+            ImportedBlockNotification<Block>,
+        >,
         subspace_link: SubspaceLink<Block>,
         can_author_with: CAW,
         create_inherent_data_providers: CIDP,
@@ -1236,7 +1248,10 @@ where
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
 
         self.imported_block_notification_sender
-            .notify(move || (block_number, root_block_sender));
+            .notify(move || ImportedBlockNotification {
+                block_number,
+                root_block_sender,
+            });
 
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 

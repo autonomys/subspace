@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{ArchivedSegmentNotification, SubspaceLink, SubspaceNotificationSender};
+use crate::{
+    ArchivedSegmentNotification, ImportedBlockNotification, SubspaceLink,
+    SubspaceNotificationSender,
+};
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
 use log::{debug, error, info};
@@ -287,8 +290,10 @@ pub fn start_subspace_archiver<Block, Client>(
                 let mut last_archived_block_number =
                     archiver.last_archived_block_number().map(Into::into);
 
-                while let Some((block_number, mut root_block_sender)) =
-                    imported_block_notification_stream.next().await
+                while let Some(ImportedBlockNotification {
+                    block_number,
+                    mut root_block_sender,
+                }) = imported_block_notification_stream.next().await
                 {
                     let block_to_archive =
                         match block_number.checked_sub(&confirmation_depth_k.into()) {
