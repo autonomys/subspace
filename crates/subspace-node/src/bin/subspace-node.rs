@@ -253,8 +253,7 @@ fn main() -> Result<(), Error> {
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!(
-                        "Failed to create secondary chain configuration: {}",
-                        error
+                        "Failed to create secondary chain configuration: {error:?}"
                     ))
                 })?;
 
@@ -367,8 +366,7 @@ fn main() -> Result<(), Error> {
                     )
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
-                            "Failed to build a full subspace node: {}",
-                            error
+                            "Failed to build a full subspace node: {error:?}"
                         ))
                     })?
                 };
@@ -399,8 +397,7 @@ fn main() -> Result<(), Error> {
                     )
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
-                            "Failed to create secondary chain configuration: {}",
-                            error
+                            "Failed to create secondary chain configuration: {error:?}"
                         ))
                     })?;
 
