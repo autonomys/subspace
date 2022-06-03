@@ -244,8 +244,6 @@ impl NodeRunner {
                             );
                         }
                     }
-                } else {
-                    error!("GetClosestPeers has no receivers for QueryId={:?}", id);
                 }
             }
             KademliaEvent::OutboundQueryCompleted {

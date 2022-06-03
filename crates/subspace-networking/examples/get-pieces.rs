@@ -1,4 +1,3 @@
-use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
@@ -9,7 +8,7 @@ use subspace_networking::{Config, PiecesByRangeResponse};
 
 #[tokio::main]
 async fn main() {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    tracing_subscriber::fmt::init();
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
@@ -82,4 +81,5 @@ async fn main() {
     }
 
     tokio::time::sleep(Duration::from_secs(5)).await;
+    println!("Exiting..");
 }
