@@ -412,6 +412,7 @@ impl TestNetFactory for SubspaceTestNet {
                     REWARD_SIGNING_CONTEXT,
                 ),
                 block: PhantomData::default(),
+                chain_id: "".to_string(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
         }
@@ -565,6 +566,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             block_proposal_slot_portion: SlotProportion::new(0.5),
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            chain_id: "".to_string(),
         })
         .expect("Starts Subspace");
 

@@ -61,6 +61,8 @@ pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
+    /// Chain ID from chain specification, needed to work around Gemini 1b launch issues.
+    pub(super) chain_id: String,
 }
 
 #[async_trait::async_trait]
@@ -119,6 +121,13 @@ where
         slot: Slot,
         _epoch_data: &Self::EpochData,
     ) -> Option<Self::Claim> {
+        // TODO: Hack for Gemini 1b launch. These blocks are already produced, avoid claiming them.
+        if *parent_header.number() <= 33_671_u32.into()
+            && self.chain_id.as_str() == "subspace_gemini_1b"
+        {
+            return None;
+        }
+
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
