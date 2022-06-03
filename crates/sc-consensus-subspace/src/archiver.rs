@@ -20,7 +20,7 @@ use crate::{
 };
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
-use log::{debug, info};
+use log::{debug, error, info};
 use sc_client_api::BlockBackend;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -28,7 +28,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::{BlockId, SignedBlock};
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -116,12 +116,17 @@ where
     Some((last_root_block, last_archived_block, block_object_mappings))
 }
 
+struct BlockHashesToArchive<BlockHash> {
+    block_hashes: Vec<BlockHash>,
+    best_archived: BlockHash,
+}
+
 fn block_hashes_to_archive<Block, Client>(
     client: &Client,
     best_block_hash: Block::Hash,
     blocks_to_archive_from: NumberFor<Block>,
     blocks_to_archive_to: NumberFor<Block>,
-) -> Vec<Block::Hash>
+) -> BlockHashesToArchive<Block::Hash>
 where
     Block: BlockT,
     Client: HeaderBackend<Block>,
@@ -129,6 +134,8 @@ where
     let block_range = blocks_to_archive_from..=blocks_to_archive_to;
     let mut block_hashes = Vec::new();
     let mut block_hash_to_check = best_block_hash;
+    // Genesis block hash by default
+    let mut best_archived = Block::Hash::default();
 
     loop {
         let header = client
@@ -138,6 +145,10 @@ where
 
         if block_range.contains(header.number()) {
             block_hashes.push(block_hash_to_check);
+
+            if best_archived == Block::Hash::default() {
+                best_archived = block_hash_to_check;
+            }
         }
 
         if *header.number() == blocks_to_archive_from {
@@ -147,13 +158,17 @@ where
         block_hash_to_check = *header.parent_hash();
     }
 
-    block_hashes
+    BlockHashesToArchive {
+        block_hashes,
+        best_archived,
+    }
 }
 
-struct InitializedArchiver {
+struct InitializedArchiver<BlockHash> {
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
     older_archived_segments: Vec<ArchivedSegment>,
+    best_archived_block_hash: BlockHash,
 }
 
 fn initialize_archiver<Block, Client>(
@@ -161,7 +176,7 @@ fn initialize_archiver<Block, Client>(
     best_block_number: NumberFor<Block>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-) -> InitializedArchiver
+) -> InitializedArchiver<Block::Hash>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
@@ -216,6 +231,8 @@ where
     };
 
     let mut older_archived_segments = Vec::new();
+    // Genesis block hash by default
+    let mut best_archived_block_hash = Block::Hash::default();
 
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     {
@@ -254,6 +271,8 @@ where
                 blocks_to_archive_from.into(),
                 blocks_to_archive_to.into(),
             );
+            best_archived_block_hash = block_hashes_to_archive.best_archived;
+            let block_hashes_to_archive = block_hashes_to_archive.block_hashes;
 
             for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
                 let block_id_to_archive = BlockId::Hash(block_hash_to_archive);
@@ -313,6 +332,7 @@ where
         confirmation_depth_k,
         archiver,
         older_archived_segments,
+        best_archived_block_hash,
     }
 }
 
@@ -342,6 +362,7 @@ pub fn start_subspace_archiver<Block, Client>(
         confirmation_depth_k,
         mut archiver,
         older_archived_segments,
+        mut best_archived_block_hash,
     } = initialize_archiver(
         best_block_hash,
         best_block_number,
@@ -380,38 +401,59 @@ pub fn start_subspace_archiver<Block, Client>(
                     mut root_block_sender,
                 }) = imported_block_notification_stream.next().await
                 {
-                    let block_to_archive =
+                    let block_number_to_archive =
                         match block_number.checked_sub(&confirmation_depth_k.into()) {
-                            Some(block_to_archive) => block_to_archive,
+                            Some(block_number_to_archive) => block_number_to_archive,
                             None => {
                                 continue;
                             }
                         };
 
                     if let Some(last_archived_block) = &mut last_archived_block_number {
-                        if *last_archived_block >= block_to_archive {
+                        if *last_archived_block >= block_number_to_archive {
                             // This block was already archived, skip
                             continue;
                         }
 
-                        *last_archived_block = block_to_archive;
+                        *last_archived_block = block_number_to_archive;
                     } else {
-                        last_archived_block_number.replace(block_to_archive);
+                        last_archived_block_number.replace(block_number_to_archive);
                     }
 
-                    debug!(target: "subspace", "Archiving block {:?}", block_to_archive);
-
                     let block = client
-                        .block(&BlockId::Number(block_to_archive))
+                        .block(&BlockId::Number(block_number_to_archive))
                         .expect("Older block by number must always exist")
                         .expect("Older block by number must always exist");
 
+                    let parent_block_hash = *block.block.header().parent_hash();
+                    let block_hash_to_archive = block.block.hash();
+
+                    debug!(
+                        target: "subspace",
+                        "Archiving block {:?} ({})",
+                        block_number_to_archive,
+                        block_hash_to_archive
+                    );
+
+                    if parent_block_hash != best_archived_block_hash {
+                        error!(
+                            target: "subspace",
+                            "Attempt to switch to a different fork beyond archiving depth, can't \
+                            do it: parent block hash {}, best archived block hash {}",
+                            parent_block_hash,
+                            best_archived_block_hash
+                        );
+                        return;
+                    }
+
+                    best_archived_block_hash = block_hash_to_archive;
+
                     let block_object_mappings = client
                         .runtime_api()
-                        .validated_object_call_hashes(&BlockId::Number(block_to_archive))
+                        .validated_object_call_hashes(&BlockId::Hash(block_hash_to_archive))
                         .and_then(|calls| {
                             client.runtime_api().extract_block_object_mapping(
-                                &BlockId::Number(block_to_archive.saturating_sub(One::one())),
+                                &BlockId::Hash(parent_block_hash),
                                 block.block.clone(),
                                 calls,
                             )
@@ -422,7 +464,7 @@ pub fn start_subspace_archiver<Block, Client>(
                     debug!(
                         target: "subspace",
                         "Encoded block {} has size of {:.2} kiB",
-                        block_to_archive,
+                        block_number_to_archive,
                         encoded_block.len() as f32 / 1024.0
                     );
                     for archived_segment in archiver.add_block(encoded_block, block_object_mappings)
