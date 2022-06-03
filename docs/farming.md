@@ -2,6 +2,16 @@
 
 **‼️ NOTE: This is a living document reflecting current state of the codebase, make sure to open this page from the [release you want to install](https://github.com/subspace/subspace/releases) and not directly ‼️**
 
+# Update from earlier versions of Gemini 1b
+
+There were some issues in initial Gemini 1b release `gemini-1b-2022-june-02` fixed by later releases.
+
+If you see any of these errors:
+> Node is running on non-canonical fork, full node and farmer reset is required
+> Attempt to switch to a different fork beyond archiving depth, can't do it...
+
+That means your node is affected, and you need to follow "Switching to a new snapshot" section below to reset your node and farmer.
+
 # 👨‍🌾 Getting Started Farming
 
 This is the documentation/guideline on how to run the farmer. You may also refer to the [help](#help) section for various commands.
