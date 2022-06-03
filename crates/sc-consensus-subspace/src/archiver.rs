@@ -27,23 +27,27 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::generic::BlockId;
+use sp_runtime::generic::{BlockId, SignedBlock};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, One, Saturating, Zero};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RootBlock};
 
 const ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL: Duration = Duration::from_secs(5);
 
-fn find_last_root_block<Block, Client>(client: &Client) -> Option<RootBlock>
+fn find_last_archived_block<Block, Client>(
+    client: &Client,
+    best_block_id: BlockId<Block>,
+) -> Option<(RootBlock, SignedBlock<Block>, BlockObjectMapping)>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
-    let mut block_to_check = BlockId::Hash(client.info().best_hash);
-    loop {
+    let mut block_to_check = best_block_id;
+    let last_root_block = 'outer: loop {
         let block = client
             .block(&block_to_check)
             .expect("Older blocks should always exist")
@@ -55,7 +59,7 @@ where
                 .extract_root_blocks(&block_to_check, extrinsic)
             {
                 Ok(Some(root_blocks)) => {
-                    return root_blocks.into_iter().last();
+                    break 'outer root_blocks.into_iter().last()?;
                 }
                 Ok(None) => {
                     // Some other extrinsic, ignore
@@ -71,11 +75,32 @@ where
 
         if parent_block_hash == Block::Hash::default() {
             // Genesis block, nothing else to check
-            break None;
+            return None;
         }
 
         block_to_check = BlockId::Hash(parent_block_hash);
-    }
+    };
+
+    let last_archived_block_number = last_root_block.last_archived_block().number;
+
+    let last_archived_block = client
+        .block(&BlockId::Number(last_archived_block_number.into()))
+        .expect("Older blocks must always exist")
+        .expect("Older blocks must always exist");
+
+    let block_object_mappings = client
+        .runtime_api()
+        .validated_object_call_hashes(&BlockId::Number(last_archived_block_number.into()))
+        .and_then(|calls| {
+            client.runtime_api().extract_block_object_mapping(
+                &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
+                last_archived_block.block.clone(),
+                calls,
+            )
+        })
+        .unwrap_or_default();
+
+    Some((last_root_block, last_archived_block, block_object_mappings))
 }
 
 fn initialize_archiver<Block, Client>(
@@ -111,9 +136,12 @@ where
         .recorded_history_segment_size(best_block_id)
         .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
-    let maybe_last_root_block = find_last_root_block(client);
+    let maybe_last_archived_block = find_last_archived_block(client, *best_block_id);
+    let have_last_root_block = maybe_last_archived_block.is_some();
 
-    let mut archiver = if let Some(last_root_block) = maybe_last_root_block {
+    let mut archiver = if let Some((last_root_block, last_archived_block, block_object_mappings)) =
+        maybe_last_archived_block
+    {
         // Continuing from existing initial state
         let last_archived_block_number = last_root_block.last_archived_block().number;
         info!(
@@ -121,22 +149,6 @@ where
             "Last archived block {}",
             last_archived_block_number,
         );
-        let last_archived_block = client
-            .block(&BlockId::Number(last_archived_block_number.into()))
-            .expect("Older blocks must always exist")
-            .expect("Older blocks must always exist");
-
-        let block_object_mappings = client
-            .runtime_api()
-            .validated_object_call_hashes(&BlockId::Number(last_archived_block_number.into()))
-            .and_then(|calls| {
-                client.runtime_api().extract_block_object_mapping(
-                    &BlockId::Number(last_archived_block_number.saturating_sub(1).into()),
-                    last_archived_block.block.clone(),
-                    calls,
-                )
-            })
-            .unwrap_or_default();
 
         Archiver::with_initial_state(
             record_size as usize,
@@ -170,12 +182,12 @@ where
                 );
             })
             .checked_sub(confirmation_depth_k)
-            .or_else(|| {
-                if maybe_last_root_block.is_none() {
+            .or({
+                if have_last_root_block {
+                    None
+                } else {
                     // If not continuation, archive genesis block
                     Some(0)
-                } else {
-                    None
                 }
             });
 
