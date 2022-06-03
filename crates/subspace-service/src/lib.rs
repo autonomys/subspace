@@ -260,6 +260,7 @@ where
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
         telemetry.as_ref().map(|x| x.handle()),
+        config.chain_spec.id().to_string(),
     )?;
 
     Ok(PartialComponents {
@@ -426,6 +427,7 @@ where
             block_proposal_slot_portion: SlotProportion::new(2f32 / 3f32),
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            chain_id: config.chain_spec.id().to_string(),
         };
 
         let subspace = sc_consensus_subspace::start_subspace(subspace_config)?;
