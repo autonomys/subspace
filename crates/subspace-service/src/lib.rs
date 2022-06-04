@@ -195,11 +195,6 @@ where
 
     let client = Arc::new(client);
 
-    // TODO: remove once the whole fraud proof ext is removed.
-    // client
-    // .execution_extensions()
-    // .set_extensions_factory(Box::new(proof_verifier));
-
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
             .spawn_handle()

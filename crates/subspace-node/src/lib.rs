@@ -39,13 +39,10 @@ pub struct ExecutorDispatch;
 impl NativeExecutionDispatch for ExecutorDispatch {
     /// Only enable the benchmarking host functions when we actually want to benchmark.
     #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = (
-        sp_executor::fraud_proof_ext::fraud_proof::HostFunctions,
-        frame_benchmarking::benchmarking::HostFunctions,
-    );
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
     /// Otherwise we only use the default Substrate host functions.
     #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = sp_executor::fraud_proof_ext::fraud_proof::HostFunctions;
+    type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_runtime::api::dispatch(method, data)

@@ -10,13 +10,10 @@
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
-use sc_client_api::execution_extensions::ExtensionsFactory;
 use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
-use sp_executor::fraud_proof_ext::FraudProofExt;
 use sp_executor::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
-use sp_externalities::Extensions;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::{TrieBackend, TrieBackendStorage};
@@ -307,45 +304,5 @@ where
 {
     fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError> {
         self.verify(proof)
-    }
-}
-
-impl<PBlock, C, B, Exec, Spawn, Hash> sp_executor::fraud_proof_ext::Externalities
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
-where
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    B: backend::Backend<PBlock>,
-    Exec: CodeExecutor + Clone + 'static,
-    Spawn: SpawnNamed + Clone + Send + 'static,
-    Hash: Encode + Decode + Send + Sync,
-{
-    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> bool {
-        match self.verify(proof) {
-            Ok(()) => true,
-            Err(e) => {
-                tracing::debug!(target: "fraud_proof", error = ?e, "Fraud proof verification failure");
-                false
-            }
-        }
-    }
-}
-
-impl<PBlock, C, B, Exec, Spawn, Hash> ExtensionsFactory
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
-where
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    B: backend::Backend<PBlock> + 'static,
-    Exec: CodeExecutor + Clone + Send + Sync,
-    Spawn: SpawnNamed + Clone + Send + Sync + 'static,
-    Hash: Encode + Decode + Send + Sync + 'static,
-{
-    fn extensions_for(&self, _: sp_core::offchain::Capabilities) -> Extensions {
-        let mut exts = Extensions::new();
-        exts.register(FraudProofExt::new(self.clone()));
-        exts
     }
 }

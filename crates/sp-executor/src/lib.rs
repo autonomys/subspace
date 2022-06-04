@@ -411,39 +411,3 @@ sp_api::decl_runtime_apis! {
         fn maximum_receipt_drift() -> NumberFor<Block>;
     }
 }
-
-// TODO: remove once the fraud proof verification is moved into the client.
-pub mod fraud_proof_ext {
-    #[cfg(feature = "std")]
-    use sp_externalities::ExternalitiesExt;
-    use sp_runtime_interface::runtime_interface;
-
-    /// Externalities for verifying fraud proof.
-    pub trait Externalities: Send {
-        /// Returns `true` when the proof is valid.
-        fn verify_fraud_proof(&self, proof: &crate::FraudProof) -> bool;
-    }
-
-    #[cfg(feature = "std")]
-    sp_externalities::decl_extension! {
-        /// An extension to verify the fraud proof.
-        pub struct FraudProofExt(Box<dyn Externalities>);
-    }
-
-    #[cfg(feature = "std")]
-    impl FraudProofExt {
-        pub fn new<E: Externalities + 'static>(fraud_proof: E) -> Self {
-            Self(Box::new(fraud_proof))
-        }
-    }
-
-    #[runtime_interface]
-    pub trait FraudProof {
-        /// Verify fraud proof.
-        fn verify(&mut self, proof: &crate::FraudProof) -> bool {
-            self.extension::<FraudProofExt>()
-                .expect("No `FraudProof` associated for the current context!")
-                .verify_fraud_proof(proof)
-        }
-    }
-}
