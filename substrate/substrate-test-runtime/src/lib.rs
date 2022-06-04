@@ -492,6 +492,9 @@ impl frame_support::traits::OriginTrait for Origin {
     fn signed(_by: <Runtime as frame_system::Config>::AccountId) -> Self {
         unimplemented!("Not required in tests!")
     }
+    fn as_signed(self) -> Option<Self::AccountId> {
+        unimplemented!("Not required in tests!")
+    }
 }
 
 #[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
