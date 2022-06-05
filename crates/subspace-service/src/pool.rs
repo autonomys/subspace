@@ -3,7 +3,10 @@ use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{BlockBackend, ExecutorProvider, UsageProvider};
 use sc_service::Configuration;
 use sc_transaction_pool::error::Result as TxPoolResult;
-use sc_transaction_pool::{BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction};
+use sc_transaction_pool::{
+    BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction, ValidatedTransaction,
+};
+use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::{
     ChainEvent, ImportNotificationStream, MaintainedTransactionPool, PoolFuture, PoolStatus,
     ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
@@ -43,7 +46,18 @@ pub struct FullChainApiWrapper<Block, Client> {
     inner: FullChainApi<Client, Block>,
 }
 
-impl<Block, Client> FullChainApiWrapper<Block, Client> {
+impl<Block, Client> FullChainApiWrapper<Block, Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+{
     fn new(
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
@@ -52,6 +66,15 @@ impl<Block, Client> FullChainApiWrapper<Block, Client> {
         Self {
             inner: FullChainApi::new(client, prometheus, spawner),
         }
+    }
+
+    fn validate_transaction_blocking(
+        &self,
+        at: &BlockId<Block>,
+        source: TransactionSource,
+        uxt: ExtrinsicFor<Self>,
+    ) -> TxPoolResult<TransactionValidity> {
+        self.inner.validate_transaction_blocking(at, source, uxt)
     }
 }
 
@@ -145,6 +168,10 @@ where
     pub fn pool(&self) -> &Arc<Pool<PoolApi>> {
         self.inner.pool()
     }
+
+    pub fn api(&self) -> &PoolApi {
+        self.inner.api()
+    }
 }
 
 impl<Block, Client> sc_transaction_pool_api::LocalTransactionPool
@@ -166,16 +193,13 @@ where
 
     fn submit_local(
         &self,
-        _at: &BlockId<Self::Block>,
-        _xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
+        at: &BlockId<Self::Block>,
+        xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
     ) -> Result<Self::Hash, Self::Error> {
-        todo!("Impl submit_local")
-        /*
-        use sp_runtime::{
-            traits::SaturatedConversion, transaction_validity::TransactionValidityError,
-        };
+        use sp_runtime::traits::SaturatedConversion;
+        use sp_runtime::transaction_validity::TransactionValidityError;
         let validity = self
-            .api
+            .api()
             .validate_transaction_blocking(at, TransactionSource::Local, xt.clone())?
             .map_err(|e| {
                 Self::Error::Pool(match e {
@@ -183,8 +207,8 @@ where
                     TransactionValidityError::Unknown(u) => TxPoolError::UnknownTransaction(u),
                 })
             })?;
-        let (hash, bytes) = self.pool.validated_pool().api().hash_and_length(&xt);
-        let block_number = self.api.block_id_to_number(at)?.ok_or_else(|| {
+        let (hash, bytes) = self.pool().validated_pool().api().hash_and_length(&xt);
+        let block_number = self.api().block_id_to_number(at)?.ok_or_else(|| {
             sc_transaction_pool::error::Error::BlockIdConversion(format!("{:?}", at))
         })?;
         let validated = ValidatedTransaction::valid_at(
@@ -195,8 +219,10 @@ where
             bytes,
             validity,
         );
-        self.pool.validated_pool().submit(vec![validated]).remove(0)
-        */
+        self.pool()
+            .validated_pool()
+            .submit(vec![validated])
+            .remove(0)
     }
 }
 
