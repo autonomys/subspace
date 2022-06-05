@@ -333,18 +333,17 @@ where
     pub transaction_pool: Arc<FullPool<Block, Client, VerifierClient, Verifier>>,
 }
 
+type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+>;
+
 /// Builds a new service for a full client.
 pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
-) -> Result<
-    NewFull<
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-    >,
-    Error,
->
+) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send

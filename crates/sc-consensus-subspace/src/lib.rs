@@ -1071,6 +1071,8 @@ where
         // internally-set timestamp in the inherents actually matches the slot set in the seal
         // and root blocks in the inherents are set correctly.
         if let Some(extrinsics) = extrinsics {
+            // TODO: Verify the fraud proof is correct if the extrinsic `submit_fraud_proof` is found.
+
             if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
                 debug!(
                     target: "subspace",
