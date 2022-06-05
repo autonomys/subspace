@@ -16,6 +16,7 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+mod pool;
 pub mod rpc;
 
 use cirrus_primitives::Hash as SecondaryHash;
@@ -195,10 +196,8 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
+    let transaction_pool = pool::new_full(
+        config,
         task_manager.spawn_essential_handle(),
         client.clone(),
     );
