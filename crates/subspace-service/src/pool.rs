@@ -170,6 +170,33 @@ where
         _xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
     ) -> Result<Self::Hash, Self::Error> {
         todo!("Impl submit_local")
+        /*
+        use sp_runtime::{
+            traits::SaturatedConversion, transaction_validity::TransactionValidityError,
+        };
+        let validity = self
+            .api
+            .validate_transaction_blocking(at, TransactionSource::Local, xt.clone())?
+            .map_err(|e| {
+                Self::Error::Pool(match e {
+                    TransactionValidityError::Invalid(i) => TxPoolError::InvalidTransaction(i),
+                    TransactionValidityError::Unknown(u) => TxPoolError::UnknownTransaction(u),
+                })
+            })?;
+        let (hash, bytes) = self.pool.validated_pool().api().hash_and_length(&xt);
+        let block_number = self.api.block_id_to_number(at)?.ok_or_else(|| {
+            sc_transaction_pool::error::Error::BlockIdConversion(format!("{:?}", at))
+        })?;
+        let validated = ValidatedTransaction::valid_at(
+            block_number.saturated_into::<u64>(),
+            hash,
+            TransactionSource::Local,
+            xt,
+            bytes,
+            validity,
+        );
+        self.pool.validated_pool().submit(vec![validated]).remove(0)
+        */
     }
 }
 
