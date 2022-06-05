@@ -36,7 +36,10 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
+use sc_service::{
+    Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
+    TaskManager,
+};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
@@ -51,8 +54,9 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
+use subspace_fraud_proof::VerifyFraudProof;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Index as Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -89,6 +93,15 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
+    Block,
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FullBackend,
+    NativeElseWasmExecutor<ExecutorDispatch>,
+    SpawnTaskHandle,
+    Hash,
+>;
+
 /// Subspace-specific service configuration.
 #[derive(Debug, Deref, DerefMut, Into)]
 pub struct SubspaceConfiguration {
@@ -121,7 +134,12 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullBackend,
         FullSelectChain,
         DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-        FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        FullPool<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        >,
         (
             impl BlockImport<
                 Block,
@@ -177,15 +195,10 @@ where
 
     let client = Arc::new(client);
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        client.clone(),
-        backend.clone(),
-        executor,
-        task_manager.spawn_handle(),
-    );
-    client
-        .execution_extensions()
-        .set_extensions_factory(Box::new(proof_verifier));
+    // TODO: remove once the whole fraud proof ext is removed.
+    // client
+    // .execution_extensions()
+    // .set_extensions_factory(Box::new(proof_verifier));
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -196,10 +209,18 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        client.clone(),
+        backend.clone(),
+        executor,
+        task_manager.spawn_handle(),
+    );
     let transaction_pool = pool::new_full(
         config,
         task_manager.spawn_essential_handle(),
         client.clone(),
+        client.clone(),
+        proof_verifier,
     );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
@@ -272,7 +293,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client>
+pub struct NewFull<Client, VerifierClient, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -280,6 +301,9 @@ where
         + HeaderBackend<Block>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>,
+    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
+    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -306,14 +330,21 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, VerifierClient, Verifier>>,
 }
 
 /// Builds a new service for a full client.
 pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
-) -> Result<NewFull<FullClient<RuntimeApi, ExecutorDispatch>>, Error>
+) -> Result<
+    NewFull<
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+    >,
+    Error,
+>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send

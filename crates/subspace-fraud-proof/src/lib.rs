@@ -294,6 +294,28 @@ where
     }
 }
 
+/// Verify fraud proof.
+pub trait VerifyFraudProof {
+    /// Verifies fraud proof.
+    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError>;
+}
+
+impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof
+    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+where
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    B: backend::Backend<PBlock>,
+    Exec: CodeExecutor + Clone + 'static,
+    Spawn: SpawnNamed + Clone + Send + 'static,
+    Hash: Encode + Decode + Send + Sync,
+{
+    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError> {
+        self.verify(proof)
+    }
+}
+
 impl<PBlock, C, B, Exec, Spawn, Hash> sp_executor::fraud_proof_ext::Externalities
     for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
