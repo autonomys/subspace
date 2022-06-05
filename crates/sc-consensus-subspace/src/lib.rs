@@ -743,7 +743,7 @@ where
         let pre_digest = find_pre_digest(&block.header)?;
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
-        if *block.header.number() <= 33_671_u32.into()
+        if *block.header.number() <= 33_581_u32.into()
             && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
             && pre_digest.solution.public_key.as_slice()
                 != [
