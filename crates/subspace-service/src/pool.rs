@@ -1,7 +1,8 @@
-use futures::future::Future;
+use futures::future::{Future, Ready};
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{BlockBackend, ExecutorProvider, UsageProvider};
 use sc_service::Configuration;
+use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool::{BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction};
 use sc_transaction_pool_api::{
     ChainEvent, ImportNotificationStream, MaintainedTransactionPool, PoolFuture, PoolStatus,
@@ -12,11 +13,15 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
+use sp_runtime::transaction_validity::TransactionValidity;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
+
+/// Block hash type for a pool.
+type BlockHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 
 /// Extrinsic hash type for a pool.
 type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
@@ -25,7 +30,7 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<Block, Client> = BasicPoolWrapper<Block, FullChainApi<Client, Block>>;
+pub type FullPool<Block, Client> = BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client>>;
 
 type BoxedReadyIterator<Hash, Data> =
     Box<dyn ReadyTransactions<Item = Arc<Transaction<Hash, Data>>> + Send>;
@@ -33,6 +38,75 @@ type BoxedReadyIterator<Hash, Data> =
 type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, ExtrinsicFor<PoolApi>>;
 
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
+
+pub struct FullChainApiWrapper<Block, Client> {
+    inner: FullChainApi<Client, Block>,
+}
+
+impl<Block, Client> FullChainApiWrapper<Block, Client> {
+    fn new(
+        client: Arc<Client>,
+        prometheus: Option<&PrometheusRegistry>,
+        spawner: &impl SpawnEssentialNamed,
+    ) -> Self {
+        Self {
+            inner: FullChainApi::new(client, prometheus, spawner),
+        }
+    }
+}
+
+impl<Block, Client> ChainApi for FullChainApiWrapper<Block, Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+{
+    type Block = Block;
+    type Error = sc_transaction_pool::error::Error;
+    type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;
+    type BodyFuture = Ready<TxPoolResult<Option<Vec<<Self::Block as BlockT>::Extrinsic>>>>;
+
+    fn block_body(&self, id: &BlockId<Self::Block>) -> Self::BodyFuture {
+        self.inner.block_body(id)
+    }
+
+    fn validate_transaction(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        uxt: ExtrinsicFor<Self>,
+    ) -> Self::ValidationFuture {
+        self.inner.validate_transaction(at, source, uxt)
+    }
+
+    fn block_id_to_number(
+        &self,
+        at: &BlockId<Self::Block>,
+    ) -> TxPoolResult<Option<NumberFor<Self::Block>>> {
+        self.inner.block_id_to_number(at)
+    }
+
+    fn block_id_to_hash(&self, at: &BlockId<Self::Block>) -> TxPoolResult<Option<BlockHash<Self>>> {
+        self.inner.block_id_to_hash(at)
+    }
+
+    fn hash_and_length(&self, ex: &ExtrinsicFor<Self>) -> (ExtrinsicHash<Self>, usize) {
+        self.inner.hash_and_length(ex)
+    }
+
+    fn block_header(
+        &self,
+        at: &BlockId<Self::Block>,
+    ) -> Result<Option<<Self::Block as BlockT>::Header>, Self::Error> {
+        self.inner.block_header(at)
+    }
+}
 
 pub struct BasicPoolWrapper<Block, PoolApi>
 where
@@ -74,7 +148,7 @@ where
 }
 
 impl<Block, Client> sc_transaction_pool_api::LocalTransactionPool
-    for BasicPoolWrapper<Block, FullChainApi<Client, Block>>
+    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -87,8 +161,8 @@ where
     Client::Api: TaggedTransactionQueue<Block>,
 {
     type Block = Block;
-    type Hash = ExtrinsicHash<FullChainApi<Client, Block>>;
-    type Error = <FullChainApi<Client, Block> as ChainApi>::Error;
+    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client>>;
+    type Error = <FullChainApiWrapper<Block, Client> as ChainApi>::Error;
 
     fn submit_local(
         &self,
@@ -193,7 +267,7 @@ pub(super) fn new_full<Block, Client>(
     config: &Configuration,
     spawner: impl SpawnEssentialNamed,
     client: Arc<Client>,
-) -> Arc<BasicPoolWrapper<Block, FullChainApi<Client, Block>>>
+) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client>>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -208,7 +282,11 @@ where
     Client::Api: TaggedTransactionQueue<Block>,
 {
     let prometheus = config.prometheus_registry();
-    let pool_api = Arc::new(FullChainApi::new(client.clone(), prometheus, &spawner));
+    let pool_api = Arc::new(FullChainApiWrapper::new(
+        client.clone(),
+        prometheus,
+        &spawner,
+    ));
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,
         pool_api,
