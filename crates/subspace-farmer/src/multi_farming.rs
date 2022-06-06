@@ -305,7 +305,7 @@ impl MultiFarming {
         let mut node_runners = self
             .networking_node_runners
             .into_iter()
-            .map(|mut node_runner| async move { node_runner.run().await })
+            .map(|node_runner| async move { node_runner.run().await })
             .collect::<FuturesUnordered<_>>();
 
         tokio::select! {

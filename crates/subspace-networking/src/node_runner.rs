@@ -79,7 +79,7 @@ impl NodeRunner {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(mut self) {
         // Retrieve the pieces-by-range handler object.
         let pieces_by_range_handler = self
             .pieces_by_range_handler
