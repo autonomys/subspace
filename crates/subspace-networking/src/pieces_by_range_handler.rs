@@ -33,7 +33,7 @@ use tracing::{debug, trace};
 const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
 
 /// Pieces-by-range protocol request. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
     pub from: PieceIndexHash,
@@ -60,7 +60,7 @@ impl From<PiecesByRangeRequest> for Vec<u8> {
 }
 
 /// Pieces-by-range protocol response. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct PiecesByRangeResponse {
     /// Returned data.
     pub pieces: Vec<Piece>,
@@ -189,4 +189,90 @@ enum PieceByRangeHandleRequestError {
 /// Pieces-by-range-protocol name.
 pub fn protocol_name() -> String {
     "/sync/pieces-by-rangev1".into()
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse};
+    use futures::channel::{mpsc, oneshot};
+    use futures::StreamExt;
+    use libp2p::multiaddr::Protocol;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use subspace_core_primitives::{Piece, PieceIndexHash};
+
+    #[tokio::test]
+    async fn pieces_by_range_protocol_smoke() {
+        let request = PiecesByRangeRequest {
+            from: PieceIndexHash([1u8; 32]),
+            to: PieceIndexHash([1u8; 32]),
+            next_piece_hash_index: None,
+        };
+
+        let response = PiecesByRangeResponse {
+            pieces: vec![Piece::default()],
+            next_piece_hash_index: None,
+        };
+
+        let expected_request = request.clone();
+        let expected_response = response.clone();
+
+        let config_1 = Config {
+            listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+            allow_non_globals_in_dht: true,
+            pieces_by_range_request_handler: Arc::new(move |req| {
+                assert_eq!(*req, expected_request);
+
+                Some(expected_response.clone())
+            }),
+            ..Config::with_generated_keypair()
+        };
+        let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
+
+        let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
+        node_1
+            .on_new_listener(Arc::new(move |address| {
+                node_1_addresses_sender
+                    .unbounded_send(address.clone())
+                    .unwrap();
+            }))
+            .detach();
+
+        tokio::spawn(async move {
+            node_runner_1.run().await;
+        });
+
+        let config_2 = Config {
+            bootstrap_nodes: vec![node_1_addresses_receiver
+                .next()
+                .await
+                .unwrap()
+                .with(Protocol::P2p(node_1.id().into()))],
+            listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+            allow_non_globals_in_dht: true,
+            ..Config::with_generated_keypair()
+        };
+
+        let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
+        tokio::spawn(async move {
+            node_runner_2.run().await;
+        });
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let (result_sender, mut result_receiver) = oneshot::channel();
+        tokio::spawn(async move {
+            let resp = node_2
+                .send_pieces_by_range_request(node_1.id(), request)
+                .await
+                .unwrap();
+
+            result_sender.send(resp).unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let resp = result_receiver.try_recv().unwrap().unwrap();
+        assert_eq!(resp, response);
+    }
 }
