@@ -1,7 +1,7 @@
 use crate::plot::Plot;
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE};
 use subspace_solving::PieceDistance;
 use tempfile::TempDir;
 
@@ -105,4 +105,31 @@ async fn partial_plot() {
     for &i in &piece_indexes[max_plot_pieces as usize..] {
         assert!(plot.read(i).is_err());
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sequential_pieces_iterator() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let address = rand::random::<[u8; 32]>().into();
+
+    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let pieces_to_plot = 1000;
+
+    let pieces = Arc::new(generate_random_pieces(pieces_to_plot as _));
+    let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
+    plot.write_many(Arc::clone(&pieces), piece_indexes.clone())
+        .unwrap();
+
+    piece_indexes.sort_by_key(|i| PieceIndexHash::from(*i));
+
+    let got_indexes = plot
+        .sequential_pieces_iterator(PieceIndexHash([0; 32]))
+        .unwrap()
+        .map(|result| result.map(|(index, _)| index))
+        .take(100)
+        .collect::<std::io::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
 }
