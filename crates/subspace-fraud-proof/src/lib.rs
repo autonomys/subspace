@@ -244,7 +244,7 @@ where
             .client
             .runtime_api()
             .execution_wasm_bundle(&BlockId::Hash(at))
-            .expect("TODO: Impl From<ApiError> for VerificationError once fraud proof externality is removed");
+            .map_err(VerificationError::RuntimeApi)?;
 
         let code_fetcher = RuntimCodeFetcher {
             wasm_bundle: &wasm_bundle,

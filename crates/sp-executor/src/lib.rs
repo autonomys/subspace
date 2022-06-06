@@ -296,6 +296,9 @@ pub enum VerificationError {
     StorageRootDecode(parity_scale_codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
     HeaderDecode(parity_scale_codec::Error),
+    /// Runtime api error.
+    #[cfg(feature = "std")]
+    RuntimeApi(sp_api::ApiError),
 }
 
 /// Fraud proof for the state computation.
