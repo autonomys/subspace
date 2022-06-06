@@ -88,7 +88,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ```PowerShell
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
@@ -137,7 +137,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
@@ -190,7 +190,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 7. It may prompt again in here. Refer to the note on step 4.
@@ -260,7 +260,7 @@ services:
       "--ws-server-listen-addr", "0.0.0.0:9955",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
       "--plot-size", "PLOT_SIZE"
     ]
 volumes:
