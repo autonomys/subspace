@@ -83,6 +83,11 @@ enum Request {
         /// Vector containing all of the pieces as contiguous block of memory
         result_sender: mpsc::Sender<io::Result<Vec<u8>>>,
     },
+    ReadPieceIndexes {
+        from_index_hash: PieceIndexHash,
+        count: u64,
+        result_sender: mpsc::Sender<io::Result<Vec<PieceIndex>>>,
+    },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,
@@ -384,7 +389,6 @@ impl Plot {
             ))
         })?
     }
-
     pub fn on_progress_change(
         &self,
         callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
@@ -527,6 +531,27 @@ impl IndexHashToOffsetDB {
         while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
             self.max_distance_cache.pop_first();
         }
+    }
+
+    fn iter_from<'a>(
+        &'a self,
+        from: &PieceIndexHash,
+    ) -> impl Iterator<Item = io::Result<PieceOffset>> + 'a {
+        let mut iter = self.inner.raw_iterator();
+        iter.seek(&self.get_key(from).to_bytes());
+        std::iter::from_fn(move || match iter.key() {
+            Some(_) => {
+                let value = iter.value().unwrap();
+                let value = <[u8; 8]>::try_from(value)
+                    .map(PieceOffset::from_le_bytes)
+                    .map_err(|_| {
+                        io::Error::other("Offsets in rocksdb supposed to be 8 bytes long")
+                    });
+                iter.next();
+                Some(value)
+            }
+            None => None,
+        })
     }
 
     fn max_distance_key(&mut self) -> Option<PieceDistance> {
@@ -843,6 +868,22 @@ impl<T: PlotFile> PlotWorker<T> {
         })
     }
 
+    fn read_piece_indexes(
+        &mut self,
+        from: &PieceIndexHash,
+        count: u64,
+    ) -> io::Result<Vec<PieceIndex>> {
+        let offsets = self
+            .piece_index_hash_to_offset_db
+            .iter_from(from)
+            .take(count as _)
+            .collect::<io::Result<Vec<_>>>()?;
+        offsets
+            .into_iter()
+            .map(|offset| self.get_piece_index(offset))
+            .collect()
+    }
+
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
         let mut exit_result_sender = None;
@@ -889,6 +930,14 @@ impl<T: PlotFile> PlotWorker<T> {
                                 buffer
                             };
                             let _ = result_sender.send(result);
+                        }
+                        Request::ReadPieceIndexes {
+                            from_index_hash,
+                            count,
+                            result_sender,
+                        } => {
+                            let _ = result_sender
+                                .send(self.read_piece_indexes(&from_index_hash, count));
                         }
                         Request::WriteEncodings {
                             encodings,
