@@ -176,24 +176,13 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
     }
 }
 
-struct RuntimCodeFetcher<PBlock: BlockT, C, Hash: Encode + Decode> {
-    client: Arc<C>,
-    at: PBlock::Hash,
-    _phantom: PhantomData<Hash>,
+struct RuntimCodeFetcher<'a> {
+    wasm_bundle: &'a [u8],
 }
 
-impl<PBlock, C, Hash> FetchRuntimeCode for RuntimCodeFetcher<PBlock, C, Hash>
-where
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    Hash: Encode + Decode,
-{
+impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
     fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
-        self.client
-            .runtime_api()
-            .execution_wasm_bundle(&BlockId::Hash(self.at))
-            .ok()
+        Some(self.wasm_bundle.into())
     }
 }
 
@@ -252,11 +241,16 @@ where
             ..
         } = proof;
 
+        let at = PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
+            .expect("Block Hash must be H256; qed");
+        let wasm_bundle = self
+            .client
+            .runtime_api()
+            .execution_wasm_bundle(&BlockId::Hash(at))
+            .expect("TODO: Impl From<ApiError> for VerificationError once fraud proof externality is removed");
+
         let code_fetcher = RuntimCodeFetcher {
-            client: self.client.clone(),
-            at: PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
-                .expect("Block Hash must be H256; qed"),
-            _phantom: PhantomData::<Hash>,
+            wasm_bundle: &wasm_bundle,
         };
 
         let runtime_code = RuntimeCode {
