@@ -20,6 +20,7 @@ use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -194,12 +195,8 @@ pub async fn create(
             })
             .collect::<Result<_, CreationError>>()?;
 
-        let (reqeust_response_handler, request_response) =
+        let (request_response_handler, request_response) =
             PiecesByRangeRequestHandler::new(request_handler);
-
-        tokio::spawn(async move {
-            reqeust_response_handler.run().await;
-        });
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
@@ -235,10 +232,11 @@ pub async fn create(
             }
         }
 
-        Ok::<_, CreationError>(swarm)
+        Ok::<_, CreationError>((swarm, request_response_handler))
     });
 
-    let swarm = create_swarm_fut.await.expect("Swarm future failed.")?;
+    let (swarm, request_response_handler) =
+        create_swarm_fut.await.expect("Swarm future failed.")?;
 
     let (command_sender, command_receiver) = mpsc::channel(1);
 
@@ -251,6 +249,7 @@ pub async fn create(
         swarm,
         shared,
         initial_random_query_interval,
+        Cell::new(Some(request_response_handler)),
     );
 
     Ok((node, node_runner))
