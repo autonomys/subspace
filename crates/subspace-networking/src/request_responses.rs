@@ -108,6 +108,20 @@ pub struct ProtocolConfig {
     pub inbound_queue: Option<mpsc::Sender<IncomingRequest>>,
 }
 
+impl ProtocolConfig {
+    /// Creates request-response protocol config.
+    #[allow(clippy::identity_op)] // for clarity
+    pub fn new(protocol_name: String) -> ProtocolConfig {
+        ProtocolConfig {
+            name: protocol_name.into(),
+            max_request_size: 1 * 1024 * 1024,
+            max_response_size: 16 * 1024 * 1024,
+            request_timeout: Duration::from_secs(15),
+            inbound_queue: None,
+        }
+    }
+}
+
 /// A single request received by a peer on a request-response protocol.
 #[derive(Debug)]
 pub struct IncomingRequest {
@@ -281,7 +295,7 @@ struct RequestProcessingOutcome {
 impl RequestResponsesBehaviour {
     /// Creates a new behaviour. Must be passed a list of supported protocols. Returns an error if
     /// the same protocol is passed twice.
-    pub fn new(list: impl Iterator<Item = ProtocolConfig>) -> Result<Self, RegisterError> {
+    pub fn new(list: impl IntoIterator<Item = ProtocolConfig>) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
         for protocol in list {
             let mut cfg = RequestResponseConfig::default();
@@ -1011,18 +1025,6 @@ impl RequestResponseCodec for GenericCodec {
 
         io.close().await?;
         Ok(())
-    }
-}
-
-/// Creates request-response protocol config.
-#[allow(clippy::identity_op)] // for clarity
-pub fn generate_protocol_config(protocol_name: String) -> ProtocolConfig {
-    ProtocolConfig {
-        name: protocol_name.into(),
-        max_request_size: 1 * 1024 * 1024,
-        max_response_size: 16 * 1024 * 1024,
-        request_timeout: Duration::from_secs(15),
-        inbound_queue: None,
     }
 }
 

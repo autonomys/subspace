@@ -22,9 +22,7 @@
 //! `crate::request_responses::RequestResponsesBehaviour` with
 //! [`PiecesByRangeRequestHandler`](PiecesByRangeRequestHandler).
 
-use crate::request_responses::{
-    generate_protocol_config, IncomingRequest, OutgoingResponse, ProtocolConfig,
-};
+use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
@@ -103,7 +101,7 @@ impl PiecesByRangeRequestHandler {
         const BUFFER_SIZE: usize = 50;
         let (tx, request_receiver) = mpsc::channel(BUFFER_SIZE);
 
-        let mut protocol_config = generate_protocol_config(protocol_name());
+        let mut protocol_config = ProtocolConfig::new(protocol_name());
         protocol_config.inbound_queue = Some(tx);
 
         (
@@ -132,20 +130,17 @@ impl PiecesByRangeRequestHandler {
                     };
 
                     match pending_response.send(response) {
-                        Ok(()) => trace!(target: LOG_TARGET, "Handled request from {}.", peer,),
+                        Ok(()) => trace!(target: LOG_TARGET, %peer, "Handled request",),
                         Err(_) => debug!(
                             target: LOG_TARGET,
-                            "Failed to handle request from {}: {}",
-                            peer,
+                            %peer,
+                            "Failed to handle request: {}",
                             PieceByRangeHandleRequestError::SendResponse,
                         ),
                     };
                 }
                 Err(e) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Failed to handle request from {}: {}", peer, e,
-                    );
+                    debug!(target: LOG_TARGET, "Failed to handle request: {}", e,);
 
                     let response = OutgoingResponse {
                         result: Err(()),
@@ -155,8 +150,8 @@ impl PiecesByRangeRequestHandler {
                     if pending_response.send(response).is_err() {
                         debug!(
                             target: LOG_TARGET,
-                            "Failed to handle request from {}: {}",
-                            peer,
+                            %peer,
+                            "Failed to handle request: {}",
                             PieceByRangeHandleRequestError::SendResponse,
                         );
                     };
@@ -171,7 +166,7 @@ impl PiecesByRangeRequestHandler {
         peer: PeerId,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, PieceByRangeHandleRequestError> {
-        trace!("Handling request from {:?}.", peer);
+        trace!(%peer, "Handling request...");
         let request: PiecesByRangeRequest = payload
             .try_into()
             .map_err(|_| PieceByRangeHandleRequestError::InvalidRequestFormat)?;
