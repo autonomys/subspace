@@ -66,7 +66,7 @@ pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 /// Run a farmer.
-pub fn start_farmer(new_full: &NewFull<Client, Client, FraudProofVerifier>) {
+pub fn start_farmer(new_full: &NewFull<Client, FraudProofVerifier>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();

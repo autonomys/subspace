@@ -35,8 +35,8 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<Block, Client, VerifierClient, Verifier> =
-    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, VerifierClient, Verifier>>;
+pub type FullPool<Block, Client, Verifier> =
+    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>;
 
 type BoxedReadyIterator<Hash, Data> =
     Box<dyn ReadyTransactions<Item = Arc<Transaction<Hash, Data>>> + Send>;
@@ -45,14 +45,13 @@ type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, Extr
 
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
 
-pub struct FullChainApiWrapper<Block, Client, VerifierClient, Verifier> {
+pub struct FullChainApiWrapper<Block, Client, Verifier> {
     inner: FullChainApi<Client, Block>,
-    client: Arc<VerifierClient>,
+    client: Arc<Client>,
     verifier: Verifier,
 }
 
-impl<Block, Client, VerifierClient, Verifier>
-    FullChainApiWrapper<Block, Client, VerifierClient, Verifier>
+impl<Block, Client, Verifier> FullChainApiWrapper<Block, Client, Verifier>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -62,21 +61,18 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>,
-    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     fn new(
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
         spawner: &impl SpawnEssentialNamed,
-        verifier_client: Arc<VerifierClient>,
         verifier: Verifier,
     ) -> Self {
         Self {
-            inner: FullChainApi::new(client, prometheus, spawner),
-            client: verifier_client,
+            inner: FullChainApi::new(client.clone(), prometheus, spawner),
+            client,
             verifier,
         }
     }
@@ -91,8 +87,7 @@ where
     }
 }
 
-impl<Block, Client, VerifierClient, Verifier> ChainApi
-    for FullChainApiWrapper<Block, Client, VerifierClient, Verifier>
+impl<Block, Client, Verifier> ChainApi for FullChainApiWrapper<Block, Client, Verifier>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -102,9 +97,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>,
-    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     type Block = Block;
@@ -212,8 +205,8 @@ where
     }
 }
 
-impl<Block, Client, VerifierClient, Verifier> sc_transaction_pool_api::LocalTransactionPool
-    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, VerifierClient, Verifier>>
+impl<Block, Client, Verifier> sc_transaction_pool_api::LocalTransactionPool
+    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -223,14 +216,12 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>,
-    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     type Block = Block;
-    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, VerifierClient, Verifier>>;
-    type Error = <FullChainApiWrapper<Block, Client, VerifierClient, Verifier> as ChainApi>::Error;
+    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, Verifier>>;
+    type Error = <FullChainApiWrapper<Block, Client, Verifier> as ChainApi>::Error;
 
     fn submit_local(
         &self,
@@ -357,13 +348,12 @@ where
     }
 }
 
-pub(super) fn new_full<Block, Client, VerifierClient, Verifier>(
+pub(super) fn new_full<Block, Client, Verifier>(
     config: &Configuration,
     spawner: impl SpawnEssentialNamed,
     client: Arc<Client>,
-    verifier_client: Arc<VerifierClient>,
     verifier: Verifier,
-) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, VerifierClient, Verifier>>>
+) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -375,9 +365,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>,
-    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();
@@ -385,7 +373,6 @@ where
         client.clone(),
         prometheus,
         &spawner,
-        verifier_client,
         verifier,
     ));
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(

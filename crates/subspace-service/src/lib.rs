@@ -137,7 +137,6 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FullClient<RuntimeApi, ExecutorDispatch>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
         (
@@ -214,7 +213,6 @@ where
         config,
         task_manager.spawn_essential_handle(),
         client.clone(),
-        client.clone(),
         proof_verifier.clone(),
     );
 
@@ -289,16 +287,14 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, VerifierClient, Verifier>
+pub struct NewFull<Client, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>,
-    VerifierClient: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    VerifierClient::Api: ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
     /// Task manager.
@@ -326,11 +322,10 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, VerifierClient, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
-    FullClient<RuntimeApi, ExecutorDispatch>,
     FullClient<RuntimeApi, ExecutorDispatch>,
     FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;

@@ -228,7 +228,7 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Client, FraudProofVerifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, FraudProofVerifier>>,
 }
 
 impl PrimaryTestNode {
