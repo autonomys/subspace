@@ -921,10 +921,13 @@ impl<T: PlotFile> PlotWorker<T> {
             if iter.key().is_none() {
                 break;
             }
-            let offset =
-                <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(iter.value().unwrap())
-                    .map(PieceOffset::from_le_bytes)
-                    .expect("Failed to decode piece offsets from rocksdb");
+
+            let offset = PieceOffset::from_le_bytes(
+                iter.value()
+                    .unwrap()
+                    .try_into()
+                    .expect("Failed to decode piece offsets from rocksdb"),
+            );
             iter.next();
 
             piece_indexes.push(self.piece_offset_to_index.get_piece_index(offset)?)
