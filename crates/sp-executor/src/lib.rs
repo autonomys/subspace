@@ -285,19 +285,45 @@ impl ExecutionPhase {
 
 /// Error type of fraud proof verification on primary node.
 #[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
     /// Failed to pass the execution proof check.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to pass the execution proof check")
+    )]
     BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
     /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
+    #[cfg_attr(
+        feature = "thiserror",
+        error("`post_state_root` mismatches, expected: {expected}, got: {got}")
+    )]
     BadPostStateRoot { expected: H256, got: H256 },
     /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}"
+        )
+    )]
     InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
-    /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
+    /// Failed to decode the storage root from verifying `initialize_block` or `apply_extrinsic`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
+        )
+    )]
     StorageRootDecode(parity_scale_codec::Error),
-    /// Failed to decode the header produced by `finalize_block`.
+    /// Failed to decode the header from verifying `finalize_block`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to decode the header from verifying `finalize_block`: {0}")
+    )]
     HeaderDecode(parity_scale_codec::Error),
     /// Runtime api error.
     #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
     RuntimeApi(sp_api::ApiError),
 }
 

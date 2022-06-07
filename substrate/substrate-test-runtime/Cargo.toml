@@ -18,6 +18,8 @@ sp-consensus-aura = { version = "0.10.0-dev", default-features = false, git = "h
 sp-consensus-babe = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-subspace" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-executor = { version = "0.1.0", default-features = false, path = "../../crates/sp-executor" }
+cirrus-primitives = { version = "0.1.0", default-features = false, path = "../../cumulus/primitives" }
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
@@ -74,6 +76,8 @@ std = [
 	"sp-consensus-babe/std",
 	"sp-consensus-subspace/std",
 	"sp-block-builder/std",
+	"sp-executor/std",
+	"cirrus-primitives/std",
 	"codec/std",
 	"scale-info/std",
 	"sp-inherents/std",

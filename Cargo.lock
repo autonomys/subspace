@@ -6072,6 +6072,7 @@ name = "sc-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cirrus-primitives",
  "fork-tree",
  "futures 0.3.21",
  "futures-timer",
@@ -6099,6 +6100,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-io",
  "sp-objects",
@@ -6108,6 +6110,7 @@ dependencies = [
  "sp-version",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-fraud-proof",
  "subspace-solving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
@@ -7496,6 +7499,7 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "thiserror",
 ]
 
 [[package]]
@@ -8464,6 +8468,7 @@ name = "substrate-test-runtime"
 version = "2.0.0"
 dependencies = [
  "cfg-if",
+ "cirrus-primitives",
  "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
@@ -8488,6 +8493,7 @@ dependencies = [
  "sp-consensus-babe",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-executor",
  "sp-externalities",
  "sp-finality-grandpa",
  "sp-inherents",

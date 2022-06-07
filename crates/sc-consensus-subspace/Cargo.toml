@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 async-trait = "0.1.53"
 codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
+cirrus-primitives = { version = "0.1.0", path = "../../cumulus/primitives" }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 futures = "0.3.21"
 futures-timer = "3.0.2"
@@ -38,12 +39,14 @@ sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/subs
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-executor = { version = "0.1.0", path = "../sp-executor" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-version = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.31"

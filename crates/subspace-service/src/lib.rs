@@ -215,7 +215,7 @@ where
         task_manager.spawn_essential_handle(),
         client.clone(),
         client.clone(),
-        proof_verifier,
+        proof_verifier.clone(),
     );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
@@ -250,6 +250,7 @@ where
                 }
             }
         },
+        proof_verifier,
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(

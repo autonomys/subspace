@@ -70,6 +70,7 @@ use sp_consensus_subspace::verification::{CheckedHeader, VerificationError};
 use sp_consensus_subspace::{verification, FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
+use sp_executor::ExecutorApi;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{One, Zero};
@@ -249,6 +250,9 @@ pub enum Error<Header: HeaderT> {
     /// Create inherents error.
     #[error("Creating inherents failed: {0}")]
     CreateInherents(sp_inherents::Error),
+    /// Fraud proof error.
+    #[error("Invalid fraud proof: {0}")]
+    InvalidFraudProof(#[from] sp_executor::VerificationError),
     /// Client error
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -882,7 +886,7 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP, FPV> {
     inner: I,
     client: Arc<Client>,
     imported_block_notification_sender:
@@ -890,14 +894,17 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     subspace_link: SubspaceLink<Block>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
+    fraud_proof_verifier: FPV,
 }
 
-impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, I, Client, CAW, CIDP, FPV> Clone
+    for SubspaceBlockImport<Block, Client, I, CAW, CIDP, FPV>
 where
     Block: BlockT,
     I: Clone,
     CAW: Clone,
     CIDP: Clone,
+    FPV: Clone,
 {
     fn clone(&self) -> Self {
         SubspaceBlockImport {
@@ -907,17 +914,22 @@ where
             subspace_link: self.subspace_link.clone(),
             can_author_with: self.can_author_with.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            fraud_proof_verifier: self.fraud_proof_verifier.clone(),
         }
     }
 }
 
-impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, Client, I, CAW, CIDP, FPV> SubspaceBlockImport<Block, Client, I, CAW, CIDP, FPV>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + ApiExt<Block>
+        + ExecutorApi<Block, cirrus_primitives::Hash>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    FPV: subspace_fraud_proof::VerifyFraudProof + Send + Sync + 'static,
 {
     fn new(
         client: Arc<Client>,
@@ -928,6 +940,7 @@ where
         subspace_link: SubspaceLink<Block>,
         can_author_with: CAW,
         create_inherent_data_providers: CIDP,
+        fraud_proof_verifier: FPV,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -936,6 +949,7 @@ where
             subspace_link,
             can_author_with,
             create_inherent_data_providers,
+            fraud_proof_verifier,
         }
     }
 
@@ -1071,7 +1085,16 @@ where
         // internally-set timestamp in the inherents actually matches the slot set in the seal
         // and root blocks in the inherents are set correctly.
         if let Some(extrinsics) = extrinsics {
-            // TODO: Verify the fraud proof is correct if the extrinsic `submit_fraud_proof` is found.
+            // Ensure the fraud proof is valid if the `submit_fraud_proof` extrinsic is included.
+            for extrinsic in extrinsics.iter() {
+                if let Some(fraud_proof) = self
+                    .client
+                    .runtime_api()
+                    .extract_fraud_proof(&parent_block_id, extrinsic)?
+                {
+                    self.fraud_proof_verifier.verify_fraud_proof(&fraud_proof)?;
+                }
+            }
 
             if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
                 debug!(
@@ -1116,8 +1139,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
-    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
+impl<Block, Client, Inner, CAW, CIDP, FPV> BlockImport<Block>
+    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP, FPV>
 where
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
@@ -1130,9 +1153,13 @@ where
         + ProvideRuntimeApi<Block>
         + Send
         + Sync,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + ApiExt<Block>
+        + ExecutorApi<Block, cirrus_primitives::Hash>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    FPV: subspace_fraud_proof::VerifyFraudProof + Send + Sync + 'static,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1279,14 +1306,15 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
-pub fn block_import<Client, Block, I, CAW, CIDP>(
+pub fn block_import<Client, Block, I, CAW, CIDP, FPV>(
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
+    fraud_proof_verifier: FPV,
 ) -> ClientResult<(
-    SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
+    SubspaceBlockImport<Block, Client, I, CAW, CIDP, FPV>,
     SubspaceLink<Block>,
 )>
 where
@@ -1295,9 +1323,12 @@ where
         + AuxStore
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: BlockBuilderApi<Block>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + ExecutorApi<Block, cirrus_primitives::Hash>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    FPV: subspace_fraud_proof::VerifyFraudProof + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
@@ -1339,6 +1370,7 @@ where
         link.clone(),
         can_author_with,
         create_inherent_data_providers,
+        fraud_proof_verifier,
     );
 
     Ok((import, link))

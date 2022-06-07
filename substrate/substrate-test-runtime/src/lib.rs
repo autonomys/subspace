@@ -25,33 +25,30 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input};
-use frame_support::{
-    parameter_types,
-    traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem},
-    weights::RuntimeDbWeight,
-};
+use frame_support::parameter_types;
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem};
+use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
-use sp_core::{offchain::KeyTypeId, OpaqueMetadata};
+use sp_core::offchain::KeyTypeId;
+use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
-use sp_runtime::traits::NumberFor;
-use sp_runtime::{
-    create_runtime_str, impl_opaque_keys,
-    traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, Header as HeaderT, IdentityLookup, Verify,
-    },
-    transaction_validity::{
-        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-        ValidTransaction,
-    },
-    ApplyExtrinsicResult, Perbill,
+use sp_runtime::traits::{
+    BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+    GetRuntimeBlockType, Header as HeaderT, IdentityLookup, NumberFor, Verify,
 };
-use sp_std::{marker::PhantomData, prelude::*};
-use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
+};
+use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
+use sp_std::marker::PhantomData;
+use sp_std::prelude::*;
+use sp_trie::trie_types::TrieDB;
+use sp_trie::{PrefixedMemoryDB, StorageProof};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -1019,6 +1016,62 @@ cfg_if! {
                 }
             }
 
+            impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
+                fn submit_execution_receipt_unsigned(
+                    _execution_receipt: sp_executor::SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_transaction_bundle_unsigned(_opaque_bundle: sp_executor::SignedOpaqueBundle) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_fraud_proof_unsigned(_fraud_proof: sp_executor::FraudProof) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_bundle_equivocation_proof_unsigned(
+                    _bundle_equivocation_proof: sp_executor::BundleEquivocationProof,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_invalid_transaction_proof_unsigned(
+                    _invalid_transaction_proof: sp_executor::InvalidTransactionProof,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extract_bundles(_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>) -> Vec<sp_executor::OpaqueBundle> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extrinsics_shuffling_seed(_header: <Block as BlockT>::Header) -> subspace_core_primitives::Randomness {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extract_fraud_proof(_ext: &<Block as BlockT>::Extrinsic) -> Option<sp_executor::FraudProof> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn execution_wasm_bundle() -> sp_std::borrow::Cow<'static, [u8]> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn executor_id() -> sp_executor::ExecutorId {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn best_execution_chain_number() -> NumberFor<Block> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn maximum_receipt_drift() -> NumberFor<Block> {
+                    unimplemented!("Not yet used in tests")
+                }
+            }
+
             impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
                 fn offchain_worker(header: &<Block as BlockT>::Header) {
                     let ex = Extrinsic::IncludeData(header.number.encode());
@@ -1361,6 +1414,62 @@ cfg_if! {
                 }
             }
 
+            impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
+                fn submit_execution_receipt_unsigned(
+                    _execution_receipt: sp_executor::SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_transaction_bundle_unsigned(_opaque_bundle: sp_executor::SignedOpaqueBundle) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_fraud_proof_unsigned(_fraud_proof: sp_executor::FraudProof) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_bundle_equivocation_proof_unsigned(
+                    _bundle_equivocation_proof: sp_executor::BundleEquivocationProof,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn submit_invalid_transaction_proof_unsigned(
+                    _invalid_transaction_proof: sp_executor::InvalidTransactionProof,
+                ) {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extract_bundles(_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>) -> Vec<sp_executor::OpaqueBundle> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extrinsics_shuffling_seed(_header: <Block as BlockT>::Header) -> subspace_core_primitives::Randomness {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn extract_fraud_proof(_ext: &<Block as BlockT>::Extrinsic) -> Option<sp_executor::FraudProof> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn execution_wasm_bundle() -> sp_std::borrow::Cow<'static, [u8]> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn executor_id() -> sp_executor::ExecutorId {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn best_execution_chain_number() -> NumberFor<Block> {
+                    unimplemented!("Not yet used in tests")
+                }
+
+                fn maximum_receipt_drift() -> NumberFor<Block> {
+                    unimplemented!("Not yet used in tests")
+                }
+            }
+
             impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
                 fn offchain_worker(header: &<Block as BlockT>::Header) {
                     let ex = Extrinsic::IncludeData(header.number.encode());
@@ -1500,9 +1609,9 @@ mod tests {
     use sp_core::storage::well_known_keys::HEAP_PAGES;
     use sp_runtime::generic::BlockId;
     use sp_state_machine::ExecutionStrategy;
-    use substrate_test_runtime_client::{
-        prelude::*, runtime::TestAPI, DefaultTestClientBuilderExt, TestClientBuilder,
-    };
+    use substrate_test_runtime_client::prelude::*;
+    use substrate_test_runtime_client::runtime::TestAPI;
+    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilder};
 
     #[test]
     fn heap_pages_is_respected() {
