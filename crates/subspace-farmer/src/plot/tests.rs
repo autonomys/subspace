@@ -125,11 +125,11 @@ async fn sequential_pieces_iterator() {
     piece_indexes.sort_by_key(|i| PieceIndexHash::from(*i));
 
     let got_indexes = plot
-        .sequential_pieces_iterator(PieceIndexHash([0; 32]))
+        .get_sequential_pieces(PieceIndexHash([0; 32]), 100)
         .unwrap()
-        .map(|result| result.map(|(index, _)| index))
+        .into_iter()
+        .map(|(index, _)| index)
         .take(100)
-        .collect::<std::io::Result<Vec<_>>>()
-        .unwrap();
+        .collect::<Vec<_>>();
     assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
 }
