@@ -578,21 +578,6 @@ impl IndexHashToOffsetDB {
         }
     }
 
-    fn iter_from<'a>(&'a self, from: &PieceIndexHash) -> impl Iterator<Item = PieceOffset> + 'a {
-        let mut iter = self.inner.raw_iterator();
-        iter.seek(&self.get_key(from).to_bytes());
-        std::iter::from_fn(move || match iter.key() {
-            Some(_) => {
-                let value =
-                    <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(iter.value().unwrap())
-                        .expect("Failed to decode piece offsets from rocksdb");
-                iter.next();
-                Some(PieceOffset::from_le_bytes(value))
-            }
-            None => None,
-        })
-    }
-
     fn max_distance_key(&mut self) -> Option<PieceDistance> {
         if self.max_distance_cache.is_empty() {
             self.update_max_distance_cache()
@@ -927,11 +912,25 @@ impl<T: PlotFile> PlotWorker<T> {
         from: &PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
-        self.piece_index_hash_to_offset_db
-            .iter_from(from)
-            .take(count as _)
-            .map(|offset| self.piece_offset_to_index.get_piece_index(offset))
-            .collect()
+        let mut piece_indexes = Vec::with_capacity(count as _);
+
+        let mut iter = self.piece_index_hash_to_offset_db.inner.raw_iterator();
+        iter.seek(&self.piece_index_hash_to_offset_db.get_key(from).to_bytes());
+
+        for _ in 0..count {
+            if iter.key().is_none() {
+                break;
+            }
+            let offset =
+                <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(iter.value().unwrap())
+                    .map(PieceOffset::from_le_bytes)
+                    .expect("Failed to decode piece offsets from rocksdb");
+            iter.next();
+
+            piece_indexes.push(self.piece_offset_to_index.get_piece_index(offset)?)
+        }
+
+        Ok(piece_indexes)
     }
 
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
