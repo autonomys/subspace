@@ -1371,11 +1371,9 @@ fn vote_equivocation_parent_block_plus_vote() {
 #[test]
 fn vote_equivocation_current_voters_duplicate() {
     new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
 
-        progress_to_block(&keypair, 2, 1);
+        progress_to_block(&Keypair::generate(), 2, 1);
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -1388,23 +1386,13 @@ fn vote_equivocation_current_voters_duplicate() {
         });
 
         // Current block author + slot matches that of the vote
+        let voter_keypair = Keypair::generate();
+        let piece = extract_piece(&voter_keypair, &archived_segment, 0);
         let slot = Subspace::current_slot();
         let reward_address = 0;
 
-        CurrentBlockVoters::<Test>::put({
-            let mut map = BTreeMap::new();
-            map.insert(
-                (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    slot,
-                ),
-                reward_address,
-            );
-            map
-        });
-
         let signed_vote = create_signed_vote(
-            &keypair,
+            &voter_keypair,
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
@@ -1414,16 +1402,38 @@ fn vote_equivocation_current_voters_duplicate() {
             reward_address,
         );
 
+        CurrentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    slot,
+                ),
+                (reward_address, signed_vote.signature.clone()),
+            );
+            map
+        });
+
+        // Identical vote submitted twice leads to duplicate error
         assert_err!(
             super::check_vote::<Test>(&signed_vote, true),
-            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
-                slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
-            })
+            CheckVoteError::DuplicateVote
         );
 
-        Subspace::pre_dispatch_vote(&signed_vote).unwrap();
+        CurrentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    slot,
+                ),
+                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+            );
+            map
+        });
 
+        // Different vote for the same time slot leads to equivocation
+        Subspace::pre_dispatch_vote(&signed_vote).unwrap();
         assert_err!(
             Subspace::vote(Origin::none(), Box::new(signed_vote)),
             DispatchError::Other("Equivocated"),
@@ -1457,18 +1467,6 @@ fn vote_equivocation_parent_voters_duplicate() {
         let slot = Subspace::current_slot() + 1;
         let reward_address = 1;
 
-        ParentBlockVoters::<Test>::put({
-            let mut map = BTreeMap::new();
-            map.insert(
-                (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    slot,
-                ),
-                reward_address,
-            );
-            map
-        });
-
         let signed_vote = create_signed_vote(
             &keypair,
             2,
@@ -1480,6 +1478,37 @@ fn vote_equivocation_parent_voters_duplicate() {
             reward_address,
         );
 
+        ParentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    slot,
+                ),
+                (reward_address, signed_vote.signature.clone()),
+            );
+            map
+        });
+
+        // Identical vote submitted twice leads to duplicate error
+        assert_err!(
+            super::check_vote::<Test>(&signed_vote, false),
+            CheckVoteError::DuplicateVote
+        );
+
+        ParentBlockVoters::<Test>::put({
+            let mut map = BTreeMap::new();
+            map.insert(
+                (
+                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    slot,
+                ),
+                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+            );
+            map
+        });
+
+        // Different vote for the same time slot leads to equivocation
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
             CheckVoteError::Equivocated(SubspaceEquivocationOffence {
@@ -1487,6 +1516,9 @@ fn vote_equivocation_parent_voters_duplicate() {
                 offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
             })
         );
+
+        // Voter doesn't get reward after equivocation
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
     });
 }
 
@@ -1505,7 +1537,7 @@ fn enabling_block_rewards_works() {
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
                     Subspace::current_slot(),
                 ),
-                2,
+                (2, FarmerSignature::unchecked_from([0; 64])),
             );
             map
         });
