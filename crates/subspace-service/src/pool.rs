@@ -16,8 +16,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
-use sp_runtime::transaction_validity::TransactionValidity;
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
+use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -64,12 +64,15 @@ where
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
 {
-    fn new(
+    fn new<Spawn>(
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
-        spawner: &impl SpawnEssentialNamed,
+        spawner: &Spawn,
         verifier: Verifier,
-    ) -> Self {
+    ) -> Self
+    where
+        Spawn: SpawnEssentialNamed,
+    {
         Self {
             inner: FullChainApi::new(client.clone(), prometheus, spawner),
             client,
@@ -175,13 +178,17 @@ where
     Block: BlockT,
     PoolApi: ChainApi<Block = Block> + 'static,
 {
-    fn with_revalidation_type<Client: UsageProvider<Block>>(
+    fn with_revalidation_type<Client, Spawn>(
         config: &Configuration,
         pool_api: Arc<PoolApi>,
         prometheus: Option<&PrometheusRegistry>,
-        spawner: impl SpawnEssentialNamed,
+        spawner: Spawn,
         client: Arc<Client>,
-    ) -> Self {
+    ) -> Self
+    where
+        Client: UsageProvider<Block>,
+        Spawn: SpawnEssentialNamed,
+    {
         let basic_pool = BasicPool::with_revalidation_type(
             config.transaction_pool.clone(),
             config.role.is_authority().into(),
@@ -228,8 +235,6 @@ where
         at: &BlockId<Self::Block>,
         xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
     ) -> Result<Self::Hash, Self::Error> {
-        use sp_runtime::traits::SaturatedConversion;
-        use sp_runtime::transaction_validity::TransactionValidityError;
         let validity = self
             .api()
             .validate_transaction_blocking(at, TransactionSource::Local, xt.clone())?
@@ -348,9 +353,9 @@ where
     }
 }
 
-pub(super) fn new_full<Block, Client, Verifier>(
+pub(super) fn new_full<Block, Client, Verifier, Spawn>(
     config: &Configuration,
-    spawner: impl SpawnEssentialNamed,
+    spawner: Spawn,
     client: Arc<Client>,
     verifier: Verifier,
 ) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>>
@@ -367,6 +372,7 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
     Verifier: VerifyFraudProof + Send + Sync + 'static,
+    Spawn: SpawnEssentialNamed,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(
