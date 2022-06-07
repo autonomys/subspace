@@ -578,20 +578,16 @@ impl IndexHashToOffsetDB {
         }
     }
 
-    fn iter_from<'a>(
-        &'a self,
-        from: &PieceIndexHash,
-    ) -> impl Iterator<Item = io::Result<PieceOffset>> + 'a {
+    fn iter_from<'a>(&'a self, from: &PieceIndexHash) -> impl Iterator<Item = PieceOffset> + 'a {
         let mut iter = self.inner.raw_iterator();
         iter.seek(&self.get_key(from).to_bytes());
         std::iter::from_fn(move || match iter.key() {
             Some(_) => {
-                let value = iter.value().unwrap();
-                let value = <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(value)
-                    .map(PieceOffset::from_le_bytes)
-                    .map_err(|_| io::Error::other("Failed to decode piece offsets from rocksdb"));
+                let value =
+                    <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(iter.value().unwrap())
+                        .expect("Failed to decode piece offsets from rocksdb");
                 iter.next();
-                Some(value)
+                Some(PieceOffset::from_le_bytes(value))
             }
             None => None,
         })
@@ -916,11 +912,12 @@ impl<T: PlotFile> PlotWorker<T> {
         from: &PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
+        #[allow(clippy::needless_collect)]
         let offsets = self
             .piece_index_hash_to_offset_db
             .iter_from(from)
             .take(count as _)
-            .collect::<io::Result<Vec<_>>>()?;
+            .collect::<Vec<_>>();
         offsets
             .into_iter()
             .map(|offset| self.get_piece_index(offset))
