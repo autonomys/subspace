@@ -19,16 +19,29 @@
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 use sloth256_189::cpu;
-#[cfg(feature = "cuda")]
-use sloth256_189::cuda;
+#[cfg(feature = "opencl")]
+use sloth256_189::opencl::{self, OpenClBatch};
+#[cfg(feature = "opencl")]
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
 
-/// Number of pieces for GPU should be multiples of 1024
-#[cfg(feature = "cuda")]
+/// Number of pieces for GPU to encode in a batch
+#[cfg(feature = "opencl")]
 const GPU_PIECE_BLOCK: usize = 1024;
 const ENCODE_ROUNDS: usize = 1;
 
-/// CPU encoding errors
+#[cfg(feature = "opencl")]
+#[derive(Debug)]
+struct OpenClEncoder(opencl::OpenClEncoder);
+
+// TODO: Remove after update of sloth to 0.4
+/// Safety: safe because it is already in sloth256_189==0.4.0
+#[cfg(feature = "opencl")]
+unsafe impl Send for OpenClEncoder {}
+#[cfg(feature = "opencl")]
+unsafe impl Sync for OpenClEncoder {}
+
+/// Encoding errors
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum BatchEncodeError {
@@ -40,24 +53,11 @@ pub enum BatchEncodeError {
     NotMultipleOfPieceSize,
     /// CPU encoding error
     #[cfg_attr(feature = "thiserror", error("CPU encoding error: {0}"))]
-    CpuEncodeError(cpu::EncodeError),
-    /// CUDA encoding error
-    #[cfg(feature = "cuda")]
-    #[cfg_attr(feature = "thiserror", error("CUDA encoding error: {0}"))]
-    CudaEncodeError(cuda::EncodeError),
-}
-
-impl From<cpu::EncodeError> for BatchEncodeError {
-    fn from(error: cpu::EncodeError) -> Self {
-        Self::CpuEncodeError(error)
-    }
-}
-
-#[cfg(feature = "cuda")]
-impl From<cuda::EncodeError> for BatchEncodeError {
-    fn from(error: cuda::EncodeError) -> Self {
-        Self::CudaEncodeError(error)
-    }
+    CpuEncodeError(#[from] cpu::EncodeError),
+    /// OpenCL encoder error
+    #[cfg(feature = "opencl")]
+    #[cfg_attr(feature = "thiserror", error("OpenCL error: {0}"))]
+    OpenCLEncodeError(#[from] opencl::OpenCLEncodeError),
 }
 
 fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index: u64) {
@@ -73,26 +73,31 @@ fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index:
 
 /// Subspace codec is used to encode pieces of archived history before writing them to disk and also
 /// to decode them after reading from disk.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct SubspaceCodec {
     farmer_public_key_hash: Sha256Hash,
-    #[cfg(feature = "cuda")]
-    cuda_available: bool,
+    #[cfg(feature = "opencl")]
+    // Type is so complicated in order to make everything thread safe and clonable
+    opencl_encoder: Option<Arc<Mutex<OpenClEncoder>>>,
     cpu_cores: usize,
 }
 
 impl SubspaceCodec {
     /// New instance with 256-bit prime and 4096-byte genesis piece size
     pub fn new(farmer_public_key: &[u8]) -> Self {
-        #[cfg(feature = "cuda")]
-        let cuda_available = cuda::is_cuda_available();
-
-        let farmer_public_key_hash = crypto::sha256_hash(farmer_public_key);
-
+        #[cfg(feature = "opencl")]
+        let opencl_encoder = opencl::OpenClEncoder::new(Some(OpenClBatch {
+            size: GPU_PIECE_BLOCK * PIECE_SIZE,
+            layers: ENCODE_ROUNDS,
+        }))
+        .map(OpenClEncoder)
+        .map(Mutex::new)
+        .map(Arc::new)
+        .ok();
         Self {
-            farmer_public_key_hash,
-            #[cfg(feature = "cuda")]
-            cuda_available,
+            farmer_public_key_hash: crypto::sha256_hash(farmer_public_key),
+            #[cfg(feature = "opencl")]
+            opencl_encoder,
             #[cfg(feature = "std")]
             cpu_cores: num_cpus::get(),
             #[cfg(not(feature = "std"))]
@@ -110,8 +115,8 @@ impl SubspaceCodec {
 
     /// Number of elements processed efficiently during one iteration of batched encoding.
     pub fn batch_size(&self) -> usize {
-        #[cfg(feature = "cuda")]
-        if self.cuda_available {
+        #[cfg(feature = "opencl")]
+        if self.opencl_encoder.is_some() {
             return GPU_PIECE_BLOCK;
         }
 
@@ -138,21 +143,22 @@ impl SubspaceCodec {
             return Err(BatchEncodeError::NotMultipleOfPieceSize);
         }
 
-        #[cfg(feature = "cuda")]
-        if self.cuda_available {
+        #[cfg(feature = "opencl")]
+        {
             let mut pieces_to_process = pieces.len() / PIECE_SIZE;
 
             if pieces_to_process >= GPU_PIECE_BLOCK {
                 pieces_to_process = pieces_to_process / GPU_PIECE_BLOCK * GPU_PIECE_BLOCK;
 
-                let cuda_result = self.batch_encode_cuda(
+                let opencl_result = self.batch_encode_opencl(
                     &mut pieces[..pieces_to_process * PIECE_SIZE],
                     &piece_indexes[..pieces_to_process],
                 );
 
-                if let Err(e) = cuda_result {
-                    tracing::error!("An error happened on the GPU: '{}'", e);
-                    self.cuda_available = false;
+                if let Err(error) = opencl_result {
+                    tracing::error!(%error, "An error happened on the GPU");
+                    // Just in case use for all the next times
+                    self.opencl_encoder = None;
                     // TODO: maybe also return from the GPU last successful encoding,
                     // so that CPU can continue from there
                     // because this implementation does not cover the case when GPU creates a problem
@@ -207,12 +213,12 @@ impl SubspaceCodec {
             .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
     }
 
-    #[cfg(feature = "cuda")]
-    fn batch_encode_cuda(
-        &self,
+    #[cfg(feature = "opencl")]
+    fn batch_encode_opencl(
+        &mut self,
         pieces: &mut [u8],
         piece_indexes: &[u64],
-    ) -> Result<(), cuda::EncodeError> {
+    ) -> Result<(), opencl::OpenCLEncodeError> {
         use subspace_core_primitives::SHA256_HASH_SIZE;
         let mut expanded_ivs = vec![0u8; pieces.len() / PIECE_SIZE * SHA256_HASH_SIZE];
         expanded_ivs
@@ -224,6 +230,12 @@ impl SubspaceCodec {
                 mix_public_key_hash_with_piece_index(expanded_iv, piece_index);
             });
 
-        cuda::encode(pieces, &expanded_ivs, ENCODE_ROUNDS)
+        self.opencl_encoder
+            .as_mut()
+            .unwrap()
+            .lock()
+            .expect("Lock is never poisoned")
+            .0
+            .encode(pieces, &expanded_ivs, ENCODE_ROUNDS)
     }
 }

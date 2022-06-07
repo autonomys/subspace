@@ -143,6 +143,7 @@ impl MultiFarming {
                 bootstrap_nodes: bootstrap_nodes.clone(),
                 value_getter: Arc::new({
                     let plot = plot.clone();
+                    let subspace_codec = subspace_codec.clone();
                     move |key| {
                         let code = key.code();
 

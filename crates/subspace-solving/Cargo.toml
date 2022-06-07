@@ -42,7 +42,7 @@ std = [
     "tracing/std",
     "uint/std"
 ]
-# Compile with CUDA support and use it if compatible GPU is available
-cuda = [
-    "sloth256-189/cuda",
+# Compile with OpenCL support and use it if compatible GPU is available
+opencl = [
+    "sloth256-189/opencl",
 ]

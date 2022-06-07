@@ -145,7 +145,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/cuda
+          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: Build (macOS without CUDA)

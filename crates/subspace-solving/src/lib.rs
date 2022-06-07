@@ -16,7 +16,8 @@
 //! Set of modules that implement utilities for solving and verifying of solutions in
 //! [Subspace Network Blockchain](https://subspace.network).
 
-#![forbid(unsafe_code)]
+// TODO: Uncomment after update of sloth to 0.4
+//#![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
