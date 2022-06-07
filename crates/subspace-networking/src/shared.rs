@@ -1,8 +1,8 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
+use crate::pieces_by_range_handler::PiecesByRangeRequest;
 use crate::request_responses::RequestFailure;
-use crate::PiecesByRangeRequest;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -45,7 +45,7 @@ pub(crate) enum Command {
     },
     GetClosestPeers {
         key: ExactKademliaKey,
-        result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
+        result_sender: oneshot::Sender<Vec<PeerId>>,
     },
     PiecesByRangeRequest {
         peer_id: PeerId,
@@ -74,14 +74,16 @@ impl Borrow<[u8]> for ExactKademliaKey {
     }
 }
 
-// !!! unsafe rust code
 impl From<ExactKademliaKey> for Key<ExactKademliaKey> {
     fn from(key: ExactKademliaKey) -> Key<ExactKademliaKey> {
-        let mut data = [0u8; 64];
+        Key::new(key)
+        // TODO: restore or delete after the libp2p patch.
+        // !!! unsafe rust code
+        // let mut data = [0u8; 64];
 
-        data[..32].copy_from_slice(key.borrow());
+        // data[..32].copy_from_slice(key.borrow());
 
-        unsafe { std::mem::transmute::<[u8; 64], Key<ExactKademliaKey>>(data) }
+        // unsafe { std::mem::transmute::<[u8; 64], Key<ExactKademliaKey>>(data) }
     }
 }
 

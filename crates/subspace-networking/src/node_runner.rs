@@ -31,7 +31,7 @@ enum QueryResultSender {
         sender: oneshot::Sender<Option<Vec<u8>>>,
     },
     GetClosestPeers {
-        sender: oneshot::Sender<Option<Vec<PeerId>>>,
+        sender: oneshot::Sender<Vec<PeerId>>,
     },
 }
 
@@ -249,12 +249,12 @@ impl NodeRunner {
                                 debug!("Random Kademlia query has yielded empty list of peers");
                             }
 
-                            if sender.send(Some(peers)).is_err() {
+                            if sender.send(peers).is_err() {
                                 debug!("GetClosestPeersOk channel was dropped");
                             }
                         }
                         Err(GetClosestPeersError::Timeout { key, peers }) => {
-                            if sender.send(None).is_err() {
+                            if sender.send(Default::default()).is_err() {
                                 debug!("GetClosestPeersOk channel was dropped");
                             }
 
