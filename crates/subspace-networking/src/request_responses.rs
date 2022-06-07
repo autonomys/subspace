@@ -624,10 +624,10 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                             // `InboundFailure` event from `RequestResponse` behaviour.
                             debug!(
                                 target: LOG_TARGET,
-                                "Failed to send response for {:?} on protocol {:?} due to a \
+                                %request_id,
+                                "Failed to send response for request on protocol {} due to a \
                                  timeout or due to the connection to the peer being closed. \
                                  Dropping response",
-                                request_id,
                                 protocol_name,
                             );
                         } else if let Some(sent_feedback) = sent_feedback {
@@ -776,9 +776,9 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                     {
                                         debug!(
                                             target: LOG_TARGET,
-                                            "Request with id {:?} failed. At the same time local \
+                                            %request_id,
+                                            "Request failed. At the same time local \
                                              node is no longer interested in the result.",
-                                            request_id,
                                         );
                                     }
                                     started
@@ -786,8 +786,9 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 None => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
-                                        request_id,
+                                        %request_id,
+                                        "Received `RequestResponseEvent::Message` with unexpected request",
+
                                     );
                                     debug_assert!(false);
                                     continue;

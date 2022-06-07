@@ -135,12 +135,12 @@ impl PiecesByRangeRequestHandler {
                             target: LOG_TARGET,
                             %peer,
                             "Failed to handle request: {}",
-                            PieceByRangeHandleRequestError::SendResponse,
+                            PieceByRangeHandleRequestError::SendResponse
                         ),
                     };
                 }
                 Err(e) => {
-                    debug!(target: LOG_TARGET, "Failed to handle request: {}", e,);
+                    debug!(target: LOG_TARGET, %e, "Failed to handle request.",);
 
                     let response = OutgoingResponse {
                         result: Err(()),
@@ -151,8 +151,7 @@ impl PiecesByRangeRequestHandler {
                         debug!(
                             target: LOG_TARGET,
                             %peer,
-                            "Failed to handle request: {}",
-                            PieceByRangeHandleRequestError::SendResponse,
+                            "Failed to handle request: {}", PieceByRangeHandleRequestError::SendResponse
                         );
                     };
                 }
