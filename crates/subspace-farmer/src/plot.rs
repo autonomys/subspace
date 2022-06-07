@@ -406,7 +406,7 @@ impl Plot {
                     count,
                     result_sender,
                 },
-                priority: RequestPriority::High,
+                priority: RequestPriority::Low,
             })
             .map_err(|error| {
                 io::Error::other(format!(
@@ -421,13 +421,17 @@ impl Plot {
         })?
     }
 
+    /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
     #[allow(dead_code)]
-    /// Returns iterator which would return piece starting from supplied piece index hash (`from`)
-    pub(crate) fn sequential_pieces_iterator(
+    pub(crate) fn get_sequential_pieces(
         &self,
         from: PieceIndexHash,
-    ) -> io::Result<SequentialPieceIterator> {
-        SequentialPieceIterator::new(self.clone(), from, 32)
+        count: u64,
+    ) -> io::Result<Vec<(PieceIndex, Piece)>> {
+        self.read_sequential_piece_indexes(from, count)?
+            .into_iter()
+            .map(|index| self.read(index).map(|piece| (index, piece)))
+            .collect()
     }
 
     pub fn on_progress_change(
@@ -471,54 +475,6 @@ impl Plot {
         Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
 
         Ok(())
-    }
-}
-
-pub struct SequentialPieceIterator {
-    plot: Plot,
-    indexes: VecDeque<PieceIndex>,
-    batch_size: u64,
-}
-
-impl SequentialPieceIterator {
-    pub fn new(plot: Plot, from: PieceIndexHash, batch_size: u64) -> io::Result<Self> {
-        let mut me = Self {
-            plot,
-            indexes: VecDeque::new(),
-            batch_size,
-        };
-        me.update_indexes(from)?;
-        Ok(me)
-    }
-
-    fn update_indexes(&mut self, from: PieceIndexHash) -> io::Result<()> {
-        self.indexes.extend(
-            self.plot
-                .read_sequential_piece_indexes(from, self.batch_size)?,
-        );
-        Ok(())
-    }
-}
-
-impl Iterator for SequentialPieceIterator {
-    type Item = io::Result<(PieceIndex, Piece)>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.indexes.len() == 1 {
-            let last_index = *self.indexes.front().unwrap();
-            if let Err(error) = self.update_indexes(last_index.into()) {
-                return Some(Err(error));
-            }
-            // We have 2 same indexes in the `self.indexes`
-            self.indexes.pop_front();
-        }
-
-        if self.indexes.is_empty() {
-            return None;
-        }
-
-        let index = self.indexes.pop_front().unwrap();
-        Some(try { (index, self.plot.read(index)?) })
     }
 }
 
@@ -629,18 +585,11 @@ impl IndexHashToOffsetDB {
         let mut iter = self.inner.raw_iterator();
         iter.seek(&self.get_key(from).to_bytes());
         std::iter::from_fn(move || match iter.key() {
-            Some(key) => {
-                let key = PieceIndexHash(key.try_into().unwrap());
-                let key = PieceDistance::from_big_endian(&key.0)
-                    .wrapping_sub(&PieceDistance::MIDDLE)
-                    .to_bytes();
-                dbg!(format!("{:?}", &key[..4]));
+            Some(_) => {
                 let value = iter.value().unwrap();
-                let value = <[u8; 8]>::try_from(value)
+                let value = <[u8; std::mem::size_of::<PieceOffset>()]>::try_from(value)
                     .map(PieceOffset::from_le_bytes)
-                    .map_err(|_| {
-                        io::Error::other("Offsets in rocksdb supposed to be 8 bytes long")
-                    });
+                    .map_err(|_| io::Error::other("Failed to decode piece offsets from rocksdb"));
                 iter.next();
                 Some(value)
             }
