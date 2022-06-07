@@ -1,7 +1,7 @@
 use super::CommitmentError;
+use crate::db::{BTreeDb, MapDb};
 use lru::LruCache;
 use parking_lot::Mutex;
-use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -30,7 +30,7 @@ pub(super) struct CreateDbEntryResult {
 
 pub(super) struct DbEntry {
     salt: Salt,
-    db: Mutex<Option<Arc<DB>>>,
+    db: Mutex<Option<Arc<BTreeDb>>>,
 }
 
 impl fmt::Debug for DbEntry {
@@ -40,7 +40,7 @@ impl fmt::Debug for DbEntry {
 }
 
 impl Deref for DbEntry {
-    type Target = Mutex<Option<Arc<DB>>>;
+    type Target = Mutex<Option<Arc<BTreeDb>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.db
@@ -58,12 +58,12 @@ pub(super) struct CommitmentDatabases {
     base_directory: PathBuf,
     databases: LruCache<Salt, Arc<DbEntry>>,
     metadata_cache: HashMap<Salt, CommitmentStatus>,
-    metadata_db: Arc<DB>,
+    metadata_db: Arc<MapDb>,
 }
 
 impl CommitmentDatabases {
     pub(super) fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
-        let metadata_db = DB::open_default(base_directory.join("metadata"))
+        let metadata_db = MapDb::metadata_db_open(base_directory.join("metadata"))
             .map_err(CommitmentError::MetadataDb)?;
         let metadata_cache: HashMap<Salt, CommitmentStatus> = metadata_db
             .get(COMMITMENTS_KEY)
@@ -109,7 +109,7 @@ impl CommitmentDatabases {
 
         // Open databases that were fully created during previous run
         for salt in commitment_databases.metadata_cache.keys() {
-            let db = DB::open(&Options::default(), base_directory.join(hex::encode(salt)))
+            let db = BTreeDb::commitments_open(base_directory.join(hex::encode(salt)))
                 .map_err(CommitmentError::CommitmentDb)?;
             commitment_databases.databases.put(
                 *salt,
@@ -227,10 +227,10 @@ impl CommitmentDatabases {
             .collect();
 
         self.metadata_db
-            .put(
+            .commit(std::iter::once((
                 COMMITMENTS_KEY,
-                &serde_json::to_vec(&prepared_metadata_cache).unwrap(),
-            )
+                Some(serde_json::to_vec(&prepared_metadata_cache).unwrap()),
+            )))
             .map_err(CommitmentError::MetadataDb)
     }
 }

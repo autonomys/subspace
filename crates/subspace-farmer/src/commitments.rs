@@ -2,13 +2,13 @@ mod commitment_databases;
 #[cfg(test)]
 mod tests;
 
+use crate::db::BTreeDb;
 use crate::plot::{PieceOffset, Plot};
 use arc_swap::ArcSwapOption;
 use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,9 +22,9 @@ const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 #[derive(Debug, Error)]
 pub enum CommitmentError {
     #[error("Metadata DB error: {0}")]
-    MetadataDb(rocksdb::Error),
+    MetadataDb(parity_db::Error),
     #[error("Commitment DB error: {0}")]
-    CommitmentDb(rocksdb::Error),
+    CommitmentDb(parity_db::Error),
     #[error("Plot error: {0}")]
     Plot(io::Error),
 }
@@ -125,7 +125,7 @@ impl Commitments {
         let db_path = self.inner.base_directory.join(hex::encode(salt));
 
         let db = {
-            let db = DB::open_default(db_path).map_err(CommitmentError::CommitmentDb)?;
+            let db = BTreeDb::commitments_open(db_path).map_err(CommitmentError::CommitmentDb)?;
             let piece_count = plot.piece_count();
             for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
                 let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
@@ -140,10 +140,11 @@ impl Commitments {
                     .map(|piece| create_tag(piece, salt))
                     .collect();
 
-                for (tag, offset) in tags.iter().zip(batch_start..) {
-                    db.put(tag, offset.to_le_bytes())
-                        .map_err(CommitmentError::CommitmentDb)?;
-                }
+                db.commit(
+                    tags.iter()
+                        .zip((batch_start..).map(|offset| Some(offset.to_le_bytes().to_vec()))),
+                )
+                .map_err(CommitmentError::CommitmentDb)?;
             }
 
             db
@@ -198,10 +199,12 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
-                for piece in pieces {
-                    let tag = create_tag(piece, salt);
-                    db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
-                }
+                db.commit(
+                    pieces
+                        .into_iter()
+                        .map(|piece| (create_tag(piece, salt), None)),
+                )
+                .map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
@@ -236,15 +239,16 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
-                let tags_with_offset: Vec<(PieceOffset, Tag)> = pieces_with_offsets()
-                    .map(|(piece_offset, piece)| (piece_offset, create_tag(piece, salt)))
-                    .collect();
+                let tags_with_offset = pieces_with_offsets().map(|(piece_offset, piece)| {
+                    (
+                        create_tag(piece, salt),
+                        Some(piece_offset.to_le_bytes().to_vec()),
+                    )
+                });
 
-                for (piece_offset, tag) in tags_with_offset {
-                    db.put(tag, piece_offset.to_le_bytes())
-                        .map_err(CommitmentError::CommitmentDb)?;
-                }
-            };
+                db.commit(tags_with_offset)
+                    .map_err(CommitmentError::CommitmentDb)?;
+            }
         }
 
         Ok(())
@@ -261,10 +265,11 @@ impl Commitments {
 
         let db_guard = db_entry.try_lock()?;
         let db = db_guard.clone()?;
-        let iter = db.raw_iterator();
+        let iter = db.iter().ok()?;
 
         // Take the best out of 10 solutions
         let mut solutions = SolutionIterator::new(iter, target, range)
+            .ok()?
             .take(10)
             .collect::<Vec<_>>();
         let target = u64::from_be_bytes(target);
@@ -312,7 +317,7 @@ enum SolutionIteratorState {
 }
 
 pub(crate) struct SolutionIterator<'a> {
-    iter: rocksdb::DBRawIterator<'a>,
+    iter: parity_db::BTreeIterator<'a>,
     state: SolutionIteratorState,
     /// Lower bound of solution range
     lower: u64,
@@ -321,7 +326,11 @@ pub(crate) struct SolutionIterator<'a> {
 }
 
 impl<'a> SolutionIterator<'a> {
-    pub fn new(mut iter: rocksdb::DBRawIterator<'a>, target: Tag, range: u64) -> Self {
+    pub fn new(
+        mut iter: parity_db::BTreeIterator<'a>,
+        target: Tag,
+        range: u64,
+    ) -> parity_db::Result<Self> {
         let (lower, is_lower_overflowed) = u64::from_be_bytes(target).overflowing_sub(range / 2);
         let (upper, is_upper_overflowed) = u64::from_be_bytes(target).overflowing_add(range / 2);
 
@@ -332,29 +341,26 @@ impl<'a> SolutionIterator<'a> {
         );
 
         let state = if is_lower_overflowed || is_upper_overflowed {
-            iter.seek_to_first();
             SolutionIteratorState::OverflowStart
         } else {
-            iter.seek(lower.to_be_bytes());
+            iter.seek(&lower.to_be_bytes())?;
             SolutionIteratorState::NoOverflow
         };
-        Self {
+        Ok(Self {
             iter,
             state,
             lower,
             upper,
-        }
+        })
     }
 
     fn next_entry(&mut self) -> Option<(Tag, PieceOffset)> {
-        self.iter
-            .key()
-            .map(|tag| tag.try_into().unwrap())
-            .map(|tag| {
-                let offset = u64::from_le_bytes(self.iter.value().unwrap().try_into().unwrap());
-                self.iter.next();
-                (tag, offset)
-            })
+        self.iter.next().ok().flatten().map(|(tag, offset)| {
+            (
+                tag.try_into().unwrap(),
+                PieceOffset::from_le_bytes(offset.try_into().unwrap()),
+            )
+        })
     }
 }
 
@@ -370,8 +376,8 @@ impl<'a> Iterator for SolutionIterator<'a> {
                 .next_entry()
                 .filter(|(tag, _)| u64::from_be_bytes(*tag) <= self.upper)
                 .or_else(|| {
+                    self.iter.seek(&self.lower.to_be_bytes()).ok()?;
                     self.state = SolutionIteratorState::OverflowEnd;
-                    self.iter.seek(self.lower.to_be_bytes());
                     self.next()
                 }),
             SolutionIteratorState::OverflowEnd => self.next_entry(),

@@ -14,6 +14,10 @@ impl fmt::Debug for BTreeDb {
 }
 
 impl BTreeDb {
+    pub fn commitments_open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_or_create(path, false, CompressionType::Snappy)
+    }
+
     fn open_or_create(
         path: impl AsRef<Path>,
         uniform: bool,
@@ -67,6 +71,10 @@ impl fmt::Debug for MapDb {
 impl MapDb {
     pub fn object_mappings_open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_or_create(path, true, CompressionType::Snappy)
+    }
+
+    pub fn metadata_db_open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_or_create(path, false, CompressionType::Snappy)
     }
 
     fn open_or_create(
