@@ -14,6 +14,10 @@ impl fmt::Debug for BTreeDb {
 }
 
 impl BTreeDb {
+    pub fn index_hash_to_offset_open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_or_create(path, true, CompressionType::Snappy)
+    }
+
     pub fn commitments_open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_or_create(path, false, CompressionType::Snappy)
     }

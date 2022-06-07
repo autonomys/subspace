@@ -191,20 +191,14 @@ impl Commitments {
                 .cloned()
             {
                 Some(db_entry) => db_entry,
-                None => {
-                    continue;
-                }
+                None => continue,
             };
 
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
-                db.commit(
-                    pieces
-                        .into_iter()
-                        .map(|piece| (create_tag(piece, salt), None)),
-                )
-                .map_err(CommitmentError::CommitmentDb)?;
+                db.commit(pieces.iter().map(|piece| (create_tag(piece, salt), None)))
+                    .map_err(CommitmentError::CommitmentDb)?;
             }
         }
 

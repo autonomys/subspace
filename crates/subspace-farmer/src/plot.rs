@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests;
 
+use crate::db::BTreeDb;
 use event_listener_primitives::{Bag, HandlerId};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::DB;
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -26,9 +26,9 @@ pub enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
     #[error("Metadata DB open error: {0}")]
-    MetadataDbOpen(rocksdb::Error),
+    MetadataDbOpen(parity_db::Error),
     #[error("Index DB open error: {0}")]
-    IndexDbOpen(rocksdb::Error),
+    IndexDbOpen(parity_db::Error),
     #[error("Offset DB open error: {0}")]
     OffsetDbOpen(io::Error),
 }
@@ -473,7 +473,7 @@ impl BidirectionalDistanceSorted<PieceDistance> {
 /// - Move every piece according to that
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
-    inner: DB,
+    inner: BTreeDb,
     address: PublicKey,
     max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
 }
@@ -486,7 +486,8 @@ impl IndexHashToOffsetDB {
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
 
     fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
+        let inner =
+            BTreeDb::index_hash_to_offset_open(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
             address,
@@ -497,29 +498,30 @@ impl IndexHashToOffsetDB {
     }
 
     fn update_max_distance_cache(&mut self) {
-        let mut iter = self.inner.raw_iterator();
+        let mut iter = match self.inner.iter() {
+            Ok(iter) => iter,
+            Err(_) => return,
+        };
 
-        iter.seek_to_first();
         self.max_distance_cache.extend(
             std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.next();
-                }
-                piece_index_hash
+                iter.next()
+                    .ok()
+                    .flatten()
+                    .map(|(distance, _)| PieceDistance::from_big_endian(&distance))
             })
             .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
             .map(BidirectionalDistanceSorted::new),
         );
 
-        iter.seek_to_last();
+        if iter.seek(&PieceDistance::MAX.to_bytes()).is_err() {
+            return;
+        }
+
         self.max_distance_cache.extend(
             std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.prev();
-                }
-                piece_index_hash
+                let prev: Option<(Vec<u8>, Vec<u8>)> = todo!("iter.prev().ok().flatten()");
+                prev.map(|(distance, _)| PieceDistance::from_big_endian(&distance))
             })
             .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
             .map(BidirectionalDistanceSorted::new),
@@ -554,7 +556,7 @@ impl IndexHashToOffsetDB {
                 opt_val
                     .map(|val| <[u8; 8]>::try_from(val).map(PieceOffset::from_le_bytes))
                     .transpose()
-                    .map_err(|_| io::Error::other("Offsets in rocksdb supposed to be 8 bytes long"))
+                    .map_err(|_| io::Error::other("Offsets in DB supposed to be 8 bytes long"))
             })
     }
 
@@ -584,7 +586,7 @@ impl IndexHashToOffsetDB {
             .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
             .map(PieceOffset::from_le_bytes);
         self.inner
-            .delete(&max_distance.to_bytes())
+            .commit(std::iter::once((&max_distance.to_bytes(), None)))
             .map_err(io::Error::other)?;
         self.max_distance_cache
             .remove(&BidirectionalDistanceSorted::new(max_distance));
@@ -595,7 +597,10 @@ impl IndexHashToOffsetDB {
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
         let key = self.get_key(index_hash);
         self.inner
-            .put(&key.to_bytes(), offset.to_le_bytes())
+            .commit(std::iter::once((
+                &key.to_bytes(),
+                Some(offset.to_le_bytes().to_vec()),
+            )))
             .map_err(io::Error::other)?;
 
         if let Some(first) = self.max_distance_cache.first() {

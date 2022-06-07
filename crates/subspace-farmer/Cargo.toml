@@ -51,18 +51,6 @@ thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread"] }
 zeroize = "1.5.5"
 
-# OpenBSD and MSVC are unteested and shouldn't enable jemalloc:
-# https://github.com/tikv/jemallocator/blob/52de4257fab3e770f73d5174c12a095b49572fba/jemalloc-sys/build.rs#L26-L27
-[target.'cfg(any(target_os = "openbsd", target_env = "msvc"))'.dependencies.rocksdb]
-default-features = false
-features = ["snappy"]
-version = "0.18.0"
-
-[target.'cfg(not(any(target_os = "openbsd", target_env = "msvc")))'.dependencies.rocksdb]
-default-features = false
-features = ["snappy", "jemalloc"]
-version = "0.18.0"
-
 [features]
 default = []
 # Compile with CUDA support and use it if compatible GPU is available
