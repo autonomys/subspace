@@ -65,6 +65,10 @@ impl fmt::Debug for MapDb {
 }
 
 impl MapDb {
+    pub fn object_mappings_open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_or_create(path, true, CompressionType::Snappy)
+    }
+
     fn open_or_create(
         path: impl AsRef<Path>,
         uniform: bool,

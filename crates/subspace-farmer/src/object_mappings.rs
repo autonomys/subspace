@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::db::MapDb;
 use parity_scale_codec::{Decode, Encode};
-use rocksdb::DB;
 use std::path::Path;
 use std::sync::Arc;
 use subspace_core_primitives::objects::GlobalObject;
@@ -12,19 +12,19 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ObjectMappingError {
     #[error("DB error: {0}")]
-    Db(rocksdb::Error),
+    Db(parity_db::Error),
 }
 
 /// `ObjectMappings` is a mapping from arbitrary object hash to its location in archived history.
 #[derive(Debug, Clone)]
 pub struct ObjectMappings {
-    db: Arc<DB>,
+    db: Arc<MapDb>,
 }
 
 impl ObjectMappings {
     /// Opens or creates a new object mappings database
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Self, ObjectMappingError> {
-        let db = DB::open_default(base_directory.as_ref().join("object-mappings"))
+        let db = MapDb::object_mappings_open(base_directory.as_ref().join("object-mappings"))
             .map_err(ObjectMappingError::Db)?;
 
         Ok(Self { db: Arc::new(db) })
@@ -47,17 +47,10 @@ impl ObjectMappings {
         &self,
         object_mapping: &[(Sha256Hash, GlobalObject)],
     ) -> Result<(), ObjectMappingError> {
-        let mut tmp = Vec::new();
+        let tx = object_mapping
+            .iter()
+            .map(|(object_id, global_object)| (object_id, Some(global_object.encode())));
 
-        for (object_id, global_object) in object_mapping {
-            global_object.encode_to(&mut tmp);
-            self.db
-                .put(object_id, &tmp)
-                .map_err(ObjectMappingError::Db)?;
-
-            tmp.clear();
-        }
-
-        Ok(())
+        self.db.commit(tx).map_err(ObjectMappingError::Db)
     }
 }
