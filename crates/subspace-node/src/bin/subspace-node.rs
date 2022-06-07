@@ -223,6 +223,12 @@ fn main() -> Result<(), Error> {
                         .join("chains")
                         .join("subspace_test"),
                 );
+                let _ = std::fs::remove_dir_all(
+                    base_dir
+                        .join("subspace-node")
+                        .join("chains")
+                        .join("subspace_gemini_1a"),
+                );
             }
 
             let runner = cli.create_runner(&cmd.base)?;
