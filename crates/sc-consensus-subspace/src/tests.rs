@@ -119,18 +119,6 @@ impl CreateInherentDataProviders<TestBlock, SubspaceLink<TestBlock>>
     }
 }
 
-#[derive(Clone)]
-pub struct DummyFraudProofVerifier;
-
-impl subspace_fraud_proof::VerifyFraudProof for DummyFraudProofVerifier {
-    fn verify_fraud_proof(
-        &self,
-        _proof: &sp_executor::FraudProof,
-    ) -> Result<(), sp_executor::VerificationError> {
-        unimplemented!("Not yet used in tests")
-    }
-}
-
 type SubspaceBlockImport = PanickingBlockImport<
     crate::SubspaceBlockImport<
         TestBlock,
@@ -138,7 +126,6 @@ type SubspaceBlockImport = PanickingBlockImport<
         Arc<TestClient>,
         AlwaysCanAuthor,
         TestCreateInherentDataProviders,
-        DummyFraudProofVerifier,
     >,
 >;
 
@@ -378,7 +365,6 @@ impl TestNetFactory for SubspaceTestNet {
                     Ok((timestamp, slot))
                 }),
             },
-            DummyFraudProofVerifier,
         )
         .expect("can initialize block-import");
 

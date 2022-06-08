@@ -307,7 +307,7 @@ pub enum VerificationError {
         )
     )]
     InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
-    /// Failed to decode the storage root from verifying `initialize_block` or `apply_extrinsic`.
+    /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
     #[cfg_attr(
         feature = "thiserror",
         error(
@@ -315,7 +315,7 @@ pub enum VerificationError {
         )
     )]
     StorageRootDecode(parity_scale_codec::Error),
-    /// Failed to decode the header from verifying `finalize_block`.
+    /// Failed to decode the header produced by `finalize_block`.
     #[cfg_attr(
         feature = "thiserror",
         error("Failed to decode the header from verifying `finalize_block`: {0}")
@@ -324,7 +324,7 @@ pub enum VerificationError {
     /// Runtime api error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
-    RuntimeApi(sp_api::ApiError),
+    RuntimeApi(#[from] sp_api::ApiError),
 }
 
 /// Fraud proof for the state computation.

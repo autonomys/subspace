@@ -6043,6 +6043,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-consensus-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sc-consensus",
+ "sp-api",
+ "sp-consensus",
+ "sp-executor",
+ "sp-runtime",
+ "subspace-fraud-proof",
+]
+
+[[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=5f0aa1feb7250ac7b8c1b9928f87b2420b530e22#5f0aa1feb7250ac7b8c1b9928f87b2420b530e22"
@@ -6072,7 +6086,6 @@ name = "sc-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cirrus-primitives",
  "fork-tree",
  "futures 0.3.21",
  "futures-timer",
@@ -6100,7 +6113,6 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
  "sp-inherents",
  "sp-io",
  "sp-objects",
@@ -6110,7 +6122,6 @@ dependencies = [
  "sp-version",
  "subspace-archiving",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-solving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
@@ -8224,6 +8235,7 @@ dependencies = [
  "sc-basic-authorship",
  "sc-client-api",
  "sc-consensus",
+ "sc-consensus-fraud-proof",
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
@@ -8468,7 +8480,6 @@ name = "substrate-test-runtime"
 version = "2.0.0"
 dependencies = [
  "cfg-if",
- "cirrus-primitives",
  "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
@@ -8493,7 +8504,6 @@ dependencies = [
  "sp-consensus-babe",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
  "sp-externalities",
  "sp-finality-grandpa",
  "sp-inherents",

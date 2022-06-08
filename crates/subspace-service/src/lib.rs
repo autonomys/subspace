@@ -216,9 +216,12 @@ where
         proof_verifier.clone(),
     );
 
+    let fraud_proof_block_import =
+        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
         sc_consensus_subspace::Config::get(&*client)?,
-        client.clone(),
+        fraud_proof_block_import,
         client.clone(),
         CanAuthorWithNativeVersion::new(client.executor().clone()),
         {
@@ -248,7 +251,6 @@ where
                 }
             }
         },
-        proof_verifier,
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(
