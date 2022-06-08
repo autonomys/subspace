@@ -20,7 +20,7 @@
 use rayon::prelude::*;
 use sloth256_189::cpu;
 #[cfg(feature = "opencl")]
-use sloth256_189::opencl::{self, OpenClBatch};
+use sloth256_189::opencl::{self, OpenClBatch, OpenClEncoder};
 #[cfg(feature = "opencl")]
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
@@ -29,17 +29,6 @@ use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
 #[cfg(feature = "opencl")]
 const GPU_PIECE_BLOCK: usize = 1024;
 const ENCODE_ROUNDS: usize = 1;
-
-#[cfg(feature = "opencl")]
-#[derive(Debug)]
-struct OpenClEncoder(opencl::OpenClEncoder);
-
-// TODO: Remove after update of sloth to 0.4
-/// Safety: safe because it is already in sloth256_189==0.4.0
-#[cfg(feature = "opencl")]
-unsafe impl Send for OpenClEncoder {}
-#[cfg(feature = "opencl")]
-unsafe impl Sync for OpenClEncoder {}
 
 /// Encoding errors
 #[derive(Debug)]
@@ -90,7 +79,6 @@ impl SubspaceCodec {
             size: GPU_PIECE_BLOCK * PIECE_SIZE,
             layers: ENCODE_ROUNDS,
         }))
-        .map(OpenClEncoder)
         .map(Mutex::new)
         .map(Arc::new)
         .ok();
@@ -235,7 +223,6 @@ impl SubspaceCodec {
             .unwrap()
             .lock()
             .expect("Lock is never poisoned")
-            .0
             .encode(pieces, &expanded_ivs, ENCODE_ROUNDS)
     }
 }

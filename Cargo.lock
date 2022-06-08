@@ -7123,9 +7123,9 @@ checksum = "eb703cfe953bccee95685111adeedb76fabe4e97549a58d16f03ea7b9367bb32"
 
 [[package]]
 name = "sloth256-189"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7b133a57a9d83343174c83a77be5dfbe5c7c4f2f49291967aee4cd53901e0bc"
+checksum = "0001f4c7191d6848ba072ffa8b1657880b8875a58cb2d6464f4e9794d47d6bfd"
 dependencies = [
  "cc",
  "glob",
