@@ -1,7 +1,6 @@
 use crate::dsn::{self, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, PiecesToPlot, Plot,
-    PlotError, RpcClient,
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
@@ -9,7 +8,7 @@ use rayon::prelude::*;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::{PiecesToPlot, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;

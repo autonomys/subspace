@@ -1,10 +1,9 @@
-use crate::PiecesToPlot;
 use futures::{Stream, StreamExt};
 use num_traits::WrappingAdd;
 use std::ops::{ControlFlow, Range};
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PiecesToPlot, PublicKey, Sha256Hash, U256,
 };
 
 #[cfg(test)]

@@ -594,3 +594,12 @@ mod construct_uint {
         }
     }
 }
+
+/// Collection of pieces that potentially need to be plotted
+#[derive(Debug, Clone)]
+pub struct PiecesToPlot {
+    /// Piece indexes for each of the `pieces`
+    pub piece_indexes: Vec<PieceIndex>,
+    /// Pieces themselves
+    pub pieces: FlatPieces,
+}
