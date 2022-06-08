@@ -42,11 +42,24 @@ pub enum BatchEncodeError {
     NotMultipleOfPieceSize,
     /// CPU encoding error
     #[cfg_attr(feature = "thiserror", error("CPU encoding error: {0}"))]
-    CpuEncodeError(#[from] cpu::EncodeError),
+    CpuEncodeError(cpu::EncodeError),
     /// OpenCL encoder error
     #[cfg(feature = "opencl")]
     #[cfg_attr(feature = "thiserror", error("OpenCL error: {0}"))]
-    OpenCLEncodeError(#[from] opencl::OpenCLEncodeError),
+    OpenCLEncodeError(opencl::OpenCLEncodeError),
+}
+
+impl From<cpu::EncodeError> for BatchEncodeError {
+    fn from(error: cpu::EncodeError) -> Self {
+        Self::CpuEncodeError(error)
+    }
+}
+
+#[cfg(feature = "opencl")]
+impl From<opencl::OpenCLEncodeError> for BatchEncodeError {
+    fn from(error: opencl::OpenCLEncodeError) -> Self {
+        Self::OpenCLEncodeError(error)
+    }
 }
 
 fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index: u64) {

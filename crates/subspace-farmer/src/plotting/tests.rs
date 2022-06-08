@@ -155,7 +155,7 @@ async fn plotting_piece_eviction() {
         farmer_metadata,
         object_mappings,
         client.clone(),
-        plotting::plot_pieces(subspace_codec, &plot, commitments.clone()),
+        plotting::plot_pieces(subspace_codec.clone(), &plot, commitments.clone()),
     )
     .await
     .unwrap();
