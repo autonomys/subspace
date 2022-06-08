@@ -284,7 +284,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with farmnet
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ffarm-rpc.subspace.network#/explorer), from there you can interact with the Subspace Farmnet as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Fna.gemini-1b.subspace.network%2Fws#/explorer), from there you can interact with the Subspace Farmnet as any Substrate-based blockchain.
 
 ## Invalid Solution
 If you are getting `invalid solution` errors (visible on the terminal that Node runs), please follow "Switching to a new snapshot" steps below and start afresh.
