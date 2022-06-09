@@ -450,7 +450,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 	match submit_invalid_fraud_proof_result.unwrap_err() {
 		sc_transaction_pool::error::Error::Pool(
 			sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-		) => assert_eq!(invalid_tx, pallet_executor::InvalidTransactionCode::FraudProof.into()),
+		) => assert_eq!(invalid_tx, sp_executor::InvalidTransactionCode::FraudProof.into()),
 		e => panic!("Unexpected error while submitting an invalid fraud proof: {e}"),
 	}
 }
@@ -779,8 +779,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	match create_and_send_submit_execution_receipt(8).await.unwrap_err() {
 		sc_transaction_pool::error::Error::Pool(
 			sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-		) =>
-			assert_eq!(invalid_tx, pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()),
+		) => assert_eq!(invalid_tx, sp_executor::InvalidTransactionCode::ExecutionReceipt.into()),
 		e => panic!("Unexpected error while submitting execution receipt: {e}"),
 	}
 

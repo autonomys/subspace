@@ -8228,7 +8228,6 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
  "jsonrpsee",
- "pallet-executor",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-util-mem",

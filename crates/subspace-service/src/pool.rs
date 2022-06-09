@@ -156,7 +156,7 @@ where
                                     Err(err) => {
                                         tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
                                         Err(TxPoolError::InvalidTransaction(
-                                            pallet_executor::InvalidTransactionCode::FraudProof.into(),
+                                            sp_executor::InvalidTransactionCode::FraudProof.into(),
                                         )
                                         .into())
                                     }

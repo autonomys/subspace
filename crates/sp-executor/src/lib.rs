@@ -23,6 +23,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
@@ -57,6 +58,28 @@ pub struct ExecutorKey;
 
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
     type Public = ExecutorId;
+}
+
+/// Custom invalid validity code for the extrinsics in pallet-executor.
+#[repr(u8)]
+pub enum InvalidTransactionCode {
+    BundleEquivicationProof = 101,
+    TrasactionProof = 102,
+    ExecutionReceipt = 103,
+    Bundle = 104,
+    FraudProof = 105,
+}
+
+impl From<InvalidTransactionCode> for InvalidTransaction {
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8)
+    }
+}
+
+impl From<InvalidTransactionCode> for TransactionValidity {
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8).into()
+    }
 }
 
 /// Header of transaction bundle.
