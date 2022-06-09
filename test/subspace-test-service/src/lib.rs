@@ -29,7 +29,6 @@ use sc_service::config::{
 use sc_service::{
     BasePath, Configuration, KeepBlocks, NetworkStarter, Role, RpcHandlers, TaskManager,
 };
-use sc_transaction_pool::FullPool;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
 use sp_keyring::Sr25519Keyring;
@@ -39,8 +38,10 @@ use sp_runtime::{generic, MultiSigner};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
-use subspace_service::{NewFull, SubspaceConfiguration};
-use subspace_test_client::{chain_spec, start_farmer, Backend, Client, TestExecutorDispatch};
+use subspace_service::{FullPool, NewFull, SubspaceConfiguration};
+use subspace_test_client::{
+    chain_spec, start_farmer, Backend, Client, FraudProofVerifier, TestExecutorDispatch,
+};
 use subspace_test_runtime::{
     BlockHashCount, Runtime, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
@@ -227,7 +228,7 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, FraudProofVerifier>>,
 }
 
 impl PrimaryTestNode {

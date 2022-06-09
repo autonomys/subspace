@@ -23,6 +23,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
@@ -57,6 +58,28 @@ pub struct ExecutorKey;
 
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
     type Public = ExecutorId;
+}
+
+/// Custom invalid validity code for the extrinsics in pallet-executor.
+#[repr(u8)]
+pub enum InvalidTransactionCode {
+    BundleEquivicationProof = 101,
+    TrasactionProof = 102,
+    ExecutionReceipt = 103,
+    Bundle = 104,
+    FraudProof = 105,
+}
+
+impl From<InvalidTransactionCode> for InvalidTransaction {
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8)
+    }
+}
+
+impl From<InvalidTransactionCode> for TransactionValidity {
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8).into()
+    }
 }
 
 /// Header of transaction bundle.
@@ -285,17 +308,46 @@ impl ExecutionPhase {
 
 /// Error type of fraud proof verification on primary node.
 #[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
     /// Failed to pass the execution proof check.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to pass the execution proof check")
+    )]
     BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
     /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
+    #[cfg_attr(
+        feature = "thiserror",
+        error("`post_state_root` mismatches, expected: {expected}, got: {got}")
+    )]
     BadPostStateRoot { expected: H256, got: H256 },
     /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}"
+        )
+    )]
     InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
+        )
+    )]
     StorageRootDecode(parity_scale_codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to decode the header from verifying `finalize_block`: {0}")
+    )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Runtime api error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
+    RuntimeApi(#[from] sp_api::ApiError),
 }
 
 /// Fraud proof for the state computation.
@@ -392,6 +444,9 @@ sp_api::decl_runtime_apis! {
         /// Extract the bundles from extrinsics in a block.
         fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;
 
+        /// Extract a fraud proof from given extrinsic if any.
+        fn extract_fraud_proof(ext: &Block::Extrinsic) -> Option<FraudProof>;
+
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
@@ -406,41 +461,5 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
-    }
-}
-
-// TODO: remove once the fraud proof verification is moved into the client.
-pub mod fraud_proof_ext {
-    #[cfg(feature = "std")]
-    use sp_externalities::ExternalitiesExt;
-    use sp_runtime_interface::runtime_interface;
-
-    /// Externalities for verifying fraud proof.
-    pub trait Externalities: Send {
-        /// Returns `true` when the proof is valid.
-        fn verify_fraud_proof(&self, proof: &crate::FraudProof) -> bool;
-    }
-
-    #[cfg(feature = "std")]
-    sp_externalities::decl_extension! {
-        /// An extension to verify the fraud proof.
-        pub struct FraudProofExt(Box<dyn Externalities>);
-    }
-
-    #[cfg(feature = "std")]
-    impl FraudProofExt {
-        pub fn new<E: Externalities + 'static>(fraud_proof: E) -> Self {
-            Self(Box::new(fraud_proof))
-        }
-    }
-
-    #[runtime_interface]
-    pub trait FraudProof {
-        /// Verify fraud proof.
-        fn verify(&mut self, proof: &crate::FraudProof) -> bool {
-            self.extension::<FraudProofExt>()
-                .expect("No `FraudProof` associated for the current context!")
-                .verify_fraud_proof(proof)
-        }
     }
 }

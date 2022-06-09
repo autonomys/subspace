@@ -1,0 +1,21 @@
+[package]
+name = "sc-consensus-fraud-proof"
+description = "Subspace fraud proof verification in consensus"
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+version = "0.1.0"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+async-trait = "0.1.53"
+codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-executor = { version = "0.1.0", path = "../sp-executor" }
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }

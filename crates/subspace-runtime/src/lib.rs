@@ -542,6 +542,15 @@ fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
         .collect()
 }
 
+fn extract_fraud_proof(ext: &UncheckedExtrinsic) -> Option<sp_executor::FraudProof> {
+    match &ext.function {
+        Call::Executor(pallet_executor::Call::submit_fraud_proof { fraud_proof }) => {
+            Some(fraud_proof.clone())
+        }
+        _ => None,
+    }
+}
+
 fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
     if header.number().is_zero() {
         Randomness::default()
@@ -779,6 +788,10 @@ impl_runtime_apis! {
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             extrinsics_shuffling_seed::<Block>(header)
+        }
+
+        fn extract_fraud_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<sp_executor::FraudProof> {
+            extract_fraud_proof(ext)
         }
 
         fn execution_wasm_bundle() -> Cow<'static, [u8]> {

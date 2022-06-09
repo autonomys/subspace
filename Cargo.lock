@@ -6043,6 +6043,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-consensus-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sc-consensus",
+ "sp-api",
+ "sp-consensus",
+ "sp-executor",
+ "sp-runtime",
+ "subspace-fraud-proof",
+]
+
+[[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=5f0aa1feb7250ac7b8c1b9928f87b2420b530e22#5f0aa1feb7250ac7b8c1b9928f87b2420b530e22"
@@ -7489,7 +7503,6 @@ dependencies = [
  "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
- "sp-externalities",
  "sp-runtime",
  "sp-runtime-interface",
  "sp-state-machine",
@@ -7497,6 +7510,7 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "thiserror",
 ]
 
 [[package]]
@@ -8068,7 +8082,6 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-executor",
- "sp-externalities",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
@@ -8213,12 +8226,15 @@ dependencies = [
  "derive_more",
  "frame-support",
  "frame-system-rpc-runtime-api",
+ "futures 0.3.21",
  "jsonrpsee",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
+ "parity-util-mem",
  "sc-basic-authorship",
  "sc-client-api",
  "sc-consensus",
+ "sc-consensus-fraud-proof",
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
@@ -8251,6 +8267,7 @@ dependencies = [
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -8359,7 +8376,6 @@ dependencies = [
  "sc-network",
  "sc-service",
  "sc-tracing",
- "sc-transaction-pool",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-keyring",
