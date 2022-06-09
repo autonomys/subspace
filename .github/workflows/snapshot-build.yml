@@ -141,6 +141,10 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.6
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
+      - name: OpenCL
+        run: sudo apt-get install -y ocl-icd-opencl-dev
+        if: runner.os == 'Linux'
+
       - name: Build (Linux or Windows with CUDA)
         uses: actions-rs/cargo@v1
         with:
