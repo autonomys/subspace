@@ -18,6 +18,7 @@ RUN \
         git \
         llvm \
         clang \
+        ocl-icd-opencl-dev \
         make && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
 
@@ -36,7 +37,7 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
-    /root/.cargo/bin/cargo build --profile $PROFILE --bin subspace-farmer && \
+    /root/.cargo/bin/cargo build --profile $PROFILE --bin subspace-farmer --features=opencl && \
     mv target/*/subspace-farmer subspace-farmer && \
     rm -rf target
 
