@@ -16,8 +16,10 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+mod pool;
 pub mod rpc;
 
+pub use crate::pool::FullPool;
 use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -34,9 +36,11 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
+use sc_service::{
+    Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
+    TaskManager,
+};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sc_transaction_pool::FullPool;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
@@ -50,8 +54,9 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
+use subspace_fraud_proof::VerifyFraudProof;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Index as Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -88,6 +93,15 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
+    Block,
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FullBackend,
+    NativeElseWasmExecutor<ExecutorDispatch>,
+    SpawnTaskHandle,
+    Hash,
+>;
+
 /// Subspace-specific service configuration.
 #[derive(Debug, Deref, DerefMut, Into)]
 pub struct SubspaceConfiguration {
@@ -120,7 +134,11 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullBackend,
         FullSelectChain,
         DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-        FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        FullPool<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        >,
         (
             impl BlockImport<
                 Block,
@@ -176,16 +194,6 @@ where
 
     let client = Arc::new(client);
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        client.clone(),
-        backend.clone(),
-        executor,
-        task_manager.spawn_handle(),
-    );
-    client
-        .execution_extensions()
-        .set_extensions_factory(Box::new(proof_verifier));
-
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
             .spawn_handle()
@@ -195,17 +203,25 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         client.clone(),
+        backend.clone(),
+        executor,
+        task_manager.spawn_handle(),
     );
+    let transaction_pool = pool::new_full(
+        config,
+        &task_manager,
+        client.clone(),
+        proof_verifier.clone(),
+    );
+
+    let fraud_proof_block_import =
+        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
         sc_consensus_subspace::Config::get(&*client)?,
-        client.clone(),
+        fraud_proof_block_import,
         client.clone(),
         CanAuthorWithNativeVersion::new(client.executor().clone()),
         {
@@ -273,19 +289,20 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<C>
+pub struct NewFull<Client, Verifier>
 where
-    C: ProvideRuntimeApi<Block>
+    Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
         + 'static,
-    C::Api: TaggedTransactionQueue<Block>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
     /// Full client.
-    pub client: Arc<C>,
+    pub client: Arc<Client>,
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
     /// Network.
@@ -307,14 +324,19 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, C>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
 }
+
+type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+>;
 
 /// Builds a new service for a full client.
 pub fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
-) -> Result<NewFull<FullClient<RuntimeApi, ExecutorDispatch>>, Error>
+) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send

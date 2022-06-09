@@ -18,7 +18,6 @@ sp-api = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-application-crypto = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-externalities = { version = "0.12.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-runtime-interface = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 sp-state-machine = { version = "0.12.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
@@ -26,6 +25,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+thiserror = { version = "1.0.31", optional = true }
 
 [features]
 default = ["std"]
@@ -36,7 +36,6 @@ std = [
 	"sp-application-crypto/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
-	"sp-externalities/std",
 	"sp-runtime/std",
 	"sp-runtime-interface/std",
 	"sp-state-machine/std",
@@ -44,4 +43,5 @@ std = [
 	"sp-trie/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
+	"thiserror",
 ]

@@ -10,13 +10,10 @@
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
-use sc_client_api::execution_extensions::ExtensionsFactory;
 use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
-use sp_executor::fraud_proof_ext::FraudProofExt;
 use sp_executor::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
-use sp_externalities::Extensions;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::{TrieBackend, TrieBackendStorage};
@@ -176,24 +173,13 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
     }
 }
 
-struct RuntimCodeFetcher<PBlock: BlockT, C, Hash: Encode + Decode> {
-    client: Arc<C>,
-    at: PBlock::Hash,
-    _phantom: PhantomData<Hash>,
+struct RuntimCodeFetcher<'a> {
+    wasm_bundle: &'a [u8],
 }
 
-impl<PBlock, C, Hash> FetchRuntimeCode for RuntimCodeFetcher<PBlock, C, Hash>
-where
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    Hash: Encode + Decode,
-{
+impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
     fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
-        self.client
-            .runtime_api()
-            .execution_wasm_bundle(&BlockId::Hash(self.at))
-            .ok()
+        Some(self.wasm_bundle.into())
     }
 }
 
@@ -252,11 +238,16 @@ where
             ..
         } = proof;
 
+        let at = PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
+            .expect("Block Hash must be H256; qed");
+        let wasm_bundle = self
+            .client
+            .runtime_api()
+            .execution_wasm_bundle(&BlockId::Hash(at))
+            .map_err(VerificationError::RuntimeApi)?;
+
         let code_fetcher = RuntimCodeFetcher {
-            client: self.client.clone(),
-            at: PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
-                .expect("Block Hash must be H256; qed"),
-            _phantom: PhantomData::<Hash>,
+            wasm_bundle: &wasm_bundle,
         };
 
         let runtime_code = RuntimeCode {
@@ -294,7 +285,13 @@ where
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash> sp_executor::fraud_proof_ext::Externalities
+/// Verify fraud proof.
+pub trait VerifyFraudProof {
+    /// Verifies fraud proof.
+    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError>;
+}
+
+impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof
     for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
     PBlock: BlockT,
@@ -305,31 +302,7 @@ where
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode + Send + Sync,
 {
-    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> bool {
-        match self.verify(proof) {
-            Ok(()) => true,
-            Err(e) => {
-                tracing::debug!(target: "fraud_proof", error = ?e, "Fraud proof verification failure");
-                false
-            }
-        }
-    }
-}
-
-impl<PBlock, C, B, Exec, Spawn, Hash> ExtensionsFactory
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
-where
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    B: backend::Backend<PBlock> + 'static,
-    Exec: CodeExecutor + Clone + Send + Sync,
-    Spawn: SpawnNamed + Clone + Send + Sync + 'static,
-    Hash: Encode + Decode + Send + Sync + 'static,
-{
-    fn extensions_for(&self, _: sp_core::offchain::Capabilities) -> Extensions {
-        let mut exts = Extensions::new();
-        exts.register(FraudProofExt::new(self.clone()));
-        exts
+    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError> {
+        self.verify(proof)
     }
 }

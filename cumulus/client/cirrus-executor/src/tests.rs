@@ -347,6 +347,115 @@ async fn execution_proof_creation_and_verification_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+async fn fraud_proof_verification_in_tx_pool_should_work() {
+	let mut builder = sc_cli::LoggerBuilder::new("");
+	builder.with_colors(false);
+	let _ = builder.init();
+
+	let tokio_handle = tokio::runtime::Handle::current();
+
+	// Start Ferdie
+	let (ferdie, ferdie_network_starter) =
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+	ferdie_network_starter.start_network();
+
+	// Run Alice (a secondary chain authority node)
+	let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+		.connect_to_primary_chain_node(&ferdie)
+		.build(Role::Authority)
+		.await;
+
+	alice.wait_for_blocks(3).await;
+
+	let header = alice.client.header(&BlockId::Number(1)).unwrap().unwrap();
+	let parent_header =
+		alice.client.header(&BlockId::Hash(*header.parent_hash())).unwrap().unwrap();
+
+	let intermediate_roots = alice
+		.client
+		.runtime_api()
+		.intermediate_roots(&BlockId::Hash(header.hash()))
+		.expect("Get intermediate roots");
+
+	let prover = subspace_fraud_proof::ExecutionProver::new(
+		alice.backend.clone(),
+		alice.code_executor.clone(),
+		Box::new(alice.task_manager.spawn_handle()),
+	);
+
+	let new_header = Header::new(
+		*header.number(),
+		Default::default(),
+		Default::default(),
+		parent_header.hash(),
+		Default::default(),
+	);
+	let execution_phase = ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
+
+	let storage_proof = prover
+		.prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
+			BlockId::Hash(parent_header.hash()),
+			&execution_phase,
+			None,
+		)
+		.expect("Create `initialize_block` proof");
+
+	let header_ferdie = ferdie.client.header(&BlockId::Number(1)).unwrap().unwrap();
+	let parent_hash_ferdie = header_ferdie.hash();
+	let parent_number_ferdie = *header_ferdie.number();
+
+	let valid_fraud_proof = FraudProof {
+		parent_number: parent_number_ferdie,
+		parent_hash: parent_hash_ferdie,
+		pre_state_root: *parent_header.state_root(),
+		post_state_root: intermediate_roots[0].into(),
+		proof: storage_proof,
+		execution_phase: execution_phase.clone(),
+	};
+
+	let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+		pallet_executor::Call::submit_fraud_proof { fraud_proof: valid_fraud_proof.clone() }.into(),
+	);
+
+	assert!(
+		ferdie
+			.transaction_pool
+			.pool()
+			.submit_one(
+				&BlockId::Hash(ferdie.client.info().best_hash),
+				TransactionSource::External,
+				tx.into(),
+			)
+			.await
+			.is_ok(),
+		"Submit a valid fraud proof successfully"
+	);
+
+	let invalid_fraud_proof = FraudProof { post_state_root: Hash::random(), ..valid_fraud_proof };
+
+	let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+		pallet_executor::Call::submit_fraud_proof { fraud_proof: invalid_fraud_proof }.into(),
+	);
+
+	let submit_invalid_fraud_proof_result = ferdie
+		.transaction_pool
+		.pool()
+		.submit_one(
+			&BlockId::Hash(ferdie.client.info().best_hash),
+			TransactionSource::External,
+			tx.into(),
+		)
+		.await;
+
+	match submit_invalid_fraud_proof_result.unwrap_err() {
+		sc_transaction_pool::error::Error::Pool(
+			sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
+		) => assert_eq!(invalid_tx, sp_executor::InvalidTransactionCode::FraudProof.into()),
+		e => panic!("Unexpected error while submitting an invalid fraud proof: {e}"),
+	}
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn invalid_execution_proof_should_not_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
 	builder.with_colors(false);
@@ -670,8 +779,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 	match create_and_send_submit_execution_receipt(8).await.unwrap_err() {
 		sc_transaction_pool::error::Error::Pool(
 			sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-		) =>
-			assert_eq!(invalid_tx, pallet_executor::InvalidTransactionCode::ExecutionReceipt.into()),
+		) => assert_eq!(invalid_tx, sp_executor::InvalidTransactionCode::ExecutionReceipt.into()),
 		e => panic!("Unexpected error while submitting execution receipt: {e}"),
 	}
 
