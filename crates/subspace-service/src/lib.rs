@@ -211,7 +211,7 @@ where
     );
     let transaction_pool = pool::new_full(
         config,
-        task_manager.spawn_essential_handle(),
+        &task_manager,
         client.clone(),
         proof_verifier.clone(),
     );
@@ -297,7 +297,7 @@ where
         + HeaderBackend<Block>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
-    Verifier: VerifyFraudProof + Send + Sync + 'static,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,

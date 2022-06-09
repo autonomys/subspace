@@ -1,7 +1,8 @@
+use futures::channel::oneshot;
 use futures::future::{Future, FutureExt, Ready};
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{BlockBackend, ExecutorProvider, UsageProvider};
-use sc_service::Configuration;
+use sc_service::{Configuration, TaskManager};
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool::{
     BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction, ValidatedTransaction,
@@ -13,11 +14,13 @@ use sc_transaction_pool_api::{
     TransactionStatusStreamFor, TxHash,
 };
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
-use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
+use sp_runtime::transaction_validity::{
+    TransactionValidity, TransactionValidityError, UnknownTransaction,
+};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -46,9 +49,10 @@ type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, Extr
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
 
 pub struct FullChainApiWrapper<Block, Client, Verifier> {
-    inner: FullChainApi<Client, Block>,
+    inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
     verifier: Verifier,
+    spawner: Box<dyn SpawnNamed>,
 }
 
 impl<Block, Client, Verifier> FullChainApiWrapper<Block, Client, Verifier>
@@ -62,21 +66,23 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
-    Verifier: VerifyFraudProof + Send + Sync + 'static,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
-    fn new<Spawn>(
+    fn new(
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
-        spawner: &Spawn,
+        task_manager: &TaskManager,
         verifier: Verifier,
-    ) -> Self
-    where
-        Spawn: SpawnEssentialNamed,
-    {
+    ) -> Self {
         Self {
-            inner: FullChainApi::new(client.clone(), prometheus, spawner),
+            inner: Arc::new(FullChainApi::new(
+                client.clone(),
+                prometheus,
+                &task_manager.spawn_essential_handle(),
+            )),
             client,
             verifier,
+            spawner: Box::new(task_manager.spawn_handle()),
         }
     }
 
@@ -101,7 +107,7 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
-    Verifier: VerifyFraudProof + Send + Sync + 'static,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     type Error = sc_transaction_pool::error::Error;
@@ -121,16 +127,48 @@ where
         match self.client.runtime_api().extract_fraud_proof(at, &uxt) {
             Ok(maybe_fraud_proof) => {
                 if let Some(fraud_proof) = maybe_fraud_proof {
-                    if let Err(err) = self.verifier.verify_fraud_proof(&fraud_proof) {
-                        tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                        return async move {
-                            Err(TxPoolError::InvalidTransaction(
-                                pallet_executor::InvalidTransactionCode::FraudProof.into(),
-                            )
-                            .into())
+                    let inner = self.inner.clone();
+                    let spawner = self.spawner.clone();
+                    let fraud_proof_verifier = self.verifier.clone();
+                    let at = *at;
+
+                    return async move {
+                        let (verified_result_sender, verified_result_receiver) = oneshot::channel();
+
+                        // Verify the fraud proof in another blocking task as it might be pretty heavy.
+                        spawner.spawn_blocking(
+                            "txpool-fraud-proof-verification",
+                            None,
+                            async move {
+                                let verified_result =
+                                    fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
+                                verified_result_sender
+                                    .send(verified_result)
+                                    .expect("Failed to send the verified fraud proof result");
+                            }
+                            .boxed(),
+                        );
+
+                        match verified_result_receiver.await  {
+                            Ok(verified_result) => {
+                                match verified_result {
+                                    Ok(_) => inner.validate_transaction(&at, source, uxt).await,
+                                    Err(err) => {
+                                        tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
+                                        Err(TxPoolError::InvalidTransaction(
+                                            pallet_executor::InvalidTransactionCode::FraudProof.into(),
+                                        )
+                                        .into())
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
+                                Err(TxPoolError::UnknownTransaction(UnknownTransaction::CannotLookup).into())
+                            }
                         }
-                        .boxed();
                     }
+                    .boxed();
                 }
             }
             Err(err) => {
@@ -224,7 +262,7 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
-    Verifier: VerifyFraudProof + Send + Sync + 'static,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, Verifier>>;
@@ -353,9 +391,9 @@ where
     }
 }
 
-pub(super) fn new_full<Block, Client, Verifier, Spawn>(
+pub(super) fn new_full<Block, Client, Verifier>(
     config: &Configuration,
-    spawner: Spawn,
+    task_manager: &TaskManager,
     client: Arc<Client>,
     verifier: Verifier,
 ) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>>
@@ -371,21 +409,20 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
-    Verifier: VerifyFraudProof + Send + Sync + 'static,
-    Spawn: SpawnEssentialNamed,
+    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(
         client.clone(),
         prometheus,
-        &spawner,
+        task_manager,
         verifier,
     ));
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,
         pool_api,
         prometheus,
-        spawner,
+        task_manager.spawn_essential_handle(),
         client.clone(),
     ));
 
