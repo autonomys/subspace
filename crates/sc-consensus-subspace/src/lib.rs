@@ -743,7 +743,7 @@ where
         let pre_digest = find_pre_digest(&block.header)?;
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
-        if *block.header.number() <= 33_671_u32.into()
+        if *block.header.number() <= 33_581_u32.into()
             && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
             && pre_digest.solution.public_key.as_slice()
                 != [
@@ -801,6 +801,21 @@ where
             let salt = find_salt_descriptor(&block.header)?
                 .ok_or(Error::<Block::Header>::MissingSalt(hash))?
                 .salt;
+
+            // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
+            if *block.header.number() >= 33_671_u32.into()
+                && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
+                && solution_range == 12_009_599_006_321_322_u64
+            {
+                debug!(
+                    target: "subspace",
+                    "Ignoring block from non-canonical fork"
+                );
+                return Err(Error::<Block::Header>::InvalidSolutionRange(
+                    block.post_hash.unwrap_or_default(),
+                )
+                .into());
+            }
 
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this

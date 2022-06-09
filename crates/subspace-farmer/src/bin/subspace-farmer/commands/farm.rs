@@ -27,6 +27,12 @@ pub(crate) async fn farm(
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
 
+    if plot_size < 1024 * 1024 {
+        return Err(anyhow::anyhow!(
+            "Plot size is too low ({plot_size} bytes). Did you mean {plot_size}G or {plot_size}T?"
+        ));
+    }
+
     info!("Connecting to node at {}", node_rpc_url);
     let client = NodeRpcClient::new(&node_rpc_url).await?;
 
