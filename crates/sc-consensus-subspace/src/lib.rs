@@ -641,6 +641,7 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     reward_signing_context: SigningContext,
+    is_authoring_blocks: bool,
     block: PhantomData<Block>,
 }
 
@@ -682,21 +683,28 @@ where
             equivocation_proof.second_header.hash(),
         );
 
-        // get the best block on which we will build and send the equivocation report.
-        let best_id = self
-            .select_chain
-            .best_chain()
-            .await
-            .map(|h| BlockId::Hash(h.hash()))
-            .map_err(|e| Error::Client(e.into()))?;
+        if self.is_authoring_blocks {
+            // get the best block on which we will build and send the equivocation report.
+            let best_id = self
+                .select_chain
+                .best_chain()
+                .await
+                .map(|h| BlockId::Hash(h.hash()))
+                .map_err(|e| Error::Client(e.into()))?;
 
-        // submit equivocation report at best block.
-        self.client
-            .runtime_api()
-            .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
-            .map_err(Error::RuntimeApi)?;
+            // submit equivocation report at best block.
+            self.client
+                .runtime_api()
+                .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
+                .map_err(Error::RuntimeApi)?;
 
-        info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
+            info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
+        } else {
+            info!(
+                target: "subspace",
+                "Not submitting equivocation report because node is not authoring blocks"
+            );
+        }
 
         Ok(())
     }
@@ -1377,6 +1385,7 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
     telemetry: Option<TelemetryHandle>,
+    is_authoring_blocks: bool,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
     Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
@@ -1400,6 +1409,7 @@ where
         telemetry,
         client,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+        is_authoring_blocks,
         block: PhantomData::default(),
     };
 

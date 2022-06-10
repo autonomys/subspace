@@ -411,6 +411,7 @@ impl TestNetFactory for SubspaceTestNet {
                 reward_signing_context: schnorrkel::context::signing_context(
                     REWARD_SIGNING_CONTEXT,
                 ),
+                is_authoring_blocks: true,
                 block: PhantomData::default(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
