@@ -21,6 +21,7 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, Database, DatabaseParams, SubstrateCli};
+use sc_client_api::HeaderBackend;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
@@ -353,12 +354,17 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let mut primary_chain_node = {
+                let (mut primary_chain_node, config_dir) = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "PrimaryChain"
                     );
                     let _enter = span.enter();
+
+                    let config_dir = primary_chain_config
+                        .base_path
+                        .as_ref()
+                        .map(|base_path| base_path.config_dir("subspace_gemini_1b"));
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
@@ -366,15 +372,17 @@ fn main() -> Result<(), Error> {
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                     };
 
-                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                        primary_chain_config,
-                        true,
-                    )
+                    let primary_chain_node = subspace_service::new_full::<
+                        RuntimeApi,
+                        ExecutorDispatch,
+                    >(primary_chain_config, true)
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
                             "Failed to build a full subspace node: {error:?}"
                         ))
-                    })?
+                    })?;
+
+                    (primary_chain_node, config_dir)
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
@@ -444,6 +452,23 @@ fn main() -> Result<(), Error> {
                         .add_child(secondary_chain_node.task_manager);
 
                     secondary_chain_node.network_starter.start_network();
+                }
+
+                // TODO: Workaround for regression in Gemini 1b 2022-jun-08 release:
+                //  we need to reset network identity of the node to remove it from block list of
+                //  other nodes on the network
+                if primary_chain_node.client.info().best_number == 33670 {
+                    if let Some(config_dir) = config_dir {
+                        if std::fs::remove_file(config_dir.join("network").join("secret_ed25519"))
+                            .is_ok()
+                        {
+                            return Err(Error::Other(
+                                "Applied workaround for upgrade from gemini-1b-2022-jun-08, \
+                                please restart this node"
+                                    .to_string(),
+                            ));
+                        }
+                    }
                 }
 
                 primary_chain_node.network_starter.start_network();
