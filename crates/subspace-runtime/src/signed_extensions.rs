@@ -1,4 +1,4 @@
-use crate::{Call, Runtime, Subspace, Sudo};
+use crate::{Call, Runtime, RuntimeConfigs, Subspace, Sudo};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
@@ -76,7 +76,7 @@ impl SignedExtension for DisablePallets {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        if matches!(call, Call::Executor(_)) {
+        if RuntimeConfigs::enable_disable_pallets() && matches!(call, Call::Executor(_)) {
             InvalidTransaction::Call.into()
         } else {
             Ok(ValidTransaction::default())

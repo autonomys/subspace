@@ -27,8 +27,8 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
+    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -132,6 +132,7 @@ pub fn gemini_config_compiled(
                 false,
                 false,
                 false,
+                false,
             )
         },
         // Bootnodes
@@ -185,6 +186,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                 false,
                 false,
                 true,
+                false,
             )
         },
         // Bootnodes
@@ -240,6 +242,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                 false,
                 false,
                 true,
+                false,
             )
         },
         // Bootnodes
@@ -270,6 +273,7 @@ fn subspace_genesis_config(
     enable_rewards: bool,
     enable_storage_access: bool,
     allow_authoring_by_anyone: bool,
+    enable_disable_pallets: bool,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -290,6 +294,9 @@ fn subspace_genesis_config(
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
             executor: Some(executor_authority),
+        },
+        runtime_configs: RuntimeConfigsConfig {
+            enable_disable_pallets,
         },
     }
 }

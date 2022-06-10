@@ -31,6 +31,7 @@ pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
+pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
 pallet-subspace = { version = "0.1.0", default-features = false, path = "../pallet-subspace" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
@@ -89,6 +90,7 @@ std = [
 	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
 	"pallet-rewards/std",
+	"pallet-runtime-configs/std",
 	"pallet-subspace/std",
 	"pallet-sudo/std",
 	"pallet-timestamp/std",
