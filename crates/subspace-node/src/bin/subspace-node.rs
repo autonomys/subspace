@@ -459,10 +459,13 @@ fn main() -> Result<(), Error> {
                 //  other nodes on the network
                 if primary_chain_node.client.info().best_number == 33670 {
                     if let Some(config_dir) = config_dir {
-                        let network_secret_key_path =
-                            config_dir.join("network").join("secret_ed25519");
-                        if network_secret_key_path.exists() {
-                            let _ = std::fs::remove_file(network_secret_key_path);
+                        let workaround_file =
+                            config_dir.join("network").join("gemini_1b_workaround");
+                        if !workaround_file.exists() {
+                            let _ = std::fs::write(workaround_file, &[]);
+                            let _ = std::fs::remove_file(
+                                config_dir.join("network").join("secret_ed25519"),
+                            );
                             return Err(Error::Other(
                                 "Applied workaround for upgrade from gemini-1b-2022-jun-08, \
                                 please restart this node"
