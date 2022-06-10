@@ -167,7 +167,8 @@ pub(crate) async fn bench(
     let multi_farming = MultiFarming::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
-            client: client.clone(),
+            archiving_client: client.clone(),
+            farming_client: client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],

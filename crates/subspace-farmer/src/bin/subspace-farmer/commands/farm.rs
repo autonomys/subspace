@@ -34,9 +34,10 @@ pub(crate) async fn farm(
     }
 
     info!("Connecting to node at {}", node_rpc_url);
-    let client = NodeRpcClient::new(&node_rpc_url).await?;
+    let archiving_client = NodeRpcClient::new(&node_rpc_url).await?;
+    let farming_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-    let metadata = client
+    let metadata = farming_client
         .farmer_metadata()
         .await
         .map_err(|error| anyhow!(error))?;
@@ -67,7 +68,8 @@ pub(crate) async fn farm(
     let multi_farming = MultiFarming::new(
         MultiFarmingOptions {
             base_directory: base_directory.clone(),
-            client,
+            archiving_client,
+            farming_client,
             object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
