@@ -94,7 +94,9 @@ where
                     .client
                     .runtime_api()
                     .extract_fraud_proof(&parent_block_id, extrinsic)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                    // TODO: Remove unwrap in the next major release
+                    .unwrap_or_default()
+                // .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 {
                     self.fraud_proof_verifier
                         .verify_fraud_proof(&fraud_proof)

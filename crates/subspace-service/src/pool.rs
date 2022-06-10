@@ -171,9 +171,10 @@ where
                     .boxed();
                 }
             }
-            Err(err) => {
-                return async move { Err(sc_transaction_pool::error::Error::Blockchain(err.into())) }
-                    .boxed();
+            Err(_err) => {
+                // TODO: Un-comment in the next major release
+                // return async move { Err(sc_transaction_pool::error::Error::Blockchain(err.into())) }
+                //     .boxed();
             }
         }
 
