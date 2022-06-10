@@ -63,6 +63,14 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
 
+/// Additional subspace specific genesis parameters.
+struct GenesisParams {
+    enable_rewards: bool,
+    enable_storage_access: bool,
+    allow_authoring_by_anyone: bool,
+    enable_disable_pallets: bool,
+}
+
 pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
 {
     ConsensusChainSpec::from_json_bytes(GEMINI_1_CHAIN_SPEC)
@@ -129,10 +137,12 @@ pub fn gemini_config_compiled(
                     ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
                         .expect("Wrong Executor authority address"),
                 ),
-                false,
-                false,
-                false,
-                false,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: false,
+                    enable_disable_pallets: false,
+                },
             )
         },
         // Bootnodes
@@ -183,10 +193,12 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
-                false,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_disable_pallets: false,
+                },
             )
         },
         // Bootnodes
@@ -239,10 +251,12 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
-                false,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_disable_pallets: false,
+                },
             )
         },
         // Bootnodes
@@ -270,11 +284,15 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     executor_authority: (AccountId, ExecutorId),
-    enable_rewards: bool,
-    enable_storage_access: bool,
-    allow_authoring_by_anyone: bool,
-    enable_disable_pallets: bool,
+    genesis_params: GenesisParams,
 ) -> GenesisConfig {
+    let GenesisParams {
+        enable_rewards,
+        enable_storage_access,
+        allow_authoring_by_anyone,
+        enable_disable_pallets,
+    } = genesis_params;
+
     GenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
