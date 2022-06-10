@@ -22,18 +22,32 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_system::pallet_prelude::*;
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub trait Store)]
     pub struct Pallet<T>(_);
 
     /// Enable the signed extension `DisablePallets`.
     #[pallet::storage]
     #[pallet::getter(fn enable_disable_pallets)]
-    pub(super) type EnableDisablePallets<T> = StorageValue<_, bool, ValueQuery>;
+    pub type EnableDisablePallets<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// Set new value of [`EnableDisablePallets`].
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn set_enable_disable_pallets(origin: OriginFor<T>, new: bool) -> DispatchResult {
+            ensure_root(origin)?;
+
+            EnableDisablePallets::<T>::put(new);
+
+            Ok(())
+        }
+    }
 
     #[pallet::genesis_config]
     pub struct GenesisConfig {
