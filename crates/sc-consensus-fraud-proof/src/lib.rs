@@ -18,7 +18,7 @@
 
 use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
-use sp_api::{Core, ProvideRuntimeApi, RuntimeApiInfo, TransactionFor};
+use sp_api::{ApiExt, ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -88,18 +88,12 @@ where
         let parent_hash = *block.header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
-        let runtime_version = self
+        let api_version = self
             .client
             .runtime_api()
-            .version(&parent_block_id)
-            .map_err(|e| {
-                ConsensusError::ClientImport(format!(
-                    "Unable to retrieve current runtime version: {e}"
-                ))
-            })?;
-
-        let api_version = runtime_version
-            .api_version(&<dyn ExecutorApi<Block, SecondaryHash>>::ID)
+            .api_version::<dyn ExecutorApi<Block, SecondaryHash>>(&parent_block_id)
+            .ok()
+            .flatten()
             .ok_or_else(|| {
                 ConsensusError::ClientImport(format!(
                     "Unable to retrieve api version of ExecutorApi at block {parent_hash}"

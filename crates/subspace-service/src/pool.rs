@@ -13,7 +13,7 @@ use sc_transaction_pool_api::{
     ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
     TransactionStatusStreamFor, TxHash,
 };
-use sp_api::{Core, ProvideRuntimeApi, RuntimeApiInfo};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -124,26 +124,23 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let executor_api_version =
-            match self
-                .client
-                .runtime_api()
-                .version(at)
-                .ok()
-                .and_then(|runtime_version| {
-                    runtime_version
-                        .api_version(&<dyn ExecutorApi<Block, cirrus_primitives::Hash>>::ID)
-                }) {
-                Some(api_version) => api_version,
-                None => {
-                    return async move {
-                        Err(sc_transaction_pool::error::Error::RuntimeApi(
-                            "Unable to retrieve ExecutorApi's api version".to_string(),
-                        ))
-                    }
-                    .boxed();
+        let executor_api_version = match self
+            .client
+            .runtime_api()
+            .api_version::<dyn ExecutorApi<Block, cirrus_primitives::Hash>>(at)
+            .ok()
+            .flatten()
+        {
+            Some(api_version) => api_version,
+            None => {
+                return async move {
+                    Err(sc_transaction_pool::error::Error::RuntimeApi(
+                        "Unable to retrieve ExecutorApi's api version".to_string(),
+                    ))
                 }
-            };
+                .boxed();
+            }
+        };
 
         // `extract_fraud_proof` is added since ExecutorApi version 2
         // TODO: reset the ExecutorApi api version and remove this check when the network is reset.
