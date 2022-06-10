@@ -187,7 +187,11 @@ impl MultiFarming {
             }))
             .detach();
 
-            bootstrap_nodes.extend(listen_on);
+            bootstrap_nodes.extend(
+                listen_on
+                    .into_iter()
+                    .map(|listen_on| listen_on.with(Protocol::P2p(node.id().into()))),
+            );
             networking_node_runners.push(node_runner);
             plots.push(plot);
             commitments.push(plot_commitments);
