@@ -118,7 +118,7 @@ where
 
 struct BlockHashesToArchive<BlockHash> {
     block_hashes: Vec<BlockHash>,
-    best_archived: BlockHash,
+    best_archived: Option<BlockHash>,
 }
 
 fn block_hashes_to_archive<Block, Client>(
@@ -134,8 +134,7 @@ where
     let block_range = blocks_to_archive_from..=blocks_to_archive_to;
     let mut block_hashes = Vec::new();
     let mut block_hash_to_check = best_block_hash;
-    // Genesis block hash by default
-    let mut best_archived = Block::Hash::default();
+    let mut best_archived = None;
 
     loop {
         let header = client
@@ -146,8 +145,8 @@ where
         if block_range.contains(header.number()) {
             block_hashes.push(block_hash_to_check);
 
-            if best_archived == Block::Hash::default() {
-                best_archived = block_hash_to_check;
+            if best_archived.is_none() {
+                best_archived.replace(block_hash_to_check);
             }
         }
 
@@ -168,7 +167,7 @@ struct InitializedArchiver<BlockHash> {
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
     older_archived_segments: Vec<ArchivedSegment>,
-    best_archived_block_hash: BlockHash,
+    best_archived_block_hash: Option<BlockHash>,
 }
 
 fn initialize_archiver<Block, Client>(
@@ -231,8 +230,7 @@ where
     };
 
     let mut older_archived_segments = Vec::new();
-    // Genesis block hash by default
-    let mut best_archived_block_hash = Block::Hash::default();
+    let mut best_archived_block_hash = None;
 
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     {
@@ -435,18 +433,20 @@ pub fn start_subspace_archiver<Block, Client>(
                         block_hash_to_archive
                     );
 
-                    if parent_block_hash != best_archived_block_hash {
-                        error!(
-                            target: "subspace",
-                            "Attempt to switch to a different fork beyond archiving depth, can't \
-                            do it: parent block hash {}, best archived block hash {}",
-                            parent_block_hash,
-                            best_archived_block_hash
-                        );
-                        return;
+                    if let Some(best_archived_block_hash) = best_archived_block_hash {
+                        if parent_block_hash != best_archived_block_hash {
+                            error!(
+                                target: "subspace",
+                                "Attempt to switch to a different fork beyond archiving depth, \
+                                can't do it: parent block hash {}, best archived block hash {}",
+                                parent_block_hash,
+                                best_archived_block_hash
+                            );
+                            return;
+                        }
                     }
 
-                    best_archived_block_hash = block_hash_to_archive;
+                    best_archived_block_hash.replace(block_hash_to_archive);
 
                     let block_object_mappings = client
                         .runtime_api()
