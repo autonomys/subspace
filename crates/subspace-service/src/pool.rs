@@ -157,42 +157,42 @@ where
                         let at = *at;
 
                         return async move {
-                        let (verified_result_sender, verified_result_receiver) = oneshot::channel();
+                            let (verified_result_sender, verified_result_receiver) = oneshot::channel();
 
-                        // Verify the fraud proof in another blocking task as it might be pretty heavy.
-                        spawner.spawn_blocking(
-                            "txpool-fraud-proof-verification",
-                            None,
-                            async move {
-                                let verified_result =
-                                    fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
-                                verified_result_sender
-                                    .send(verified_result)
-                                    .expect("Failed to send the verified fraud proof result");
-                            }
-                            .boxed(),
-                        );
+                            // Verify the fraud proof in another blocking task as it might be pretty heavy.
+                            spawner.spawn_blocking(
+                                "txpool-fraud-proof-verification",
+                                None,
+                                async move {
+                                    let verified_result =
+                                        fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
+                                    verified_result_sender
+                                        .send(verified_result)
+                                        .expect("Failed to send the verified fraud proof result");
+                                }
+                                .boxed(),
+                            );
 
-                        match verified_result_receiver.await  {
-                            Ok(verified_result) => {
-                                match verified_result {
-                                    Ok(_) => inner.validate_transaction(&at, source, uxt).await,
-                                    Err(err) => {
-                                        tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                                        Err(TxPoolError::InvalidTransaction(
-                                            sp_executor::InvalidTransactionCode::FraudProof.into(),
-                                        )
-                                        .into())
+                            match verified_result_receiver.await  {
+                                Ok(verified_result) => {
+                                    match verified_result {
+                                        Ok(_) => inner.validate_transaction(&at, source, uxt).await,
+                                        Err(err) => {
+                                            tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
+                                            Err(TxPoolError::InvalidTransaction(
+                                                sp_executor::InvalidTransactionCode::FraudProof.into(),
+                                            )
+                                            .into())
+                                        }
                                     }
                                 }
-                            }
-                            Err(err) => {
-                                tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
-                                Err(TxPoolError::UnknownTransaction(UnknownTransaction::CannotLookup).into())
+                                Err(err) => {
+                                    tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
+                                    Err(TxPoolError::UnknownTransaction(UnknownTransaction::CannotLookup).into())
+                                }
                             }
                         }
-                    }
-                    .boxed();
+                        .boxed();
                     }
                 }
                 Err(err) => {
