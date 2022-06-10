@@ -274,6 +274,7 @@ where
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
         telemetry.as_ref().map(|x| x.handle()),
+        config.role.is_authority(),
     )?;
 
     Ok(PartialComponents {
