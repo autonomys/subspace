@@ -16,7 +16,7 @@ type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;
 #[test]
 fn test_is_equivocation_proof_valid() {
     let keypair = Keypair::generate();
-    let offender: FarmerPublicKey = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+    let offender = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let slot = Slot::from(1);
     let solution = Solution {
         public_key: offender.clone(),
