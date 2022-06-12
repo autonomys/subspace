@@ -312,7 +312,7 @@ pub fn generate_equivocation_proof(
                 )
                 .to_bytes(),
         );
-        let seal = DigestItem::subspace_seal(signature.into());
+        let seal = DigestItem::subspace_seal(signature);
         header.digest_mut().push(seal);
     };
 
