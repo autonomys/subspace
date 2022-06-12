@@ -22,6 +22,8 @@
 pub mod digests;
 pub mod inherents;
 pub mod offence;
+#[cfg(test)]
+mod tests;
 pub mod verification;
 
 use crate::digests::{
@@ -38,12 +40,12 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::{ConsensusEngineId, RuntimeAppPublic};
+use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
     Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
 };
-use subspace_solving::create_tag_signature_transcript;
+use subspace_solving::{create_tag_signature_transcript, REWARD_SIGNING_CONTEXT};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -162,7 +164,13 @@ where
     };
     let pre_hash = header.hash();
 
-    offender.verify(&pre_hash, &seal)
+    verification::check_reward_signature(
+        pre_hash.as_ref(),
+        &seal,
+        offender,
+        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+    )
+    .is_ok()
 }
 
 /// Verifies the equivocation proof by making sure that: both headers have
