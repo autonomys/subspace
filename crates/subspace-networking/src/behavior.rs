@@ -74,6 +74,7 @@ impl Behavior {
                 }]
                 .into_iter(),
             )
+            //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
         }
     }

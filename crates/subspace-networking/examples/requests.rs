@@ -80,7 +80,6 @@ async fn main() {
                 PiecesByRangeRequest {
                     from: PieceIndexHash([1u8; 32]),
                     to: PieceIndexHash([1u8; 32]),
-                    next_piece_hash_index: None,
                 },
             )
             .await

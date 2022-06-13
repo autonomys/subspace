@@ -49,9 +49,6 @@ pub struct PiecesByRangeRequest {
     pub from: PieceIndexHash,
     /// End of the requested range
     pub to: PieceIndexHash,
-    /// Defines starting point of the subsequent requests. Serves like a cursor.
-    /// None means starting from the beginning.
-    pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
 /// Pieces-by-range protocol response. Assumes requests with paging.
@@ -160,6 +157,6 @@ enum PieceByRangeHandleRequestError {
     #[error("Failed to send response.")]
     SendResponse,
 
-    #[error("Incorret request format.")]
+    #[error("Incorrect request format.")]
     InvalidRequestFormat,
 }

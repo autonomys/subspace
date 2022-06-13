@@ -10,7 +10,6 @@ async fn pieces_by_range_protocol_smoke() {
     let request = PiecesByRangeRequest {
         from: PieceIndexHash([1u8; 32]),
         to: PieceIndexHash([1u8; 32]),
-        next_piece_hash_index: None,
     };
 
     let piece_bytes: Vec<u8> = Piece::default().into();

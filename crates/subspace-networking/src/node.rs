@@ -252,10 +252,10 @@ impl Node {
 
         // calculate the middle of the range (big endian)
         let middle = {
-            let f = U256::from(&from.0);
-            let t = U256::from(&to.0);
+            let from = U256::from_big_endian(&from.0);
+            let to = U256::from_big_endian(&to.0);
             // min + (max - min) / 2
-            let middle = f.div(2) + t.div(2);
+            let middle = from.div(2) + to.div(2);
             let mut buf: [u8; 32] = [0; 32];
             middle.to_big_endian(&mut buf);
             buf
@@ -301,14 +301,7 @@ impl Node {
                 );
                 // request data by range and starting point
                 let response = node
-                    .send_pieces_by_range_request(
-                        peer_id,
-                        PiecesByRangeRequest {
-                            from,
-                            to,
-                            next_piece_hash_index,
-                        },
-                    )
+                    .send_pieces_by_range_request(peer_id, PiecesByRangeRequest { from, to })
                     .await
                     .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
 
