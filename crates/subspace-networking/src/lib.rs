@@ -31,4 +31,4 @@ pub use crate::node::{Node, TopicSubscription};
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};
 pub use libp2p;
-pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse};
+pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};

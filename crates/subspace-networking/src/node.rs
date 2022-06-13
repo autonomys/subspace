@@ -1,4 +1,4 @@
-use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse};
+use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -13,7 +13,7 @@ use parity_scale_codec::Decode;
 use std::ops::{Deref, DerefMut, Div};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, PiecesToPlot, U256};
+use subspace_core_primitives::{PieceIndexHash, U256};
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 

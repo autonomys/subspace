@@ -1,9 +1,9 @@
-use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse};
+use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
-use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
+use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 
 #[tokio::test]
 async fn pieces_by_range_protocol_smoke() {

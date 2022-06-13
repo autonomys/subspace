@@ -31,9 +31,8 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, PiecesToPlot};
+use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash};
 use tracing::{debug, trace};
 
 const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
@@ -42,8 +41,20 @@ const REQUESTS_BUFFER_SIZE: usize = 50;
 /// Pieces-by-range-protocol name.
 pub const PROTOCOL_NAME: &str = "/sync/pieces-by-range/v1";
 
+//TODO: A candidate for migrating to a separate crate.
+/// Collection of pieces that potentially need to be plotted
+#[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PiecesToPlot {
+    /// Piece indexes for each of the `pieces`
+    pub piece_indexes: Vec<PieceIndex>,
+    /// Pieces themselves
+    pub pieces: FlatPieces,
+}
+
 /// Pieces-by-range protocol request. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
     pub from: PieceIndexHash,
@@ -52,7 +63,8 @@ pub struct PiecesByRangeRequest {
 }
 
 /// Pieces-by-range protocol response. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PiecesByRangeResponse {
     /// Returned data.
     pub pieces: PiecesToPlot,

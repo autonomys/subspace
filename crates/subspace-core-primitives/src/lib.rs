@@ -594,13 +594,3 @@ mod construct_uint {
         }
     }
 }
-
-/// Collection of pieces that potentially need to be plotted
-#[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PiecesToPlot {
-    /// Piece indexes for each of the `pieces`
-    pub piece_indexes: Vec<PieceIndex>,
-    /// Pieces themselves
-    pub pieces: FlatPieces,
-}

@@ -9,7 +9,7 @@ mod tests;
 use crate::commitments::Commitments;
 use crate::plot::Plot;
 use std::sync::Arc;
-use subspace_core_primitives::PiecesToPlot;
+use subspace_networking::PiecesToPlot;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use tracing::error;
 

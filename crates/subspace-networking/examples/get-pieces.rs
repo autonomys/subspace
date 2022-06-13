@@ -3,8 +3,8 @@ use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
-use subspace_networking::{Config, PiecesByRangeResponse};
+use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
+use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
 
 #[tokio::main]
 async fn main() {

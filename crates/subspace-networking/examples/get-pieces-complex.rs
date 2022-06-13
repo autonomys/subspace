@@ -5,8 +5,8 @@ use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
-use subspace_networking::{Config, PiecesByRangeResponse};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
+use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
 
 #[tokio::main]
 async fn main() {
