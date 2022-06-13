@@ -513,17 +513,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    OnRuntimeUpgrade,
 >;
-
-pub struct OnRuntimeUpgrade;
-impl frame_support::traits::OnRuntimeUpgrade for OnRuntimeUpgrade {
-    fn on_runtime_upgrade() -> u64 {
-        // Gemini 1b still disallowes the pallet executor.
-        <RuntimeConfigs as pallet_runtime_configs::Store>::EnableDisablePallets::put(true);
-        RocksDbWeight::get().writes(1)
-    }
-}
 
 fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     match &ext.function {

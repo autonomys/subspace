@@ -68,7 +68,7 @@ struct GenesisParams {
     enable_rewards: bool,
     enable_storage_access: bool,
     allow_authoring_by_anyone: bool,
-    enable_disable_pallets: bool,
+    enable_executor: bool,
 }
 
 pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
@@ -141,7 +141,7 @@ pub fn gemini_config_compiled(
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by_anyone: false,
-                    enable_disable_pallets: false,
+                    enable_executor: false,
                 },
             )
         },
@@ -197,7 +197,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by_anyone: true,
-                    enable_disable_pallets: false,
+                    enable_executor: true,
                 },
             )
         },
@@ -255,7 +255,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by_anyone: true,
-                    enable_disable_pallets: false,
+                    enable_executor: true,
                 },
             )
         },
@@ -276,7 +276,6 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
 }
 
 /// Configure initial storage state for FRAME modules.
-#[allow(clippy::too_many_arguments)]
 fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
@@ -290,7 +289,7 @@ fn subspace_genesis_config(
         enable_rewards,
         enable_storage_access,
         allow_authoring_by_anyone,
-        enable_disable_pallets,
+        enable_executor,
     } = genesis_params;
 
     GenesisConfig {
@@ -313,8 +312,6 @@ fn subspace_genesis_config(
         executor: ExecutorConfig {
             executor: Some(executor_authority),
         },
-        runtime_configs: RuntimeConfigsConfig {
-            enable_disable_pallets,
-        },
+        runtime_configs: RuntimeConfigsConfig { enable_executor },
     }
 }

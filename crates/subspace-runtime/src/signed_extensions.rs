@@ -76,7 +76,7 @@ impl SignedExtension for DisablePallets {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        if RuntimeConfigs::enable_disable_pallets() && matches!(call, Call::Executor(_)) {
+        if matches!(call, Call::Executor(_)) && !RuntimeConfigs::enable_executor() {
             InvalidTransaction::Call.into()
         } else {
             Ok(ValidTransaction::default())

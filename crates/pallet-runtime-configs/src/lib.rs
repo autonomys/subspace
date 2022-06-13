@@ -22,56 +22,32 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
-    use frame_system::pallet_prelude::*;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub trait Store)]
     pub struct Pallet<T>(_);
 
-    /// Enable the signed extension `DisablePallets`.
+    /// Sets this value to `true` to enable the signed extension `DisablePallets` which
+    /// disallowes the Call from pallet-executor.
     #[pallet::storage]
-    #[pallet::getter(fn enable_disable_pallets)]
-    pub type EnableDisablePallets<T> = StorageValue<_, bool, ValueQuery>;
+    #[pallet::getter(fn enable_executor)]
+    pub type EnableExecutor<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
 
-    #[pallet::call]
-    impl<T: Config> Pallet<T> {
-        /// Set new value of [`EnableDisablePallets`].
-        #[pallet::weight(T::DbWeight::get().writes(1))]
-        pub fn set_enable_disable_pallets(origin: OriginFor<T>, new: bool) -> DispatchResult {
-            ensure_root(origin)?;
-
-            EnableDisablePallets::<T>::put(new);
-
-            Ok(())
-        }
-    }
-
     #[pallet::genesis_config]
+    #[derive(Default)]
     pub struct GenesisConfig {
-        pub enable_disable_pallets: bool,
-    }
-
-    #[cfg(feature = "std")]
-    impl Default for GenesisConfig {
-        fn default() -> Self {
-            Self {
-                // Enable the pallet Call filter by default.
-                enable_disable_pallets: true,
-            }
-        }
+        pub enable_executor: bool,
     }
 
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
-            let Self {
-                enable_disable_pallets,
-            } = self;
+            let Self { enable_executor } = self;
 
-            <EnableDisablePallets<T>>::put(enable_disable_pallets);
+            <EnableExecutor<T>>::put(enable_executor);
         }
     }
 }
