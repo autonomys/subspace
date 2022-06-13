@@ -436,6 +436,8 @@ impl pallet_object_store::Config for Runtime {
     type Event = Event;
 }
 
+impl pallet_runtime_configs::Config for Runtime {}
+
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
     pub const MinVestedTransfer: Balance = 0;
@@ -473,6 +475,7 @@ construct_runtime!(
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
         Executor: pallet_executor = 12,
+        RuntimeConfigs: pallet_runtime_configs = 14,
 
         Vesting: orml_vesting = 13,
 

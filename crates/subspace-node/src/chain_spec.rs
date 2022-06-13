@@ -27,8 +27,8 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
+    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -62,6 +62,14 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZe9YzXeEXe7sK5xLR8yCmbU8bPJDTZpNpNbToKvSJBUiEo", 18_067),
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
+
+/// Additional subspace specific genesis parameters.
+struct GenesisParams {
+    enable_rewards: bool,
+    enable_storage_access: bool,
+    allow_authoring_by_anyone: bool,
+    enable_executor: bool,
+}
 
 pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
 {
@@ -129,9 +137,12 @@ pub fn gemini_config_compiled(
                     ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
                         .expect("Wrong Executor authority address"),
                 ),
-                false,
-                false,
-                false,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: false,
+                    enable_executor: false,
+                },
             )
         },
         // Bootnodes
@@ -182,9 +193,12 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_executor: true,
+                },
             )
         },
         // Bootnodes
@@ -237,9 +251,12 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_executor: true,
+                },
             )
         },
         // Bootnodes
@@ -259,7 +276,6 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
 }
 
 /// Configure initial storage state for FRAME modules.
-#[allow(clippy::too_many_arguments)]
 fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
@@ -267,10 +283,15 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     executor_authority: (AccountId, ExecutorId),
-    enable_rewards: bool,
-    enable_storage_access: bool,
-    allow_authoring_by_anyone: bool,
+    genesis_params: GenesisParams,
 ) -> GenesisConfig {
+    let GenesisParams {
+        enable_rewards,
+        enable_storage_access,
+        allow_authoring_by_anyone,
+        enable_executor,
+    } = genesis_params;
+
     GenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
@@ -291,5 +312,6 @@ fn subspace_genesis_config(
         executor: ExecutorConfig {
             executor: Some(executor_authority),
         },
+        runtime_configs: RuntimeConfigsConfig { enable_executor },
     }
 }
