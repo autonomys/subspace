@@ -1,11 +1,11 @@
-mod commitment_databases;
+mod databases;
 mod metadata;
 #[cfg(test)]
 mod tests;
 
 use crate::plot::{PieceOffset, Plot};
 use arc_swap::ArcSwapOption;
-use commitment_databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
+use databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
 use parking_lot::Mutex;
 use rayon::prelude::*;
