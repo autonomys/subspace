@@ -185,6 +185,10 @@ impl Commitments {
     }
 
     pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
+        if pieces.is_empty() {
+            return Ok(());
+        }
+
         for db_entry in self.get_db_entries() {
             let salt = db_entry.salt();
             let db_guard = db_entry.lock();
@@ -209,6 +213,10 @@ impl Commitments {
         F: Fn() -> Iter,
         Iter: Iterator<Item = (PieceOffset, &'iter [u8])>,
     {
+        if pieces_with_offsets().next().is_none() {
+            return Ok(());
+        }
+
         for db_entry in self.get_db_entries() {
             let salt = db_entry.salt();
             let db_guard = db_entry.lock();
