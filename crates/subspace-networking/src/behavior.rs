@@ -1,10 +1,10 @@
 pub(crate) mod custom_record_store;
 
-use super::request_responses::{
-    Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
-    RequestResponsesBehaviour,
-};
 use crate::create::ValueGetter;
+use crate::request_responses::{
+    Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
+    RequestResponseHandlerRunner, RequestResponseInstanceConfig, RequestResponsesBehaviour,
+};
 use custom_record_store::CustomRecordStore;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
@@ -25,8 +25,10 @@ pub(crate) struct BehaviorConfig {
     pub(crate) gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub(crate) value_getter: ValueGetter,
-    /// The configuration for the [`RequestResponsesBehaviour`].
-    pub(crate) request_response: RequestResponseConfig,
+    /// The configuration for the [`RequestResponsesBehaviour`] protocol.
+    pub(crate) pieces_by_range_protocol_config: RequestResponseConfig,
+    /// The pieces-by-range request handler.
+    pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
 }
 
 #[derive(NetworkBehaviour)]
@@ -66,7 +68,11 @@ impl Behavior {
             gossipsub,
             ping: Ping::default(),
             request_response: RequestResponsesBehaviour::new(
-                vec![config.request_response].into_iter(),
+                vec![RequestResponseInstanceConfig {
+                    config: config.pieces_by_range_protocol_config,
+                    handler: config.pieces_by_range_request_handler,
+                }]
+                .into_iter(),
             )
             .expect("RequestResponse protocols registration failed."),
         }

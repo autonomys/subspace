@@ -1,5 +1,3 @@
-// This file is part of Substrate.
-
 // Copyright (C) 2019-2022 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
@@ -39,11 +37,13 @@
 #[cfg(test)]
 mod tests;
 
+use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 use libp2p::core::connection::{ConnectionId, ListenerId};
 use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
 use libp2p::request_response::handler::RequestResponseHandler;
+pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseCodec, RequestResponseConfig,
     RequestResponseEvent, RequestResponseMessage, ResponseChannel,
@@ -60,10 +60,24 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter};
-
-pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use tracing::{debug, error, warn};
+
 const LOG_TARGET: &str = "request-response-protocols";
+
+#[async_trait]
+/// Runs the underlying protocol handler.
+pub trait RequestResponseHandlerRunner {
+    async fn run(&mut self);
+}
+
+/// A container for the ProtocolConfig instance and an associated protocol handler.
+pub struct RequestResponseInstanceConfig {
+    /// Request-Response protocol config.
+    pub config: ProtocolConfig,
+
+    /// Request-Response protocol instance runner.
+    pub handler: Box<dyn RequestResponseHandlerRunner + Send>,
+}
 
 /// Configuration for a single request-response protocol.
 #[derive(Debug, Clone)]
@@ -113,11 +127,10 @@ pub struct ProtocolConfig {
 
 impl ProtocolConfig {
     /// Creates request-response protocol config.
-    #[allow(clippy::identity_op)] // for clarity
     pub fn new(protocol_name: String) -> ProtocolConfig {
         ProtocolConfig {
             name: protocol_name.into(),
-            max_request_size: 1 * 1024 * 1024,
+            max_request_size: 1024 * 1024,
             max_response_size: 16 * 1024 * 1024,
             request_timeout: Duration::from_secs(15),
             inbound_queue: None,
@@ -275,6 +288,9 @@ pub struct RequestResponsesBehaviour {
     /// Pending message request, holds `MessageRequest` as a Future state to poll it
     /// until we get a response from `Peerset`
     message_request: Option<MessageRequest>,
+
+    /// Request-Response protocol handlers configured for this protocol factory.
+    protocol_handlers: Vec<Box<dyn RequestResponseHandlerRunner + Send>>,
 }
 
 // This is a state of processing incoming request Message.
@@ -298,9 +314,16 @@ struct RequestProcessingOutcome {
 impl RequestResponsesBehaviour {
     /// Creates a new behaviour. Must be passed a list of supported protocols. Returns an error if
     /// the same protocol is passed twice.
-    pub fn new(list: impl IntoIterator<Item = ProtocolConfig>) -> Result<Self, RegisterError> {
+    pub fn new(
+        list: impl IntoIterator<Item = RequestResponseInstanceConfig>,
+    ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
-        for protocol in list {
+        let mut protocol_handlers = Vec::new();
+        for RequestResponseInstanceConfig {
+            config: protocol,
+            handler,
+        } in list
+        {
             let mut cfg = RequestResponseConfig::default();
             cfg.set_connection_keep_alive(Duration::from_secs(10));
             cfg.set_request_timeout(protocol.request_timeout);
@@ -326,6 +349,8 @@ impl RequestResponsesBehaviour {
                     return Err(RegisterError::DuplicateProtocol(e.key().clone()))
                 }
             };
+
+            protocol_handlers.push(handler);
         }
 
         Ok(Self {
@@ -335,6 +360,7 @@ impl RequestResponsesBehaviour {
             pending_responses_arrival_time: Default::default(),
             send_feedback: Default::default(),
             message_request: None,
+            protocol_handlers,
         })
     }
 
@@ -553,8 +579,6 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
     ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
         'poll_all: loop {
             if let Some(message_request) = self.message_request.take() {
-                // Now we can can poll `MessageRequest` until we get the reputation
-
                 let MessageRequest {
                     peer,
                     request_id,
@@ -639,6 +663,12 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                         }
                     }
                 }
+            }
+
+            // Poll request-responses protocol handlers.
+            for rq_rs_runner in &mut self.protocol_handlers {
+                // Future.Output == (), so we don't need a result here
+                let _ = rq_rs_runner.run().poll_unpin(cx);
             }
 
             // Poll request-responses protocols.

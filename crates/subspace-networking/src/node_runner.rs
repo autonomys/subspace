@@ -1,5 +1,5 @@
 use crate::behavior::{Behavior, Event};
-use crate::pieces_by_range_handler::{self, PiecesByRangeRequestHandler};
+use crate::pieces_by_range_handler::{self};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
@@ -16,7 +16,6 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use parity_scale_codec::Encode;
-use std::cell::Cell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -50,10 +49,6 @@ pub struct NodeRunner {
     /// Topic subscription senders for logical subscriptions (multiple logical subscriptions can be
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
-
-    /// The piece-by-range protocol handler. We use Cell here to decouple
-    /// creation and running of this handler.
-    pieces_by_range_handler: Cell<Option<PiecesByRangeRequestHandler>>,
 }
 
 impl NodeRunner {
@@ -63,7 +58,6 @@ impl NodeRunner {
         swarm: Swarm<Behavior>,
         shared: Arc<Shared>,
         initial_random_query_interval: Duration,
-        pieces_by_range_handler: Cell<Option<PiecesByRangeRequestHandler>>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -74,22 +68,10 @@ impl NodeRunner {
             query_id_receivers: HashMap::default(),
             next_subscription_id: 0,
             topic_subscription_senders: HashMap::default(),
-            pieces_by_range_handler,
         }
     }
 
     pub async fn run(mut self) {
-        // Retrieve the pieces-by-range handler object.
-        let pieces_by_range_handler = self
-            .pieces_by_range_handler
-            .take()
-            .expect("Pieces-by-range handler must be set at this point.");
-
-        // Run pieces-by-range protocol handler execution.
-        tokio::spawn(async move {
-            pieces_by_range_handler.run().await;
-        });
-
         // We'll make the first query right away and continue at the interval.
         let mut random_query_timeout = Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse());
 
