@@ -48,8 +48,8 @@ impl Deref for DbEntry {
 }
 
 impl DbEntry {
-    pub(super) fn salt(&self) -> &Salt {
-        &self.salt
+    pub(super) fn salt(&self) -> Salt {
+        self.salt
     }
 }
 
@@ -121,14 +121,6 @@ impl CommitmentDatabases {
         }
 
         Ok::<_, CommitmentError>(commitment_databases)
-    }
-
-    /// Get salts for all current database entries
-    pub(super) fn get_salts(&self) -> Vec<Salt> {
-        self.databases
-            .iter()
-            .map(|(salt, _db_entry)| *salt)
-            .collect()
     }
 
     /// Returns current and next `db_entry`.

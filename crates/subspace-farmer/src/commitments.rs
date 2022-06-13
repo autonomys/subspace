@@ -179,22 +179,8 @@ impl Commitments {
     }
 
     pub(crate) fn remove_pieces(&self, pieces: &[Piece]) -> Result<(), CommitmentError> {
-        let salts = self.inner.commitment_databases.lock().get_salts();
-
-        for salt in salts {
-            let db_entry = match self
-                .inner
-                .commitment_databases
-                .lock()
-                .get_db_entry(&salt)
-                .cloned()
-            {
-                Some(db_entry) => db_entry,
-                None => {
-                    continue;
-                }
-            };
-
+        for db_entry in self.get_db_entries() {
+            let salt = db_entry.salt();
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
@@ -217,22 +203,8 @@ impl Commitments {
         F: Fn() -> Iter,
         Iter: Iterator<Item = (PieceOffset, &'iter [u8])>,
     {
-        let salts = self.inner.commitment_databases.lock().get_salts();
-
-        for salt in salts {
-            let db_entry = match self
-                .inner
-                .commitment_databases
-                .lock()
-                .get_db_entry(&salt)
-                .cloned()
-            {
-                Some(db_entry) => db_entry,
-                None => {
-                    continue;
-                }
-            };
-
+        for db_entry in self.get_db_entries() {
+            let salt = db_entry.salt();
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
@@ -257,7 +229,7 @@ impl Commitments {
         range: u64,
         salt: Salt,
     ) -> Option<(Tag, PieceOffset)> {
-        let db_entry = self.get_local_db_entry(&salt)?;
+        let db_entry = self.get_db_entry(salt)?;
 
         let db_guard = db_entry.try_lock()?;
         let db = db_guard.clone()?;
@@ -282,7 +254,7 @@ impl Commitments {
         self.inner.handlers.status_change.add(callback)
     }
 
-    fn get_local_db_entry(&self, salt: &Salt) -> Option<Arc<DbEntry>> {
+    fn get_db_entry(&self, salt: Salt) -> Option<Arc<DbEntry>> {
         if let Some(current) = self.inner.current.load_full() {
             if current.salt() == salt {
                 return Some(current);
@@ -296,6 +268,14 @@ impl Commitments {
         }
 
         None
+    }
+
+    fn get_db_entries(&self) -> impl Iterator<Item = Arc<DbEntry>> {
+        self.inner
+            .current
+            .load_full()
+            .into_iter()
+            .chain(self.inner.next.load_full())
     }
 }
 
