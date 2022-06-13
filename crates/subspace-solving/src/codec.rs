@@ -216,7 +216,7 @@ impl SubspaceCodec {
 
     #[cfg(feature = "opencl")]
     fn batch_encode_opencl(
-        &mut self,
+        &self,
         pieces: &mut [u8],
         piece_indexes: &[u64],
     ) -> Result<(), opencl::OpenCLEncodeError> {
@@ -232,7 +232,7 @@ impl SubspaceCodec {
             });
 
         self.opencl_encoder
-            .as_mut()
+            .as_ref()
             .unwrap()
             .lock()
             .expect("Lock is never poisoned")
