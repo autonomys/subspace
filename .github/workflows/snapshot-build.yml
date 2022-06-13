@@ -145,19 +145,11 @@ jobs:
         run: sudo apt-get install -y ocl-icd-opencl-dev
         if: runner.os == 'Linux'
 
-      - name: Build (Linux or Windows with CUDA)
+      - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-
-      - name: Build (macOS without CUDA)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
-        if: runner.os == 'macOS'
 
       - name: Sign Application (macOS)
         run: |
