@@ -29,8 +29,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::{FarmerSignature, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
-use sp_core::sr25519::Pair;
-use sp_core::{Pair as PairTrait, H256};
+use sp_core::H256;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
@@ -305,8 +304,15 @@ pub fn generate_equivocation_proof(
     // digest item
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
-        let signature = Pair::from(keypair.secret.clone()).sign(prehash.as_ref());
-        let seal = DigestItem::subspace_seal(signature.into());
+        let signature = FarmerSignature::unchecked_from(
+            keypair
+                .sign(
+                    schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)
+                        .bytes(prehash.as_bytes()),
+                )
+                .to_bytes(),
+        );
+        let seal = DigestItem::subspace_seal(signature);
         header.digest_mut().push(seal);
     };
 

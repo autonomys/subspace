@@ -1173,7 +1173,8 @@ impl<T: Config> Pallet<T> {
         ValidTransaction::with_tag_prefix("SubspaceRootBlock")
             // We assign the maximum priority for any root block.
             .priority(TransactionPriority::MAX)
-            // Should be included immediately into the upcoming block with no exceptions.
+            // Should be included immediately into the current block (this is an inherent
+            // extrinsic) with no exceptions.
             .longevity(0)
             // We don't propagate this. This can never be included on a remote node.
             .propagate(false)
@@ -1193,7 +1194,8 @@ impl<T: Config> Pallet<T> {
             // We assign the maximum priority for any vote.
             .priority(TransactionPriority::MAX)
             // Should be included in the next block or block after that, but not later
-            .longevity(1)
+            .longevity(2)
+            .and_provides(&signed_vote.signature)
             .build()
     }
 

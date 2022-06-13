@@ -389,7 +389,7 @@ mod pallet {
             .priority(TransactionPriority::MAX)
             .and_provides(tag)
             .longevity(TransactionLongevity::MAX)
-            // We need this extrinsic to be propagted to the farmer nodes.
+            // We need this extrinsic to be propagated to the farmer nodes.
             .propagate(true)
             .build()
     }

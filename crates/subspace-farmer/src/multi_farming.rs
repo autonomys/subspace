@@ -53,7 +53,10 @@ fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
 /// Options for `MultiFarming` creation
 pub struct Options<C> {
     pub base_directory: PathBuf,
-    pub client: C,
+    /// Client used for archiving subscriptions
+    pub archiving_client: C,
+    /// Independent client used for farming, such that it is not blocked by archiving
+    pub farming_client: C,
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
@@ -65,7 +68,8 @@ impl MultiFarming {
     pub async fn new<C: RpcClient>(
         Options {
             base_directory,
-            client,
+            archiving_client,
+            farming_client,
             object_mappings,
             reward_address,
             mut bootstrap_nodes,
@@ -89,7 +93,7 @@ impl MultiFarming {
             .enumerate()
             .map(|(plot_index, max_plot_pieces)| {
                 let base_directory = base_directory.to_owned();
-                let client = client.clone();
+                let farming_client = farming_client.clone();
                 let new_plot = new_plot.clone();
 
                 tokio::task::spawn_blocking(move || {
@@ -112,7 +116,7 @@ impl MultiFarming {
                         Farming::start(
                             plot.clone(),
                             plot_commitments.clone(),
-                            client.clone(),
+                            farming_client.clone(),
                             identity.clone(),
                             reward_address,
                         )
@@ -188,7 +192,11 @@ impl MultiFarming {
             }))
             .detach();
 
-            bootstrap_nodes.extend(listen_on);
+            bootstrap_nodes.extend(
+                listen_on
+                    .into_iter()
+                    .map(|listen_on| listen_on.with(Protocol::P2p(node.id().into()))),
+            );
             networking_node_runners.push(node_runner);
             plots.push(plot);
             commitments.push(plot_commitments);
@@ -198,7 +206,7 @@ impl MultiFarming {
             }
         }
 
-        let farmer_metadata = client
+        let farmer_metadata = farming_client
             .farmer_metadata()
             .await
             .map_err(|error| anyhow!(error))?;
@@ -247,7 +255,7 @@ impl MultiFarming {
         });
 
         // Start archiving task
-        let archiving = Archiving::start(farmer_metadata, object_mappings, client.clone(), {
+        let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
             let mut on_pieces_to_plots = plots
                 .iter()
                 .zip(&commitments)

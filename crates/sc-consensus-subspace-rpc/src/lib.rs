@@ -41,7 +41,10 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -109,7 +112,7 @@ struct BlockSignatureSenders {
 #[derive(Default)]
 struct ArchivedSegmentAcknowledgementSenders {
     segment_index: u64,
-    senders: Vec<TracingUnboundedSender<()>>,
+    senders: HashMap<u64, TracingUnboundedSender<()>>,
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
@@ -122,6 +125,7 @@ pub struct SubspaceRpc<Block, Client> {
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     archived_segment_acknowledgement_senders: Arc<Mutex<ArchivedSegmentAcknowledgementSenders>>,
+    next_subscription_id: AtomicU64,
     _phantom: PhantomData<Block>,
 }
 
@@ -162,6 +166,7 @@ where
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
+            next_subscription_id: AtomicU64::default(),
             _phantom: PhantomData::default(),
         }
     }
@@ -406,8 +411,12 @@ where
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
-        let stream = self.archived_segment_notification_stream.subscribe().map(
-            move |archived_segment_notification| {
+        let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
+
+        let stream = self
+            .archived_segment_notification_stream
+            .subscribe()
+            .filter_map(move |archived_segment_notification| {
                 let ArchivedSegmentNotification {
                     archived_segment,
                     acknowledgement_sender,
@@ -426,15 +435,25 @@ where
                         archived_segment_acknowledgement_senders.senders.clear();
                     }
 
-                    archived_segment_acknowledgement_senders
+                    let maybe_archived_segment = match archived_segment_acknowledgement_senders
                         .senders
-                        .push(acknowledgement_sender);
-                }
+                        .entry(subscription_id)
+                    {
+                        Entry::Occupied(_) => {
+                            // No need to do anything, farmer is processing request
+                            None
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(acknowledgement_sender);
 
-                // This will be sent to the farmer
-                archived_segment.as_ref().clone()
-            },
-        );
+                            // This will be sent to the farmer
+                            Some(archived_segment.as_ref().clone())
+                        }
+                    };
+
+                    Box::pin(async move { maybe_archived_segment })
+                }
+            });
 
         let fut = async move {
             if let Some(mut sink) = pending.accept() {
@@ -458,7 +477,16 @@ where
                 archived_segment_acknowledgement_senders.lock();
 
             (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
-                .then(|| archived_segment_acknowledgement_senders_guard.senders.pop())
+                .then(|| {
+                    let last_key = *archived_segment_acknowledgement_senders_guard
+                        .senders
+                        .keys()
+                        .next()?;
+
+                    archived_segment_acknowledgement_senders_guard
+                        .senders
+                        .remove(&last_key)
+                })
                 .flatten()
         };
 
