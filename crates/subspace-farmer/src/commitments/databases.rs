@@ -88,7 +88,7 @@ impl CommitmentDatabases {
             Ok(())
         })?;
 
-        Ok::<_, CommitmentError>(CommitmentDatabases {
+        Ok(CommitmentDatabases {
             base_directory: base_directory.clone(),
             databases,
             metadata: Mutex::new(metadata),
