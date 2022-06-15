@@ -27,14 +27,15 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
+    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const GEMINI_1_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-1.json");
+const X_NET_1_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-1.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -62,6 +63,14 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5FZe9YzXeEXe7sK5xLR8yCmbU8bPJDTZpNpNbToKvSJBUiEo", 18_067),
     ("5FZwEgsvZz1vpeH7UsskmNmTpbfXvAcojjgVfShgbRqgC1nx", 27_800),
 ];
+
+/// Additional subspace specific genesis parameters.
+struct GenesisParams {
+    enable_rewards: bool,
+    enable_storage_access: bool,
+    allow_authoring_by_anyone: bool,
+    enable_executor: bool,
+}
 
 pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
 {
@@ -129,9 +138,12 @@ pub fn gemini_config_compiled(
                     ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
                         .expect("Wrong Executor authority address"),
                 ),
-                false,
-                false,
-                false,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: false,
+                    enable_executor: false,
+                },
             )
         },
         // Bootnodes
@@ -152,6 +164,101 @@ pub fn gemini_config_compiled(
         // Extensions
         ChainSpecExtensions {
             execution_chain_spec: secondary_chain::chain_spec::gemini_config(),
+        },
+    ))
+}
+
+pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(X_NET_1_CHAIN_SPEC)
+}
+
+pub fn x_net_config_compiled(
+) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+    Ok(ConsensusChainSpec::from_genesis(
+        // Name
+        "Subspace X-Net 1",
+        // ID
+        "subspace_x_net_1a",
+        ChainType::Custom("Subspace X-Net 1".to_string()),
+        || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Wrong root account address");
+
+            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+            let vesting_schedules = TOKEN_GRANTS
+                .iter()
+                .flat_map(|&(account_address, amount)| {
+                    let account_id = AccountId::from_ss58check(account_address)
+                        .expect("Wrong vesting account address");
+                    let amount: Balance = amount * SSC;
+
+                    // TODO: Adjust start block to real value before mainnet launch
+                    let start_block = 100_000_000;
+                    let one_month_in_blocks =
+                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
+                            .expect("One month of blocks always fits in u32; qed");
+
+                    // Add balance so it can be locked
+                    balances.push((account_id.clone(), amount));
+
+                    [
+                        // 1/4 of tokens are released after 1 year.
+                        (
+                            account_id.clone(),
+                            start_block,
+                            one_month_in_blocks * 12,
+                            1,
+                            amount / 4,
+                        ),
+                        // 1/48 of tokens are released every month after that for 3 more years.
+                        (
+                            account_id,
+                            start_block + one_month_in_blocks * 12,
+                            one_month_in_blocks,
+                            36,
+                            amount / 48,
+                        ),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            subspace_genesis_config(
+                WASM_BINARY.expect("Wasm binary must be built for Gemini"),
+                sudo_account,
+                balances,
+                vesting_schedules,
+                (
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong Executor account address"),
+                    ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
+                        .expect("Wrong Executor authority address"),
+                ),
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: false,
+                    enable_executor: true,
+                },
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        Some(
+            TelemetryEndpoints::new(vec![
+                (POLKADOT_TELEMETRY_URL.into(), 1),
+                (SUBSPACE_TELEMETRY_URL.into(), 1),
+            ])
+            .map_err(|error| error.to_string())?,
+        ),
+        // Protocol ID
+        Some("subspace-x-net-1a"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::x_net_config(),
         },
     ))
 }
@@ -182,9 +289,12 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_executor: true,
+                },
             )
         },
         // Bootnodes
@@ -237,9 +347,12 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorId>("Alice"),
                 ),
-                false,
-                false,
-                true,
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by_anyone: true,
+                    enable_executor: true,
+                },
             )
         },
         // Bootnodes
@@ -259,7 +372,6 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
 }
 
 /// Configure initial storage state for FRAME modules.
-#[allow(clippy::too_many_arguments)]
 fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
@@ -267,10 +379,15 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     executor_authority: (AccountId, ExecutorId),
-    enable_rewards: bool,
-    enable_storage_access: bool,
-    allow_authoring_by_anyone: bool,
+    genesis_params: GenesisParams,
 ) -> GenesisConfig {
+    let GenesisParams {
+        enable_rewards,
+        enable_storage_access,
+        allow_authoring_by_anyone,
+        enable_executor,
+    } = genesis_params;
+
     GenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
@@ -291,5 +408,6 @@ fn subspace_genesis_config(
         executor: ExecutorConfig {
             executor: Some(executor_authority),
         },
+        runtime_configs: RuntimeConfigsConfig { enable_executor },
     }
 }

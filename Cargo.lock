@@ -4634,6 +4634,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-runtime-configs"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-session"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=5f0aa1feb7250ac7b8c1b9928f87b2420b530e22#5f0aa1feb7250ac7b8c1b9928f87b2420b530e22"
@@ -8186,6 +8196,7 @@ dependencies = [
  "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
+ "pallet-runtime-configs",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",

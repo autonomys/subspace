@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Forum for general questions about Subspace
+    url: https://forum.subspace.network
+    about: |
+      If you have a question about protocol or anything else that is not an engineering-level discussion or definitely a
+      bug, please create a topic on the forum (better yet, search if similar question was already asked). GitHub issues
+      are for developers.

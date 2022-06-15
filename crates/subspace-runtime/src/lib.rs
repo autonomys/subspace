@@ -84,7 +84,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 2,
+    spec_version: 3,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -436,6 +436,8 @@ impl pallet_object_store::Config for Runtime {
     type Event = Event;
 }
 
+impl pallet_runtime_configs::Config for Runtime {}
+
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
     pub const MinVestedTransfer: Balance = 0;
@@ -473,6 +475,7 @@ construct_runtime!(
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
         Executor: pallet_executor = 12,
+        RuntimeConfigs: pallet_runtime_configs = 14,
 
         Vesting: orml_vesting = 13,
 
