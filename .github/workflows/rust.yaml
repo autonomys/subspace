@@ -105,7 +105,7 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --features=subspace-farmer/cuda --all-targets -- -D warnings
+          args: --features=subspace-farmer/opencl --all-targets -- -D warnings
         if: runner.os != 'macOS'
 
       - name: cargo clippy (macOS)

@@ -4431,6 +4431,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "openmp-sys"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3a0ed77d2794d2b9a59123e60e874190626c22b7124ce38959fe59386e317fa"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7138,12 +7147,13 @@ checksum = "eb703cfe953bccee95685111adeedb76fabe4e97549a58d16f03ea7b9367bb32"
 
 [[package]]
 name = "sloth256-189"
-version = "0.3.2"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7b133a57a9d83343174c83a77be5dfbe5c7c4f2f49291967aee4cd53901e0bc"
+checksum = "cad77264d5774ba979d342531c2b6e46c4dd075f557acca7b6a55bbfdda54d8b"
 dependencies = [
  "cc",
  "glob",
+ "openmp-sys",
  "thiserror",
  "which",
 ]

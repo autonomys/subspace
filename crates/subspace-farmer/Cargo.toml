@@ -63,9 +63,9 @@ version = "0.18.0"
 
 [features]
 default = []
-# Compile with CUDA support and use it if compatible GPU is available
-cuda = [
-    "subspace-solving/cuda",
+# Compile with OpenCL support and use it if compatible GPU is available
+opencl = [
+    "subspace-solving/opencl",
 ]
 
 [[bench]]
