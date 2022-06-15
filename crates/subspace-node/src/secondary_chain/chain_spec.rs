@@ -112,6 +112,34 @@ pub fn gemini_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
+pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
+    ExecutionChainSpec::from_genesis(
+        // Name
+        "Subspace X-Net 1 Execution",
+        // ID
+        "subspace_x_net_1a_execution",
+        ChainType::Local,
+        move || {
+            testnet_genesis(vec![
+                // Same with the Sudo account on primary chain.
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Wrong root account address"),
+            ])
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        None,
+        // Protocol ID
+        Some("subspace-x-net-1a-execution"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        None,
+    )
+}
+
 fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
