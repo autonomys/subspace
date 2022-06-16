@@ -70,6 +70,10 @@ impl RpcClient for BenchRpcClient {
         Ok(self.inner.metadata.clone())
     }
 
+    async fn total_pieces(&self) -> Result<u64, MockError> {
+        unreachable!("Unreachable, as we don't start DSN sync for benchmarking")
+    }
+
     async fn subscribe_slot_info(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, MockError> {

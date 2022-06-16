@@ -20,6 +20,10 @@ pub struct MockRpcClient {
 pub struct Inner {
     metadata_sender: mpsc::Sender<FarmerMetadata>,
     metadata_receiver: Arc<Mutex<mpsc::Receiver<FarmerMetadata>>>,
+    // TODO: Use this
+    #[allow(dead_code)]
+    total_pieces_sender: mpsc::Sender<u64>,
+    total_pieces_receiver: Arc<Mutex<mpsc::Receiver<u64>>>,
     slot_into_sender: Mutex<Option<mpsc::Sender<SlotInfo>>>,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     solution_sender: mpsc::Sender<SolutionResponse>,
@@ -43,6 +47,7 @@ impl MockRpcClient {
     pub(crate) fn new() -> Self {
         // channels for MockRPC to communicate with the environment
         let (metadata_sender, metadata_receiver) = mpsc::channel(10);
+        let (total_pieces_sender, total_pieces_receiver) = mpsc::channel(10);
         let (slot_info_sender, slot_info_receiver) = mpsc::channel(10);
         let (solution_sender, solution_receiver) = mpsc::channel(1);
         let (reward_signing_info_sender, reward_signing_info_receiver) = mpsc::channel(10);
@@ -55,6 +60,8 @@ impl MockRpcClient {
             inner: Arc::new(Inner {
                 metadata_sender,
                 metadata_receiver: Arc::new(Mutex::new(metadata_receiver)),
+                total_pieces_sender,
+                total_pieces_receiver: Arc::new(Mutex::new(total_pieces_receiver)),
                 slot_into_sender: Mutex::new(Some(slot_info_sender)),
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 solution_sender,
@@ -141,6 +148,16 @@ impl RpcClient for MockRpcClient {
         Ok(self
             .inner
             .metadata_receiver
+            .lock()
+            .await
+            .try_next()?
+            .unwrap())
+    }
+
+    async fn total_pieces(&self) -> Result<u64, MockError> {
+        Ok(self
+            .inner
+            .total_pieces_receiver
             .lock()
             .await
             .try_next()?

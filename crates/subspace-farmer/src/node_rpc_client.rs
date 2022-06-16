@@ -35,6 +35,13 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
+    async fn total_pieces(&self) -> Result<u64, RpcError> {
+        Ok(self
+            .client
+            .request("subspace_getTotalPieces", rpc_params![])
+            .await?)
+    }
+
     async fn subscribe_slot_info(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, RpcError> {

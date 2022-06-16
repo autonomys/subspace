@@ -63,6 +63,9 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_getFarmerMetadata")]
     fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata>;
 
+    #[method(name = "subspace_getTotalPieces")]
+    fn get_total_pieces(&self) -> RpcResult<u64>;
+
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
 
@@ -198,6 +201,16 @@ where
         };
 
         farmer_metadata.map_err(|error| {
+            error!("Failed to get data from runtime API: {}", error);
+            JsonRpseeError::Custom("Internal error".to_string())
+        })
+    }
+
+    fn get_total_pieces(&self) -> RpcResult<u64> {
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        let runtime_api = self.client.runtime_api();
+
+        runtime_api.total_pieces(&best_block_id).map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })
