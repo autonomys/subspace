@@ -6,7 +6,6 @@ use crate::{
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
@@ -210,6 +209,11 @@ impl MultiFarming {
             .farmer_metadata()
             .await
             .map_err(|error| anyhow!(error))?;
+        let max_plot_size = farmer_metadata.max_plot_size;
+        let total_pieces = farming_client
+            .total_pieces()
+            .await
+            .map_err(|error| anyhow!(error))?;
 
         // Start syncing
         // TODO: Unlock once infinite loop (https://github.com/subspace/subspace/issues/598) is fixed
@@ -229,20 +233,21 @@ impl MultiFarming {
                             let options = SyncOptions {
                                 range_size: PieceIndexHashNumber::MAX / 1024,
                                 address: plot.public_key(),
+                                max_plot_size,
+                                total_pieces,
                             };
                             let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
 
                             dsn::sync(dsn, options, move |pieces, piece_indexes| {
-                                tracing::info!("In plot");
                                 if !plot_pieces(PiecesToPlot {
                                     pieces,
                                     piece_indexes,
                                 }) {
-                                    return ControlFlow::Break(Err(anyhow::anyhow!(
+                                    return Err(anyhow::anyhow!(
                                         "Failed to plot pieces in archiving"
-                                    )));
+                                    ));
                                 }
-                                ControlFlow::Continue(())
+                                Ok(())
                             })
                         })
                         .collect::<FuturesUnordered<_>>();

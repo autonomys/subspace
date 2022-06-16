@@ -4,7 +4,7 @@ use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
@@ -57,6 +57,8 @@ async fn simple_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             address: Default::default(),
+            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            total_pieces: 256,
         },
         {
             let result = Arc::clone(&result);
@@ -68,11 +70,8 @@ async fn simple_test() {
                         .zip(piece_indexes)
                         .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
                 );
-                if result.len() == 256 {
-                    std::ops::ControlFlow::Break(Ok(()))
-                } else {
-                    std::ops::ControlFlow::Continue(())
-                }
+
+                Ok(())
             }
         },
     )
@@ -95,6 +94,8 @@ async fn no_sync_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             address: Default::default(),
+            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            total_pieces: 0,
         },
         {
             let result = Arc::clone(&result);
@@ -106,7 +107,7 @@ async fn no_sync_test() {
                         .zip(piece_indexes)
                         .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
                 );
-                std::ops::ControlFlow::Continue(())
+                Ok(())
             }
         },
     )

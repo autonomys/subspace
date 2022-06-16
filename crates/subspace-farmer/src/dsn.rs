@@ -1,7 +1,6 @@
 use crate::PiecesToPlot;
 use futures::{Stream, StreamExt};
-use num_traits::WrappingAdd;
-use std::ops::{ControlFlow, Range};
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash};
 use subspace_solving::U256;
@@ -13,6 +12,10 @@ pub type PieceIndexHashNumber = U256;
 
 /// Options for syncing
 pub struct SyncOptions {
+    /// Max plot size from node (in pieces)
+    pub max_plot_size: u64,
+    /// Total number of pieces in the network
+    pub total_pieces: u64,
     /// The size of range which we request
     pub range_size: PieceIndexHashNumber,
     /// Address of our plot
@@ -40,6 +43,41 @@ impl DSNSync for NoSync {
     }
 }
 
+async fn sync_sector<DSN, OP>(
+    dsn: &mut DSN,
+    range: Range<PieceIndexHash>,
+    on_pieces: Arc<Mutex<OP>>,
+) -> anyhow::Result<()>
+where
+    DSN: DSNSync + Send + Sized,
+    DSN::Stream: Unpin + Send,
+    // On pieces might `break` with some result from the sync or just continue
+    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()> + Send + 'static,
+{
+    let mut stream = dsn.get_pieces(range).await;
+
+    while let Some(PiecesToPlot {
+        piece_indexes,
+        pieces,
+    }) = stream.next().await
+    {
+        // Writing pieces is usually synchronous, therefore might take some time
+        tokio::task::spawn_blocking({
+            let on_pieces = Arc::clone(&on_pieces);
+            move || {
+                let mut on_pieces = on_pieces
+                    .lock()
+                    .expect("Lock is never poisoned as `on_pieces` never panics");
+                on_pieces(pieces, piece_indexes)
+            }
+        })
+        .await
+        .expect("`on_pieces` must never panic")?;
+    }
+
+    Ok(())
+}
+
 /// Syncs the closest pieces to the public key from the provided DSN.
 ///
 /// It would sync piece with ranges providing in the `options`. It would go concurently upwards and
@@ -50,101 +88,75 @@ where
     DSN: DSNSync + Send + Sized,
     DSN::Stream: Unpin + Send,
     // On pieces might `break` with some result from the sync or just continue
-    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> ControlFlow<anyhow::Result<()>> + Send + 'static,
+    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()> + Send + 'static,
 {
     let SyncOptions {
+        max_plot_size,
+        total_pieces,
         range_size,
         address,
     } = options;
-    let mut increasing_cursor = PieceIndexHashNumber::from(Sha256Hash::from(address));
-    let mut decreasing_cursor = increasing_cursor;
+    let address = PieceIndexHashNumber::from(Sha256Hash::from(address));
+    let max_distance_one_direction = if total_pieces < max_plot_size {
+        PieceIndexHashNumber::MAX / 2
+    } else {
+        PieceIndexHashNumber::MAX / total_pieces * max_plot_size / 2
+    };
+    let (from, is_underflow) = address.overflowing_sub(max_distance_one_direction);
+    let (end, is_overflow) = address.overflowing_add(max_distance_one_direction);
     let on_pieces = Arc::new(Mutex::new(on_pieces));
-    let stop_at = increasing_cursor.wrapping_add(&(PieceIndexHashNumber::MAX / 2));
 
-    while increasing_cursor < stop_at || decreasing_cursor > stop_at {
-        let increasing_stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = {
-            let start = increasing_cursor;
+    // Sync first half of plot
+    let from = if is_underflow || is_overflow {
+        let mut start = from;
+        loop {
             let (end, is_overflow) = start.overflowing_add(range_size);
-            increasing_cursor = end;
-
-            if !is_overflow {
-                let stream = dsn
-                    .get_pieces(Range {
-                        start: start.into(),
-                        end: end.into(),
-                    })
-                    .await;
-                Box::new(stream)
+            let end = if is_overflow {
+                PieceIndexHashNumber::MAX
             } else {
-                let stream = dsn
-                    .get_pieces(Range {
-                        start: start.into(),
-                        end: PieceIndexHashNumber::MAX.into(),
-                    })
-                    .await
-                    .chain(
-                        dsn.get_pieces(Range {
-                            start: PieceIndexHashNumber::zero().into(),
-                            end: end.into(),
-                        })
-                        .await,
-                    );
-                Box::new(stream)
-            }
-        };
-        let decreasing_stream: Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send> = {
-            let end = decreasing_cursor;
-            let (start, is_underflow) = end.overflowing_sub(range_size);
-            decreasing_cursor = start;
+                end
+            };
 
-            if !is_underflow {
-                let stream = dsn
-                    .get_pieces(Range {
-                        start: start.into(),
-                        end: end.into(),
-                    })
-                    .await;
-                Box::new(stream)
-            } else {
-                let stream = dsn
-                    .get_pieces(Range {
-                        start: start.into(),
-                        end: end.into(),
-                    })
-                    .await
-                    .chain(
-                        dsn.get_pieces(Range {
-                            start: start.into(),
-                            end: end.into(),
-                        })
-                        .await,
-                    );
-                Box::new(stream)
-            }
-        };
-        let mut stream = increasing_stream.chain(decreasing_stream);
+            sync_sector(
+                &mut dsn,
+                Range {
+                    start: start.into(),
+                    end: end.into(),
+                },
+                Arc::clone(&on_pieces),
+            )
+            .await?;
 
-        while let Some(PiecesToPlot {
-            piece_indexes,
-            pieces,
-        }) = stream.next().await
-        {
-            // Writing pieces is usually synchronous, therefore might take some time
-            if let ControlFlow::Break(result) = tokio::task::spawn_blocking({
-                let on_pieces = Arc::clone(&on_pieces);
-                move || {
-                    let mut on_pieces = on_pieces
-                        .lock()
-                        .expect("Lock is never poisoned as `on_pieces` never panics");
-                    on_pieces(pieces, piece_indexes)
-                }
-            })
-            .await
-            .expect("`on_pieces` must never panic")
-            {
-                return result;
+            if is_overflow {
+                break;
             }
+
+            start = end;
         }
+
+        PieceIndexHashNumber::zero()
+    } else {
+        from
+    };
+
+    let mut start = from;
+    loop {
+        let range_end = start + range_size;
+        sync_sector(
+            &mut dsn,
+            Range {
+                start: start.into(),
+                end: range_end.into(),
+            },
+            Arc::clone(&on_pieces),
+        )
+        .await?;
+
+        if range_end > end {
+            break;
+        }
+
+        start = range_end;
     }
 
     Ok(())
