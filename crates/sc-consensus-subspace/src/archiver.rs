@@ -20,8 +20,9 @@ use crate::{
 };
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
-use log::{debug, error, info};
-use sc_client_api::BlockBackend;
+use log::{debug, error, info, warn};
+use sc_client_api::{Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
+use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -334,19 +335,58 @@ where
     }
 }
 
+fn finalize_block<Block, Backend, Client>(
+    client: &Client,
+    telemetry: Option<TelemetryHandle>,
+    hash: Block::Hash,
+    number: NumberFor<Block>,
+) where
+    Block: BlockT,
+    Backend: BackendT<Block>,
+    Client: LockImportRun<Block, Backend> + Finalizer<Block, Backend>,
+{
+    // We don't have anything useful to do with this result yet, the only source of errors was
+    // logged already inside
+    let _result: Result<_, sp_blockchain::Error> = client.lock_import_and_run(|import_op| {
+        // Ideally some handle to a synchronization oracle would be used to avoid unconditionally
+        // notifying.
+        client
+            .apply_finality(import_op, BlockId::Hash(hash), None, true)
+            .map_err(|error| {
+                warn!(target: "subspace", "Error applying finality to block {:?}: {}", (hash, number), error);
+                error
+            })?;
+
+        debug!(target: "subspace", "Finalizing blocks up to ({:?}, {})", number, hash);
+
+        telemetry!(
+            telemetry;
+            CONSENSUS_INFO;
+            "subspace.finalized_blocks_up_to";
+            "number" => ?number, "hash" => ?hash,
+        );
+
+        Ok(())
+    });
+}
+
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
 /// producing pieces and root blocks (root blocks are then added back to the blockchain as
 /// `store_root_block` extrinsic).
-pub fn start_subspace_archiver<Block, Client>(
+pub fn start_subspace_archiver<Block, Backend, Client>(
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
+    telemetry: Option<TelemetryHandle>,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     is_authoring_blocks: bool,
 ) where
     Block: BlockT,
+    Backend: BackendT<Block>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
+        + LockImportRun<Block, Backend>
+        + Finalizer<Block, Backend>
         + Send
         + Sync
         + 'static,
@@ -481,6 +521,13 @@ pub fn start_subspace_archiver<Block, Client>(
 
                         let _ = root_block_sender.send(root_block).await;
                     }
+
+                    finalize_block(
+                        client.as_ref(),
+                        telemetry.clone(),
+                        block_hash_to_archive,
+                        block_number_to_archive,
+                    );
                 }
             }
         }),

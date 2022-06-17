@@ -523,6 +523,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         super::start_subspace_archiver(
             &data.link,
             client.clone(),
+            None,
             &task_manager.spawn_essential_handle(),
             false,
         );
