@@ -1,5 +1,6 @@
 use crate::PiecesToPlot;
 use futures::{Stream, StreamExt};
+use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash};
@@ -18,8 +19,8 @@ pub struct SyncOptions {
     pub total_pieces: u64,
     /// The size of range which we request
     pub range_size: PieceIndexHashNumber,
-    /// Address of our plot
-    pub address: PublicKey,
+    /// Public key of our plot
+    pub public_key: PublicKey,
 }
 
 #[async_trait::async_trait]
@@ -43,41 +44,6 @@ impl DSNSync for NoSync {
     }
 }
 
-async fn sync_sector<DSN, OP>(
-    dsn: &mut DSN,
-    range: Range<PieceIndexHash>,
-    on_pieces: Arc<Mutex<OP>>,
-) -> anyhow::Result<()>
-where
-    DSN: DSNSync + Send + Sized,
-    DSN::Stream: Unpin + Send,
-    // On pieces might `break` with some result from the sync or just continue
-    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()> + Send + 'static,
-{
-    let mut stream = dsn.get_pieces(range).await;
-
-    while let Some(PiecesToPlot {
-        piece_indexes,
-        pieces,
-    }) = stream.next().await
-    {
-        // Writing pieces is usually synchronous, therefore might take some time
-        tokio::task::spawn_blocking({
-            let on_pieces = Arc::clone(&on_pieces);
-            move || {
-                let mut on_pieces = on_pieces
-                    .lock()
-                    .expect("Lock is never poisoned as `on_pieces` never panics");
-                on_pieces(pieces, piece_indexes)
-            }
-        })
-        .await
-        .expect("`on_pieces` must never panic")?;
-    }
-
-    Ok(())
-}
-
 /// Syncs the closest pieces to the public key from the provided DSN.
 ///
 /// It would sync piece with ranges providing in the `options`. It would go concurently upwards and
@@ -94,69 +60,55 @@ where
         max_plot_size,
         total_pieces,
         range_size,
-        address,
+        public_key,
     } = options;
-    let address = PieceIndexHashNumber::from(Sha256Hash::from(address));
-    let max_distance_one_direction = if total_pieces < max_plot_size {
-        PieceIndexHashNumber::MAX / 2
+    let public_key = PieceIndexHashNumber::from(Sha256Hash::from(public_key));
+
+    let sync_sector_size = if total_pieces < max_plot_size {
+        PieceIndexHashNumber::MAX
     } else {
-        PieceIndexHashNumber::MAX / total_pieces * max_plot_size / 2
+        PieceIndexHashNumber::MAX / total_pieces * max_plot_size
     };
-    let (from, is_underflow) = address.overflowing_sub(max_distance_one_direction);
-    let (end, is_overflow) = address.overflowing_add(max_distance_one_direction);
+    let from = public_key.wrapping_sub(&(sync_sector_size / 2));
     let on_pieces = Arc::new(Mutex::new(on_pieces));
 
-    // Sync first half of plot
-    let from = if is_underflow || is_overflow {
-        let mut start = from;
-        loop {
-            let (end, is_overflow) = start.overflowing_add(range_size);
-            let end = if is_overflow {
-                PieceIndexHashNumber::MAX
-            } else {
-                end
-            };
+    let mut offset = PieceIndexHashNumber::zero();
 
-            sync_sector(
-                &mut dsn,
-                Range {
-                    start: start.into(),
-                    end: end.into(),
-                },
-                Arc::clone(&on_pieces),
-            )
-            .await?;
-
-            if is_overflow {
-                break;
-            }
-
-            start = end;
-        }
-
-        PieceIndexHashNumber::zero()
-    } else {
-        from
-    };
-
-    let mut start = from;
-    loop {
-        let range_end = start + range_size;
-        sync_sector(
-            &mut dsn,
-            Range {
+    while offset < sync_sector_size {
+        let start = from.wrapping_add(&offset);
+        let end = start.saturating_add(range_size);
+        let mut stream = dsn
+            .get_pieces(Range {
                 start: start.into(),
-                end: range_end.into(),
-            },
-            Arc::clone(&on_pieces),
-        )
-        .await?;
+                end: end.into(),
+            })
+            .await;
 
-        if range_end > end {
-            break;
+        while let Some(PiecesToPlot {
+            piece_indexes,
+            pieces,
+        }) = stream.next().await
+        {
+            // Writing pieces is usually synchronous, therefore might take some time
+            tokio::task::spawn_blocking({
+                let on_pieces = Arc::clone(&on_pieces);
+                move || {
+                    let mut on_pieces = on_pieces
+                        .lock()
+                        .expect("Lock is never poisoned as `on_pieces` never panics");
+                    on_pieces(pieces, piece_indexes)
+                }
+            })
+            .await
+            .expect("`on_pieces` must never panic")?;
         }
 
-        start = range_end;
+        // In case we ended at `MAX` we want to start from 0 next time
+        offset = offset.saturating_add(if end == PieceIndexHashNumber::MAX {
+            end - start + 1
+        } else {
+            range_size
+        });
     }
 
     Ok(())

@@ -229,7 +229,7 @@ impl MultiFarming {
                         .map(|((plot, commitments), codec)| {
                             let options = SyncOptions {
                                 range_size: PieceIndexHashNumber::MAX / 1024,
-                                address: plot.public_key(),
+                                public_key: plot.public_key(),
                                 max_plot_size,
                                 total_pieces,
                             };

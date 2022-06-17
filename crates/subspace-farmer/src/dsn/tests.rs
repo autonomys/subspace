@@ -56,7 +56,7 @@ async fn simple_test() {
         TestDSN(source.clone()),
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
-            address: Default::default(),
+            public_key: Default::default(),
             max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
             total_pieces: 256,
         },
@@ -93,7 +93,7 @@ async fn no_sync_test() {
         NoSync,
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
-            address: Default::default(),
+            public_key: Default::default(),
             max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
             total_pieces: 0,
         },
