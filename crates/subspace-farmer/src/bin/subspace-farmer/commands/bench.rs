@@ -110,6 +110,8 @@ const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
     record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
     recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+    // Doesn't matter, as we don't start sync
+    total_pieces: 0,
 };
 
 pub(crate) async fn bench(

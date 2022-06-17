@@ -15,9 +15,6 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     /// Get farmer metadata
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error>;
 
-    /// Get amount of pieces on the network
-    async fn total_pieces(&self) -> Result<u64, Error>;
-
     /// Subscribe to slot
     async fn subscribe_slot_info(
         &self,

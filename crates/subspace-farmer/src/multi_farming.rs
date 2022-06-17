@@ -210,10 +210,7 @@ impl MultiFarming {
             .await
             .map_err(|error| anyhow!(error))?;
         let max_plot_size = farmer_metadata.max_plot_size;
-        let total_pieces = farming_client
-            .total_pieces()
-            .await
-            .map_err(|error| anyhow!(error))?;
+        let total_pieces = farmer_metadata.total_pieces;
 
         // Start syncing
         // TODO: Unlock once infinite loop (https://github.com/subspace/subspace/issues/598) is fixed
