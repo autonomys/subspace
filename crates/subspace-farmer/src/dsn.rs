@@ -1,10 +1,11 @@
-use crate::PiecesToPlot;
 use futures::{Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash};
-use subspace_solving::U256;
+use subspace_core_primitives::{
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, U256,
+};
+use subspace_networking::PiecesToPlot;
 
 #[cfg(test)]
 mod tests;

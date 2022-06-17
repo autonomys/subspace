@@ -3,7 +3,8 @@ use crate::rpc_client::RpcClient;
 use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::{FlatPieces, PieceIndex, Sha256Hash};
+use subspace_core_primitives::Sha256Hash;
+use subspace_networking::PiecesToPlot;
 use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -24,15 +25,6 @@ pub enum ArchivingError {
     JoinTask(tokio::task::JoinError),
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
-}
-
-/// Collection of pieces that potentially need to be plotted
-#[derive(Debug, Clone)]
-pub struct PiecesToPlot {
-    /// Piece indexes for each of the `pieces`
-    pub piece_indexes: Vec<PieceIndex>,
-    /// Pieces themselves
-    pub pieces: FlatPieces,
 }
 
 /// Abstraction around archiving blocks and updating global object map

@@ -2,6 +2,9 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::Node;
 use crate::node_runner::NodeRunner;
+use crate::pieces_by_range_handler::{
+    ExternalPiecesByRangeRequestHandler, PiecesByRangeRequestHandler,
+};
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::dns::TokioDnsConfig;
@@ -28,8 +31,7 @@ const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
 /// [`Node`] configuration.
-// TODO: Restore derive after https://github.com/libp2p/rust-libp2p/pull/2495 is released
-// #[derive(Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -56,6 +58,8 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
+    /// Defines a handler for the pieces-by-range protocol.
+    pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
 }
 
 impl fmt::Debug for Config {
@@ -110,6 +114,7 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
+            pieces_by_range_request_handler: Arc::new(|_| None),
         }
     }
 }
@@ -143,6 +148,7 @@ pub async fn create(
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
+        pieces_by_range_request_handler,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let local_peer_id = keypair.public().to_peer_id();
@@ -188,6 +194,9 @@ pub async fn create(
             })
             .collect::<Result<_, CreationError>>()?;
 
+        let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
+            PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
+
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
             bootstrap_nodes,
@@ -195,6 +204,8 @@ pub async fn create(
             kademlia,
             gossipsub,
             value_getter,
+            pieces_by_range_protocol_config,
+            pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
         });
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
@@ -224,7 +235,7 @@ pub async fn create(
         Ok::<_, CreationError>(swarm)
     });
 
-    let swarm = create_swarm_fut.await.unwrap()?;
+    let swarm = create_swarm_fut.await.expect("Swarm future failed.")?;
 
     let (command_sender, command_receiver) = mpsc::channel(1);
 

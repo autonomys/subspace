@@ -23,7 +23,6 @@
 mod codec;
 
 pub use codec::{BatchEncodeError, SubspaceCodec};
-pub use construct_uint::{PieceDistance, U256};
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
@@ -37,67 +36,6 @@ const TAG_SIGNATURE_LABEL: &[u8] = b"subspace_tag_signature";
 
 /// Signing context used for creating reward signatures by farmers.
 pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
-
-#[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
-mod construct_uint {
-    //! This module is needed to scope clippy allows
-
-    use num_traits::{WrappingAdd, WrappingSub};
-    use subspace_core_primitives::PieceIndexHash;
-
-    uint::construct_uint! {
-        pub struct U256(4);
-    }
-
-    /// Distance to piece index hash from farmer identity
-    pub type PieceDistance = U256;
-
-    impl U256 {
-        /// Calculates the distance metric between piece index hash and farmer address.
-        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> PieceDistance {
-            let piece = Self::from_big_endian(piece);
-            let address = Self::from_big_endian(address);
-            subspace_core_primitives::bidirectional_distance(&piece, &address)
-        }
-
-        /// Convert piece distance to big endian bytes
-        pub fn to_bytes(self) -> [u8; 32] {
-            self.into()
-        }
-
-        /// The middle of the piece distance field.
-        /// The analogue of `0b1000_0000` for `u8`.
-        pub const MIDDLE: Self = {
-            // TODO: This assumes that numbers are stored little endian,
-            //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
-            Self([u64::MAX, u64::MAX, u64::MAX, u64::MAX / 2])
-        };
-    }
-
-    impl WrappingAdd for U256 {
-        fn wrapping_add(&self, other: &Self) -> Self {
-            self.overflowing_add(*other).0
-        }
-    }
-
-    impl WrappingSub for U256 {
-        fn wrapping_sub(&self, other: &Self) -> Self {
-            self.overflowing_sub(*other).0
-        }
-    }
-
-    impl From<PieceIndexHash> for U256 {
-        fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
-            hash.into()
-        }
-    }
-
-    impl From<U256> for PieceIndexHash {
-        fn from(distance: U256) -> Self {
-            Self(distance.into())
-        }
-    }
-}
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication

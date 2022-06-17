@@ -8046,6 +8046,7 @@ dependencies = [
  "serde",
  "serde_arrays",
  "sha2 0.10.2",
+ "uint",
 ]
 
 [[package]]
@@ -8113,6 +8114,7 @@ name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "clap 3.1.18",
  "env_logger",
@@ -8121,11 +8123,15 @@ dependencies = [
  "hex",
  "libp2p",
  "nohash-hasher",
+ "parity-scale-codec",
  "parking_lot 0.12.0",
+ "rand 0.7.3",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber 0.2.25",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -8305,7 +8311,6 @@ dependencies = [
  "subspace-core-primitives",
  "thiserror",
  "tracing",
- "uint",
 ]
 
 [[package]]

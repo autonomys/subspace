@@ -8,8 +8,8 @@ mod tests;
 
 use crate::commitments::Commitments;
 use crate::plot::Plot;
-use crate::PiecesToPlot;
 use std::sync::Arc;
+use subspace_networking::PiecesToPlot;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use tracing::error;
 

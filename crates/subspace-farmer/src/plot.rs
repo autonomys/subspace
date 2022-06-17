@@ -12,11 +12,14 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
-use subspace_solving::{PieceDistance, SubspaceCodec};
+use subspace_solving::SubspaceCodec;
 use thiserror::Error;
 use tracing::{error, info};
+
+/// Distance to piece index hash from farmer identity
+pub type PieceDistance = U256;
 
 /// Index of piece on disk
 pub type PieceOffset = u64;

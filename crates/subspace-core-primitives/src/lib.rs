@@ -20,6 +20,9 @@
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 
+#[cfg(test)]
+mod tests;
+
 pub mod crypto;
 pub mod objects;
 
@@ -27,6 +30,7 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
+pub use construct_uint::U256;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
@@ -430,7 +434,8 @@ impl RootBlock {
 pub type PieceIndex = u64;
 
 /// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(pub Sha256Hash);
 
 impl From<PieceIndex> for PieceIndexHash {
@@ -530,4 +535,62 @@ pub fn bidirectional_distance<T: num_traits::WrappingSub + Ord>(a: &T, b: &T) ->
     let diff2 = b.wrapping_sub(a);
     // Find smaller diff between 2 directions.
     diff.min(diff2)
+}
+
+#[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
+mod construct_uint {
+    //! This module is needed to scope clippy allows
+
+    use super::{bidirectional_distance, PieceIndexHash};
+    use num_traits::{WrappingAdd, WrappingSub};
+
+    uint::construct_uint! {
+        pub struct U256(4);
+    }
+
+    impl U256 {
+        /// Calculates the distance metric between piece index hash and farmer address.
+        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> U256 {
+            let piece = Self::from_big_endian(piece);
+            let address = Self::from_big_endian(address);
+            bidirectional_distance(&piece, &address)
+        }
+
+        /// Convert piece distance to big endian bytes
+        pub fn to_bytes(self) -> [u8; 32] {
+            self.into()
+        }
+
+        /// The middle of the piece distance field.
+        /// The analogue of `0b1000_0000` for `u8`.
+        pub const MIDDLE: Self = {
+            // TODO: This assumes that numbers are stored little endian,
+            //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
+            Self([u64::MAX, u64::MAX, u64::MAX, u64::MAX / 2])
+        };
+    }
+
+    impl WrappingAdd for U256 {
+        fn wrapping_add(&self, other: &Self) -> Self {
+            self.overflowing_add(*other).0
+        }
+    }
+
+    impl WrappingSub for U256 {
+        fn wrapping_sub(&self, other: &Self) -> Self {
+            self.overflowing_sub(*other).0
+        }
+    }
+
+    impl From<PieceIndexHash> for U256 {
+        fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
+            hash.into()
+        }
+    }
+
+    impl From<U256> for PieceIndexHash {
+        fn from(distance: U256) -> Self {
+            Self(distance.into())
+        }
+    }
 }

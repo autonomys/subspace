@@ -22,6 +22,8 @@ mod create;
 pub mod multimess;
 mod node;
 mod node_runner;
+mod pieces_by_range_handler;
+mod request_responses;
 mod shared;
 mod utils;
 
@@ -29,3 +31,4 @@ pub use crate::node::{Node, TopicSubscription};
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};
 pub use libp2p;
+pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
