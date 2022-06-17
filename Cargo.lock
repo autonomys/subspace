@@ -8046,6 +8046,7 @@ dependencies = [
  "serde",
  "serde_arrays",
  "sha2 0.10.2",
+ "uint",
 ]
 
 [[package]]
@@ -8305,7 +8306,6 @@ dependencies = [
  "subspace-core-primitives",
  "thiserror",
  "tracing",
- "uint",
 ]
 
 [[package]]
