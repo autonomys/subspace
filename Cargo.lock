@@ -8125,7 +8125,6 @@ dependencies = [
  "libp2p",
  "nohash-hasher",
  "parking_lot 0.12.0",
- "sc-peerset",
  "serde",
  "subspace-core-primitives",
  "thiserror",

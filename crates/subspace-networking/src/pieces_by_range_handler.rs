@@ -114,7 +114,6 @@ impl PiecesByRangeRequestHandler {
                 Ok(response_data) => {
                     let response = OutgoingResponse {
                         result: Ok(response_data),
-                        reputation_changes: Vec::new(),
                         sent_feedback: None,
                     };
 
@@ -140,7 +139,6 @@ impl PiecesByRangeRequestHandler {
 
                     let response = OutgoingResponse {
                         result: Err(()),
-                        reputation_changes: Vec::new(),
                         sent_feedback: None,
                     };
 
