@@ -127,9 +127,9 @@ pub struct ProtocolConfig {
 
 impl ProtocolConfig {
     /// Creates request-response protocol config.
-    pub fn new(protocol_name: String) -> ProtocolConfig {
+    pub fn new(protocol_name: Cow<'static, str>) -> ProtocolConfig {
         ProtocolConfig {
-            name: protocol_name.into(),
+            name: protocol_name,
             max_request_size: 1024 * 1024,
             max_response_size: 16 * 1024 * 1024,
             request_timeout: Duration::from_secs(15),
