@@ -17,6 +17,8 @@ use subspace_core_primitives::{PieceIndexHash, PiecesToPlot, U256};
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
+const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
+
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
 pub struct TopicSubscription {
@@ -96,7 +98,6 @@ pub enum GetPiecesByRangeError {
     /// Cannot find closest pieces by range.
     #[error("Cannot find closest pieces by range")]
     NoClosestPiecesFound,
-
     /// Node runner was dropped, impossible to get pieces by range.
     #[error("Node runner was dropped, impossible to get pieces by range")]
     NodeRunnerDropped,
@@ -109,7 +110,6 @@ pub enum SendPiecesByRangeRequestError {
     /// Underlying protocol returned an error, impossible to get 'pieces-by-range' response.
     #[error("Underlying protocol returned an error, impossible to get 'pieces-by-range' response")]
     ProtocolFailure,
-
     /// Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response.
     #[error("Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response")]
     IncorrectResponseFormat,
@@ -201,7 +201,26 @@ impl Node {
         peer_id: PeerId,
         request: PiecesByRangeRequest,
     ) -> Result<PiecesByRangeResponse, SendPiecesByRangeRequestError> {
-        Node::send_pieces_by_range_request_inner(self.shared.clone(), peer_id, request).await
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::PiecesByRangeRequest {
+                request,
+                result_sender,
+                peer_id,
+            })
+            .await
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
+
+        let result = result_receiver
+            .await
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
+            .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
+
+        PiecesByRangeResponse::decode(&mut result.as_slice())
+            .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
     }
 
     /// Node's own addresses where it listens for incoming requests.
@@ -232,19 +251,22 @@ impl Node {
         let (result_sender, result_receiver) = oneshot::channel();
 
         // calculate the middle of the range (big endian)
-        let f = U256::from(&from.0);
-        let t = U256::from(&to.0);
-        // min + (max - min) / 2
-        let middle = f.div(2) + t.div(2);
-        let mut buf: [u8; 32] = [0; 32]; // 32 of hash + 32 of preimage
-        middle.to_big_endian(&mut buf);
+        let middle = {
+            let f = U256::from(&from.0);
+            let t = U256::from(&to.0);
+            // min + (max - min) / 2
+            let middle = f.div(2) + t.div(2);
+            let mut buf: [u8; 32] = [0; 32];
+            middle.to_big_endian(&mut buf);
+            buf
+        };
 
         // obtain closest peers to the middle of the range
         self.shared
             .command_sender
             .clone()
             .send(Command::GetClosestPeers {
-                key: Code::Identity.digest(&buf),
+                key: Code::Identity.digest(&middle),
                 result_sender,
             })
             .await
@@ -264,11 +286,10 @@ impl Node {
         trace!(%peer_id, "Peer found. Range: {:?} - {:?} ", from, to);
 
         // prepare stream channel
-        const BUFFER_SIZE: usize = 1000; // approximately 4MB
-        let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(BUFFER_SIZE);
+        let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(PIECES_CHANNEL_BUFFER_SIZE);
 
         // populate resulting stream in the separate async task
-        let shared = self.shared.clone();
+        let node = self.clone();
         tokio::spawn(async move {
             // indicates the next starting point for a request, initially None
             let mut next_piece_hash_index = None;
@@ -279,17 +300,17 @@ impl Node {
                     next_piece_hash_index
                 );
                 // request data by range and starting point
-                let response = Node::send_pieces_by_range_request_inner(
-                    shared.clone(),
-                    peer_id,
-                    PiecesByRangeRequest {
-                        from,
-                        to,
-                        next_piece_hash_index,
-                    },
-                )
-                .await
-                .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
+                let response = node
+                    .send_pieces_by_range_request(
+                        peer_id,
+                        PiecesByRangeRequest {
+                            from,
+                            to,
+                            next_piece_hash_index,
+                        },
+                    )
+                    .await
+                    .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
 
                 // send the result to the stream and exit on any error
                 match response {
@@ -317,114 +338,5 @@ impl Node {
         });
 
         Ok(Box::pin(rx))
-    }
-
-    // Sends the request to the peer and awaits the result.
-    // Actual pieces-by-range implementation.
-    async fn send_pieces_by_range_request_inner(
-        shared: Arc<Shared>,
-        peer_id: PeerId,
-        request: PiecesByRangeRequest,
-    ) -> Result<PiecesByRangeResponse, SendPiecesByRangeRequestError> {
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        shared
-            .command_sender
-            .clone()
-            .send(Command::PiecesByRangeRequest {
-                request,
-                result_sender,
-                peer_id,
-            })
-            .await
-            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
-
-        let result = result_receiver
-            .await
-            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
-            .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
-
-        PiecesByRangeResponse::decode(&mut result.as_slice())
-            .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{Config, PiecesByRangeResponse};
-    use futures::channel::mpsc;
-    use futures::StreamExt;
-    use libp2p::multiaddr::Protocol;
-    use std::sync::Arc;
-    use std::time::Duration;
-    use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
-
-    #[tokio::test]
-    async fn get_pieces_by_range_protocol_smoke() {
-        let piece_bytes: Vec<u8> = Piece::default().into();
-        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-        let pieces = PiecesToPlot {
-            piece_indexes: vec![1],
-            pieces: flat_pieces,
-        };
-
-        let expected_data = pieces.clone();
-
-        let config_1 = Config {
-            listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-            allow_non_globals_in_dht: true,
-            pieces_by_range_request_handler: Arc::new(move |_| {
-                Some(PiecesByRangeResponse {
-                    pieces: pieces.clone(),
-                    next_piece_hash_index: None,
-                })
-            }),
-            ..Config::with_generated_keypair()
-        };
-        let (node_1, node_runner_1) = crate::create(config_1).await.unwrap();
-
-        let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
-        node_1
-            .on_new_listener(Arc::new(move |address| {
-                node_1_addresses_sender
-                    .unbounded_send(address.clone())
-                    .unwrap();
-            }))
-            .detach();
-
-        tokio::spawn(async move {
-            node_runner_1.run().await;
-        });
-
-        let config_2 = Config {
-            bootstrap_nodes: vec![node_1_addresses_receiver
-                .next()
-                .await
-                .unwrap()
-                .with(Protocol::P2p(node_1.id().into()))],
-            listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-            allow_non_globals_in_dht: true,
-            ..Config::with_generated_keypair()
-        };
-
-        let (node_2, node_runner_2) = crate::create(config_2).await.unwrap();
-        tokio::spawn(async move {
-            node_runner_2.run().await;
-        });
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        let hashed_peer_id = PieceIndexHash(crypto::sha256_hash(&node_1.id().to_bytes()));
-
-        let mut stream = node_2
-            .get_pieces_by_range(hashed_peer_id, hashed_peer_id)
-            .await
-            .unwrap();
-
-        let result = stream.next().await;
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        assert_eq!(result.unwrap(), expected_data);
     }
 }

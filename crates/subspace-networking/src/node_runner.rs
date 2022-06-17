@@ -1,7 +1,5 @@
 use crate::behavior::{Behavior, Event};
-use crate::pieces_by_range_handler::{
-    protocol_name as pieces_by_range_protocol_name, PiecesByRangeRequestHandler,
-};
+use crate::pieces_by_range_handler::{self, PiecesByRangeRequestHandler};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
@@ -254,7 +252,7 @@ impl NodeRunner {
                             }
                         }
                         Err(GetClosestPeersError::Timeout { key, peers }) => {
-                            if sender.send(Default::default()).is_err() {
+                            if sender.send(Vec::new()).is_err() {
                                 debug!("GetClosestPeersOk channel was dropped");
                             }
 
@@ -464,7 +462,7 @@ impl NodeRunner {
             } => {
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    &pieces_by_range_protocol_name(),
+                    pieces_by_range_handler::PROTOCOL_NAME,
                     request.encode(),
                     result_sender,
                     IfDisconnected::TryConnect,

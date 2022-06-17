@@ -149,7 +149,7 @@ pub async fn create(
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        pieces_by_range_request_handler: request_handler,
+        pieces_by_range_request_handler,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let local_peer_id = keypair.public().to_peer_id();
@@ -196,7 +196,7 @@ pub async fn create(
             .collect::<Result<_, CreationError>>()?;
 
         let (request_response_handler, request_response) =
-            PiecesByRangeRequestHandler::new(request_handler);
+            PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
