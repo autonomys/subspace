@@ -1,12 +1,13 @@
 use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse};
-use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
+use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream};
-use libp2p::core::multihash::Multihash;
+use libp2p::core::multihash::{Code, Multihash};
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::ops::{Deref, DerefMut, Div};
@@ -230,9 +231,9 @@ impl Node {
     ) -> Result<Pin<Box<dyn Stream<Item = PiecesToPlot>>>, GetPiecesByRangeError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
-        // calculate the middle of the range
-        let f = U256::from_big_endian(&from.0);
-        let t = U256::from_big_endian(&to.0);
+        // calculate the middle of the range (big endian)
+        let f = U256::from(&from.0);
+        let t = U256::from(&to.0);
         // min + (max - min) / 2
         let middle = f.div(2) + t.div(2);
         let mut buf: [u8; 32] = [0; 32]; // 32 of hash + 32 of preimage
@@ -243,7 +244,7 @@ impl Node {
             .command_sender
             .clone()
             .send(Command::GetClosestPeers {
-                key: ExactKademliaKey::new(buf),
+                key: Code::Identity.digest(&buf),
                 result_sender,
             })
             .await
@@ -259,6 +260,8 @@ impl Node {
         let peer_id = *peers
             .first()
             .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
+
+        trace!(%peer_id, "Peer found. Range: {:?} - {:?} ", from, to);
 
         // prepare stream channel
         const BUFFER_SIZE: usize = 1000; // approximately 4MB

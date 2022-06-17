@@ -38,6 +38,7 @@ features = [
     "dns-tokio",
     "gossipsub",
     "identify",
+    "identity-hashing-for-peer-id",
     "kad",
     "noise",
     "ping",

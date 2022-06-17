@@ -9,10 +9,8 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
-use libp2p::kad::kbucket::Key;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::borrow::Borrow;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
@@ -44,7 +42,7 @@ pub(crate) enum Command {
         result_sender: oneshot::Sender<Result<(), PublishError>>,
     },
     GetClosestPeers {
-        key: ExactKademliaKey,
+        key: Multihash,
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
     PiecesByRangeRequest {
@@ -52,45 +50,6 @@ pub(crate) enum Command {
         request: PiecesByRangeRequest,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
-}
-
-/// Kademlia Key provider without hashing. It holds the 32-bytes hash and
-/// returns the Kademlia key without double hashing. It uses the unsafe rust
-/// code to transmute types.
-#[derive(Debug, Clone)]
-pub(crate) struct ExactKademliaKey {
-    hash: [u8; 32],
-}
-
-impl ExactKademliaKey {
-    pub fn new(hash: [u8; 32]) -> Self {
-        Self { hash }
-    }
-}
-
-impl Borrow<[u8]> for ExactKademliaKey {
-    fn borrow(&self) -> &[u8] {
-        &self.hash
-    }
-}
-
-impl From<ExactKademliaKey> for Key<ExactKademliaKey> {
-    fn from(key: ExactKademliaKey) -> Key<ExactKademliaKey> {
-        Key::new(key)
-        // TODO: restore or delete after the libp2p patch.
-        // !!! unsafe rust code
-        // let mut data = [0u8; 64];
-
-        // data[..32].copy_from_slice(key.borrow());
-
-        // unsafe { std::mem::transmute::<[u8; 64], Key<ExactKademliaKey>>(data) }
-    }
-}
-
-impl From<ExactKademliaKey> for Vec<u8> {
-    fn from(key: ExactKademliaKey) -> Vec<u8> {
-        key.hash.to_vec()
-    }
 }
 
 #[derive(Default, Debug)]

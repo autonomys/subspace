@@ -80,12 +80,9 @@ async fn main() {
     let hashed_peer_id = PieceIndexHash(crypto::sha256_hash(&node_1.id().to_bytes()));
 
     let stream_future = node_2.get_pieces_by_range(hashed_peer_id, hashed_peer_id);
-    if let Ok(mut stream) = stream_future.await {
-        while let Some(value) = stream.next().await {
-            println!("Piece found: {:?}", value);
-        }
-    } else {
-        println!("Stream error");
+    let mut stream = stream_future.await.unwrap();
+    while let Some(value) = stream.next().await {
+        println!("Piece found: {:?}", value);
     }
 
     tokio::time::sleep(Duration::from_secs(5)).await;
