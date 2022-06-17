@@ -87,5 +87,4 @@ codegen-units = 1
 chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
 # TODO: Remove once https://github.com/sitano/merkle_light/pull/8 is released
 merkle_light = { git = "https://github.com/sitano/merkle_light", rev = "fe31d4ef27a1fbe54e82ab589b610ae4bfd2008e" }
-libp2p = { git = "https://github.com/subspace/rust-libp2p", branch = "nonhashing-keys-feature" }
-
+libp2p = { git = "https://github.com/subspace/rust-libp2p", branch = "add-sr25519-keys-v44" }

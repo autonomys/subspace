@@ -44,7 +44,6 @@ pub const PROTOCOL_NAME: &str = "/sync/pieces-by-range/v1";
 //TODO: A candidate for migrating to a separate crate.
 /// Collection of pieces that potentially need to be plotted
 #[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PiecesToPlot {
     /// Piece indexes for each of the `pieces`
     pub piece_indexes: Vec<PieceIndex>,
@@ -54,7 +53,6 @@ pub struct PiecesToPlot {
 
 /// Pieces-by-range protocol request. Assumes requests with paging.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
     pub from: PieceIndexHash,
@@ -64,7 +62,6 @@ pub struct PiecesByRangeRequest {
 
 /// Pieces-by-range protocol response. Assumes requests with paging.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PiecesByRangeResponse {
     /// Returned data.
     pub pieces: PiecesToPlot,
@@ -115,6 +112,7 @@ impl PiecesByRangeRequestHandler {
         Ok(response.unwrap_or_default().encode())
     }
 }
+
 #[async_trait]
 impl RequestResponseHandlerRunner for PiecesByRangeRequestHandler {
     /// Run [`RequestResponseHandler`].

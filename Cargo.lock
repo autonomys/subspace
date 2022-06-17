@@ -3226,7 +3226,7 @@ checksum = "33a33a362ce288760ec6a508b94caaec573ae7d3bbbd91b87aa0bad4456839db"
 [[package]]
 name = "libp2p"
 version = "0.44.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "atomic",
  "bytes",
@@ -3270,7 +3270,7 @@ dependencies = [
 [[package]]
 name = "libp2p-autonat"
 version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-trait",
  "futures 0.3.21",
@@ -3288,7 +3288,7 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.32.1"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asn1_der",
  "bs58",
@@ -3323,7 +3323,7 @@ dependencies = [
 [[package]]
 name = "libp2p-deflate"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "flate2",
  "futures 0.3.21",
@@ -3333,7 +3333,7 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.32.1"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-std-resolver",
  "futures 0.3.21",
@@ -3346,7 +3346,7 @@ dependencies = [
 [[package]]
 name = "libp2p-floodsub"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "cuckoofilter",
  "fnv",
@@ -3363,7 +3363,7 @@ dependencies = [
 [[package]]
 name = "libp2p-gossipsub"
 version = "0.37.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asynchronous-codec",
  "base64",
@@ -3390,7 +3390,7 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "futures 0.3.21",
  "futures-timer",
@@ -3406,7 +3406,7 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "arrayvec 0.5.2",
  "asynchronous-codec",
@@ -3433,7 +3433,7 @@ dependencies = [
 [[package]]
 name = "libp2p-mdns"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-io",
  "data-encoding",
@@ -3453,7 +3453,7 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.5.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "libp2p-core",
  "libp2p-gossipsub",
@@ -3468,7 +3468,7 @@ dependencies = [
 [[package]]
 name = "libp2p-mplex"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -3485,7 +3485,7 @@ dependencies = [
 [[package]]
 name = "libp2p-noise"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "bytes",
  "curve25519-dalek 3.2.0",
@@ -3506,7 +3506,7 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "futures 0.3.21",
  "futures-timer",
@@ -3521,7 +3521,7 @@ dependencies = [
 [[package]]
 name = "libp2p-plaintext"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -3537,7 +3537,7 @@ dependencies = [
 [[package]]
 name = "libp2p-pnet"
 version = "0.22.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "futures 0.3.21",
  "log",
@@ -3550,7 +3550,7 @@ dependencies = [
 [[package]]
 name = "libp2p-relay"
 version = "0.8.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -3575,7 +3575,7 @@ dependencies = [
 [[package]]
 name = "libp2p-rendezvous"
 version = "0.5.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "asynchronous-codec",
  "bimap",
@@ -3597,7 +3597,7 @@ dependencies = [
 [[package]]
 name = "libp2p-request-response"
 version = "0.17.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3614,7 +3614,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm"
 version = "0.35.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "either",
  "fnv",
@@ -3633,7 +3633,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.27.1"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "quote",
  "syn",
@@ -3642,7 +3642,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-io",
  "futures 0.3.21",
@@ -3660,7 +3660,7 @@ dependencies = [
 [[package]]
 name = "libp2p-uds"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "async-std",
  "futures 0.3.21",
@@ -3671,7 +3671,7 @@ dependencies = [
 [[package]]
 name = "libp2p-wasm-ext"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "futures 0.3.21",
  "js-sys",
@@ -3684,7 +3684,7 @@ dependencies = [
 [[package]]
 name = "libp2p-websocket"
 version = "0.34.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "either",
  "futures 0.3.21",
@@ -3701,7 +3701,7 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.36.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "futures 0.3.21",
  "libp2p-core",
@@ -4155,7 +4155,7 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 [[package]]
 name = "multistream-select"
 version = "0.11.0"
-source = "git+https://github.com/subspace/rust-libp2p?branch=nonhashing-keys-feature#6e9bf98aeb6d8774e178ab6ba280bedc811ad8da"
+source = "git+https://github.com/subspace/rust-libp2p?branch=add-sr25519-keys-v44#59a74b8038fadb430ec56f7771487cb9c6d3bbc0"
 dependencies = [
  "bytes",
  "futures 0.3.21",
@@ -8126,7 +8126,6 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.7.3",
- "serde",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
