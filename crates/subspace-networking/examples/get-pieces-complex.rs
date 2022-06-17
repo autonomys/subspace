@@ -99,7 +99,7 @@ async fn main() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let encoding = expected_node_id.as_ref().digest();
-    let public_key = identity::PublicKey::from_protobuf_encoding(&encoding)
+    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
         .expect("Invalid public key from PeerId.");
     let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
         pk.encode()
