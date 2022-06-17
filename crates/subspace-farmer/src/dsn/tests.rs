@@ -1,10 +1,10 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
-use crate::PiecesToPlot;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_networking::PiecesToPlot;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);

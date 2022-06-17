@@ -36,7 +36,7 @@ pub(crate) mod plotting;
 pub(crate) mod rpc_client;
 pub mod ws_rpc_server;
 
-pub use archiving::{Archiving, ArchivingError, PiecesToPlot};
+pub use archiving::{Archiving, ArchivingError};
 pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;

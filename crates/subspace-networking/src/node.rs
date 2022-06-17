@@ -1,15 +1,23 @@
+use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
-use libp2p::core::multihash::Multihash;
+use futures::{SinkExt, Stream};
+use libp2p::core::multihash::{Code, Multihash};
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
-use std::ops::{Deref, DerefMut};
+use parity_scale_codec::Decode;
+use std::ops::{Deref, DerefMut, Div};
+use std::pin::Pin;
 use std::sync::Arc;
+use subspace_core_primitives::{PieceIndexHash, U256};
 use thiserror::Error;
+use tracing::{debug, error, trace, warn};
+
+const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -83,6 +91,28 @@ pub enum PublishError {
     /// Failed to publish message.
     #[error("Failed to publish message: {0}")]
     Publish(#[from] libp2p::gossipsub::error::PublishError),
+}
+
+#[derive(Debug, Error)]
+pub enum GetPiecesByRangeError {
+    /// Cannot find closest pieces by range.
+    #[error("Cannot find closest pieces by range")]
+    NoClosestPiecesFound,
+    /// Node runner was dropped, impossible to get pieces by range.
+    #[error("Node runner was dropped, impossible to get pieces by range")]
+    NodeRunnerDropped,
+}
+#[derive(Debug, Error)]
+pub enum SendPiecesByRangeRequestError {
+    /// Node runner was dropped, impossible to send 'pieces-by-range' request.
+    #[error("Node runner was dropped, impossible to send 'pieces-by-range' request")]
+    NodeRunnerDropped,
+    /// Underlying protocol returned an error, impossible to get 'pieces-by-range' response.
+    #[error("Underlying protocol returned an error, impossible to get 'pieces-by-range' response")]
+    ProtocolFailure,
+    /// Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response.
+    #[error("Underlying protocol returned an incorrect format, impossible to get 'pieces-by-range' response")]
+    IncorrectResponseFormat,
 }
 
 /// Implementation of a network node on Subspace Network.
@@ -165,6 +195,34 @@ impl Node {
             .map_err(PublishError::Publish)
     }
 
+    // Sends the request to the peer and awaits the result.
+    pub async fn send_pieces_by_range_request(
+        &self,
+        peer_id: PeerId,
+        request: PiecesByRangeRequest,
+    ) -> Result<PiecesByRangeResponse, SendPiecesByRangeRequestError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::PiecesByRangeRequest {
+                request,
+                result_sender,
+                peer_id,
+            })
+            .await
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?;
+
+        let result = result_receiver
+            .await
+            .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
+            .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
+
+        PiecesByRangeResponse::decode(&mut result.as_slice())
+            .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
+    }
+
     /// Node's own addresses where it listens for incoming requests.
     pub fn listeners(&self) -> Vec<Multiaddr> {
         self.shared.listeners.lock().clone()
@@ -176,5 +234,102 @@ impl Node {
         callback: Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
+    }
+
+    /// The method requests the DSN and returns a stream with `Piece` items.
+    /// It looks for the suitable peer for the provided `PieceIndexHash` range by
+    /// searching the underlying Kademlia network for the PeerId closest
+    /// (by XOR-metric) to the middle of the range. After that it requests the
+    /// peer for data in portions. The portion size must be defined by the peer,
+    /// however it's indirectly limited by the response size of the underlying
+    /// protocol.
+    pub async fn get_pieces_by_range(
+        &self,
+        from: PieceIndexHash,
+        to: PieceIndexHash,
+    ) -> Result<Pin<Box<dyn Stream<Item = PiecesToPlot>>>, GetPiecesByRangeError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        // calculate the middle of the range (big endian)
+        let middle = {
+            let from = U256::from_big_endian(&from.0);
+            let to = U256::from_big_endian(&to.0);
+            // min + (max - min) / 2
+            let middle = from.div(2) + to.div(2);
+            let mut buf: [u8; 32] = [0; 32];
+            middle.to_big_endian(&mut buf);
+            buf
+        };
+
+        // obtain closest peers to the middle of the range
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::GetClosestPeers {
+                key: Code::Identity.digest(&middle),
+                result_sender,
+            })
+            .await
+            .map_err(|_| GetPiecesByRangeError::NodeRunnerDropped)?;
+
+        let peers = result_receiver
+            .await
+            .map_err(|_| GetPiecesByRangeError::NodeRunnerDropped)?;
+
+        trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
+
+        // select first peer for the piece-by-range protocol
+        let peer_id = *peers
+            .first()
+            .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
+
+        trace!(%peer_id, "Peer found. Range: {:?} - {:?} ", from, to);
+
+        // prepare stream channel
+        let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(PIECES_CHANNEL_BUFFER_SIZE);
+
+        // populate resulting stream in the separate async task
+        let node = self.clone();
+        tokio::spawn(async move {
+            // indicates the next starting point for a request, initially None
+            let mut next_piece_hash_index = None;
+            loop {
+                trace!(
+                    "Sending 'Piece-by-range' request to {} with {:?}",
+                    peer_id,
+                    next_piece_hash_index
+                );
+                // request data by range and starting point
+                let response = node
+                    .send_pieces_by_range_request(peer_id, PiecesByRangeRequest { from, to })
+                    .await
+                    .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
+
+                // send the result to the stream and exit on any error
+                match response {
+                    Ok(response) => {
+                        // send last response data stream to the result stream
+                        if tx.send(response.pieces).await.is_err() {
+                            warn!("Piece-by-range request channel was closed.");
+                            break;
+                        }
+
+                        // prepare next starting point for data
+                        next_piece_hash_index = response.next_piece_hash_index
+                    }
+                    Err(err) => {
+                        debug!("Piece-by-range request returned an error: {}", err);
+                        break;
+                    }
+                }
+
+                // exit loop if the last response showed no remaining data
+                if next_piece_hash_index.is_none() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Box::pin(rx))
     }
 }

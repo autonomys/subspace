@@ -1,24 +1,40 @@
-use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use libp2p::gossipsub::Sha256Topic;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::Sha256Hash;
-use subspace_networking::Config;
-
-const TOPIC: &str = "Foo";
+use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
+use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
 
 #[tokio::main]
 async fn main() {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    tracing_subscriber::fmt::init();
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         value_getter: Arc::new(|key| {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
+        }),
+        pieces_by_range_request_handler: Arc::new(|req| {
+            println!("Request handler for request: {:?}", req);
+
+            let piece_bytes: Vec<u8> = Piece::default().into();
+            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+            let pieces = PiecesToPlot {
+                piece_indexes: vec![1],
+                pieces: flat_pieces,
+            };
+
+            let response = Some(PiecesByRangeResponse {
+                pieces,
+                next_piece_hash_index: Some(PieceIndexHash([0; 32])),
+            });
+
+            println!("Sending response... ");
+
+            std::thread::sleep(Duration::from_secs(1));
+            response
         }),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
@@ -39,8 +55,6 @@ async fn main() {
     tokio::spawn(async move {
         node_runner_1.run().await;
     });
-
-    let mut subscription = node_1.subscribe(Sha256Topic::new(TOPIC)).await.unwrap();
 
     let config_2 = Config {
         bootstrap_nodes: vec![node_1_addresses_receiver
@@ -63,21 +77,14 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let key = subspace_networking::multimess::create_piece_multihash(&Sha256Hash::default(), 1);
-    println!("Get value result for:");
-    println!("Key: {key:?}");
-    let result = node_2.get_value(key).await;
-    println!("Value: {result:?}");
+    let hashed_peer_id = PieceIndexHash(crypto::sha256_hash(&node_1.id().to_bytes()));
 
-    tokio::spawn(async move {
-        node_2
-            .publish(Sha256Topic::new(TOPIC), "hello".to_string().into_bytes())
-            .await
-            .unwrap();
-    });
-
-    let message = subscription.next().await.unwrap();
-    println!("Got message: {}", String::from_utf8_lossy(&message));
+    let stream_future = node_2.get_pieces_by_range(hashed_peer_id, hashed_peer_id);
+    let mut stream = stream_future.await.unwrap();
+    while let Some(value) = stream.next().await {
+        println!("Piece found: {:?}", value);
+    }
 
     tokio::time::sleep(Duration::from_secs(5)).await;
+    println!("Exiting..");
 }

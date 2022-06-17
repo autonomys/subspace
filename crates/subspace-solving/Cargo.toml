@@ -21,7 +21,6 @@ sloth256-189 = { version = "0.4.1", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 thiserror = { version = "1.0.31", optional = true }
 tracing = { version = "0.1.34", default-features = false }
-uint = { version = "0.9", default-features = false }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["min_const_gen"] }
@@ -40,7 +39,6 @@ std = [
     "subspace-core-primitives/std",
     "thiserror",
     "tracing/std",
-    "uint/std"
 ]
 # Compile with OpenCL support and use it if compatible GPU is available
 opencl = [

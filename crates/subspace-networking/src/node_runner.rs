@@ -1,4 +1,6 @@
 use crate::behavior::{Behavior, Event};
+use crate::pieces_by_range_handler::{self};
+use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
 use bytes::Bytes;
@@ -13,6 +15,7 @@ use libp2p::kad::{
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
+use parity_scale_codec::Encode;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -23,6 +26,9 @@ use tracing::{debug, error, trace, warn};
 enum QueryResultSender {
     GetValue {
         sender: oneshot::Sender<Option<Vec<u8>>>,
+    },
+    GetClosestPeers {
+        sender: oneshot::Sender<Vec<PeerId>>,
     },
 }
 
@@ -65,7 +71,7 @@ impl NodeRunner {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(mut self) {
         // We'll make the first query right away and continue at the interval.
         let mut random_query_timeout = Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse());
 
@@ -116,6 +122,9 @@ impl NodeRunner {
             }
             SwarmEvent::Behaviour(Event::Gossipsub(event)) => {
                 self.handle_gossipsub_event(event).await;
+            }
+            SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
+                self.handle_request_response_event(event).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
@@ -199,30 +208,45 @@ impl NodeRunner {
 
         match event {
             KademliaEvent::OutboundQueryCompleted {
+                id,
                 result: QueryResult::GetClosestPeers(results),
                 ..
-            } => match results {
-                Ok(GetClosestPeersOk { key, peers }) => {
-                    trace!(
-                        "Get closest peers query for {} yielded {} results",
-                        hex::encode(&key),
-                        peers.len(),
-                    );
+            } => {
+                if let Some(QueryResultSender::GetClosestPeers { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match results {
+                        Ok(GetClosestPeersOk { key, peers }) => {
+                            trace!(
+                                "Get closest peers query for {} yielded {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
 
-                    if peers.is_empty()
-                        && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
-                    {
-                        debug!("Random Kademlia query has yielded empty list of peers");
+                            if peers.is_empty()
+                                && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
+                            {
+                                debug!("Random Kademlia query has yielded empty list of peers");
+                            }
+
+                            if sender.send(peers).is_err() {
+                                debug!("GetClosestPeersOk channel was dropped");
+                            }
+                        }
+                        Err(GetClosestPeersError::Timeout { key, peers }) => {
+                            if sender.send(Vec::new()).is_err() {
+                                debug!("GetClosestPeersOk channel was dropped");
+                            }
+
+                            debug!(
+                                "Get closest peers query for {} timed out with {} results",
+                                hex::encode(&key),
+                                peers.len(),
+                            );
+                        }
                     }
                 }
-                Err(GetClosestPeersError::Timeout { key, peers }) => {
-                    debug!(
-                        "Get closest peers query for {} timed out with {} results",
-                        hex::encode(&key),
-                        peers.len(),
-                    );
-                }
-            },
+            }
             KademliaEvent::OutboundQueryCompleted {
                 id,
                 result: QueryResult::GetRecord(results),
@@ -280,7 +304,7 @@ impl NodeRunner {
                 }
             }
             _ => {
-                // TODO
+                // Ignore other events.
             }
         }
     }
@@ -298,6 +322,11 @@ impl NodeRunner {
         }
     }
 
+    async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
+        // No actions on statistics events.
+        trace!("Request response event: {:?}", event);
+    }
+
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::GetValue { key, result_sender } => {
@@ -305,7 +334,6 @@ impl NodeRunner {
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    // TODO: Will probably want something different and validate data instead.
                     .get_record(key.to_bytes().into(), Quorum::One);
 
                 self.query_id_receivers.insert(
@@ -397,6 +425,29 @@ impl NodeRunner {
                         .gossipsub
                         .publish(topic, message)
                         .map(|_message_id| ()),
+                );
+            }
+            Command::GetClosestPeers { key, result_sender } => {
+                let query_id = self.swarm.behaviour_mut().kademlia.get_closest_peers(key);
+
+                self.query_id_receivers.insert(
+                    query_id,
+                    QueryResultSender::GetClosestPeers {
+                        sender: result_sender,
+                    },
+                );
+            }
+            Command::PiecesByRangeRequest {
+                peer_id,
+                request,
+                result_sender,
+            } => {
+                self.swarm.behaviour_mut().request_response.send_request(
+                    &peer_id,
+                    pieces_by_range_handler::PROTOCOL_NAME,
+                    request.encode(),
+                    result_sender,
+                    IfDisconnected::TryConnect,
                 );
             }
         }

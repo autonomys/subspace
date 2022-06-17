@@ -1,6 +1,10 @@
 pub(crate) mod custom_record_store;
 
 use crate::create::ValueGetter;
+use crate::request_responses::{
+    Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
+    RequestResponseHandlerRunner, RequestResponseInstanceConfig, RequestResponsesBehaviour,
+};
 use custom_record_store::CustomRecordStore;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
@@ -21,6 +25,10 @@ pub(crate) struct BehaviorConfig {
     pub(crate) gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub(crate) value_getter: ValueGetter,
+    /// The configuration for the [`RequestResponsesBehaviour`] protocol.
+    pub(crate) pieces_by_range_protocol_config: RequestResponseConfig,
+    /// The pieces-by-range request handler.
+    pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
 }
 
 #[derive(NetworkBehaviour)]
@@ -31,6 +39,7 @@ pub(crate) struct Behavior {
     pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) gossipsub: Gossipsub,
     pub(crate) ping: Ping,
+    pub(crate) request_response: RequestResponsesBehaviour,
 }
 
 impl Behavior {
@@ -58,6 +67,15 @@ impl Behavior {
             kademlia,
             gossipsub,
             ping: Ping::default(),
+            request_response: RequestResponsesBehaviour::new(
+                vec![RequestResponseInstanceConfig {
+                    config: config.pieces_by_range_protocol_config,
+                    handler: config.pieces_by_range_request_handler,
+                }]
+                .into_iter(),
+            )
+            //TODO: Convert to an error.
+            .expect("RequestResponse protocols registration failed."),
         }
     }
 }
@@ -68,6 +86,7 @@ pub(crate) enum Event {
     Kademlia(KademliaEvent),
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
+    RequestResponse(RequestResponseEvent),
 }
 
 impl From<IdentifyEvent> for Event {
@@ -91,5 +110,11 @@ impl From<GossipsubEvent> for Event {
 impl From<PingEvent> for Event {
     fn from(event: PingEvent) -> Self {
         Event::Ping(event)
+    }
+}
+
+impl From<RequestResponseEvent> for Event {
+    fn from(event: RequestResponseEvent) -> Self {
+        Event::RequestResponse(event)
     }
 }

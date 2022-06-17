@@ -1,14 +1,11 @@
 use env_logger::Env;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use libp2p::gossipsub::Sha256Topic;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::Sha256Hash;
-use subspace_networking::Config;
-
-const TOPIC: &str = "Foo";
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
+use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 
 #[tokio::main]
 async fn main() {
@@ -21,6 +18,21 @@ async fn main() {
             Some(key.digest().iter().copied().rev().collect())
         }),
         allow_non_globals_in_dht: true,
+        pieces_by_range_request_handler: Arc::new(|req| {
+            println!("Request handler for request: {:?}", req);
+
+            let piece_bytes: Vec<u8> = Piece::default().into();
+            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+            let pieces = PiecesToPlot {
+                piece_indexes: vec![1],
+                pieces: flat_pieces,
+            };
+
+            Some(PiecesByRangeResponse {
+                pieces,
+                next_piece_hash_index: None,
+            })
+        }),
         ..Config::with_generated_keypair()
     };
     let (node_1, node_runner_1) = subspace_networking::create(config_1).await.unwrap();
@@ -39,8 +51,6 @@ async fn main() {
     tokio::spawn(async move {
         node_runner_1.run().await;
     });
-
-    let mut subscription = node_1.subscribe(Sha256Topic::new(TOPIC)).await.unwrap();
 
     let config_2 = Config {
         bootstrap_nodes: vec![node_1_addresses_receiver
@@ -63,21 +73,18 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let key = subspace_networking::multimess::create_piece_multihash(&Sha256Hash::default(), 1);
-    println!("Get value result for:");
-    println!("Key: {key:?}");
-    let result = node_2.get_value(key).await;
-    println!("Value: {result:?}");
-
     tokio::spawn(async move {
         node_2
-            .publish(Sha256Topic::new(TOPIC), "hello".to_string().into_bytes())
+            .send_pieces_by_range_request(
+                node_1.id(),
+                PiecesByRangeRequest {
+                    from: PieceIndexHash([1u8; 32]),
+                    to: PieceIndexHash([1u8; 32]),
+                },
+            )
             .await
             .unwrap();
     });
-
-    let message = subscription.next().await.unwrap();
-    println!("Got message: {}", String::from_utf8_lossy(&message));
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 }

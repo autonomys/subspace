@@ -1,7 +1,6 @@
 use crate::dsn::{self, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, PiecesToPlot, Plot,
-    PlotError, RpcClient,
+    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
@@ -14,7 +13,7 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
-use subspace_networking::Config;
+use subspace_networking::{Config, PiecesToPlot};
 use subspace_solving::SubspaceCodec;
 use tracing::info;
 
@@ -305,7 +304,7 @@ impl MultiFarming {
         let mut node_runners = self
             .networking_node_runners
             .into_iter()
-            .map(|mut node_runner| async move { node_runner.run().await })
+            .map(|node_runner| async move { node_runner.run().await })
             .collect::<FuturesUnordered<_>>();
 
         tokio::select! {
