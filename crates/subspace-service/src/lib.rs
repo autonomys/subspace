@@ -256,6 +256,7 @@ where
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,
         client.clone(),
+        telemetry.as_ref().map(|telemetry| telemetry.handle()),
         &task_manager.spawn_essential_handle(),
         config.role.is_authority(),
     );
