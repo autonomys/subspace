@@ -3,7 +3,7 @@ use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{crypto, Piece, PieceIndexHash};
+use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
 use subspace_networking::{Config, PiecesByRangeResponse};
 
 #[tokio::main]
@@ -18,8 +18,16 @@ async fn main() {
         }),
         pieces_by_range_request_handler: Arc::new(|req| {
             println!("Request handler for request: {:?}", req);
+
+            let piece_bytes: Vec<u8> = Piece::default().into();
+            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+            let pieces = PiecesToPlot {
+                piece_indexes: vec![1],
+                pieces: flat_pieces,
+            };
+
             let response = Some(PiecesByRangeResponse {
-                pieces: vec![Piece::default()],
+                pieces,
                 next_piece_hash_index: Some(PieceIndexHash([0; 32])),
             });
 

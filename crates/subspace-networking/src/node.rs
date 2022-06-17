@@ -3,7 +3,7 @@ use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::{stream, SinkExt, Stream};
+use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
@@ -12,7 +12,7 @@ use parity_scale_codec::Decode;
 use std::ops::{Deref, DerefMut, Div};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash, U256};
+use subspace_core_primitives::{PieceIndexHash, PiecesToPlot, U256};
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
@@ -227,7 +227,7 @@ impl Node {
         &self,
         from: PieceIndexHash,
         to: PieceIndexHash,
-    ) -> Result<Pin<Box<dyn Stream<Item = Piece>>>, GetPiecesByRangeError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = PiecesToPlot>>>, GetPiecesByRangeError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         // calculate the middle of the range
@@ -262,7 +262,7 @@ impl Node {
 
         // prepare stream channel
         const BUFFER_SIZE: usize = 1000; // approximately 4MB
-        let (mut tx, rx) = mpsc::channel::<Piece>(BUFFER_SIZE);
+        let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(BUFFER_SIZE);
 
         // populate resulting stream in the separate async task
         let shared = self.shared.clone();
@@ -291,11 +291,8 @@ impl Node {
                 // send the result to the stream and exit on any error
                 match response {
                     Ok(response) => {
-                        // convert response data to the stream
-                        let mut chunk_stream = stream::iter(response.pieces.into_iter().map(Ok));
-
                         // send last response data stream to the result stream
-                        if tx.send_all(&mut chunk_stream).await.is_err() {
+                        if tx.send(response.pieces).await.is_err() {
                             warn!("Piece-by-range request channel was closed.");
                             break;
                         }
@@ -357,19 +354,25 @@ mod test {
     use libp2p::multiaddr::Protocol;
     use std::sync::Arc;
     use std::time::Duration;
-    use subspace_core_primitives::{crypto, Piece, PieceIndexHash};
+    use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
 
     #[tokio::test]
     async fn get_pieces_by_range_protocol_smoke() {
-        let piece = Piece::default();
-        let expected_piece = piece.clone();
+        let piece_bytes: Vec<u8> = Piece::default().into();
+        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+        let pieces = PiecesToPlot {
+            piece_indexes: vec![1],
+            pieces: flat_pieces,
+        };
+
+        let expected_data = pieces.clone();
 
         let config_1 = Config {
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
             pieces_by_range_request_handler: Arc::new(move |_| {
                 Some(PiecesByRangeResponse {
-                    pieces: vec![piece.clone()],
+                    pieces: pieces.clone(),
                     next_piece_hash_index: None,
                 })
             }),
@@ -419,6 +422,6 @@ mod test {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        assert_eq!(result.unwrap(), expected_piece);
+        assert_eq!(result.unwrap(), expected_data);
     }
 }

@@ -29,7 +29,7 @@ use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash};
+use subspace_core_primitives::{PieceIndexHash, PiecesToPlot};
 use tracing::{debug, trace};
 const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
 
@@ -49,7 +49,7 @@ pub struct PiecesByRangeRequest {
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
 pub struct PiecesByRangeResponse {
     /// Returned data.
-    pub pieces: Vec<Piece>,
+    pub pieces: PiecesToPlot,
     /// Defines starting point (cursor) of the next request.
     /// None means no further data avalaible.
     pub next_piece_hash_index: Option<PieceIndexHash>,
@@ -168,7 +168,7 @@ mod test {
     use libp2p::multiaddr::Protocol;
     use std::sync::Arc;
     use std::time::Duration;
-    use subspace_core_primitives::{Piece, PieceIndexHash};
+    use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PiecesToPlot};
 
     #[tokio::test]
     async fn pieces_by_range_protocol_smoke() {
@@ -178,8 +178,15 @@ mod test {
             next_piece_hash_index: None,
         };
 
+        let piece_bytes: Vec<u8> = Piece::default().into();
+        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+        let pieces = PiecesToPlot {
+            piece_indexes: vec![1],
+            pieces: flat_pieces,
+        };
+
         let response = PiecesByRangeResponse {
-            pieces: vec![Piece::default()],
+            pieces,
             next_piece_hash_index: None,
         };
 
