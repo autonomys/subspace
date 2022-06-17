@@ -25,7 +25,6 @@ use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
-use sp_runtime_interface::pass_by::PassBy;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -367,10 +366,6 @@ pub struct FraudProof {
     pub proof: StorageProof,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
-}
-
-impl PassBy for FraudProof {
-    type PassBy = sp_runtime_interface::pass_by::Codec<Self>;
 }
 
 /// Represents a bundle equivocation proof. An equivocation happens when an executor
