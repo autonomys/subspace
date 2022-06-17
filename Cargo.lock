@@ -8126,6 +8126,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.7.3",
+ "sha2 0.10.2",
  "subspace-core-primitives",
  "thiserror",
  "tokio",

@@ -1,6 +1,7 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
+use crate::multimess;
 use crate::pieces_by_range_handler::PiecesByRangeRequest;
 use crate::request_responses::RequestFailure;
 use bytes::Bytes;
@@ -16,6 +17,7 @@ use libp2p::kad::record;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
+use sha2::{Digest, Sha256};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use typenum::U32;
@@ -104,6 +106,13 @@ impl PreimageIntoKeyBytes<Multihash> for IdendityHash {
             return KeyBytes::from_unchecked(*array);
         }
 
+        // PieceIndex and Piece multihashes are hashed with SHA256
+        if multihash.code() == u64::from(multimess::MultihashCode::Piece)
+            || multihash.code() == u64::from(multimess::MultihashCode::PieceIndex)
+        {
+            return KeyBytes::from_unchecked(Sha256::digest(multihash.to_bytes()));
+        }
+
         panic!(
             "Unsupported multihash type. Expected Identity:{:?}",
             multihash
@@ -131,8 +140,11 @@ impl PreimageIntoKeyBytes<PeerId> for IdendityHash {
 }
 
 impl PreimageIntoKeyBytes<record::Key> for IdendityHash {
-    fn preimage_into_key_bytes(_record_key: &record::Key) -> KeyBytes<Self> {
-        panic!("Unsupported operation: record::Key to KeyBytes");
+    fn preimage_into_key_bytes(record_key: &record::Key) -> KeyBytes<Self> {
+        let multihash = Multihash::from_bytes(&record_key.to_vec())
+            .expect("Not multihash record keys not supported.");
+
+        PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
     }
 }
 
