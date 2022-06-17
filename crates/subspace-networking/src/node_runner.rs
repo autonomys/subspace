@@ -464,7 +464,7 @@ impl NodeRunner {
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
                     &pieces_by_range_protocol_name(),
-                    request.into(),
+                    request.encode(),
                     result_sender,
                     IfDisconnected::TryConnect,
                 );

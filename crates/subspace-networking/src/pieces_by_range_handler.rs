@@ -44,18 +44,17 @@ pub struct PiecesByRangeRequest {
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl TryFrom<Vec<u8>> for PiecesByRangeRequest {
-    type Error = &'static str;
-
-    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
+impl PiecesByRangeRequest {
+    /// Tries to deserialise `PiecesByRangeRequest` from the bytes vector.
+    pub fn decode(data: Vec<u8>) -> Result<Self, &'static str> {
         bincode::deserialize(&data)
             .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeRequest")
     }
-}
 
-impl From<PiecesByRangeRequest> for Vec<u8> {
-    fn from(data: PiecesByRangeRequest) -> Self {
-        bincode::serialize(&data).expect("Invalid format: cannot serialize PiecesByRangeRequest")
+    /// Serializes `PiecesByRangeRequest` to the bytes vector.
+    /// Panics on codec error.
+    pub fn encode(&self) -> Vec<u8> {
+        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeRequest")
     }
 }
 
@@ -69,18 +68,17 @@ pub struct PiecesByRangeResponse {
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl From<PiecesByRangeResponse> for Vec<u8> {
-    fn from(data: PiecesByRangeResponse) -> Self {
-        bincode::serialize(&data).expect("Invalid format: cannot serialize PiecesByRangeResponse")
-    }
-}
-
-impl TryFrom<Vec<u8>> for PiecesByRangeResponse {
-    type Error = &'static str;
-
-    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
+impl PiecesByRangeResponse {
+    /// Tries to deserialise `PiecesByRangeResponse` from the bytes vector.
+    pub fn decode(data: Vec<u8>) -> Result<Self, &'static str> {
         bincode::deserialize(&data)
             .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeResponse")
+    }
+
+    /// Serializes `PiecesByRangeResponse` to the bytes vector.
+    /// Panics on codec error.
+    pub fn encode(&self) -> Vec<u8> {
+        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeResponse")
     }
 }
 
@@ -166,13 +164,12 @@ impl PiecesByRangeRequestHandler {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, PieceByRangeHandleRequestError> {
         trace!(%peer, "Handling request...");
-        let request: PiecesByRangeRequest = payload
-            .try_into()
+        let request = PiecesByRangeRequest::decode(payload)
             .map_err(|_| PieceByRangeHandleRequestError::InvalidRequestFormat)?;
         let response = (self.request_handler)(&request);
 
         // Return the result with treating None as an empty(default) response.
-        Ok(response.unwrap_or_default().into())
+        Ok(response.unwrap_or_default().encode())
     }
 }
 
@@ -226,7 +223,7 @@ mod test {
             }),
             ..Config::with_generated_keypair()
         };
-        let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
+        let (node_1, node_runner_1) = crate::create(config_1).await.unwrap();
 
         let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
         node_1
@@ -252,7 +249,7 @@ mod test {
             ..Config::with_generated_keypair()
         };
 
-        let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
+        let (node_2, node_runner_2) = crate::create(config_2).await.unwrap();
         tokio::spawn(async move {
             node_runner_2.run().await;
         });

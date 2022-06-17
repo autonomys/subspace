@@ -1,5 +1,5 @@
+use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse};
 use crate::shared::{Command, CreatedSubscription, ExactKademliaKey, Shared};
-use crate::{PiecesByRangeRequest, PiecesByRangeResponse};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
@@ -344,8 +344,7 @@ impl Node {
             .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
             .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
 
-        result
-            .try_into()
+        PiecesByRangeResponse::decode(result)
             .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
     }
 }
@@ -376,7 +375,7 @@ mod test {
             }),
             ..Config::with_generated_keypair()
         };
-        let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
+        let (node_1, node_runner_1) = crate::create(config_1).await.unwrap();
 
         let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
         node_1
@@ -402,7 +401,7 @@ mod test {
             ..Config::with_generated_keypair()
         };
 
-        let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
+        let (node_2, node_runner_2) = crate::create(config_2).await.unwrap();
         tokio::spawn(async move {
             node_runner_2.run().await;
         });
