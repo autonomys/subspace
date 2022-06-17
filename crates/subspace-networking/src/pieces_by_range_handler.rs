@@ -26,6 +26,7 @@ use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
+use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndexHash};
@@ -33,7 +34,7 @@ use tracing::{debug, trace};
 const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
 
 /// Pieces-by-range protocol request. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
     pub from: PieceIndexHash,
@@ -44,42 +45,14 @@ pub struct PiecesByRangeRequest {
     pub next_piece_hash_index: Option<PieceIndexHash>,
 }
 
-impl PiecesByRangeRequest {
-    /// Tries to deserialise `PiecesByRangeRequest` from the bytes vector.
-    pub fn decode(data: Vec<u8>) -> Result<Self, &'static str> {
-        bincode::deserialize(&data)
-            .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeRequest")
-    }
-
-    /// Serializes `PiecesByRangeRequest` to the bytes vector.
-    /// Panics on codec error.
-    pub fn encode(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeRequest")
-    }
-}
-
 /// Pieces-by-range protocol response. Assumes requests with paging.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
 pub struct PiecesByRangeResponse {
     /// Returned data.
     pub pieces: Vec<Piece>,
     /// Defines starting point (cursor) of the next request.
     /// None means no further data avalaible.
     pub next_piece_hash_index: Option<PieceIndexHash>,
-}
-
-impl PiecesByRangeResponse {
-    /// Tries to deserialise `PiecesByRangeResponse` from the bytes vector.
-    pub fn decode(data: Vec<u8>) -> Result<Self, &'static str> {
-        bincode::deserialize(&data)
-            .map_err(|_| "Invalid format: cannot deserialize PiecesByRangeResponse")
-    }
-
-    /// Serializes `PiecesByRangeResponse` to the bytes vector.
-    /// Panics on codec error.
-    pub fn encode(&self) -> Vec<u8> {
-        bincode::serialize(&self).expect("Invalid format: cannot serialize PiecesByRangeResponse")
-    }
 }
 
 /// Type alias for the actual external request handler.
@@ -164,7 +137,7 @@ impl PiecesByRangeRequestHandler {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, PieceByRangeHandleRequestError> {
         trace!(%peer, "Handling request...");
-        let request = PiecesByRangeRequest::decode(payload)
+        let request = PiecesByRangeRequest::decode(&mut payload.as_slice())
             .map_err(|_| PieceByRangeHandleRequestError::InvalidRequestFormat)?;
         let response = (self.request_handler)(&request);
 

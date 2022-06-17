@@ -8,6 +8,7 @@ use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::{Multiaddr, PeerId};
+use parity_scale_codec::Decode;
 use std::ops::{Add, Deref, DerefMut, Div};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -344,7 +345,7 @@ impl Node {
             .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped)?
             .map_err(|_| SendPiecesByRangeRequestError::ProtocolFailure)?;
 
-        PiecesByRangeResponse::decode(result)
+        PiecesByRangeResponse::decode(&mut result.as_slice())
             .map_err(|_| SendPiecesByRangeRequestError::IncorrectResponseFormat)
     }
 }

@@ -17,6 +17,7 @@ use libp2p::kad::{
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
+use parity_scale_codec::Encode;
 use std::cell::Cell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;

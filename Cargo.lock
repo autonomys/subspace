@@ -8115,7 +8115,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bincode",
  "bytes",
  "clap 3.1.18",
  "env_logger",
@@ -8124,6 +8123,7 @@ dependencies = [
  "hex",
  "libp2p",
  "nohash-hasher",
+ "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.7.3",
  "serde",
