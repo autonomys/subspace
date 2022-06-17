@@ -117,9 +117,12 @@ where
     Some((last_root_block, last_archived_block, block_object_mappings))
 }
 
-struct BlockHashesToArchive<BlockHash> {
-    block_hashes: Vec<BlockHash>,
-    best_archived: Option<BlockHash>,
+struct BlockHashesToArchive<Block>
+where
+    Block: BlockT,
+{
+    block_hashes: Vec<Block::Hash>,
+    best_archived: Option<(Block::Hash, NumberFor<Block>)>,
 }
 
 fn block_hashes_to_archive<Block, Client>(
@@ -127,7 +130,7 @@ fn block_hashes_to_archive<Block, Client>(
     best_block_hash: Block::Hash,
     blocks_to_archive_from: NumberFor<Block>,
     blocks_to_archive_to: NumberFor<Block>,
-) -> BlockHashesToArchive<Block::Hash>
+) -> BlockHashesToArchive<Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block>,
@@ -147,7 +150,7 @@ where
             block_hashes.push(block_hash_to_check);
 
             if best_archived.is_none() {
-                best_archived.replace(block_hash_to_check);
+                best_archived.replace((block_hash_to_check, *header.number()));
             }
         }
 
@@ -164,11 +167,14 @@ where
     }
 }
 
-struct InitializedArchiver<BlockHash> {
+struct InitializedArchiver<Block>
+where
+    Block: BlockT,
+{
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
     older_archived_segments: Vec<ArchivedSegment>,
-    best_archived_block_hash: Option<BlockHash>,
+    best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
 fn initialize_archiver<Block, Client>(
@@ -176,7 +182,7 @@ fn initialize_archiver<Block, Client>(
     best_block_number: NumberFor<Block>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-) -> InitializedArchiver<Block::Hash>
+) -> InitializedArchiver<Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
@@ -203,6 +209,7 @@ where
 
     let maybe_last_archived_block = find_last_archived_block(client, best_block_id);
     let have_last_root_block = maybe_last_archived_block.is_some();
+    let mut best_archived_block = None;
 
     let mut archiver = if let Some((last_root_block, last_archived_block, block_object_mappings)) =
         maybe_last_archived_block
@@ -214,6 +221,13 @@ where
             "Last archived block {}",
             last_archived_block_number,
         );
+
+        // Set initial value, this is needed in case only genesis block was archived and there is
+        // nothing else available
+        best_archived_block.replace((
+            last_archived_block.block.hash(),
+            *last_archived_block.block.header().number(),
+        ));
 
         Archiver::with_initial_state(
             record_size as usize,
@@ -231,7 +245,6 @@ where
     };
 
     let mut older_archived_segments = Vec::new();
-    let mut best_archived_block_hash = None;
 
     // Process blocks since last fully archived block (or genesis) up to the current head minus K
     {
@@ -270,7 +283,7 @@ where
                 blocks_to_archive_from.into(),
                 blocks_to_archive_to.into(),
             );
-            best_archived_block_hash = block_hashes_to_archive.best_archived;
+            best_archived_block = block_hashes_to_archive.best_archived;
             let block_hashes_to_archive = block_hashes_to_archive.block_hashes;
 
             for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
@@ -331,7 +344,8 @@ where
         confirmation_depth_k,
         archiver,
         older_archived_segments,
-        best_archived_block_hash,
+        best_archived_block: best_archived_block
+            .expect("Must always set if there is no logical error; qed"),
     }
 }
 
@@ -400,7 +414,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
         confirmation_depth_k,
         mut archiver,
         older_archived_segments,
-        mut best_archived_block_hash,
+        best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
     } = initialize_archiver(
         best_block_hash,
         best_block_number,
@@ -431,9 +445,6 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     drop(older_archived_segments);
                 }
 
-                let mut last_archived_block_number =
-                    archiver.last_archived_block_number().map(Into::into);
-
                 while let Some(ImportedBlockNotification {
                     block_number,
                     mut root_block_sender,
@@ -447,16 +458,12 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                             }
                         };
 
-                    if let Some(last_archived_block) = &mut last_archived_block_number {
-                        if *last_archived_block >= block_number_to_archive {
-                            // This block was already archived, skip
-                            continue;
-                        }
-
-                        *last_archived_block = block_number_to_archive;
-                    } else {
-                        last_archived_block_number.replace(block_number_to_archive);
+                    if best_archived_block_number >= block_number_to_archive {
+                        // This block was already archived, skip
+                        continue;
                     }
+
+                    best_archived_block_number = block_number_to_archive;
 
                     let block = client
                         .block(&BlockId::Number(block_number_to_archive))
@@ -473,20 +480,18 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                         block_hash_to_archive
                     );
 
-                    if let Some(best_archived_block_hash) = best_archived_block_hash {
-                        if parent_block_hash != best_archived_block_hash {
-                            error!(
-                                target: "subspace",
-                                "Attempt to switch to a different fork beyond archiving depth, \
-                                can't do it: parent block hash {}, best archived block hash {}",
-                                parent_block_hash,
-                                best_archived_block_hash
-                            );
-                            return;
-                        }
+                    if parent_block_hash != best_archived_block_hash {
+                        error!(
+                            target: "subspace",
+                            "Attempt to switch to a different fork beyond archiving depth, \
+                            can't do it: parent block hash {}, best archived block hash {}",
+                            parent_block_hash,
+                            best_archived_block_hash
+                        );
+                        return;
                     }
 
-                    best_archived_block_hash.replace(block_hash_to_archive);
+                    best_archived_block_hash = block_hash_to_archive;
 
                     let block_object_mappings = client
                         .runtime_api()
