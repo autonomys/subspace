@@ -208,7 +208,7 @@ impl SubstrateCli for Cli {
     }
 
     fn support_url() -> String {
-        "https://discord.gg/vhKF9w3x".into()
+        "https://forum.subspace.network".into()
     }
 
     fn copyright_start_year() -> i32 {
