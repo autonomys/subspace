@@ -46,16 +46,11 @@ impl DSNSync for NoSync {
 }
 
 /// Syncs the closest pieces to the public key from the provided DSN.
-///
-/// It would sync piece with ranges providing in the `options`. It would go concurently upwards and
-/// downwards from address and will either ask all available pieces and end at `options.address -
-/// PieceIndexHashNumber::MAX / 2` or if `on_pieces` callback decides to break with any result.
 pub async fn sync<DSN, OP>(mut dsn: DSN, options: SyncOptions, on_pieces: OP) -> anyhow::Result<()>
 where
     DSN: DSNSync + Send + Sized,
     DSN::Stream: Unpin + Send,
-    // On pieces might `break` with some result from the sync or just continue
-    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()> + Send + 'static,
+    OP: Send + 'static + FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()>,
 {
     let SyncOptions {
         max_plot_size,
