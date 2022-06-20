@@ -5,7 +5,6 @@ use crate::{
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
@@ -209,52 +208,50 @@ impl MultiFarming {
             .farmer_metadata()
             .await
             .map_err(|error| anyhow!(error))?;
+        let max_plot_size = farmer_metadata.max_plot_size;
+        let total_pieces = farmer_metadata.total_pieces;
 
         // Start syncing
-        // TODO: Unlock once infinite loop (https://github.com/subspace/subspace/issues/598) is fixed
-        if false {
-            tokio::spawn({
-                let plots = plots.clone();
-                let commitments = commitments.clone();
-                let codecs = codecs.clone();
-                async move {
-                    let dsn = NoSync;
+        tokio::spawn({
+            let plots = plots.clone();
+            let commitments = commitments.clone();
+            let codecs = codecs.clone();
+            async move {
+                let dsn = NoSync;
 
-                    let mut futures = plots
-                        .into_iter()
-                        .zip(commitments)
-                        .zip(codecs)
-                        .map(|((plot, commitments), codec)| {
-                            let options = SyncOptions {
-                                range_size: PieceIndexHashNumber::MAX / 1024,
-                                address: plot.public_key(),
-                            };
-                            let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+                let mut futures = plots
+                    .into_iter()
+                    .zip(commitments)
+                    .zip(codecs)
+                    .map(|((plot, commitments), codec)| {
+                        let options = SyncOptions {
+                            range_size: PieceIndexHashNumber::MAX / 1024,
+                            public_key: plot.public_key(),
+                            max_plot_size,
+                            total_pieces,
+                        };
+                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
 
-                            dsn::sync(dsn, options, move |pieces, piece_indexes| {
-                                tracing::info!("In plot");
-                                if !plot_pieces(PiecesToPlot {
-                                    pieces,
-                                    piece_indexes,
-                                }) {
-                                    return ControlFlow::Break(Err(anyhow::anyhow!(
-                                        "Failed to plot pieces in archiving"
-                                    )));
-                                }
-                                ControlFlow::Continue(())
-                            })
+                        dsn::sync(dsn, options, move |pieces, piece_indexes| {
+                            if !plot_pieces(PiecesToPlot {
+                                pieces,
+                                piece_indexes,
+                            }) {
+                                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
+                            }
+                            Ok(())
                         })
-                        .collect::<FuturesUnordered<_>>();
-                    while let Some(result) = futures.next().await {
-                        result?;
-                    }
-
-                    tracing::info!("Sync done");
-
-                    Ok::<_, anyhow::Error>(())
+                    })
+                    .collect::<FuturesUnordered<_>>();
+                while let Some(result) = futures.next().await {
+                    result?;
                 }
-            });
-        }
+
+                tracing::info!("Sync done");
+
+                Ok::<_, anyhow::Error>(())
+            }
+        });
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
