@@ -263,6 +263,8 @@ impl FlatPieces {
     }
 }
 
+// TODO: Remove once we no longer use `unzip` in farmer and get `(Vec<PieceIndex>, FlatPieces)`
+// after requesting sequential pieces.
 impl Extend<Piece> for FlatPieces {
     fn extend<T: IntoIterator<Item = Piece>>(&mut self, iter: T) {
         self.0

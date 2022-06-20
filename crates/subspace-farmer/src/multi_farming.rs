@@ -178,6 +178,8 @@ impl MultiFarming {
                 pieces_by_range_request_handler: Arc::new({
                     let plot = plot.clone();
                     let subspace_codec = subspace_codec.clone();
+
+                    // TODO: also ask for how many pieces to read
                     move |&PiecesByRangeRequest { from, to }| {
                         let mut pieces_and_indexes =
                             plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
@@ -191,16 +193,14 @@ impl MultiFarming {
                             pieces_and_indexes
                                 .pop()
                                 .map(|(index, _)| Some(PieceIndexHash::from(index)))
-                                .unwrap_or(None)
+                                .unwrap_or_default()
                         };
 
                         let (piece_indexes, pieces) = pieces_and_indexes
                             .into_iter()
                             .flat_map(|(index, mut piece)| {
-                                subspace_codec
-                                    .decode(&mut piece, index)
-                                    .ok()
-                                    .map(move |()| (index, piece))
+                                subspace_codec.decode(&mut piece, index).ok()?;
+                                Some((index, piece))
                             })
                             .unzip();
 
