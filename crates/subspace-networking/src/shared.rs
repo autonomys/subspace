@@ -1,7 +1,6 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::multimess;
 use crate::pieces_by_range_handler::PiecesByRangeRequest;
 use crate::request_responses::RequestFailure;
 use bytes::Bytes;
@@ -16,9 +15,9 @@ use libp2p::kad::record;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
-use sha2::{Digest, Sha256};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use subspace_core_primitives::crypto::sha256_hash;
 use subspace_core_primitives::PUBLIC_KEY_LENGTH;
 use typenum::U32;
 
@@ -104,14 +103,8 @@ impl PreimageIntoKeyBytes<Multihash> for IdendityHash {
             return KeyBytes::from_unchecked(*array);
         }
 
-        // PieceIndex and Piece multihashes are hashed with the default SHA256
-        if multihash.code() == u64::from(multimess::MultihashCode::Piece)
-            || multihash.code() == u64::from(multimess::MultihashCode::PieceIndex)
-        {
-            return default_key_bytes_conversion(&multihash.to_bytes());
-        }
-
-        // Unsupported multihash type.
+        // MultihashCode::Piece, MultihashCode::PieceIndex are hashed with the
+        // SHA256 similar to unknown multihash types.
         default_key_bytes_conversion(&multihash.to_bytes())
     }
 }
@@ -160,9 +153,9 @@ impl PreimageIntoKeyBytes<Vec<u8>> for IdendityHash {
     }
 }
 
-// Default KeyBytes converter. It hashes bytes with Sha256 - the same as the
+// Default KeyBytes converter. It hashes bytes with Sha256 similar to the
 // default Kademlia's `PreimageIntoKeyBytes` implementation.
 #[inline]
-fn default_key_bytes_conversion<T>(bytes: &Vec<u8>) -> KeyBytes<T> {
-    KeyBytes::from_unchecked(Sha256::digest(bytes))
+fn default_key_bytes_conversion<T>(bytes: &[u8]) -> KeyBytes<T> {
+    KeyBytes::from_unchecked(*GenericArray::from_slice(&sha256_hash(bytes)))
 }
