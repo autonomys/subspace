@@ -61,6 +61,7 @@ pub struct Options<C> {
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
     pub listen_on: Vec<Multiaddr>,
+    pub dsn_sync: bool,
 }
 
 impl MultiFarming {
@@ -74,6 +75,7 @@ impl MultiFarming {
             reward_address,
             mut bootstrap_nodes,
             listen_on,
+            dsn_sync,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -255,45 +257,49 @@ impl MultiFarming {
         let total_pieces = farmer_metadata.total_pieces;
 
         // Start syncing
-        tokio::spawn({
-            let plots = plots.clone();
-            let commitments = commitments.clone();
-            let codecs = codecs.clone();
-            async move {
-                let mut futures = plots
-                    .into_iter()
-                    .zip(commitments)
-                    .zip(codecs)
-                    .zip(nodes)
-                    .map(|(((plot, commitments), codec), node)| {
-                        let options = SyncOptions {
-                            range_size: PieceIndexHashNumber::MAX / 1024,
-                            public_key: plot.public_key(),
-                            max_plot_size,
-                            total_pieces,
-                        };
-                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+        if dsn_sync {
+            tokio::spawn({
+                let plots = plots.clone();
+                let commitments = commitments.clone();
+                let codecs = codecs.clone();
+                async move {
+                    let mut futures = plots
+                        .into_iter()
+                        .zip(commitments)
+                        .zip(codecs)
+                        .zip(nodes)
+                        .map(|(((plot, commitments), codec), node)| {
+                            let options = SyncOptions {
+                                range_size: PieceIndexHashNumber::MAX / 1024,
+                                public_key: plot.public_key(),
+                                max_plot_size,
+                                total_pieces,
+                            };
+                            let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
 
-                        dsn::sync(node, options, move |pieces, piece_indexes| {
-                            if !plot_pieces(PiecesToPlot {
-                                pieces,
-                                piece_indexes,
-                            }) {
-                                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
-                            }
-                            Ok(())
+                            dsn::sync(node, options, move |pieces, piece_indexes| {
+                                if !plot_pieces(PiecesToPlot {
+                                    pieces,
+                                    piece_indexes,
+                                }) {
+                                    return Err(anyhow::anyhow!(
+                                        "Failed to plot pieces in archiving"
+                                    ));
+                                }
+                                Ok(())
+                            })
                         })
-                    })
-                    .collect::<FuturesUnordered<_>>();
-                while let Some(result) = futures.next().await {
-                    result?;
+                        .collect::<FuturesUnordered<_>>();
+                    while let Some(result) = futures.next().await {
+                        result?;
+                    }
+
+                    tracing::info!("Sync done");
+
+                    Ok::<_, anyhow::Error>(())
                 }
-
-                tracing::info!("Sync done");
-
-                Ok::<_, anyhow::Error>(())
-            }
-        });
+            });
+        }
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {

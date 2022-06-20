@@ -175,6 +175,7 @@ pub(crate) async fn bench(
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],
             listen_on: vec![],
+            dsn_sync: false,
         },
         plot_size,
         max_plot_size,

@@ -23,6 +23,7 @@ pub(crate) async fn farm(
         reward_address,
         plot_size,
         max_plot_size,
+        dsn_sync,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
@@ -74,6 +75,7 @@ pub(crate) async fn farm(
             reward_address,
             bootstrap_nodes,
             listen_on,
+            dsn_sync,
         },
         plot_size,
         max_plot_size,

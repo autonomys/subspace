@@ -50,6 +50,9 @@ struct FarmingArgs {
     /// Only a developer testing flag, as it might be needed for testing.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     max_plot_size: Option<u64>,
+    /// Use dsn for syncing
+    #[clap(long)]
+    dsn_sync: bool,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
